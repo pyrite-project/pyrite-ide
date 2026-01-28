@@ -31,6 +31,18 @@ class MobileView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 确保组件重绘后导航栏选择的值与实际显示内容同步
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      selectedIndexValue = routesName.indexOf(
+        "/${state.matchedLocation.split("/")[1]}",
+      );
+      // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
+      // e.g. "/settings/about" => "/settings"
+      if (selectedIndexValue != ref.read(mobileSelectedIndex)) {
+        selectedIndexValue = ref.read(mobileSelectedIndex);
+        context.go(routesName[selectedIndexValue]);
+      }
+    });
     return Scaffold(
       bottomNavigationBar: bottomNavigationBar(context, ref),
       body: child,
@@ -65,6 +77,18 @@ class TabletView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 确保组件重绘后导航栏选择的值与实际显示内容同步
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      selectedIndexValue = routesName.indexOf(
+        "/${state.matchedLocation.split("/")[1]}",
+      );
+      // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
+      // e.g. "/settings/about" => "/settings"
+      if (selectedIndexValue != ref.read(mobileSelectedIndex)) {
+        selectedIndexValue = ref.read(mobileSelectedIndex);
+        context.go(routesName[selectedIndexValue]);
+      }
+    });
     return Scaffold(
       body: Row(
         children: [
@@ -194,7 +218,9 @@ class DesktopView extends ConsumerWidget {
   Widget functionPage(BuildContext context, WidgetRef ref) {
     if (ref.watch(functionPageState)) {
       return shadcn.ShadcnLayer(
-        theme: shadcn.ThemeData(colorScheme: shadcn.ColorSchemes.darkOrange),
+        theme: shadcn.ThemeData(
+          colorScheme: shadcn.ColorSchemes.darkDefaultColor,
+        ),
         child: shadcn.ResizablePanel.horizontal(
           draggerBuilder: (context) {
             return shadcn.HorizontalResizableDragger();
@@ -202,7 +228,7 @@ class DesktopView extends ConsumerWidget {
           children: [
             shadcn.ResizablePane.flex(
               initialFlex: 2,
-              minSize: 200,
+              minSize: 300,
               child: child,
             ),
             shadcn.ResizablePane.flex(
