@@ -2,18 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/home/main.dart';
+import 'package:pyrite_ide/pages/home/new_project.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/tools/main.dart';
-
-const String home = '/';
-const String file = '/file';
-const String tools = '/tools';
-const String settings = '/settings';
-const String edit = '/edit';
-const String about = '/settings/about';
 
 CustomTransitionPage topCustomTransitionPage({
   required Widget child,
@@ -32,13 +26,24 @@ CustomTransitionPage topCustomTransitionPage({
 }
 
 GoRouter routes = GoRouter(
+  redirect: (context, state) {
+    if (state.matchedLocation == "/") {
+      return "/index";
+    }
+  },
   routes: [
     ShellRoute(
       routes: [
         GoRoute(
-          path: '/',
+          path: '/index',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: const Home(), state: state),
+          routes: [
+            GoRoute(
+              path: '/new_project',
+              builder: (context, state) => const NewProject(),
+            ),
+          ],
         ),
         GoRoute(
           path: '/file',
@@ -71,6 +76,15 @@ GoRouter routes = GoRouter(
     ),
   ],
 );
+
+// 地址别名
+const String home = '/index';
+const String file = '/file';
+const String tools = '/tools';
+const String settings = '/settings';
+const String edit = '/edit';
+const String about = '/settings/about';
+const String new_project = '/index/new_project';
 
 // 为 NavigationBar 提供
 const List<String> routesName = [home, file, tools, settings, edit];

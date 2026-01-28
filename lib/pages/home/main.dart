@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/pages/home/project_card.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 class Home extends StatelessWidget {
@@ -9,23 +12,46 @@ class Home extends StatelessWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: <Widget>[
-          const SliverAppBar.large(title: UseText("首页")),
-          SliverToBoxAdapter(
-            child: Column(
+          SliverAppBar.large(
+            title: Row(
               children: [
-                Icon(
-                  Icons.border_clear,
-                  size: 60,
-                  color: Theme.of(context).colorScheme.secondary,
+                RichText(
+                  text: TextSpan(
+                    text: "Pyrite",
+                    style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: "IDE",
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ],
+                  ),
                 ),
-                UseText("暂无项目", color: Theme.of(context).colorScheme.secondary),
+                SizedBox(width: 10),
+                Badge(label: Text("debug")),
+                SizedBox(width: 10),
+                Badge(label: Text("developing")),
               ],
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsetsGeometry.only(left: 15, right: 15),
+            sliver: SliverList.builder(
+              itemCount: 10,
+              itemBuilder: (context, index) {
+                return ProjectCard();
+              },
             ),
           ),
         ],
       ),
+
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: null,
+        onPressed: () {
+          context.go(new_project);
+        },
         icon: Icon(Icons.add),
         label: UseText("新建项目"),
       ),
