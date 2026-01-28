@@ -161,7 +161,6 @@ class DesktopView extends ConsumerWidget {
       body: Row(
         children: [
           railNavigationBar(context, ref),
-          const VerticalDivider(),
           Expanded(child: functionPage(context, ref)),
         ],
       ),
@@ -170,25 +169,10 @@ class DesktopView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
-      labelType: NavigationRailLabelType.all,
+      minWidth: 40,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
       destinations: desktopRailItems,
       selectedIndex: ref.watch(desktopSelectedIndex),
-      leading: SizedBox(
-        width: 60,
-        height: 60,
-        child: Card(
-          elevation: 0,
-          color: Theme.of(context).dividerTheme.color,
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            child: Image.asset(
-              "assets/icons/app_icon_100px.png",
-              width: 40,
-              height: 40,
-            ),
-          ),
-        ),
-      ),
       trailing: Expanded(
         child: Align(
           alignment: Alignment.bottomCenter,
