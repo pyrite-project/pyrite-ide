@@ -1,37 +1,79 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/file.dart';
+import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:tabbed_view/tabbed_view.dart';
+import 'package:tolyui/tolyui.dart';
 
-class ProjectFiles extends StatelessWidget {
+class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: <Widget>[
-          const SliverAppBar.large(title: UseText("文件")),
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.border_clear,
-                  size: 60,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-                UseText(
-                  "请先打开一个项目",
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-              ],
-            ),
-          ),
+      appBar: AppBar(
+        title: Text("项目文件"),
+        actions: [
+          IconButton(onPressed: () {}, icon: Icon(Icons.add)),
+          IconButton(onPressed: () {}, icon: Icon(Icons.refresh)),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: null,
-        icon: Icon(Icons.add),
-        label: UseText("新建 Python 文件"),
+      body: Padding(
+        padding: const EdgeInsets.all(8),
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: TolyTree<FileTreeItem>(
+                showConnectingLines: true,
+                onTap: (node) async {
+                  File file = await getOpenFile(node.id, ref);
+                  TabData newTab = createNewTab(
+                    file,
+                    ref,
+                    await createNewEditorController(file, ref),
+                  );
+                  tabbedViewController.addTab(newTab);
+                  tabbedViewController.selectTab(newTab);
+                },
+                nodes: ref.watch(treeItems),
+                loadData: (node) => _loadChildren(node, ref),
+                nodeBuilder: (node) => Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        node.data.icon,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(node.data.name),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<List<TreeNode<FileTreeItem>>> _loadChildren(
+    TreeNode<FileTreeItem> node,
+    WidgetRef ref,
+  ) async {
+    if (node.isLeaf == null) {
+      return await buildFileListItems(
+        ref,
+        await getFilesList(ref, path: node.id),
+        update: false,
+      );
+    } else {
+      return [];
+    }
   }
 }

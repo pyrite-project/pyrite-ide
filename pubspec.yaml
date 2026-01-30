@@ -46,6 +46,15 @@ dependencies:
   responsive_framework: ^1.5.1
   iconify_flutter_plus: ^1.0.4
   shadcn_flutter: ^0.0.47
+  dynamic_color: ^1.8.1
+  window_manager: ^0.5.1
+  file_selector: ^1.1.0
+  tolyui: ^0.0.5
+  open_file: ^3.5.11
+  xterm:
+    git: https://github.com/Can1425/xterm.dart
+  flutter_pty: ^0.4.2
+
 
 dev_dependencies:
   flutter_test:

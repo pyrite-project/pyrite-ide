@@ -13,7 +13,7 @@ class NewProject extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         child: Icon(Icons.navigate_next),
         onPressed: () {
-          context.go(home);
+          context.go(file);
         },
       ),
       body: Padding(

@@ -1,21 +1,23 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/edit.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/python.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:pyrite_ide/features/edit_core/editor_autocomplete.dart';
 
-class EditCore extends StatefulWidget {
-  const EditCore({super.key, this.filePath});
-  final String? filePath;
+class EditCore extends ConsumerWidget {
+  const EditCore({
+    super.key,
+    required this.file,
+    required this.editorController,
+  });
+  final File file;
+  final CodeLineEditingController editorController;
 
   @override
-  State<StatefulWidget> createState() => _EditCore();
-}
-
-class _EditCore extends State<EditCore> with AutomaticKeepAliveClientMixin {
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
+  Widget build(BuildContext context, WidgetRef ref) {
     return CodeAutocomplete(
       viewBuilder: (context, notifier, onSelected) {
         return DefaultCodeAutocompleteListView(
@@ -43,7 +45,7 @@ class _EditCore extends State<EditCore> with AutomaticKeepAliveClientMixin {
                 ],
               );
             },
-        controller: CodeLineEditingController(),
+        controller: editorController,
         style: CodeEditorStyle(
           codeTheme: CodeHighlightTheme(
             languages: {
@@ -58,8 +60,4 @@ class _EditCore extends State<EditCore> with AutomaticKeepAliveClientMixin {
       ),
     );
   }
-
-  @override
-  // TODO: implement wantKeepAlive
-  bool get wantKeepAlive => true;
 }

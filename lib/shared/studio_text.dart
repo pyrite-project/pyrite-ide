@@ -136,3 +136,40 @@ class TextBodySmall extends StatelessWidget {
     return Text(data, style: style);
   }
 }
+
+class TextHeadlineMedium extends StatelessWidget {
+  const TextHeadlineMedium(this.data, {super.key, this.color});
+  final String data;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    TextStyle? style = Theme.of(context).textTheme.headlineMedium!.copyWith(
+      color: color ?? Theme.of(context).colorScheme.onSurface,
+      fontFamily: "HarmonyOS Sans SC",
+    );
+    return Text(data, style: style);
+  }
+}
+
+class TextLogo extends StatelessWidget {
+  const TextLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        text: "Pyrite",
+        style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        children: [
+          TextSpan(
+            text: "IDE",
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+        ],
+      ),
+    );
+  }
+}

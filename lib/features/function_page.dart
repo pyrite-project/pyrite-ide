@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -93,7 +95,6 @@ class TabletView extends ConsumerWidget {
       body: Row(
         children: [
           railNavigationBar(context, ref),
-          const VerticalDivider(),
           Expanded(child: child),
         ],
       ),
@@ -102,34 +103,31 @@ class TabletView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
-      labelType: NavigationRailLabelType.all,
-      destinations: tabletRailItems,
-      selectedIndex: ref.watch(tabletSelectedIndex),
-      leading: SizedBox(
-        width: 60,
-        height: 60,
-        child: Card(
-          elevation: 0,
-          color: Theme.of(context).dividerTheme.color,
+      minWidth: 40,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      destinations: desktopRailItems,
+      selectedIndex: ref.watch(desktopSelectedIndex),
+      trailing: Expanded(
+        child: Align(
+          alignment: Alignment.bottomCenter,
           child: Container(
-            padding: const EdgeInsets.all(10),
-            child: Image.asset(
-              "assets/icons/app_icon_100px.png",
-              width: 40,
-              height: 40,
+            margin: const EdgeInsets.all(10),
+            child: IconButton(
+              onPressed: () {
+                ref.read(functionPageState.notifier).state = !ref
+                    .read(functionPageState.notifier)
+                    .state;
+              },
+              icon: const Icon(Icons.menu),
             ),
           ),
         ),
       ),
       onDestinationSelected: (value) {
         selectedIndexValue = value;
-        ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
+        ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
         ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
-        if (selectedIndexValue < desktopRailItems.length) {
-          ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
-        } else {
-          ref.read(desktopSelectedIndex.notifier).state = 0;
-        }
+        ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
         context.go(routesName[selectedIndexValue]);
       },
     );
@@ -170,7 +168,7 @@ class DesktopView extends ConsumerWidget {
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
       minWidth: 40,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       destinations: desktopRailItems,
       selectedIndex: ref.watch(desktopSelectedIndex),
       trailing: Expanded(
@@ -203,7 +201,9 @@ class DesktopView extends ConsumerWidget {
     if (ref.watch(functionPageState)) {
       return shadcn.ShadcnLayer(
         theme: shadcn.ThemeData(
-          colorScheme: shadcn.ColorSchemes.darkDefaultColor,
+          colorScheme: Theme.of(context).brightness == Brightness.light
+              ? shadcn.ColorSchemes.lightDefaultColor
+              : shadcn.ColorSchemes.darkDefaultColor,
         ),
         child: shadcn.ResizablePanel.horizontal(
           draggerBuilder: (context) {
@@ -247,6 +247,19 @@ class FunctionPageAppBar extends StatelessWidget {
   }
 }
 
+Widget buildTitleBar(Widget child) {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    return Column(
+      children: [
+        UseTitleBar(),
+        Expanded(child: child),
+      ],
+    );
+  } else {
+    return child;
+  }
+}
+
 class FunctionPage extends StatelessWidget {
   const FunctionPage({super.key, required this.child, required this.state});
 
@@ -256,11 +269,11 @@ class FunctionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (ResponsiveBreakpoints.of(context).isDesktop) {
-      return DesktopView(state: state, child: child);
+      return buildTitleBar(DesktopView(state: state, child: child));
     } else if (ResponsiveBreakpoints.of(context).isTablet) {
-      return TabletView(state: state, child: child);
+      return buildTitleBar(TabletView(state: state, child: child));
     } else {
-      return MobileView(state: state, child: child);
+      return buildTitleBar(MobileView(state: state, child: child));
     }
   }
 }
