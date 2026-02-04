@@ -57,7 +57,7 @@ class EditCore extends ConsumerWidget {
           fontSize: ref.watch(editorFontSize),
           fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
         ),
-        wordWrap: false,
+        wordWrap: ref.watch(editorWordWrap),
       ),
     );
   }

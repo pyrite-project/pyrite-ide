@@ -28,6 +28,15 @@ class EditorSettings extends ConsumerWidget {
               subtitle: Text(ref.watch(editorFontSize).toString()),
               onTap: () => showFontSizeDialog(context),
             ),
+            ListTile(
+              title: Text("自动折行"),
+              trailing: Switch(
+                value: ref.watch(editorWordWrap),
+                onChanged: (value) {
+                  ref.read(editorWordWrap.notifier).state = value;
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -78,7 +87,8 @@ class EditorSettings extends ConsumerWidget {
             children: [
               Slider(
                 min: 5,
-                max: 30,
+                max: 50,
+                divisions: 45,
                 value: size,
                 label: size.toStringAsFixed(0),
                 onChanged: (value) =>
