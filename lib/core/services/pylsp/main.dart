@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/riverpod.dart';
+import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 
@@ -11,11 +12,18 @@ class LspClientNotifier extends AsyncNotifier<LspClient> {
 
     ref.onDispose(() => client.close());
 
-    await client.initialize();
+    final workspaceDir = ref.read(directory);
+    final rootUri = workspaceDir == null
+        ? null
+        : Uri.directory(workspaceDir.path).toString();
+    await client.initialize(rootUri: rootUri);
 
     client.notifications.listen((notification) {
       if (notification["method"] == "textDocument/publishDiagnostics") {
-        handleDiagnostics(notification["params"]);
+        final params = notification["params"];
+        if (params is Map<String, dynamic>) {
+          handleDiagnostics(params);
+        }
       }
     });
 

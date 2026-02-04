@@ -53,20 +53,39 @@ var example = {
   },
 };
 
-StateProvider<List<DiagnosticItem>> diagnostics =
-    StateProvider<List<DiagnosticItem>>((ref) => []);
+final StateProvider<String?> activeDiagnosticUri = StateProvider<String?>(
+  (ref) => null,
+);
+
+final StateProvider<Map<String, List<DiagnosticItem>>> diagnosticsByUri =
+    StateProvider<Map<String, List<DiagnosticItem>>>((ref) => {});
+
+final Provider<List<DiagnosticItem>> diagnostics = Provider<List<DiagnosticItem>>(
+  (ref) {
+    final uri = ref.watch(activeDiagnosticUri);
+    if (uri == null) return const [];
+
+    final byUri = ref.watch(diagnosticsByUri);
+    return byUri[uri] ?? const [];
+  },
+);
 
 void handleDiagnostics(Map<String, dynamic> params) {
   final String uri = params["uri"];
-  final List<dynamic> _diagnostics = params["diagnostics"];
-  container.read(diagnostics.notifier).state = _diagnostics
+  final List<dynamic> rawDiagnostics = params["diagnostics"] ?? const [];
+  final items = rawDiagnostics
+      .whereType<Map<String, dynamic>>()
       .map((e) => DiagnosticItem.fromJson(e))
-      .toList();
-  print(diagnostics.toString());
+      .toList(growable: false);
+
+  container.read(diagnosticsByUri.notifier).state = {
+    ...container.read(diagnosticsByUri),
+    uri: items,
+  };
 }
 
 void cleanDiagnostics(dynamic ref) {
-  container.read(diagnostics.notifier).state = [];
+  container.read(activeDiagnosticUri.notifier).state = null;
 }
 
 class DiagnosticItem {
