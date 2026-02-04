@@ -38,7 +38,7 @@ Future<Directory?> getDirectory(WidgetRef ref) async {
   }
 }
 
-Future<File?> getFile(WidgetRef ref) async {
+Future<File?> getFile() async {
   final XFile? file = await openFile();
   if (file != null) {
     return File(file.path);

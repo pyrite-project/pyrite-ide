@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/python.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
@@ -53,8 +54,8 @@ class EditCore extends ConsumerWidget {
             },
             theme: atomOneDarkTheme,
           ),
-          fontSize: 15,
-          fontFamily: 'JetBrainsMono',
+          fontSize: ref.watch(editorFontSize),
+          fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
         ),
         wordWrap: false,
       ),

@@ -4,6 +4,7 @@ import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/home/main.dart';
 import 'package:pyrite_ide/pages/home/new_project.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
+import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
@@ -38,12 +39,6 @@ GoRouter routes = GoRouter(
           path: '/index',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: const Home(), state: state),
-          routes: [
-            GoRoute(
-              path: '/new_project',
-              builder: (context, state) => const NewProject(),
-            ),
-          ],
         ),
         GoRoute(
           path: '/file',
@@ -62,6 +57,10 @@ GoRouter routes = GoRouter(
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: const Settings(), state: state),
           routes: [
+            GoRoute(
+              path: '/editor',
+              builder: (context, state) => const EditorSettings(),
+            ),
             GoRoute(path: '/about', builder: (context, state) => const About()),
           ],
         ),
@@ -83,8 +82,6 @@ const String file = '/file';
 const String tools = '/tools';
 const String settings = '/settings';
 const String edit = '/edit';
-const String about = '/settings/about';
-const String new_project = '/index/new_project';
 
 // 为 NavigationBar 提供
 const List<String> routesName = [home, file, tools, settings, edit];

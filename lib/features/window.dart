@@ -91,7 +91,7 @@ class AppActionBar extends ConsumerWidget {
             ),
             PopupMenuDivider(),
             buildMenuItemButton(context, "打开文件", () async {
-              File? file = await getFile(ref);
+              File? file = await getFile();
               if (file != null) {
                 final TabData newTab = await createNewFileTab(
                   file,
