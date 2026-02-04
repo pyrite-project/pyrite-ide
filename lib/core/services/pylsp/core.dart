@@ -1,19 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/pylsp/protocol.dart';
-import 'package:stream_channel/stream_channel.dart';
+
+void _debugLog(String message) {
+  assert(() {
+    // ignore: avoid_print
+    print(message);
+    return true;
+  }());
+}
 
 Future<Process> startLspServer() async {
-  print('[LSP] Starting Python LSP Server...');
+  _debugLog('[LSP] Starting Python LSP Server...');
   final process = await Process.start('python', ['-m', 'pylsp']);
 
-  print('[LSP] Process started with PID: ${process.pid}');
+  _debugLog('[LSP] Process started with PID: ${process.pid}');
 
   // 监听服务器的标准错误输出，这对于调试至关重要
-  process.stderr.transform(utf8.decoder).listen((data) {
-    print('[LSP Server stderr]: $data');
+  process.stderr.listen((data) {
+    assert(() {
+      final text = utf8.decode(data, allowMalformed: true);
+      _debugLog('[LSP Server stderr]: $text');
+      return true;
+    }());
   });
 
   return process;
@@ -28,6 +38,11 @@ class LspClient {
   final Map<int, Completer<dynamic>> _pendingRequests = {};
   int _id = 0;
   bool _isListening = false;
+  bool _closed = false;
+  StreamSubscription<Map<String, dynamic>>? _incomingSubscription;
+
+  int _textDocumentSyncChange = 1;
+  bool get supportsIncrementalSync => _textDocumentSyncChange == 2;
 
   LspClient(this._process);
 
@@ -35,62 +50,73 @@ class LspClient {
     _process.stdin.add(encodeLspMessage(message));
   }
 
-  /// 初始化 LSP 客户端
-  Future<void> initialize() async {
-    try {
-      // 创建用于通信的 StreamChannel
-      final channel = _createStreamChannel();
+  void _applyServerCapabilities(dynamic initializeResult) {
+    if (initializeResult is! Map) return;
+    final capabilities = initializeResult['capabilities'];
+    if (capabilities is! Map) return;
+    final textDocumentSync = capabilities['textDocumentSync'];
+    if (textDocumentSync is int) {
+      _textDocumentSyncChange = textDocumentSync;
+      return;
+    }
+    if (textDocumentSync is Map) {
+      final change = textDocumentSync['change'];
+      if (change is int) _textDocumentSyncChange = change;
+    }
+  }
 
+  /// 初始化 LSP 客户端
+  Future<void> initialize({String? rootUri}) async {
+    if (_closed) {
+      throw StateError('Client is closed');
+    }
+
+    try {
       // 【关键修改】我们不再使用 json_rpc.Peer，而是直接监听流
       _isListening = true;
 
       // 监听来自服务器的消息
-      channel.stream.listen(
-        (message) {
-          print('[LSP Client] Received message: $message');
-          _handleIncomingMessage(message);
-        },
-        onError: (error) {
-          print('[LSP Client] Stream error: $error');
+      _incomingSubscription = _createIncomingStream().listen(
+        _handleIncomingMessage,
+        onError: (Object error, StackTrace stackTrace) {
+          _debugLog('[LSP Client] Stream error: $error');
         },
         onDone: () {
-          print('[LSP Client] Stream done.');
+          _debugLog('[LSP Client] Stream done.');
           _isListening = false;
         },
         cancelOnError: false,
       );
 
       // 发送初始化请求
-      final result =
-          await sendRequest('initialize', {
-            'processId': pid,
-            'rootUri': null,
-            'capabilities': {
-              'textDocument': {
-                'hover': {
-                  'contentFormat': ['markdown', 'plaintext'],
-                },
-                'completion': {
-                  'completionItem': {'snippetSupport': true},
-                },
-                "textDocumentSync": {
-                  "change": 1,
-                  "save": {"includeText": true},
-                  "openClose": true,
-                },
-              },
+      final result = await sendRequest('initialize', {
+        'processId': pid,
+        'rootUri': rootUri,
+        'capabilities': {
+          'textDocument': {
+            'hover': {
+              'contentFormat': ['markdown', 'plaintext'],
             },
-          }).timeout(
+            'completion': {
+              'completionItem': {'snippetSupport': true},
+            },
+            'synchronization': {
+              'dynamicRegistration': false,
+              'didSave': true,
+            },
+          },
+        },
+      }).timeout(
             const Duration(seconds: 5),
             onTimeout: () {
               throw TimeoutException('LSP server initialization timed out.');
             },
           );
 
+      _applyServerCapabilities(result);
+
       // 初始化完成后，发送 initialized 通知
       sendNotification('initialized');
-
-      return result;
     } catch (e) {
       // 发生错误时关闭客户端，防止资源泄漏
       await close();
@@ -102,14 +128,16 @@ class LspClient {
   void _handleIncomingMessage(Map<String, dynamic> message) {
     // 检查是否是响应
     if (message.containsKey('id')) {
-      final id = message['id'] as int;
-      final completer = _pendingRequests[id];
-      if (completer != null) {
-        _pendingRequests.remove(id);
-        if (message.containsKey('result')) {
-          completer.complete(message['result']);
-        } else if (message.containsKey('error')) {
-          completer.completeError(message['error']);
+      final idValue = message['id'];
+      if (idValue is int) {
+        final completer = _pendingRequests[idValue];
+        if (completer != null) {
+          _pendingRequests.remove(idValue);
+          if (message.containsKey('result')) {
+            completer.complete(message['result']);
+          } else if (message.containsKey('error')) {
+            completer.completeError(message['error']);
+          }
         }
       }
     }
@@ -125,7 +153,7 @@ class LspClient {
 
   /// 发送请求并等待响应
   Future<dynamic> sendRequest(String method, [dynamic params]) async {
-    if (!_isListening) {
+    if (_closed || !_isListening) {
       throw StateError('Client not initialized');
     }
 
@@ -142,11 +170,8 @@ class LspClient {
         if (params != null) 'params': params,
       };
 
-      print('[LSP Client] Sending request: $request');
-
       // 通过 LSP framing 发送（Content-Length 必须按 UTF-8 字节数计算）
       _writeLspMessage(request);
-      print('[LSP Client] Request sent successfully.');
 
       return await completer.future.timeout(
         const Duration(seconds: 10),
@@ -162,7 +187,7 @@ class LspClient {
 
   /// 发送通知（不等待响应）
   void sendNotification(String method, [dynamic params]) {
-    if (!_isListening) {
+    if (_closed || !_isListening) {
       throw StateError('Client not initialized');
     }
 
@@ -173,11 +198,8 @@ class LspClient {
       if (params != null) 'params': params,
     };
 
-    print('[LSP Client] Sending notification: $notification');
-
     // 通过 LSP framing 发送（Content-Length 必须按 UTF-8 字节数计算）
     _writeLspMessage(notification);
-    print('[LSP Client] Notification sent successfully.');
   }
 
   /// 监听来自服务器的通知
@@ -186,46 +208,29 @@ class LspClient {
 
   /// 关闭客户端
   Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
     _isListening = false;
+
+    for (final completer in _pendingRequests.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(StateError('LSP client closed'));
+      }
+    }
+    _pendingRequests.clear();
+
+    await _incomingSubscription?.cancel();
+    await _notificationsController.close();
     _process.kill();
   }
 
-  /// 创建用于进程间通信的 StreamChannel
-  StreamChannel<Map<String, dynamic>> _createStreamChannel() {
-    // 输入流：从服务器的 stdout 读取数据
-    final inputStream = _process.stdout
+  /// 来自服务器 stdout 的 LSP 消息流
+  Stream<Map<String, dynamic>> _createIncomingStream() {
+    return _process.stdout
         .transform(const _ByteLspMessageTransformer())
         .transform(utf8.decoder)
         .transform(const _JsonDecoder())
         .where((data) => data.isNotEmpty);
-
-    // 【修改】输出流：创建一个中间的 StreamController，类型为 Map<String, dynamic>
-    final outputStreamController = StreamController<Map<String, dynamic>>();
-
-    // 监听中间控制器的流，将数据转发给服务器的 stdin
-    outputStreamController.stream.listen(
-      (data) {
-        print('[LSP Client] Sending to server: $data');
-        // 将 Map<String, dynamic> 以 LSP framing 发送给服务器
-        _writeLspMessage(data);
-        print('[LSP Client] Sent successfully.');
-      },
-      onDone: () {
-        print('[LSP Client] Output stream done, closing stdin...');
-        _process.stdin.close();
-      },
-      onError: (error) {
-        print('[LSP Client] Output stream error: $error');
-        _process.stdin.addError(error);
-      },
-      cancelOnError: false,
-    );
-
-    // 返回 StreamChannel，使用中间控制器的 sink
-    return StreamChannel<Map<String, dynamic>>(
-      inputStream,
-      outputStreamController.sink,
-    );
   }
 }
 
@@ -238,45 +243,59 @@ class _ByteLspMessageTransformer
   Stream<List<int>> bind(Stream<List<int>> stream) {
     final controller = StreamController<List<int>>();
 
-    // 使用 List<int> 作为缓冲区，手动管理索引
-    List<int> buffer = [];
-    int contentLength = 0;
-    bool readingHeader = true;
+    // 使用 List<int> 作为缓冲区 + 读指针，避免频繁 removeRange 导致的 O(n) 拷贝。
+    var buffer = <int>[];
+    var readIndex = 0;
+    var contentLength = 0;
+    var readingHeader = true;
+
+    void compactBufferIfNeeded() {
+      if (readIndex == 0) return;
+      if (readIndex >= buffer.length) {
+        buffer = <int>[];
+        readIndex = 0;
+        return;
+      }
+      // 避免缓冲区无限增长
+      if (readIndex > 8 * 1024 && readIndex > buffer.length ~/ 2) {
+        buffer = buffer.sublist(readIndex);
+        readIndex = 0;
+      }
+    }
+
+    int indexOfHeaderEnd() {
+      for (var i = readIndex; i <= buffer.length - 4; i++) {
+        if (buffer[i] == 13 &&
+            buffer[i + 1] == 10 &&
+            buffer[i + 2] == 13 &&
+            buffer[i + 3] == 10) {
+          return i;
+        }
+      }
+      return -1;
+    }
 
     stream.listen(
       (data) {
-        print('[LSP Client] Received ${data.length} bytes from server.');
-
         // 将新数据追加到缓冲区
         buffer.addAll(data);
 
-        while (buffer.isNotEmpty) {
+        while (true) {
           if (readingHeader) {
             // 查找头部结束标记 \r\n\r\n (字节值为 13, 10, 13, 10)
-            int headerEnd = -1;
-            for (int i = 0; i <= buffer.length - 4; i++) {
-              if (buffer[i] == 13 &&
-                  buffer[i + 1] == 10 &&
-                  buffer[i + 2] == 13 &&
-                  buffer[i + 3] == 10) {
-                headerEnd = i;
-                break;
-              }
-            }
+            final headerEnd = indexOfHeaderEnd();
 
             if (headerEnd == -1) {
-              // 头部还未完整接收，跳出循环等待更多数据
-              print('[LSP Client] Header incomplete, waiting for more data...');
-              return;
+              compactBufferIfNeeded();
+              break;
             }
 
             // 解析 Content-Length
             // 将头部字节转换为字符串以便解析
             final headerStr = ascii.decode(
-              buffer.sublist(0, headerEnd),
+              buffer.sublist(readIndex, headerEnd),
               allowInvalid: true,
             );
-            print('[LSP Client] Parsed header: $headerStr');
 
             final lengthMatch = RegExp(
               r'Content-Length: (\d+)',
@@ -290,33 +309,32 @@ class _ByteLspMessageTransformer
             }
 
             contentLength = int.parse(lengthMatch.group(1)!);
-            print('[LSP Client] Content-Length: $contentLength');
 
-            // 直接修改原列表，移除已处理的头部（包括 \r\n\r\n）
-            buffer.removeRange(0, headerEnd + 4);
+            // 移动读指针越过 header（包括 \r\n\r\n）
+            readIndex = headerEnd + 4;
 
             readingHeader = false;
           } else {
             // 检查缓冲区中的字节数是否足够
-            if (buffer.length < contentLength) {
-              // 数据还未完整接收，跳出循环等待更多数据
-              print(
-                '[LSP Client] Body incomplete (${buffer.length}/$contentLength), waiting...',
-              );
-              return;
+            if (buffer.length - readIndex < contentLength) {
+              compactBufferIfNeeded();
+              break;
             }
 
-            // 提取消息体，并直接修改原列表移除已处理部分
-            final messageBytes = buffer.sublist(0, contentLength);
-            print('[LSP Client] Received complete message ($contentLength bytes).');
+            // 提取消息体
+            final endIndex = readIndex + contentLength;
+            final messageBytes = buffer.sublist(readIndex, endIndex);
 
             controller.add(messageBytes);
 
-            // 移除已处理的消息体
-            buffer.removeRange(0, contentLength);
+            // 移动读指针
+            readIndex = endIndex;
 
             readingHeader = true;
+            compactBufferIfNeeded();
           }
+
+          if (buffer.isEmpty) break;
         }
       },
       onError: controller.addError,
@@ -326,50 +344,6 @@ class _ByteLspMessageTransformer
 
     return controller.stream;
   }
-}
-
-/// 将 IOSink 适配为 StreamSink<String> 的包装器
-class _IOSinkWrapper implements StreamSink<String> {
-  final IOSink _ioSink;
-  bool _closed = false;
-
-  _IOSinkWrapper(this._ioSink);
-
-  @override
-  void add(String data) {
-    if (_closed) {
-      print('[LSP Client] Warning: Attempting to write to closed sink.');
-      return;
-    }
-    print('[LSP Client] Sending to server: $data');
-    // 将字符串编码为字节并写入 IOSink
-    _ioSink.add(utf8.encode(data));
-    print('[LSP Client] Sent successfully.');
-  }
-
-  @override
-  void addError(Object error, [StackTrace? stackTrace]) {
-    if (_closed) return;
-    print('[LSP Client] Sink error: $error');
-    _ioSink.addError(error, stackTrace);
-  }
-
-  @override
-  Future<void> addStream(Stream<String> stream) {
-    if (_closed) return Future.value();
-    return stream.forEach(add);
-  }
-
-  @override
-  Future<void> close() {
-    if (_closed) return Future.value();
-    _closed = true;
-    print('[LSP Client] Closing sink...');
-    return _ioSink.close();
-  }
-
-  @override
-  Future<void> get done => _ioSink.done;
 }
 
 /// 将 JSON 字符串流解码为 Map<String, dynamic> 对象流的转换器
@@ -382,7 +356,9 @@ class _JsonDecoder extends StreamTransformerBase<String, Map<String, dynamic>> {
       try {
         return jsonDecode(jsonString) as Map<String, dynamic>;
       } catch (e) {
-        print('[LSP Client] Failed to decode JSON: $jsonString, Error: $e');
+        _debugLog(
+          '[LSP Client] Failed to decode JSON (len=${jsonString.length}): $e',
+        );
         rethrow;
       }
     });
