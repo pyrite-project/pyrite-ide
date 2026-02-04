@@ -26,7 +26,7 @@ class EditorSettings extends ConsumerWidget {
             ListTile(
               title: Text("字体大小"),
               subtitle: Text(ref.watch(editorFontSize).toString()),
-              onTap: () => showFontSizeDialog(context, ref),
+              onTap: () => showFontSizeDialog(context),
             ),
           ],
         ),
@@ -67,24 +67,26 @@ class EditorSettings extends ConsumerWidget {
     );
   }
 
-  void showFontSizeDialog(BuildContext context, WidgetRef ref) async {
-    final List<SimpleDialogOption> children = [];
-    double size = ref.watch(editorFontSize);
-    final result = await showDialog(
+  void showFontSizeDialog(BuildContext context) async {
+    await showDialog(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: Text("选择编辑器字体"),
-        children: [
-          Slider(
-            min: 5,
-            max: 30,
-            value: ref.watch(editorFontSize),
-            onChanged: (value) {
-              ref.read(editorFontSize.notifier).state = value;
-              print(ref.watch(editorFontSize));
-            },
-          ),
-        ],
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final size = ref.watch(editorFontSize);
+          return SimpleDialog(
+            title: Text("字体大小"),
+            children: [
+              Slider(
+                min: 5,
+                max: 30,
+                value: size,
+                label: size.toStringAsFixed(0),
+                onChanged: (value) =>
+                    ref.read(editorFontSize.notifier).state = value,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
