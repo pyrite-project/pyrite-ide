@@ -54,6 +54,10 @@ dependencies:
   xterm:
     git: https://github.com/Can1425/xterm.dart
   flutter_pty: ^0.4.2
+  json_rpc_2: ^4.0.0
+  process_run: ^1.2.4
+  stream_channel: ^2.1.4
+  riverpod: ^2.6.1
 
 
 dev_dependencies:

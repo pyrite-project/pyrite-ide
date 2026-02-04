@@ -173,3 +173,25 @@ class TextLogo extends StatelessWidget {
     );
   }
 }
+
+class AppBarTextLogo extends StatelessWidget {
+  const AppBarTextLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        text: "Pyrite",
+        style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        children: [
+          TextSpan(
+            text: "IDE",
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+        ],
+      ),
+    );
+  }
+}

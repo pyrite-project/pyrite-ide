@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'package:flutter_pty/flutter_pty.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/edit.dart';
-import 'package:tabbed_view/tabbed_view.dart';
+import 'package:pyrite_ide/core/services/pylsp/core.dart';
+import 'package:pyrite_ide/core/services/pylsp/data.dart';
+import 'package:pyrite_ide/core/services/pylsp/main.dart';
+import 'package:re_editor/re_editor.dart';
+import 'package:responsive_framework/responsive_framework.dart';
+import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/pages/edit/app_bar.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/ui.dart';
-import 'package:flutter/foundation.dart';
 
 class Edit extends ConsumerWidget {
   const Edit({super.key});
@@ -15,7 +19,42 @@ class Edit extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: editAppBar(),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            IconButton(
+              icon: Icon(Icons.undo, size: 20),
+              onPressed: () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.undo();
+                }
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.redo, size: 20),
+              onPressed: () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.redo();
+                }
+              },
+            ),
+          ],
+        ),
+        toolbarHeight: 50,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+      ),
       body: shadcn.ShadcnLayer(
         theme: shadcn.ThemeData(
           colorScheme: Theme.of(context).brightness == Brightness.light
@@ -63,13 +102,13 @@ class Edit extends ConsumerWidget {
           },
         ),
       ),
-      child: TabbedView(controller: tabbedViewController),
+      child: TabbedView(controller: ref.watch(tabbedViewController)),
     );
   }
 
   Widget functionPage(BuildContext context) {
     return DefaultTabController(
-      length: 1,
+      length: 2,
       child: Column(
         children: [
           Row(
@@ -77,14 +116,17 @@ class Edit extends ConsumerWidget {
               Expanded(
                 child: TabBar(
                   tabAlignment: TabAlignment.start,
-                  tabs: [Tab(text: "REPL", height: 35)],
+                  tabs: [
+                    Tab(text: "REPL", height: 35),
+                    Tab(text: "问题", height: 35),
+                  ],
                   isScrollable: true,
                 ),
               ),
             ],
           ),
 
-          Expanded(child: TabBarView(children: [ReplView()])),
+          Expanded(child: TabBarView(children: [ReplView(), QuestionView()])),
         ],
       ),
     );
@@ -97,5 +139,29 @@ class ReplView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TerminalView(terminal);
+  }
+}
+
+class QuestionView extends ConsumerWidget {
+  const QuestionView({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ScrollConfiguration(
+      behavior: NoScrollbarBehavior(),
+      child: ListView.builder(
+        addAutomaticKeepAlives: false,
+        itemCount: ref.watch(diagnostics).length,
+        itemBuilder: (context, index) {
+          List<DiagnosticItem> nowDiagnostics = ref.watch(diagnostics);
+          return ListTile(
+            title: Text(nowDiagnostics[index].message),
+            subtitle: Text(
+              "[行 ${nowDiagnostics[index].range.start["line"] + 1}, 列 ${nowDiagnostics[index].range.start["character"] + 1}]",
+            ),
+          );
+        },
+      ),
+    );
   }
 }

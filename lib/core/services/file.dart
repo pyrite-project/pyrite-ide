@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tolyui/tolyui.dart';
+import 'package:pyrite_ide/shared/toly_tree.dart';
 
 final StateProvider<Directory?> directory = StateProvider<Directory?>(
   (ref) => null,
@@ -14,43 +14,64 @@ final StateProvider<List<TreeNode<FileTreeItem>>> treeItems =
 class FileTreeItem {
   final String name;
   final IconData icon;
+  final bool isDicrectory;
 
-  const FileTreeItem({required this.name, required this.icon});
+  const FileTreeItem({
+    required this.name,
+    required this.icon,
+    this.isDicrectory = false,
+  });
 }
 
 final StateProvider<Map<String, File>> openFilesMap =
     StateProvider<Map<String, File>>((ref) => {});
 
-Future<String?> openFolder(WidgetRef ref) async {
+Future<Directory?> getDirectory(WidgetRef ref) async {
   final String? path = await getDirectoryPath();
+  final Directory? dir;
   if (path != null) {
-    ref.watch(directory.notifier).state = Directory(path);
+    dir = Directory(path);
+    ref.watch(directory.notifier).state = dir;
+    return dir;
+  } else {
+    return null;
   }
-  return path;
 }
 
-Future<List> getFilesList(WidgetRef ref, {String? path}) async {
-  List datas;
+Future<File?> getFile(WidgetRef ref) async {
+  final XFile? file = await openFile();
+  if (file != null) {
+    return File(file.path);
+  } else {
+    return null;
+  }
+}
+
+Future<Stream<FileSystemEntity>> getFilesList(
+  WidgetRef ref, {
+  String? path,
+}) async {
+  Stream<FileSystemEntity> datas;
   if (ref.read(directory) != null &&
       (path == null || path == ref.read(directory)!.path)) {
-    datas = await ref.read(directory)!.list().toList();
-    return datas;
+    datas = ref.read(directory)!.list();
   } else {
     if (path != null) {
-      return Directory(path).list().toList();
+      datas = Directory(path).list();
     } else {
-      return [];
+      datas = Stream.empty();
     }
   }
+  return datas;
 }
 
 Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
   WidgetRef ref,
-  List datas, {
+  Stream<FileSystemEntity> datas, {
   bool update = true,
 }) async {
   List<TreeNode<FileTreeItem>> items = [];
-  String pattern = "\\";
+  String pattern;
 
   if (Platform.isWindows) {
     pattern = "\\";
@@ -58,7 +79,7 @@ Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
     pattern = "/";
   }
 
-  for (FileSystemEntity data in datas) {
+  await for (FileSystemEntity data in datas) {
     if (data is Directory) {
       items.add(
         TreeNode(
@@ -66,6 +87,7 @@ Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
           data: FileTreeItem(
             name: data.path.split(pattern).last,
             icon: Icons.folder,
+            isDicrectory: true,
           ),
         ),
       );
@@ -96,4 +118,21 @@ Future<File> getOpenFile(String path, WidgetRef ref) async {
     map[path] = File(path);
   }
   return map[path]!;
+}
+
+Future<File?> createFile() async {
+  FileSaveLocation? _path = await getSaveLocation();
+  File? file;
+  if (_path != null) {
+    String path = _path.path;
+    file = File(path);
+    await file.create();
+  } else {
+    file = null;
+  }
+  return file;
+}
+
+Future<void> saveFile(File file, String content) async {
+  await file.writeAsString(content);
 }

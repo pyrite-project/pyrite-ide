@@ -5,25 +5,12 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
-
-int selectedIndexValue = 0;
-final StateProvider<int> desktopSelectedIndex = StateProvider<int>(
-  (ref) => selectedIndexValue,
-);
-final StateProvider<int> mobileSelectedIndex = StateProvider<int>(
-  (ref) => selectedIndexValue,
-);
-final StateProvider<int> tabletSelectedIndex = StateProvider<int>(
-  (ref) => selectedIndexValue,
-);
-final StateProvider<bool> functionPageState = StateProvider<bool>(
-  (ref) => true,
-);
 
 class MobileView extends ConsumerWidget {
   const MobileView({super.key, required this.child, required this.state});
@@ -105,8 +92,8 @@ class TabletView extends ConsumerWidget {
     return NavigationRail(
       minWidth: 40,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      destinations: desktopRailItems,
-      selectedIndex: ref.watch(desktopSelectedIndex),
+      destinations: tabletRailItems,
+      selectedIndex: ref.watch(tabletSelectedIndex),
       trailing: Expanded(
         child: Align(
           alignment: Alignment.bottomCenter,
@@ -269,10 +256,13 @@ class FunctionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (ResponsiveBreakpoints.of(context).isDesktop) {
+      nowViewSelectedIndex = desktopSelectedIndex;
       return buildTitleBar(DesktopView(state: state, child: child));
     } else if (ResponsiveBreakpoints.of(context).isTablet) {
+      nowViewSelectedIndex = tabletSelectedIndex;
       return buildTitleBar(TabletView(state: state, child: child));
     } else {
+      nowViewSelectedIndex = mobileSelectedIndex;
       return buildTitleBar(MobileView(state: state, child: child));
     }
   }

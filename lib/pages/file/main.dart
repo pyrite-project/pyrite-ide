@@ -1,10 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
-import 'package:tolyui/tolyui.dart';
+import 'package:pyrite_ide/shared/toly_tree.dart';
 
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
@@ -14,6 +18,7 @@ class ProjectFiles extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text("项目文件"),
+        backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           IconButton(onPressed: () {}, icon: Icon(Icons.add)),
           IconButton(onPressed: () {}, icon: Icon(Icons.refresh)),
@@ -27,14 +32,20 @@ class ProjectFiles extends ConsumerWidget {
               child: TolyTree<FileTreeItem>(
                 showConnectingLines: true,
                 onTap: (node) async {
-                  File file = await getOpenFile(node.id, ref);
-                  TabData newTab = createNewTab(
-                    file,
-                    ref,
-                    await createNewEditorController(file, ref),
-                  );
-                  tabbedViewController.addTab(newTab);
-                  tabbedViewController.selectTab(newTab);
+                  if (!node.data.isDicrectory) {
+                    File file = await getOpenFile(node.id, ref);
+                    TabData newTab = await createNewFileTab(
+                      file,
+                      ref,
+                      await createNewEditorController(file, ref),
+                    );
+                    ref.read(tabbedViewController).addTab(newTab);
+                    ref.read(tabbedViewController).selectTab(newTab);
+                    if (!ResponsiveBreakpoints.of(context).isDesktop) {
+                      ref.watch(nowViewSelectedIndex.notifier).state =
+                          nowNavigationBarItems.length;
+                    }
+                  }
                 },
                 nodes: ref.watch(treeItems),
                 loadData: (node) => _loadChildren(node, ref),
@@ -48,6 +59,7 @@ class ProjectFiles extends ConsumerWidget {
                       Icon(
                         node.data.icon,
                         color: Theme.of(context).colorScheme.primary,
+                        size: 18,
                       ),
                       const SizedBox(width: 8),
                       Text(node.data.name),

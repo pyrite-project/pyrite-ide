@@ -7,6 +7,7 @@ class ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 0,
       child: ListTile(
         title: Text("Title"),
         subtitle: Text("com.test\nE:\\\\Can1425"),

@@ -17,7 +17,7 @@ class Home extends StatelessWidget {
             if (ResponsiveBreakpoints.of(context).isDesktop) {
               return Text("快捷控制");
             } else {
-              return TextLogo();
+              return AppBarTextLogo();
             }
           },
         ),

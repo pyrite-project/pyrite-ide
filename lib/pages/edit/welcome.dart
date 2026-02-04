@@ -52,21 +52,21 @@ class Welcome extends ConsumerWidget {
                 childAspectRatio: 3.5,
               ),
               children: [
-                FilledButton.icon(
+                OutlinedButton.icon(
                   onPressed: () {},
                   icon: Icon(Icons.add),
                   label: Text("新建项目"),
                 ),
-                FilledButton.icon(
+                OutlinedButton.icon(
                   onPressed: () async {
-                    await openFolder(ref);
+                    await getDirectory(ref);
                     ref.watch(treeItems.notifier).state =
                         await buildFileListItems(ref, await getFilesList(ref));
                   },
                   icon: Icon(Icons.folder_outlined),
                   label: Text("打开项目"),
                 ),
-                FilledButton.icon(
+                OutlinedButton.icon(
                   onPressed: () {},
                   icon: Icon(Icons.add),
                   label: Text("打开终端"),
