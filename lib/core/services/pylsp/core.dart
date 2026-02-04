@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/pylsp/protocol.dart';
 import 'package:stream_channel/stream_channel.dart';
 
 Future<Process> startLspServer() async {
@@ -29,6 +30,10 @@ class LspClient {
   bool _isListening = false;
 
   LspClient(this._process);
+
+  void _writeLspMessage(Map<String, dynamic> message) {
+    _process.stdin.add(encodeLspMessage(message));
+  }
 
   /// 初始化 LSP 客户端
   Future<void> initialize() async {
@@ -139,12 +144,8 @@ class LspClient {
 
       print('[LSP Client] Sending request: $request');
 
-      // 直接通过 sink 发送
-      _process.stdin.add(
-        utf8.encode(
-          'Content-Length: ${jsonEncode(request).length}\r\n\r\n${jsonEncode(request)}',
-        ),
-      );
+      // 通过 LSP framing 发送（Content-Length 必须按 UTF-8 字节数计算）
+      _writeLspMessage(request);
       print('[LSP Client] Request sent successfully.');
 
       return await completer.future.timeout(
@@ -174,12 +175,8 @@ class LspClient {
 
     print('[LSP Client] Sending notification: $notification');
 
-    // 直接通过 sink 发送
-    _process.stdin.add(
-      utf8.encode(
-        'Content-Length: ${jsonEncode(notification).length}\r\n\r\n${jsonEncode(notification)}',
-      ),
-    );
+    // 通过 LSP framing 发送（Content-Length 必须按 UTF-8 字节数计算）
+    _writeLspMessage(notification);
     print('[LSP Client] Notification sent successfully.');
   }
 
@@ -209,8 +206,8 @@ class LspClient {
     outputStreamController.stream.listen(
       (data) {
         print('[LSP Client] Sending to server: $data');
-        // 【修改】将 Map<String, dynamic> 编码为 JSON 字符串，然后编码为字节
-        _process.stdin.add(utf8.encode(jsonEncode(data)));
+        // 将 Map<String, dynamic> 以 LSP framing 发送给服务器
+        _writeLspMessage(data);
         print('[LSP Client] Sent successfully.');
       },
       onDone: () {
@@ -275,7 +272,10 @@ class _ByteLspMessageTransformer
 
             // 解析 Content-Length
             // 将头部字节转换为字符串以便解析
-            final headerStr = utf8.decode(buffer.sublist(0, headerEnd));
+            final headerStr = ascii.decode(
+              buffer.sublist(0, headerEnd),
+              allowInvalid: true,
+            );
             print('[LSP Client] Parsed header: $headerStr');
 
             final lengthMatch = RegExp(
@@ -308,8 +308,7 @@ class _ByteLspMessageTransformer
 
             // 提取消息体，并直接修改原列表移除已处理部分
             final messageBytes = buffer.sublist(0, contentLength);
-            final messageStr = utf8.decode(messageBytes);
-            print('[LSP Client] Received complete message: $messageStr');
+            print('[LSP Client] Received complete message ($contentLength bytes).');
 
             controller.add(messageBytes);
 
