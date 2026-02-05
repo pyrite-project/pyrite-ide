@@ -3,6 +3,8 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   /// Must match the height used by `UseTitleBar` in Flutter.
+
+  private let flutterHeaderHeight: CGFloat = 36
   private let flutterHeaderHeight: CGFloat = 45
   private var trafficLightObserverTokens: [NSObjectProtocol] = []
 
@@ -71,8 +73,10 @@ class MainFlutterWindow: NSWindow {
     let targetPointInSuperview = buttonSuperview.convert(targetPointInWindow, from: nil)
 
     for button in [closeButton, minimizeButton, zoomButton] {
-      var frame = button.frame
-      frame.origin.y = targetPointInSuperview.y - (frame.height / 2)
+      let alignmentRect = button.alignmentRect(forFrame: button.frame)
+      var newAlignmentRect = alignmentRect
+      newAlignmentRect.origin.y = targetPointInSuperview.y - (alignmentRect.height / 2)
+      var frame = button.frame(forAlignmentRect: newAlignmentRect)
 
       let minY: CGFloat = 0
       let maxY: CGFloat = max(0, buttonSuperview.bounds.height - frame.height)
