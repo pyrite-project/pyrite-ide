@@ -396,9 +396,14 @@ class _HoverTooltip extends StatelessWidget {
           ),
           child: Padding(
             padding: EdgeInsets.all(tool.space.sm),
-            child: DefaultTextStyle(
-              style: tool.type.uiDense.copyWith(color: tool.colors.text),
-              child: SingleChildScrollView(child: SelectableText(text)),
+            child: SingleChildScrollView(
+              child: kind == 'markdown'
+                  ? ToolMarkdown(text, maxCodeBlockHeight: 160)
+                  : SelectableText(
+                      text,
+                      style:
+                          tool.type.uiDense.copyWith(color: tool.colors.text),
+                    ),
             ),
           ),
         ),

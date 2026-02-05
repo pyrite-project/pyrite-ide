@@ -35,15 +35,27 @@ Future<LspHoverContent?> fetchHover({
 
 LspHoverContent? _parseHoverContents(dynamic contents) {
   if (contents is String) {
-    return LspHoverContent(text: contents, kind: 'plaintext');
+    // LSP MarkedString string is Markdown by spec; plain text will still render.
+    return LspHoverContent(text: contents, kind: 'markdown');
   }
 
   if (contents is Map) {
     final map = Map<String, dynamic>.from(contents);
+    final language = map['language'];
     final value = map['value'];
     if (value is String) {
+      if (language is String) {
+        final lang = language.trim();
+        final fenced = [
+          '```$lang'.trimRight(),
+          value,
+          '```',
+        ].join('\n');
+        return LspHoverContent(text: fenced, kind: 'markdown');
+      }
+
       final kind = map['kind'] as String?;
-      return LspHoverContent(text: value, kind: kind);
+      return LspHoverContent(text: value, kind: kind ?? 'plaintext');
     }
   }
 
@@ -53,15 +65,33 @@ LspHoverContent? _parseHoverContents(dynamic contents) {
     for (final entry in contents) {
       if (entry is String) {
         parts.add(entry);
-        kind ??= 'plaintext';
+        kind ??= 'markdown';
         continue;
       }
       if (entry is Map) {
         final map = Map<String, dynamic>.from(entry);
+        final language = map['language'];
         final value = map['value'];
         if (value is String) {
-          parts.add(value);
-          kind ??= map['kind'] as String?;
+          if (language is String) {
+            final lang = language.trim();
+            parts.add(
+              [
+                '```$lang'.trimRight(),
+                value,
+                '```',
+              ].join('\n'),
+            );
+            kind = 'markdown';
+          } else {
+            parts.add(value);
+            final entryKind = map['kind'] as String?;
+            if (entryKind == 'markdown') {
+              kind = 'markdown';
+            } else {
+              kind ??= entryKind ?? 'plaintext';
+            }
+          }
         }
       }
     }
@@ -71,4 +101,3 @@ LspHoverContent? _parseHoverContents(dynamic contents) {
 
   return null;
 }
-
