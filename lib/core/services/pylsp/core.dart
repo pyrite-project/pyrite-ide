@@ -125,6 +125,12 @@ class LspClient {
   int _textDocumentSyncChange = 1;
   bool get supportsIncrementalSync => _textDocumentSyncChange == 2;
 
+  List<String> _semanticTokenTypes = const [];
+  List<String> _semanticTokenModifiers = const [];
+  bool get supportsSemanticTokens => _semanticTokenTypes.isNotEmpty;
+  List<String> get semanticTokenTypes => _semanticTokenTypes;
+  List<String> get semanticTokenModifiers => _semanticTokenModifiers;
+
   LspClient(this._process);
 
   void _writeLspMessage(Map<String, dynamic> message) {
@@ -143,6 +149,22 @@ class LspClient {
     if (textDocumentSync is Map) {
       final change = textDocumentSync['change'];
       if (change is int) _textDocumentSyncChange = change;
+    }
+
+    final semanticTokensProvider = capabilities['semanticTokensProvider'];
+    if (semanticTokensProvider is Map) {
+      final legend = semanticTokensProvider['legend'];
+      if (legend is Map) {
+        final types = legend['tokenTypes'];
+        final modifiers = legend['tokenModifiers'];
+        if (types is List) {
+          _semanticTokenTypes = types.whereType<String>().toList(growable: false);
+        }
+        if (modifiers is List) {
+          _semanticTokenModifiers =
+              modifiers.whereType<String>().toList(growable: false);
+        }
+      }
     }
   }
 
@@ -180,6 +202,19 @@ class LspClient {
             },
             'completion': {
               'completionItem': {'snippetSupport': true},
+            },
+            'documentHighlight': {},
+            'semanticTokens': {
+              'dynamicRegistration': false,
+              'requests': {
+                'range': true,
+                'full': {'delta': true},
+              },
+              'tokenTypes': _kSemanticTokenTypes,
+              'tokenModifiers': _kSemanticTokenModifiers,
+              'formats': ['relative'],
+              'multilineTokenSupport': true,
+              'overlappingTokenSupport': false,
             },
             'synchronization': {
               'dynamicRegistration': false,
@@ -314,6 +349,45 @@ class LspClient {
         .where((data) => data.isNotEmpty);
   }
 }
+
+const List<String> _kSemanticTokenTypes = [
+  'namespace',
+  'type',
+  'class',
+  'enum',
+  'interface',
+  'struct',
+  'typeParameter',
+  'parameter',
+  'variable',
+  'property',
+  'enumMember',
+  'event',
+  'function',
+  'method',
+  'macro',
+  'keyword',
+  'modifier',
+  'comment',
+  'string',
+  'number',
+  'regexp',
+  'operator',
+  'decorator',
+];
+
+const List<String> _kSemanticTokenModifiers = [
+  'declaration',
+  'definition',
+  'readonly',
+  'static',
+  'deprecated',
+  'abstract',
+  'async',
+  'modification',
+  'documentation',
+  'defaultLibrary',
+];
 
 /// 用于处理 LSP 协议消息的字节流转换器
 class _ByteLspMessageTransformer

@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
@@ -132,6 +133,7 @@ class PyriteIDE extends ConsumerWidget {
         final app = MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: appName,
+          themeMode: ThemeMode.system,
           theme: ThemeData(
             fontFamily: "HarmonyOS Sans SC",
             brightness: Brightness.light,
@@ -145,13 +147,23 @@ class PyriteIDE extends ConsumerWidget {
             appBarTheme: AppBarTheme(surfaceTintColor: Colors.transparent),
           ),
           routerConfig: routes,
-          builder: (context, child) => ResponsiveBreakpoints.builder(
-            child: Material(child: child!),
-            breakpoints: [
-              const Breakpoint(start: 0, end: 600, name: MOBILE),
-              const Breakpoint(start: 601, end: 1000, name: TABLET),
-              const Breakpoint(start: 801, end: double.infinity, name: DESKTOP),
-            ],
+          builder: (context, child) => ToolScope(
+            uiFontFamily: "HarmonyOS Sans SC",
+            monoFontFamily: "JetBrainsMono",
+            child: MaterialScope(
+              child: ResponsiveBreakpoints.builder(
+                child: child!,
+                breakpoints: [
+                  const Breakpoint(start: 0, end: 600, name: MOBILE),
+                  const Breakpoint(start: 601, end: 1000, name: TABLET),
+                  const Breakpoint(
+                    start: 801,
+                    end: double.infinity,
+                    name: DESKTOP,
+                  ),
+                ],
+              ),
+            ),
           ),
         );
 

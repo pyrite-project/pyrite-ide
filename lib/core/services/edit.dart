@@ -8,8 +8,8 @@ import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_span_builder.dart';
 import 'package:pyrite_ide/pages/edit/welcome.dart';
-import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:xterm/xterm.dart';
@@ -67,6 +67,12 @@ final StateProvider<TabbedViewController> tabbedViewController =
             // Drop diagnostics for closed documents to keep memory bounded.
             ref.read(diagnosticsByUri.notifier).state = {
               ...ref.read(diagnosticsByUri),
+            }..remove(uri);
+            ref.read(documentHighlightsByUri.notifier).state = {
+              ...ref.read(documentHighlightsByUri),
+            }..remove(uri);
+            ref.read(semanticTokensByUri.notifier).state = {
+              ...ref.read(semanticTokensByUri),
             }..remove(uri);
 
             unawaited(() async {
@@ -306,8 +312,10 @@ Future<CodeLineEditingController> createNewEditorController(
   WidgetRef ref,
 ) async {
   final String initialText = await file.readAsString();
-  CodeLineEditingController controller = CodeLineEditingController.fromText(
-    initialText,
+  final uri = Uri.file(file.path).toString();
+  CodeLineEditingController controller = CodeLineEditingController(
+    codeLines: initialText.codeLines,
+    spanBuilder: buildLspSpanBuilder(uri: uri),
   );
 
   final client = await PythonLspService(ref).maybeClient;

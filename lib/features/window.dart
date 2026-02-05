@@ -28,7 +28,6 @@ class UseTitleBar extends StatelessWidget {
     final double titleBarHeight = Platform.isMacOS ? 36 : 45;
     final double leftPadding = Platform.isMacOS ? 80 : 18;
     final double appIconSize = Platform.isMacOS ? 14 : 25;
-    final double leftPadding = Platform.isMacOS ? 80 : 18;
     return GestureDetector(
       onPanStart: (details) => windowManager.startDragging(),
       child: Container(

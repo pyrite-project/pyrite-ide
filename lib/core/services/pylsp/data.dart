@@ -127,3 +127,82 @@ class Range {
     );
   }
 }
+
+final StateProvider<Map<String, List<LspDocumentHighlight>>> documentHighlightsByUri =
+    StateProvider<Map<String, List<LspDocumentHighlight>>>((ref) => {});
+
+final StateProvider<Map<String, Map<int, List<LspSemanticToken>>>>
+semanticTokensByUri =
+    StateProvider<Map<String, Map<int, List<LspSemanticToken>>>>((ref) => {});
+
+void setDocumentHighlights(String uri, List<LspDocumentHighlight> highlights) {
+  container.read(documentHighlightsByUri.notifier).state = {
+    ...container.read(documentHighlightsByUri),
+    uri: highlights,
+  };
+}
+
+void setSemanticTokens(String uri, Map<int, List<LspSemanticToken>> tokensByLine) {
+  container.read(semanticTokensByUri.notifier).state = {
+    ...container.read(semanticTokensByUri),
+    uri: tokensByLine,
+  };
+}
+
+class LspPosition {
+  const LspPosition({required this.line, required this.character});
+
+  final int line;
+  final int character;
+
+  factory LspPosition.fromJson(Map<String, dynamic> json) {
+    return LspPosition(
+      line: json["line"] as int,
+      character: json["character"] as int,
+    );
+  }
+}
+
+class LspRange {
+  const LspRange({required this.start, required this.end});
+
+  final LspPosition start;
+  final LspPosition end;
+
+  factory LspRange.fromJson(Map<String, dynamic> json) {
+    return LspRange(
+      start: LspPosition.fromJson(json["start"] as Map<String, dynamic>),
+      end: LspPosition.fromJson(json["end"] as Map<String, dynamic>),
+    );
+  }
+}
+
+class LspDocumentHighlight {
+  const LspDocumentHighlight({required this.range, required this.kind});
+
+  final LspRange range;
+  final int kind;
+
+  factory LspDocumentHighlight.fromJson(Map<String, dynamic> json) {
+    return LspDocumentHighlight(
+      range: LspRange.fromJson(json["range"] as Map<String, dynamic>),
+      kind: (json["kind"] as int?) ?? 1,
+    );
+  }
+}
+
+class LspSemanticToken {
+  const LspSemanticToken({
+    required this.line,
+    required this.startChar,
+    required this.length,
+    required this.tokenType,
+    required this.modifiers,
+  });
+
+  final int line;
+  final int startChar;
+  final int length;
+  final String? tokenType;
+  final int modifiers;
+}
