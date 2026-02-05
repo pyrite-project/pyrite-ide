@@ -35,7 +35,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
 
   CodeLineSelection? _lastSelection;
   CodeLines? _lastCodeLines;
-  late final String _uri;
+  late String _uri;
   int _semanticEpoch = 0;
   int _highlightEpoch = 0;
 
@@ -47,41 +47,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
   String? _hoverKind;
   Offset _hoverGlobalPos = Offset.zero;
   int _hoverEpoch = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _uri = Uri.file(widget.file.path).toString();
-    _lastSelection = widget.editorController.selection;
-    _lastCodeLines = widget.editorController.codeLines;
-
-    widget.editorController.addListener(_onEditorChanged);
-
-    ref.listen(diagnosticsByUri, (previous, next) {
-      if (!mounted) return;
-      if (previous?[_uri] != next[_uri]) {
-        widget.editorController.forceRepaint();
-      }
-    });
-    ref.listen(documentHighlightsByUri, (previous, next) {
-      if (!mounted) return;
-      if (previous?[_uri] != next[_uri]) {
-        widget.editorController.forceRepaint();
-      }
-    });
-    ref.listen(semanticTokensByUri, (previous, next) {
-      if (!mounted) return;
-      if (previous?[_uri] != next[_uri]) {
-        widget.editorController.forceRepaint();
-      }
-    });
-
-    // Kick an initial semantic token request after first layout.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scheduleSemanticTokensFetch();
-      _scheduleDocumentHighlightsFetch();
-    });
-  }
 
   @override
   void dispose() {
@@ -101,7 +66,8 @@ class _EditCoreState extends ConsumerState<EditCore> {
       _lastSelection = selection;
       _scheduleDocumentHighlightsFetch();
     }
-    if (_lastCodeLines != codeLines && !(_lastCodeLines?.equals(codeLines) ?? false)) {
+    if (_lastCodeLines != codeLines &&
+        !(_lastCodeLines?.equals(codeLines) ?? false)) {
       _lastCodeLines = codeLines;
       _scheduleSemanticTokensFetch();
     }
@@ -124,28 +90,31 @@ class _EditCoreState extends ConsumerState<EditCore> {
   void _scheduleDocumentHighlightsFetch() {
     _documentHighlightsTimer?.cancel();
     final epoch = ++_highlightEpoch;
-    _documentHighlightsTimer = Timer(const Duration(milliseconds: 120), () async {
-      if (!mounted || epoch != _highlightEpoch) return;
+    _documentHighlightsTimer = Timer(
+      const Duration(milliseconds: 120),
+      () async {
+        if (!mounted || epoch != _highlightEpoch) return;
 
-      final selection = widget.editorController.selection;
-      if (!selection.isCollapsed) {
-        setDocumentHighlights(_uri, const []);
-        return;
-      }
+        final selection = widget.editorController.selection;
+        if (!selection.isCollapsed) {
+          setDocumentHighlights(_uri, const []);
+          return;
+        }
 
-      final client = await PythonLspService(ref).maybeClient;
-      if (!mounted || epoch != _highlightEpoch || client == null) return;
+        final client = await PythonLspService(ref).maybeClient;
+        if (!mounted || epoch != _highlightEpoch || client == null) return;
 
-      await fetchDocumentHighlights(
-        client: client,
-        uri: _uri,
-        line: selection.extentIndex,
-        character: selection.extentOffset,
-      );
-      if (mounted && epoch == _highlightEpoch) {
-        widget.editorController.forceRepaint();
-      }
-    });
+        await fetchDocumentHighlights(
+          client: client,
+          uri: _uri,
+          line: selection.extentIndex,
+          character: selection.extentOffset,
+        );
+        if (mounted && epoch == _highlightEpoch) {
+          widget.editorController.forceRepaint();
+        }
+      },
+    );
   }
 
   void _onPointerHover(PointerHoverEvent event) {
@@ -170,9 +139,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
 
     final codeOffset = Offset(codeDx, event.localPosition.dy);
     final paragraph = paragraphs.cast<CodeLineRenderParagraph?>().firstWhere(
-          (p) => p != null && codeOffset.dy >= p.top && codeOffset.dy < p.bottom,
-          orElse: () => null,
-        );
+      (p) => p != null && codeOffset.dy >= p.top && codeOffset.dy < p.bottom,
+      orElse: () => null,
+    );
 
     if (paragraph == null) {
       _clearHoverTarget();
@@ -275,6 +244,36 @@ class _EditCoreState extends ConsumerState<EditCore> {
 
   @override
   Widget build(BuildContext context) {
+    _uri = Uri.file(widget.file.path).toString();
+    _lastSelection = widget.editorController.selection;
+    _lastCodeLines = widget.editorController.codeLines;
+
+    widget.editorController.addListener(_onEditorChanged);
+
+    ref.listen(diagnosticsByUri, (previous, next) {
+      if (!mounted) return;
+      if (previous?[_uri] != next[_uri]) {
+        widget.editorController.forceRepaint();
+      }
+    });
+    ref.listen(documentHighlightsByUri, (previous, next) {
+      if (!mounted) return;
+      if (previous?[_uri] != next[_uri]) {
+        widget.editorController.forceRepaint();
+      }
+    });
+    ref.listen(semanticTokensByUri, (previous, next) {
+      if (!mounted) return;
+      if (previous?[_uri] != next[_uri]) {
+        widget.editorController.forceRepaint();
+      }
+    });
+
+    // Kick an initial semantic token request after first layout.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleSemanticTokensFetch();
+      _scheduleDocumentHighlightsFetch();
+    });
     final tool = context.tool;
     final syntaxTheme = Theme.of(context).brightness == Brightness.dark
         ? atomOneDarkTheme
@@ -316,12 +315,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
               },
               theme: syntaxTheme,
             ),
-            backgroundColor: tool.colors.panel,
-            textColor: tool.colors.text,
-            selectionColor: tool.colors.selection.withOpacity(0.35),
-            cursorColor: tool.colors.focusRing,
-            cursorLineColor: tool.colors.hover,
-            chunkIndicatorColor: tool.colors.textFaint,
             fontSize: ref.watch(editorFontSize),
             fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
           ),
@@ -405,9 +398,7 @@ class _HoverTooltip extends StatelessWidget {
             padding: EdgeInsets.all(tool.space.sm),
             child: DefaultTextStyle(
               style: tool.type.uiDense.copyWith(color: tool.colors.text),
-              child: SingleChildScrollView(
-                child: SelectableText(text),
-              ),
+              child: SingleChildScrollView(child: SelectableText(text)),
             ),
           ),
         ),
