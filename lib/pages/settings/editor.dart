@@ -37,6 +37,15 @@ class EditorSettings extends ConsumerWidget {
                 },
               ),
             ),
+            ListTile(
+              title: Text("显示行号"),
+              trailing: Switch(
+                value: ref.watch(editorLineNumber),
+                onChanged: (value) {
+                  ref.read(editorLineNumber.notifier).state = value;
+                },
+              ),
+            ),
           ],
         ),
       ),

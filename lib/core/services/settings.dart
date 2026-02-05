@@ -46,3 +46,4 @@ void customizationEditorTextFont() async {
 
 StateProvider<double> editorFontSize = StateProvider<double>((ref) => 15);
 StateProvider<bool> editorWordWrap = StateProvider<bool>((ref) => false);
+StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);

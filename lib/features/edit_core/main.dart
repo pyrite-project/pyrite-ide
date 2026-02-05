@@ -33,17 +33,13 @@ class EditCore extends ConsumerWidget {
         indicatorBuilder:
             (context, editingController, chunkController, notifier) {
               return Row(
-                children: [
-                  DefaultCodeLineNumber(
-                    controller: editingController,
-                    notifier: notifier,
-                  ),
-                  DefaultCodeChunkIndicator(
-                    width: 20,
-                    controller: chunkController,
-                    notifier: notifier,
-                  ),
-                ],
+                children: buildIndicator(
+                  context,
+                  editingController,
+                  chunkController,
+                  notifier,
+                  ref,
+                ),
               );
             },
         controller: editorController,
@@ -60,5 +56,31 @@ class EditCore extends ConsumerWidget {
         wordWrap: ref.watch(editorWordWrap),
       ),
     );
+  }
+
+  List<Widget> buildIndicator(
+    BuildContext context,
+    CodeLineEditingController editingController,
+    CodeChunkController chunkController,
+    ValueNotifier<CodeIndicatorValue?> notifier,
+    WidgetRef ref,
+  ) {
+    List<Widget> children = [];
+    if (ref.watch(editorLineNumber)) {
+      children.add(
+        DefaultCodeLineNumber(
+          controller: editingController,
+          notifier: notifier,
+        ),
+      );
+    }
+    children.add(
+      DefaultCodeChunkIndicator(
+        width: 20,
+        controller: chunkController,
+        notifier: notifier,
+      ),
+    );
+    return children;
   }
 }
