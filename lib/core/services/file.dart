@@ -79,31 +79,35 @@ Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
     pattern = "/";
   }
 
-  await for (FileSystemEntity data in datas) {
-    if (data is Directory) {
-      items.add(
-        TreeNode(
-          id: data.path,
-          data: FileTreeItem(
-            name: data.path.split(pattern).last,
-            icon: Icons.folder,
-            isDicrectory: true,
+  try {
+    await for (FileSystemEntity data in datas) {
+      if (data is Directory) {
+        items.add(
+          TreeNode(
+            id: data.path,
+            data: FileTreeItem(
+              name: data.path.split(pattern).last,
+              icon: Icons.folder,
+              isDicrectory: true,
+            ),
           ),
-        ),
-      );
-      // print(data.path);
-    } else {
-      items.add(
-        TreeNode(
-          id: data.path,
-          data: FileTreeItem(
-            name: data.path.split(pattern).last,
-            icon: Icons.file_open,
+        );
+        // print(data.path);
+      } else {
+        items.add(
+          TreeNode(
+            id: data.path,
+            data: FileTreeItem(
+              name: data.path.split(pattern).last,
+              icon: Icons.file_open,
+            ),
+            isLeaf: false,
           ),
-          isLeaf: false,
-        ),
-      );
+        );
+      }
     }
+  } on FileSystemException {
+    // Ignore: macOS sandbox/file permissions may deny some paths.
   }
   if (update) {
     ref.watch(treeItems.notifier).state = items;

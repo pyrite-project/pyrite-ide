@@ -276,17 +276,23 @@ Future<TabData> createNewFileTab(
     "editor_controller": editorController,
   };
 
-  LspClient client = await PythonLspService(ref).client;
+  final uri = Uri.file(file.path).toString();
+  ref.read(activeDiagnosticUri.notifier).state = uri;
 
-  client.sendNotification('textDocument/didOpen', {
-    'textDocument': {
-      'uri': Uri.file(file.path).toString(),
-      'languageId': 'python',
-      'version': documentVersions[value["id"]] ?? 1,
-      'text': editorController.text,
-    },
-  });
-  ref.read(activeDiagnosticUri.notifier).state = Uri.file(file.path).toString();
+  final client = await PythonLspService(ref).maybeClient;
+  if (client != null) {
+    final version = documentVersions[value["id"]] ?? 1;
+    documentVersions[value["id"]] = version;
+
+    client.sendNotification('textDocument/didOpen', {
+      'textDocument': {
+        'uri': uri,
+        'languageId': 'python',
+        'version': version,
+        'text': editorController.text,
+      },
+    });
+  }
 
   return TabData(
     value: value,
@@ -303,15 +309,21 @@ Future<CodeLineEditingController> createNewEditorController(
   CodeLineEditingController controller = CodeLineEditingController.fromText(
     initialText,
   );
-  LspClient client = await PythonLspService(ref).client;
 
-  documentVersions[file.path] = 1;
-  _lastSyncedTextByPath[file.path] = controller.text;
-  _textLengthHintByPath[file.path] = controller.text.length;
+  final client = await PythonLspService(ref).maybeClient;
+  if (client != null) {
+    documentVersions[file.path] = 1;
+    _lastSyncedTextByPath[file.path] = controller.text;
+    _textLengthHintByPath[file.path] = controller.text.length;
 
-  controller.addListener(() {
-    _scheduleDidChange(path: file.path, controller: controller, client: client);
-  });
+    controller.addListener(() {
+      _scheduleDidChange(
+        path: file.path,
+        controller: controller,
+        client: client,
+      );
+    });
+  }
   return controller;
 }
 

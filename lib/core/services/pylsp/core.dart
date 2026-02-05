@@ -11,22 +11,103 @@ void _debugLog(String message) {
   }());
 }
 
+typedef _LspLaunch = ({String executable, List<String> arguments});
+
+List<_LspLaunch> _lspLaunchCandidates() {
+  final envPylsp = Platform.environment['PYRITE_IDE_PYLSP']?.trim();
+  final envPython = Platform.environment['PYRITE_IDE_PYTHON']?.trim();
+
+  final candidates = <_LspLaunch>[
+    if (envPylsp != null && envPylsp.isNotEmpty)
+      (executable: envPylsp, arguments: const []),
+    (executable: 'pylsp', arguments: const []),
+  ];
+
+  if (Platform.isMacOS) {
+    candidates.addAll([
+      (executable: '/opt/homebrew/bin/pylsp', arguments: const []),
+      (executable: '/usr/local/bin/pylsp', arguments: const []),
+    ]);
+  }
+
+  if (envPython != null && envPython.isNotEmpty) {
+    candidates.add((executable: envPython, arguments: const ['-m', 'pylsp']));
+  }
+
+  if (Platform.isWindows) {
+    candidates.addAll([
+      (executable: 'py', arguments: const ['-m', 'pylsp']),
+      (executable: 'python', arguments: const ['-m', 'pylsp']),
+      (executable: 'python3', arguments: const ['-m', 'pylsp']),
+    ]);
+  } else {
+    candidates.addAll([
+      (executable: 'python3', arguments: const ['-m', 'pylsp']),
+      (executable: 'python', arguments: const ['-m', 'pylsp']),
+    ]);
+
+    if (Platform.isMacOS) {
+      candidates.addAll([
+        (executable: '/usr/bin/python3', arguments: const ['-m', 'pylsp']),
+        (
+          executable: '/opt/homebrew/bin/python3',
+          arguments: const ['-m', 'pylsp'],
+        ),
+        (
+          executable: '/usr/local/bin/python3',
+          arguments: const ['-m', 'pylsp'],
+        ),
+      ]);
+    }
+  }
+
+  final seen = <String>{};
+  final deduped = <_LspLaunch>[];
+  for (final candidate in candidates) {
+    final key = '${candidate.executable}\u0000${candidate.arguments.join('\u0001')}';
+    if (seen.add(key)) deduped.add(candidate);
+  }
+
+  return deduped;
+}
+
 Future<Process> startLspServer() async {
   _debugLog('[LSP] Starting Python LSP Server...');
-  final process = await Process.start('python', ['-m', 'pylsp']);
 
-  _debugLog('[LSP] Process started with PID: ${process.pid}');
+  final errors = <String>[];
+  for (final candidate in _lspLaunchCandidates()) {
+    final printableArgs = candidate.arguments.map((a) => a.contains(' ') ? '"$a"' : a).join(' ');
+    final printableCommand = [
+      candidate.executable.contains(' ') ? '"${candidate.executable}"' : candidate.executable,
+      if (printableArgs.isNotEmpty) printableArgs,
+    ].join(' ');
 
-  // 监听服务器的标准错误输出，这对于调试至关重要
-  process.stderr.listen((data) {
-    assert(() {
-      final text = utf8.decode(data, allowMalformed: true);
-      _debugLog('[LSP Server stderr]: $text');
-      return true;
-    }());
-  });
+    try {
+      final process = await Process.start(candidate.executable, candidate.arguments);
+      _debugLog('[LSP] Started using: $printableCommand (PID: ${process.pid})');
 
-  return process;
+      // 监听服务器的标准错误输出，这对于调试至关重要
+      process.stderr.listen((data) {
+        assert(() {
+          final text = utf8.decode(data, allowMalformed: true);
+          _debugLog('[LSP Server stderr]: $text');
+          return true;
+        }());
+      });
+
+      return process;
+    } catch (e) {
+      errors.add('- $printableCommand: $e');
+    }
+  }
+
+  throw StateError(
+    'Unable to start Python LSP Server (pylsp).\n'
+    'Tried:\n${errors.join('\n')}\n\n'
+    'Fix:\n'
+    '- Install Python 3 and python-lsp-server (pylsp), or\n'
+    "- Set env vars 'PYRITE_IDE_PYTHON' or 'PYRITE_IDE_PYLSP' to an absolute path.",
+  );
 }
 
 class LspClient {

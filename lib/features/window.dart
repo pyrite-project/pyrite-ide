@@ -25,18 +25,19 @@ class UseTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double leftPadding = Platform.isMacOS ? 80 : 18;
     return GestureDetector(
       onPanStart: (details) => windowManager.startDragging(),
       child: Container(
-        padding: EdgeInsets.only(left: 18, right: 8),
+        padding: EdgeInsets.only(left: leftPadding, right: 8),
         color: Theme.of(context).colorScheme.surface,
         height: 45,
         child: Row(
           children: [
             Image.asset("assets/icons/app_icon.png", width: 25, height: 25),
             SizedBox(width: 20),
-            AppActionBar(),
-            Expanded(child: WindowActionBar()),
+            if (!Platform.isMacOS) AppActionBar(),
+            Expanded(child: Platform.isMacOS ? SizedBox() : WindowActionBar()),
           ],
         ),
       ),

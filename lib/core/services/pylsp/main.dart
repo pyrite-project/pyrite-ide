@@ -41,6 +41,16 @@ class PythonLspService {
 
   const PythonLspService(this._ref);
 
+  Future<LspClient?> get maybeClient async {
+    final AsyncValue<LspClient> asyncClient = _ref.read(lspClientProvider);
+
+    return asyncClient.when(
+      loading: () => null,
+      error: (error, stackTrace) => null,
+      data: (client) => client,
+    );
+  }
+
   Future<LspClient> get client async {
     final AsyncValue<LspClient> asyncClient = _ref.read(lspClientProvider);
 
