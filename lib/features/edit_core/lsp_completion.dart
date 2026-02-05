@@ -4,6 +4,7 @@ import 'package:pyrite_ide/core/services/pylsp/completion.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 import 'package:re_editor/re_editor.dart';
+import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 
 class LspCompletionPromptsBuilder implements CodeAutocompletePromptsBuilder {
   const LspCompletionPromptsBuilder();
@@ -126,9 +127,9 @@ class _LspAutocompleteListViewState
     if (!mounted || epoch != _requestEpoch) return;
 
     if (client == null) {
-      _setPrompts(
-        [LspStatusPrompt.unavailable(input: widget.notifier.value.input)],
-      );
+      _setPrompts([
+        LspStatusPrompt.unavailable(input: widget.notifier.value.input),
+      ]);
       return;
     }
 
@@ -138,10 +139,10 @@ class _LspAutocompleteListViewState
           widget.editorController.codeLines[selection.extentIndex].text;
       final triggerCharacter =
           selection.extentOffset > 0 &&
-                  selection.extentOffset <= lineText.length &&
-                  lineText.codeUnitAt(selection.extentOffset - 1) == 46
-              ? '.'
-              : null;
+              selection.extentOffset <= lineText.length &&
+              lineText.codeUnitAt(selection.extentOffset - 1) == 46
+          ? '.'
+          : null;
 
       items = await fetchCompletions(
         client: client,
@@ -159,27 +160,29 @@ class _LspAutocompleteListViewState
     final input = widget.notifier.value.input;
     final filtered = input.isEmpty
         ? items
-        : items.where((item) {
-            final label = item.label;
-            return label.length >= input.length &&
-                label.substring(0, input.length).toLowerCase() ==
-                    input.toLowerCase();
-          }).toList(growable: false);
+        : items
+              .where((item) {
+                final label = item.label;
+                return label.length >= input.length &&
+                    label.substring(0, input.length).toLowerCase() ==
+                        input.toLowerCase();
+              })
+              .toList(growable: false);
 
     final prompts = filtered
         .take(80)
-        .map((item) => LspCompletionPrompt(
-              label: item.label,
-              detail: item.detail,
-              insertText: item.insertText,
-              input: input,
-            ))
+        .map(
+          (item) => LspCompletionPrompt(
+            label: item.label,
+            detail: item.detail,
+            insertText: item.insertText,
+            input: input,
+          ),
+        )
         .toList(growable: false);
 
     _setPrompts(
-      prompts.isEmpty
-          ? [LspStatusPrompt.empty(input: input)]
-          : prompts,
+      prompts.isEmpty ? [LspStatusPrompt.empty(input: input)] : prompts,
     );
   }
 
@@ -204,8 +207,11 @@ class _LspAutocompleteListViewState
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: tool.colors.panel,
-          border: Border.all(color: tool.colors.border, width: 1),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outline,
+            width: 1,
+          ),
           borderRadius: BorderRadius.circular(tool.radii.md),
         ),
         child: ClipRRect(
@@ -221,14 +227,14 @@ class _LspAutocompleteListViewState
               final enabled = prompt is! LspStatusPrompt;
 
               final fg = selected
-                  ? tool.colors.selectionText
-                  : tool.colors.text;
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.onSurfaceVariant;
               final bg = selected
-                  ? tool.colors.selection.withOpacity(0.22)
-                  : tool.colors.panel.withOpacity(0);
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest;
               final detailColor = selected
-                  ? tool.colors.selectionText.withOpacity(0.85)
-                  : tool.colors.textFaint;
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.onSurfaceVariant;
 
               return MouseRegion(
                 cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
@@ -241,9 +247,7 @@ class _LspAutocompleteListViewState
                       : null,
                   child: Container(
                     color: bg,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: tool.space.sm,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: tool.space.sm),
                     alignment: Alignment.centerLeft,
                     child: _PromptRow(
                       prompt: prompt,
@@ -298,24 +302,14 @@ class _PromptRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (prompt is LspStatusPrompt) {
       final status = prompt as LspStatusPrompt;
-      return Text(
-        status.message,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: tool.type.uiDense.copyWith(color: detailColor),
-      );
+      return Text(status.message, maxLines: 1, overflow: TextOverflow.ellipsis);
     }
 
     final item = prompt as LspCompletionPrompt;
     return Row(
       children: [
         Expanded(
-          child: Text(
-            item.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: tool.type.monoDense.copyWith(color: fg),
-          ),
+          child: Text(item.label, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
         if (item.detail != null && item.detail!.isNotEmpty) ...[
           SizedBox(width: tool.space.sm),
@@ -325,7 +319,6 @@ class _PromptRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: tool.type.uiDense.copyWith(color: detailColor),
             ),
           ),
         ],
@@ -349,20 +342,18 @@ class LspCompletionPrompt extends CodePrompt {
 
   @override
   CodeAutocompleteResult get autocomplete => CodeAutocompleteResult(
-        input: input,
-        word: insertText,
-        selection: TextSelection.collapsed(offset: insertText.length),
-      );
+    input: input,
+    word: insertText,
+    selection: TextSelection.collapsed(offset: insertText.length),
+  );
 
   @override
   bool match(String input) => true;
 }
 
 class LspStatusPrompt extends CodePrompt {
-  const LspStatusPrompt._({
-    required this.message,
-    required this.input,
-  }) : super(word: message);
+  const LspStatusPrompt._({required this.message, required this.input})
+    : super(word: message);
 
   factory LspStatusPrompt.loading({required String input}) =>
       LspStatusPrompt._(message: '…', input: input);
@@ -378,10 +369,10 @@ class LspStatusPrompt extends CodePrompt {
 
   @override
   CodeAutocompleteResult get autocomplete => CodeAutocompleteResult(
-        input: input,
-        word: input,
-        selection: TextSelection.collapsed(offset: input.length),
-      );
+    input: input,
+    word: input,
+    selection: TextSelection.collapsed(offset: input.length),
+  );
 
   @override
   bool match(String input) => false;
