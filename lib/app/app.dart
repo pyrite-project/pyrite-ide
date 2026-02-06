@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
-import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -88,7 +88,9 @@ class PyriteIDE extends ConsumerWidget {
           PlatformProvidedMenuItem(
             type: PlatformProvidedMenuItemType.minimizeWindow,
           ),
-          PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.zoomWindow),
+          PlatformProvidedMenuItem(
+            type: PlatformProvidedMenuItemType.zoomWindow,
+          ),
           PlatformProvidedMenuItem(
             type: PlatformProvidedMenuItemType.arrangeWindowsInFront,
           ),

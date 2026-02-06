@@ -94,22 +94,6 @@ class TabletView extends ConsumerWidget {
       backgroundColor: Theme.of(context).colorScheme.surface,
       destinations: tabletRailItems,
       selectedIndex: ref.watch(tabletSelectedIndex),
-      trailing: Expanded(
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            margin: const EdgeInsets.all(10),
-            child: IconButton(
-              onPressed: () {
-                ref.read(functionPageState.notifier).state = !ref
-                    .read(functionPageState.notifier)
-                    .state;
-              },
-              icon: const Icon(Icons.menu),
-            ),
-          ),
-        ),
-      ),
       onDestinationSelected: (value) {
         selectedIndexValue = value;
         ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
@@ -146,7 +130,7 @@ class DesktopView extends ConsumerWidget {
       body: Row(
         children: [
           railNavigationBar(context, ref),
-          Expanded(child: functionPage(context, ref)),
+          Expanded(child: pageStructure(context, ref)),
         ],
       ),
     );
@@ -165,8 +149,8 @@ class DesktopView extends ConsumerWidget {
             margin: const EdgeInsets.all(10),
             child: IconButton(
               onPressed: () {
-                ref.read(functionPageState.notifier).state = !ref
-                    .read(functionPageState.notifier)
+                ref.read(functionPageShow.notifier).state = !ref
+                    .read(functionPageShow.notifier)
                     .state;
               },
               icon: const Icon(Icons.menu),
@@ -184,35 +168,50 @@ class DesktopView extends ConsumerWidget {
     );
   }
 
-  Widget functionPage(BuildContext context, WidgetRef ref) {
-    if (ref.watch(functionPageState)) {
-      return shadcn.ShadcnLayer(
-        theme: shadcn.ThemeData(
-          colorScheme: Theme.of(context).brightness == Brightness.light
-              ? shadcn.ColorSchemes.lightDefaultColor
-              : shadcn.ColorSchemes.darkDefaultColor,
-        ),
-        child: shadcn.ResizablePanel.horizontal(
-          draggerBuilder: (context) {
-            return shadcn.HorizontalResizableDragger();
-          },
-          children: [
-            shadcn.ResizablePane.flex(
-              initialFlex: 2,
-              minSize: 300,
-              child: child,
-            ),
-            shadcn.ResizablePane.flex(
-              initialFlex: 2,
-              minSize: 300,
-              child: Edit(),
-            ),
-          ],
+  List<shadcn.ResizablePane> _pageStructure(
+    Widget functionPage,
+    WidgetRef ref,
+  ) {
+    final List<shadcn.ResizablePane> children = [];
+
+    if (ref.watch(functionPageShow)) {
+      children.add(
+        shadcn.ResizablePane.flex(
+          initialFlex: 2,
+          minSize: 200,
+          child: functionPage,
         ),
       );
-    } else {
-      return Edit();
     }
+    children.add(
+      shadcn.ResizablePane.flex(initialFlex: 4, minSize: 300, child: Edit()),
+    );
+    if (ref.watch(expansionPageShow)) {
+      children.add(
+        shadcn.ResizablePane.flex(
+          initialFlex: 2,
+          minSize: 200,
+          child: ExpansionPage(),
+        ),
+      );
+    }
+    return children;
+  }
+
+  Widget pageStructure(BuildContext context, WidgetRef ref) {
+    return shadcn.ShadcnLayer(
+      theme: shadcn.ThemeData(
+        colorScheme: Theme.of(context).brightness == Brightness.light
+            ? shadcn.ColorSchemes.lightDefaultColor
+            : shadcn.ColorSchemes.darkDefaultColor,
+      ),
+      child: shadcn.ResizablePanel.horizontal(
+        draggerBuilder: (context) {
+          return shadcn.HorizontalResizableDragger();
+        },
+        children: _pageStructure(child, ref),
+      ),
+    );
   }
 }
 

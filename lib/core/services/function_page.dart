@@ -12,9 +12,12 @@ final StateProvider<int> mobileSelectedIndex = StateProvider<int>(
 final StateProvider<int> tabletSelectedIndex = StateProvider<int>(
   (ref) => selectedIndexValue,
 );
-final StateProvider<bool> functionPageState = StateProvider<bool>(
-  (ref) => true,
-);
 
 List<dynamic> nowNavigationBarItems = desktopRailItems;
 StateProvider<int> nowViewSelectedIndex = desktopSelectedIndex;
+
+final StateProvider<bool> functionPageShow = StateProvider<bool>((ref) => true);
+final StateProvider<bool> consolePageShow = StateProvider<bool>((ref) => true);
+final StateProvider<bool> expansionPageShow = StateProvider<bool>(
+  (ref) => true,
+);

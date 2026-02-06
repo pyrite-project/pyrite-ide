@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:meta/meta.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/file.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -196,7 +198,44 @@ class TabHeaderWidget extends StatelessWidget {
       }
       TabButton closeButton = TabButton.icon(
         tabTheme.closeIcon,
-        onPressed: () async => await _onClose(context, index),
+        onPressed: () async {
+          final TabData nowTab = provider.controller.selectedTab!;
+          final String path = nowTab.value["id"];
+          if (nowTab.value["type"] == "file" &&
+              !container.read(openFilesisSavedMap[path]!)) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text("提示"),
+                content: Text("当前文件已经修改，是否保存更改？"),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      saveFile(
+                        nowTab.value["file"],
+                        nowTab.value["editor_controller"].text,
+                      );
+                      afterFileSave();
+                      context.pop();
+                      await _onClose(context, index);
+                    },
+                    child: Text("保存"),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      context.pop();
+                      await _onClose(context, index);
+                    },
+                    child: Text("不保存"),
+                  ),
+                  TextButton(onPressed: () => context.pop(), child: Text("取消")),
+                ],
+              ),
+            );
+          } else {
+            await _onClose(context, index);
+          }
+        },
         toolTip: provider.closeButtonTooltip,
       );
       textAndButtons.add(

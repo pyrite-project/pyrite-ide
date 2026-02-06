@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/core/services/pylsp/features.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
@@ -14,6 +16,7 @@ import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:re_highlight/styles/atom-one-light.dart';
 import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_completion.dart';
+import 'package:tabbed_view/tabbed_view.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -319,6 +322,14 @@ class _EditCoreState extends ConsumerState<EditCore> {
             fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
           ),
           wordWrap: ref.watch(editorWordWrap),
+          onChanged: (value) {
+            final TabData nowTab = ref.read(tabbedViewController).selectedTab!;
+            scheduleDidChange(
+              path: nowTab.value["id"],
+              controller: nowTab.value["editor_controller"],
+              client: client!,
+            );
+          },
         ),
       ),
     );
@@ -401,8 +412,9 @@ class _HoverTooltip extends StatelessWidget {
                   ? ToolMarkdown(text, maxCodeBlockHeight: 160)
                   : SelectableText(
                       text,
-                      style:
-                          tool.type.uiDense.copyWith(color: tool.colors.text),
+                      style: tool.type.uiDense.copyWith(
+                        color: tool.colors.text,
+                      ),
                     ),
             ),
           ),

@@ -1,9 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
-import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/file.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:re_editor/re_editor.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -88,11 +92,15 @@ class AppActionBar extends ConsumerWidget {
                 );
                 ref.read(tabbedViewController).addTab(newTab);
                 ref.read(tabbedViewController).selectTab(newTab);
+                ref.watch(treeItems.notifier).state = await buildFileListItems(
+                  ref,
+                  await getFilesList(ref),
+                );
               }
             }, leadingIconData: Icons.add),
             buildMenuItemButton(
               context,
-              "新建窗口（暂不支持）",
+              "新建窗口（暂不可用）",
               null,
               leadingIconData: Icons.window_sharp,
             ),
@@ -118,32 +126,34 @@ class AppActionBar extends ConsumerWidget {
             }, leadingIconData: Icons.folder_open),
             buildMenuItemButton(
               context,
-              "打开最近的文件或文件夹",
-              () {},
+              "打开最近的文件或文件夹（暂不可用）",
+              null,
               trailingIconData: Icons.chevron_right,
             ),
             PopupMenuDivider(),
-            buildMenuItemButton(
-              context,
-              "保存当前文件",
-              () {},
-              leadingIconData: Icons.save,
-            ),
-            buildMenuItemButton(context, "保存所有", () {}),
-            buildMenuItemButton(
-              context,
-              "将当前文件另存为",
-              () {},
-              leadingIconData: Icons.save_as,
-            ),
-            PopupMenuDivider(),
-            buildMenuItemButton(
-              context,
-              "关闭当前文件",
-              () {},
-              leadingIconData: Icons.close,
-            ),
-            buildMenuItemButton(context, "关闭所有文件", () {}),
+            buildMenuItemButton(context, "保存当前文件", () {
+              final TabData? nowTab = ref
+                  .read(tabbedViewController)
+                  .selectedTab;
+              if (nowTab != null && nowTab.value["type"] == "file") {
+                saveFile(
+                  nowTab.value["file"],
+                  nowTab.value["editor_controller"].text,
+                );
+                afterFileSave();
+              }
+            }, leadingIconData: Icons.save),
+            buildMenuItemButton(context, "将当前文件另存为", () async {
+              final TabData? nowTab = ref
+                  .read(tabbedViewController)
+                  .selectedTab;
+              if (nowTab != null && nowTab.value["type"] == "file") {
+                final bool state = await saveAs(
+                  nowTab.value["editor_controller"].text,
+                );
+                if (state) afterFileSave();
+              }
+            }, leadingIconData: Icons.save_as),
           ],
           child: Text("文件"),
         ),
@@ -157,7 +167,147 @@ class AppActionBar extends ConsumerWidget {
             ),
           ),
           alignmentOffset: Offset(0, 5),
-          menuChildren: [buildMenuItemButton(context, "data", () {})],
+          menuChildren: [
+            buildMenuItemButton(
+              context,
+              "撤销",
+              () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.undo();
+                }
+              },
+              leadingIconData: Icons.undo,
+              shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
+            ),
+            buildMenuItemButton(
+              context,
+              "恢复",
+              () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.redo();
+                }
+              },
+              leadingIconData: Icons.redo,
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                control: true,
+                shift: true,
+              ),
+            ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              "剪切",
+              () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.cut();
+                }
+              },
+              leadingIconData: Icons.cut,
+              shortcut: SingleActivator(LogicalKeyboardKey.keyX, control: true),
+            ),
+            buildMenuItemButton(
+              context,
+              "复制",
+              () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.copy();
+                }
+              },
+              leadingIconData: Icons.copy,
+              shortcut: SingleActivator(LogicalKeyboardKey.keyC, control: true),
+            ),
+            buildMenuItemButton(
+              context,
+              "粘贴",
+              () {
+                if (ref.read(tabbedViewController).selectedTab != null &&
+                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                        "file") {
+                  CodeLineEditingController editorController = ref
+                      .read(tabbedViewController)
+                      .selectedTab!
+                      .value["editor_controller"];
+                  editorController.paste();
+                }
+              },
+              leadingIconData: Icons.paste,
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                control: true,
+                shift: true,
+              ),
+            ),
+            PopupMenuDivider(),
+            buildMenuItemButton(context, "光标移动至行首", () {
+              if (ref.read(tabbedViewController).selectedTab != null &&
+                  ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                      "file") {
+                CodeLineEditingController editorController = ref
+                    .read(tabbedViewController)
+                    .selectedTab!
+                    .value["editor_controller"];
+                editorController.moveCursorToLineStart();
+              }
+            }, leadingIconData: Icons.start),
+            buildMenuItemButton(context, "光标移动至行尾", () {
+              if (ref.read(tabbedViewController).selectedTab != null &&
+                  ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                      "file") {
+                CodeLineEditingController editorController = ref
+                    .read(tabbedViewController)
+                    .selectedTab!
+                    .value["editor_controller"];
+                editorController.moveCursorToLineEnd();
+              }
+            }),
+            buildMenuItemButton(context, "光标移动至开头", () {
+              if (ref.read(tabbedViewController).selectedTab != null &&
+                  ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                      "file") {
+                CodeLineEditingController editorController = ref
+                    .read(tabbedViewController)
+                    .selectedTab!
+                    .value["editor_controller"];
+                editorController.moveCursorToPageStart();
+              }
+            }, leadingIconData: Icons.eject),
+            buildMenuItemButton(context, "光标移动至结尾", () {
+              if (ref.read(tabbedViewController).selectedTab != null &&
+                  ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                      "file") {
+                CodeLineEditingController editorController = ref
+                    .read(tabbedViewController)
+                    .selectedTab!
+                    .value["editor_controller"];
+                editorController.moveCursorToPageEnd();
+              }
+            }),
+          ],
           child: Text("编辑"),
         ),
         SubmenuButton(
@@ -170,7 +320,42 @@ class AppActionBar extends ConsumerWidget {
             ),
           ),
           alignmentOffset: Offset(0, 5),
-          menuChildren: [],
+          menuChildren: [
+            MenuItemButton(
+              onPressed: () {},
+              leadingIcon: Icon(Icons.functions),
+              trailingIcon: Checkbox(
+                value: ref.watch(functionPageShow),
+                onChanged: (value) =>
+                    ref.read(functionPageShow.notifier).state = !ref.read(
+                      functionPageShow,
+                    ),
+              ),
+              child: Text("功能"),
+            ),
+            MenuItemButton(
+              onPressed: () {},
+              leadingIcon: Icon(Icons.control_camera),
+              trailingIcon: Checkbox(
+                value: ref.watch(consolePageShow),
+                onChanged: (value) => ref.read(consolePageShow.notifier).state =
+                    !ref.read(consolePageShow),
+              ),
+              child: Text("控制台"),
+            ),
+            MenuItemButton(
+              onPressed: () {},
+              leadingIcon: Icon(Icons.expand),
+              trailingIcon: Checkbox(
+                value: ref.watch(expansionPageShow),
+                onChanged: (value) =>
+                    ref.read(expansionPageShow.notifier).state = !ref.read(
+                      expansionPageShow,
+                    ),
+              ),
+              child: Text("拓展"),
+            ),
+          ],
           child: Text("视图"),
         ),
       ],
@@ -183,6 +368,8 @@ class AppActionBar extends ConsumerWidget {
     Function()? onPressed, {
     IconData? leadingIconData,
     IconData? trailingIconData,
+    SingleActivator? shortcut,
+    Widget? trailing,
   }) {
     return MenuItemButton(
       onPressed: onPressed,
@@ -193,6 +380,7 @@ class AppActionBar extends ConsumerWidget {
           ? Icon(trailingIconData, size: 18)
           : SizedBox(width: 18),
       style: ButtonStyle(),
+      shortcut: shortcut,
       child: Text(text),
     );
   }

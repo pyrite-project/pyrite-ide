@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 
 final StateProvider<Directory?> directory = StateProvider<Directory?>(
@@ -23,8 +24,9 @@ class FileTreeItem {
   });
 }
 
-final StateProvider<Map<String, File>> openFilesMap =
-    StateProvider<Map<String, File>>((ref) => {});
+final Map<String, File> openFilesMap = {};
+
+final Map<String, StateProvider<bool>> openFilesisSavedMap = {};
 
 Future<Directory?> getDirectory(WidgetRef ref) async {
   final String? path = await getDirectoryPath();
@@ -41,6 +43,7 @@ Future<Directory?> getDirectory(WidgetRef ref) async {
 Future<File?> getFile() async {
   final XFile? file = await openFile();
   if (file != null) {
+    openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
     return File(file.path);
   } else {
     return null;
@@ -117,7 +120,7 @@ Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
 }
 
 Future<File> getOpenFile(String path, WidgetRef ref) async {
-  Map<String, File> map = ref.read(openFilesMap);
+  Map<String, File> map = openFilesMap;
   if (map[path] == null) {
     map[path] = File(path);
   }
@@ -131,12 +134,28 @@ Future<File?> createFile() async {
     String path = _path.path;
     file = File(path);
     await file.create();
+    openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
   } else {
     file = null;
   }
   return file;
 }
 
-Future<void> saveFile(File file, String content) async {
+void saveFile(File file, String content) async {
   await file.writeAsString(content);
+}
+
+Future<bool> saveAs(String content) async {
+  FileSaveLocation? _path = await getSaveLocation();
+  File? file;
+  if (_path != null) {
+    String path = _path.path;
+    file = File(path);
+    await file.create();
+    file.writeAsString(content);
+    return true;
+  } else {
+    file = null;
+    return false;
+  }
 }

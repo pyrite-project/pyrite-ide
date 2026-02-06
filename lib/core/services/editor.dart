@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
@@ -14,24 +15,24 @@ import 'package:re_editor/re_editor.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:xterm/xterm.dart';
 
-final StateProvider<Map<String, CodeLineEditingController>>
-editorControllerMap = StateProvider<Map<String, CodeLineEditingController>>(
-  (ref) => {},
-);
+final Map<String, CodeLineEditingController> editorControllerMap = {};
 
 Map<String, int> documentVersions = {};
 
-final Map<String, Timer> _didChangeDebounceTimers = {};
-final Map<String, String> _lastSyncedTextByPath = {};
-final Map<String, int> _textLengthHintByPath = {};
+final Map<String, Timer> didChangeDebounceTimers = {};
+final Map<String, String> lastSyncedTextByPath = {};
+final Map<String, int> textLengthHintByPath = {};
+
+LspClient? client;
 
 final StateProvider<TabbedViewController> tabbedViewController =
     StateProvider<TabbedViewController>(
       (ref) => TabbedViewController(
         [
           TabData(
+            closable: false,
             value: {"type": "page", "id": "welcome"},
-            text: "欢迎",
+            text: "欢迎   ",
             content: Welcome(),
             leading: (context, status) => Padding(
               padding: EdgeInsetsGeometry.directional(
@@ -54,15 +55,15 @@ final StateProvider<TabbedViewController> tabbedViewController =
             final String uri = Uri.file(path).toString();
 
             // Dispose editor resources eagerly to avoid leaks on large files.
-            ref.read(openFilesMap).remove(path);
-            final controller = ref.read(editorControllerMap)[path];
+            openFilesMap.remove(path);
+            final controller = editorControllerMap[path];
             controller?.dispose();
-            ref.read(editorControllerMap).remove(path);
+            editorControllerMap.remove(path);
 
             documentVersions.remove(path);
-            _didChangeDebounceTimers.remove(path)?.cancel();
-            _lastSyncedTextByPath.remove(path);
-            _textLengthHintByPath.remove(path);
+            didChangeDebounceTimers.remove(path)?.cancel();
+            lastSyncedTextByPath.remove(path);
+            textLengthHintByPath.remove(path);
 
             // Drop diagnostics for closed documents to keep memory bounded.
             ref.read(diagnosticsByUri.notifier).state = {
@@ -201,10 +202,7 @@ List<Map<String, dynamic>> _buildIncrementalContentChanges(
           'line': positions.startLine,
           'character': positions.startCharacter,
         },
-        'end': {
-          'line': positions.endLine,
-          'character': positions.endCharacter,
-        },
+        'end': {'line': positions.endLine, 'character': positions.endCharacter},
       },
       'rangeLength': edit.endOffset - edit.startOffset,
       'text': edit.replacementText,
@@ -212,30 +210,32 @@ List<Map<String, dynamic>> _buildIncrementalContentChanges(
   ];
 }
 
-void _scheduleDidChange({
+void scheduleDidChange({
   required String path,
   required CodeLineEditingController controller,
   required LspClient client,
 }) {
   final debounceDuration = _didChangeDebounceForTextLength(
-    _textLengthHintByPath[path] ?? controller.text.length,
+    textLengthHintByPath[path] ?? controller.text.length,
   );
 
-  _didChangeDebounceTimers[path]?.cancel();
-  _didChangeDebounceTimers[path] = Timer(debounceDuration, () {
-    _didChangeDebounceTimers.remove(path);
+  didChangeDebounceTimers[path]?.cancel();
+  didChangeDebounceTimers[path] = Timer(debounceDuration, () {
+    didChangeDebounceTimers.remove(path);
 
     final currentVersion = documentVersions[path];
     if (currentVersion == null) return;
 
-    final oldText = _lastSyncedTextByPath[path];
+    final oldText = lastSyncedTextByPath[path];
     final newText = controller.text;
 
     if (oldText == null) {
-      _lastSyncedTextByPath[path] = newText;
-      _textLengthHintByPath[path] = newText.length;
+      lastSyncedTextByPath[path] = newText;
+      textLengthHintByPath[path] = newText.length;
       return;
     }
+
+    container.read(openFilesisSavedMap[path]!.notifier).state = false;
 
     if (identical(oldText, newText)) return;
 
@@ -257,8 +257,20 @@ void _scheduleDidChange({
       "contentChanges": contentChanges,
     });
 
-    _lastSyncedTextByPath[path] = newText;
-    _textLengthHintByPath[path] = newText.length;
+    container.read(openFilesisSavedMap[path]!.notifier).state = false;
+    container
+        .read(tabbedViewController)
+        .selectedTab!
+        .leading = (context, status) {
+      return Icon(
+        Icons.edit,
+        size: 15,
+        color: Theme.of(context).colorScheme.onSecondary,
+      );
+    };
+
+    lastSyncedTextByPath[path] = newText;
+    textLengthHintByPath[path] = newText.length;
   });
 }
 
@@ -267,6 +279,10 @@ Future<TabData> createNewFileTab(
   WidgetRef ref,
   CodeLineEditingController editorController,
 ) async {
+  if (openFilesisSavedMap[file.path] == null) {
+    openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
+  }
+
   String pattern = "\\";
 
   if (Platform.isWindows) {
@@ -285,12 +301,12 @@ Future<TabData> createNewFileTab(
   final uri = Uri.file(file.path).toString();
   ref.read(activeDiagnosticUri.notifier).state = uri;
 
-  final client = await PythonLspService(ref).maybeClient;
+  client = await PythonLspService(ref).maybeClient;
   if (client != null) {
     final version = documentVersions[value["id"]] ?? 1;
     documentVersions[value["id"]] = version;
 
-    client.sendNotification('textDocument/didOpen', {
+    client!.sendNotification('textDocument/didOpen', {
       'textDocument': {
         'uri': uri,
         'languageId': 'python',
@@ -304,6 +320,7 @@ Future<TabData> createNewFileTab(
     value: value,
     text: file.path.split(pattern).last,
     content: EditCore(file: file, editorController: editorController),
+    keepAlive: true,
   );
 }
 
@@ -318,19 +335,11 @@ Future<CodeLineEditingController> createNewEditorController(
     spanBuilder: buildLspSpanBuilder(uri: uri),
   );
 
-  final client = await PythonLspService(ref).maybeClient;
+  client = await PythonLspService(ref).maybeClient;
   if (client != null) {
     documentVersions[file.path] = 1;
-    _lastSyncedTextByPath[file.path] = controller.text;
-    _textLengthHintByPath[file.path] = controller.text.length;
-
-    controller.addListener(() {
-      _scheduleDidChange(
-        path: file.path,
-        controller: controller,
-        client: client,
-      );
-    });
+    lastSyncedTextByPath[file.path] = controller.text;
+    textLengthHintByPath[file.path] = controller.text.length;
   }
   return controller;
 }
@@ -343,8 +352,9 @@ void onTabTap(
 ) async {
   controller.selectedIndex = newTabIndex;
   if (tab.value["type"] == "file") {
-    ref.read(activeDiagnosticUri.notifier).state =
-        Uri.file(tab.value["id"]).toString();
+    ref.read(activeDiagnosticUri.notifier).state = Uri.file(
+      tab.value["id"],
+    ).toString();
   } else {
     ref.read(activeDiagnosticUri.notifier).state = null;
   }
@@ -357,10 +367,18 @@ void afterTabClose(
 ) async {
   final selectedTab = controller.selectedTab;
   if (selectedTab != null && selectedTab.value["type"] == "file") {
-    ref.read(activeDiagnosticUri.notifier).state =
-        Uri.file(selectedTab.value["id"]).toString();
+    ref.read(activeDiagnosticUri.notifier).state = Uri.file(
+      selectedTab.value["id"],
+    ).toString();
     return;
   }
 
   cleanDiagnostics(ref);
+}
+
+void afterFileSave() {
+  final TabData nowTab = container.read(tabbedViewController).selectedTab!;
+  container.read(openFilesisSavedMap[nowTab.value["id"]]!.notifier).state =
+      true;
+  nowTab.leading = (context, status) {};
 }

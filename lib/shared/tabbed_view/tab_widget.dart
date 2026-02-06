@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:meta/meta.dart';
 
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/edit.dart';
+import 'package:pyrite_ide/core/services/editor.dart';
 
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/draggable_data.dart';
