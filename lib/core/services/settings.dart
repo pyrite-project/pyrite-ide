@@ -10,7 +10,7 @@ const Map<String, String> editorTextFonts = {
 };
 
 final StateProvider<String> editorTextFontProvider = StateProvider<String>(
-  (ref) => editorTextFonts["JetBrains Mono"]!,
+  (ref) => "JetBrains Mono",
 );
 
 final ByteData _null = ByteData(0);
