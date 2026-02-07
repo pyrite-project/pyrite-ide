@@ -8,6 +8,7 @@ import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/pages/settings/style.dart';
 import 'package:pyrite_ide/pages/tools/main.dart';
 
 CustomTransitionPage topCustomTransitionPage({
@@ -60,6 +61,10 @@ GoRouter routes = GoRouter(
             GoRoute(
               path: '/editor',
               builder: (context, state) => const EditorSettings(),
+            ),
+            GoRoute(
+              path: "/style",
+              builder: (context, state) => const StyleSettings(),
             ),
             GoRoute(path: '/about', builder: (context, state) => const About()),
           ],

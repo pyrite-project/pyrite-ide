@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
@@ -135,17 +136,24 @@ class PyriteIDE extends ConsumerWidget {
         final app = MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: appName,
-          themeMode: ThemeMode.system,
+          themeMode: ref.watch(themeMode),
           theme: ThemeData(
             fontFamily: "HarmonyOS Sans SC",
             brightness: Brightness.light,
-            colorScheme: lightDynamic,
+            colorScheme: (ref.watch(themeColor) == null)
+                ? lightDynamic
+                : ColorScheme.fromSeed(seedColor: ref.read(themeColor)!),
             appBarTheme: AppBarTheme(surfaceTintColor: Colors.transparent),
           ),
           darkTheme: ThemeData(
             fontFamily: "HarmonyOS Sans SC",
             brightness: Brightness.dark,
-            colorScheme: darkDynamic,
+            colorScheme: (ref.watch(themeColor) == null)
+                ? darkDynamic
+                : ColorScheme.fromSeed(
+                    seedColor: ref.read(themeColor)!,
+                    brightness: Brightness.dark,
+                  ),
             appBarTheme: AppBarTheme(surfaceTintColor: Colors.transparent),
           ),
           routerConfig: routes,

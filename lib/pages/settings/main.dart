@@ -27,10 +27,11 @@ class Settings extends StatelessWidget {
               title: UseText("调试与终端"),
               subtitle: UseText("终端字体及大小、交互式解释器模式"),
             ),
-            const ListTile(
+            ListTile(
               leading: Icon(Icons.color_lens),
               title: UseText("外观与风格"),
               subtitle: UseText("颜色风格、显示模式"),
+              onTap: () => context.go("/settings/style"),
             ),
           ],
         ),
