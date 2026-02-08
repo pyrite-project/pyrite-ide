@@ -58,6 +58,9 @@ dependencies:
   process_run: ^1.2.4
   stream_channel: ^2.1.4
   riverpod: ^2.6.1
+  archive: ^4.0.7
+  path_provider: ^2.1.5
+  path: ^1.9.1
 
 
 dev_dependencies:
@@ -130,6 +133,7 @@ flutter:
     - assets/icons/app_icon.png
     - assets/icons/app_icon_100px.png
     - assets/icons/app_icon_100px_appbar.png
+    - assets/android/python_env.zip
 
 flutter_launcher_icons:
   android: "launcher_icon"

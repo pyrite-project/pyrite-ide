@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
-class Welcome extends ConsumerWidget {
-  const Welcome({super.key});
+class EditorWelcome extends ConsumerWidget {
+  const EditorWelcome({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

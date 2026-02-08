@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:pyrite_ide/core/services/android_env_deployer/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/protocol.dart';
 
 void _debugLog(String message) {
@@ -59,12 +60,19 @@ List<_LspLaunch> _lspLaunchCandidates() {
         ),
       ]);
     }
+    if (Platform.isAndroid) {
+      candidates.add((
+        executable: pythonDeployer.pythonExecutable.path,
+        arguments: const ['-m', 'pylsp'],
+      ));
+    }
   }
 
   final seen = <String>{};
   final deduped = <_LspLaunch>[];
   for (final candidate in candidates) {
-    final key = '${candidate.executable}\u0000${candidate.arguments.join('\u0001')}';
+    final key =
+        '${candidate.executable}\u0000${candidate.arguments.join('\u0001')}';
     if (seen.add(key)) deduped.add(candidate);
   }
 
@@ -76,14 +84,30 @@ Future<Process> startLspServer() async {
 
   final errors = <String>[];
   for (final candidate in _lspLaunchCandidates()) {
-    final printableArgs = candidate.arguments.map((a) => a.contains(' ') ? '"$a"' : a).join(' ');
+    final printableArgs = candidate.arguments
+        .map((a) => a.contains(' ') ? '"$a"' : a)
+        .join(' ');
     final printableCommand = [
-      candidate.executable.contains(' ') ? '"${candidate.executable}"' : candidate.executable,
+      candidate.executable.contains(' ')
+          ? '"${candidate.executable}"'
+          : candidate.executable,
       if (printableArgs.isNotEmpty) printableArgs,
     ].join(' ');
 
     try {
-      final process = await Process.start(candidate.executable, candidate.arguments);
+      final Process process;
+      if (Platform.isAndroid) {
+        process = await Process.start(
+          candidate.executable,
+          candidate.arguments,
+          environment: pythonDeployer.env,
+        );
+      } else {
+        process = await Process.start(
+          candidate.executable,
+          candidate.arguments,
+        );
+      }
       _debugLog('[LSP] Started using: $printableCommand (PID: ${process.pid})');
 
       // 监听服务器的标准错误输出，这对于调试至关重要
@@ -158,11 +182,14 @@ class LspClient {
         final types = legend['tokenTypes'];
         final modifiers = legend['tokenModifiers'];
         if (types is List) {
-          _semanticTokenTypes = types.whereType<String>().toList(growable: false);
+          _semanticTokenTypes = types.whereType<String>().toList(
+            growable: false,
+          );
         }
         if (modifiers is List) {
-          _semanticTokenModifiers =
-              modifiers.whereType<String>().toList(growable: false);
+          _semanticTokenModifiers = modifiers.whereType<String>().toList(
+            growable: false,
+          );
         }
       }
     }
@@ -192,37 +219,38 @@ class LspClient {
       );
 
       // 发送初始化请求
-      final result = await sendRequest('initialize', {
-        'processId': pid,
-        'rootUri': rootUri,
-        'capabilities': {
-          'textDocument': {
-            'hover': {
-              'contentFormat': ['markdown', 'plaintext'],
-            },
-            'completion': {
-              'completionItem': {'snippetSupport': true},
-            },
-            'documentHighlight': {},
-            'semanticTokens': {
-              'dynamicRegistration': false,
-              'requests': {
-                'range': true,
-                'full': {'delta': true},
+      final result =
+          await sendRequest('initialize', {
+            'processId': pid,
+            'rootUri': rootUri,
+            'capabilities': {
+              'textDocument': {
+                'hover': {
+                  'contentFormat': ['markdown', 'plaintext'],
+                },
+                'completion': {
+                  'completionItem': {'snippetSupport': true},
+                },
+                'documentHighlight': {},
+                'semanticTokens': {
+                  'dynamicRegistration': false,
+                  'requests': {
+                    'range': true,
+                    'full': {'delta': true},
+                  },
+                  'tokenTypes': _kSemanticTokenTypes,
+                  'tokenModifiers': _kSemanticTokenModifiers,
+                  'formats': ['relative'],
+                  'multilineTokenSupport': true,
+                  'overlappingTokenSupport': false,
+                },
+                'synchronization': {
+                  'dynamicRegistration': false,
+                  'didSave': true,
+                },
               },
-              'tokenTypes': _kSemanticTokenTypes,
-              'tokenModifiers': _kSemanticTokenModifiers,
-              'formats': ['relative'],
-              'multilineTokenSupport': true,
-              'overlappingTokenSupport': false,
             },
-            'synchronization': {
-              'dynamicRegistration': false,
-              'didSave': true,
-            },
-          },
-        },
-      }).timeout(
+          }).timeout(
             const Duration(seconds: 5),
             onTimeout: () {
               throw TimeoutException('LSP server initialization timed out.');

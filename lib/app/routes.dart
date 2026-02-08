@@ -10,6 +10,7 @@ import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
 import 'package:pyrite_ide/pages/tools/main.dart';
+import 'package:pyrite_ide/pages/welcome/main.dart';
 
 CustomTransitionPage topCustomTransitionPage({
   required Widget child,
@@ -30,10 +31,11 @@ CustomTransitionPage topCustomTransitionPage({
 GoRouter routes = GoRouter(
   redirect: (context, state) {
     if (state.matchedLocation == "/") {
-      return "/index";
+      return "/welcome";
     }
   },
   routes: [
+    GoRoute(path: '/welcome', builder: (context, state) => const Welcome()),
     ShellRoute(
       routes: [
         GoRoute(

@@ -327,7 +327,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
             scheduleDidChange(
               path: nowTab.value["id"],
               controller: nowTab.value["editor_controller"],
-              client: client!,
+              client: client,
             );
           },
         ),

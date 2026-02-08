@@ -33,7 +33,7 @@ final StateProvider<TabbedViewController> tabbedViewController =
             closable: false,
             value: {"type": "page", "id": "welcome"},
             text: "欢迎   ",
-            content: Welcome(),
+            content: EditorWelcome(),
             leading: (context, status) => Padding(
               padding: EdgeInsetsGeometry.directional(
                 start: 5,
@@ -213,7 +213,7 @@ List<Map<String, dynamic>> _buildIncrementalContentChanges(
 void scheduleDidChange({
   required String path,
   required CodeLineEditingController controller,
-  required LspClient client,
+  required LspClient? client,
 }) {
   final debounceDuration = _didChangeDebounceForTextLength(
     textLengthHintByPath[path] ?? controller.text.length,
@@ -239,17 +239,24 @@ void scheduleDidChange({
 
     if (identical(oldText, newText)) return;
 
-    final contentChanges = client.supportsIncrementalSync
-        ? _buildIncrementalContentChanges(oldText, newText)
-        : [
-            {'text': newText},
-          ];
+    final List<Map<String, dynamic>> contentChanges;
+
+    if (client != null) {
+      contentChanges = client.supportsIncrementalSync
+          ? _buildIncrementalContentChanges(oldText, newText)
+          : [
+              {'text': newText},
+            ];
+    } else {
+      contentChanges = [];
+    }
+
     if (contentChanges.isEmpty) return;
 
     final nextVersion = currentVersion + 1;
     documentVersions[path] = nextVersion;
 
-    client.sendNotification("textDocument/didChange", {
+    client?.sendNotification("textDocument/didChange", {
       "textDocument": {
         "uri": Uri.file(path).toString(),
         "version": nextVersion,
