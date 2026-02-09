@@ -1,10 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/pylsp/completion.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
-import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 import 'package:re_editor/re_editor.dart';
-import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 
 class LspCompletionPromptsBuilder implements CodeAutocompletePromptsBuilder {
   const LspCompletionPromptsBuilder();
@@ -23,14 +23,11 @@ class LspCompletionPromptsBuilder implements CodeAutocompletePromptsBuilder {
 
     final triggeredByDot = before.endsWith('.');
     final input = triggeredByDot ? '' : _extractIdentifierSuffix(before);
+    // print(input);
 
     if (input.isEmpty && !triggeredByDot) return null;
 
-    return CodeAutocompleteEditingValue(
-      input: input,
-      prompts: [LspStatusPrompt.loading(input: input)],
-      index: 0,
-    );
+    return CodeAutocompleteEditingValue(input: input, prompts: [], index: 0);
   }
 }
 
@@ -65,7 +62,7 @@ class LspAutocompleteListView extends ConsumerStatefulWidget
 
   static const double _width = 320;
   static const double _maxHeight = 220;
-  static const double _itemHeight = 22;
+  static const double _itemHeight = 25;
 
   @override
   Size get preferredSize => const Size(_width, _maxHeight);
@@ -80,6 +77,7 @@ class _LspAutocompleteListViewState
   int _requestEpoch = 0;
   late final ScrollController _scrollController;
   int _lastSelectedIndex = 0;
+  Timer? _debounceTimer; // 添加防抖定时器
 
   @override
   void initState() {
@@ -90,23 +88,20 @@ class _LspAutocompleteListViewState
   }
 
   @override
-  void didUpdateWidget(covariant LspAutocompleteListView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.notifier != widget.notifier) {
-      oldWidget.notifier.removeListener(_onValueChanged);
-      widget.notifier.addListener(_onValueChanged);
-      _fetch();
-    }
-  }
-
-  @override
   void dispose() {
     widget.notifier.removeListener(_onValueChanged);
     _scrollController.dispose();
+    _debounceTimer?.cancel(); // 取消防抖定时器
     super.dispose();
   }
 
   void _onValueChanged() {
+    _debounceTimer?.cancel(); // 取消之前的定时器
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      // 300毫秒后执行请求
+      _fetch();
+    });
+
     final selectedIndex = widget.notifier.value.index;
     setState(() {});
     if (selectedIndex != _lastSelectedIndex) {
@@ -127,9 +122,7 @@ class _LspAutocompleteListViewState
     if (!mounted || epoch != _requestEpoch) return;
 
     if (client == null) {
-      _setPrompts([
-        LspStatusPrompt.unavailable(input: widget.notifier.value.input),
-      ]);
+      _setPrompts([]);
       return;
     }
 
@@ -143,6 +136,7 @@ class _LspAutocompleteListViewState
               lineText.codeUnitAt(selection.extentOffset - 1) == 46
           ? '.'
           : null;
+      // print(triggerCharacter);
 
       items = await fetchCompletions(
         client: client,
@@ -151,6 +145,12 @@ class _LspAutocompleteListViewState
         character: selection.extentOffset,
         triggerCharacter: triggerCharacter,
       );
+      print(
+        'Fetched ${items.length} completion items with trigger: $triggerCharacter',
+      );
+      for (var item in items) {
+        print('  - ${item.label} (${item.kind})');
+      }
     } catch (_) {
       items = const [];
     }
@@ -181,9 +181,7 @@ class _LspAutocompleteListViewState
         )
         .toList(growable: false);
 
-    _setPrompts(
-      prompts.isEmpty ? [LspStatusPrompt.empty(input: input)] : prompts,
-    );
+    _setPrompts(prompts.isEmpty ? [] : prompts);
   }
 
   void _setPrompts(List<CodePrompt> prompts) {
@@ -196,9 +194,12 @@ class _LspAutocompleteListViewState
 
   @override
   Widget build(BuildContext context) {
-    final tool = context.tool;
     final value = widget.notifier.value;
     final prompts = value.prompts;
+
+    if (value.prompts.isEmpty) {
+      return SizedBox.shrink();
+    }
 
     return ConstrainedBox(
       constraints: const BoxConstraints.tightFor(
@@ -212,13 +213,12 @@ class _LspAutocompleteListViewState
             color: Theme.of(context).colorScheme.outline,
             width: 1,
           ),
-          borderRadius: BorderRadius.circular(tool.radii.md),
+          borderRadius: BorderRadius.circular(5),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(tool.radii.md),
+          borderRadius: BorderRadius.circular(5),
           child: ListView.builder(
             controller: _scrollController,
-            padding: EdgeInsets.zero,
             itemExtent: LspAutocompleteListView._itemHeight,
             itemCount: prompts.length,
             itemBuilder: (context, index) {
@@ -247,13 +247,12 @@ class _LspAutocompleteListViewState
                       : null,
                   child: Container(
                     color: bg,
-                    padding: EdgeInsets.symmetric(horizontal: tool.space.sm),
+                    padding: EdgeInsets.symmetric(horizontal: 10),
                     alignment: Alignment.centerLeft,
                     child: _PromptRow(
                       prompt: prompt,
                       fg: fg,
                       detailColor: detailColor,
-                      tool: tool,
                     ),
                   ),
                 ),
@@ -290,33 +289,42 @@ class _PromptRow extends StatelessWidget {
     required this.prompt,
     required this.fg,
     required this.detailColor,
-    required this.tool,
   });
 
   final CodePrompt prompt;
   final Color fg;
   final Color detailColor;
-  final ToolTokens tool;
 
   @override
   Widget build(BuildContext context) {
     if (prompt is LspStatusPrompt) {
       final status = prompt as LspStatusPrompt;
-      return Text(status.message, maxLines: 1, overflow: TextOverflow.ellipsis);
+      return Text(
+        status.message,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: fg),
+      );
     }
 
     final item = prompt as LspCompletionPrompt;
     return Row(
       children: [
         Expanded(
-          child: Text(item.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          child: Text(
+            item.label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: fg),
+          ),
         ),
         if (item.detail != null && item.detail!.isNotEmpty) ...[
-          SizedBox(width: tool.space.sm),
+          SizedBox(width: 5),
           Flexible(
             child: Text(
               item.detail!,
-              maxLines: 1,
+              style: TextStyle(color: fg),
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
             ),
@@ -354,15 +362,6 @@ class LspCompletionPrompt extends CodePrompt {
 class LspStatusPrompt extends CodePrompt {
   const LspStatusPrompt._({required this.message, required this.input})
     : super(word: message);
-
-  factory LspStatusPrompt.loading({required String input}) =>
-      LspStatusPrompt._(message: '…', input: input);
-
-  factory LspStatusPrompt.empty({required String input}) =>
-      LspStatusPrompt._(message: '无建议', input: input);
-
-  factory LspStatusPrompt.unavailable({required String input}) =>
-      LspStatusPrompt._(message: 'LSP 不可用', input: input);
 
   final String message;
   final String input;

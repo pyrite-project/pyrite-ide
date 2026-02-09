@@ -14,7 +14,6 @@ import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
@@ -49,22 +48,18 @@ class PyriteIDE extends ConsumerWidget {
           routerConfig: routes,
           builder: (context, child) {
             ref.read(lspClientProvider);
-            return ToolScope(
-              uiFontFamily: "HarmonyOS Sans SC",
-              monoFontFamily: "JetBrainsMono",
-              child: MaterialScope(
-                child: ResponsiveBreakpoints.builder(
-                  child: child!,
-                  breakpoints: [
-                    const Breakpoint(start: 0, end: 600, name: MOBILE),
-                    const Breakpoint(start: 601, end: 1000, name: TABLET),
-                    const Breakpoint(
-                      start: 801,
-                      end: double.infinity,
-                      name: DESKTOP,
-                    ),
-                  ],
-                ),
+            return Material(
+              child: ResponsiveBreakpoints.builder(
+                child: child!,
+                breakpoints: [
+                  const Breakpoint(start: 0, end: 600, name: MOBILE),
+                  const Breakpoint(start: 601, end: 1000, name: TABLET),
+                  const Breakpoint(
+                    start: 801,
+                    end: double.infinity,
+                    name: DESKTOP,
+                  ),
+                ],
               ),
             );
           },

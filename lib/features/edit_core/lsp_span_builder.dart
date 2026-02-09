@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
-import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 import 'package:re_editor/re_editor.dart';
 
 typedef LspSpanBuilderDiagnosticsReader =
@@ -34,32 +33,31 @@ CodeLineSpanBuilder buildLspSpanBuilder({
     final lineText = codeLine.text;
     if (lineText.isEmpty) return textSpan;
 
-    final tool = context.tool;
     final diagnostics = readDiagnostics()[uri] ?? const <DiagnosticItem>[];
-    final highlights =
-        readHighlights()[uri] ?? const <LspDocumentHighlight>[];
+    final highlights = readHighlights()[uri] ?? const <LspDocumentHighlight>[];
     final semanticByLine = readSemanticTokens()[uri];
-    final semanticTokensForLine =
-        semanticByLine == null ? const <LspSemanticToken>[] : (semanticByLine[index] ?? const <LspSemanticToken>[]);
+    final semanticTokensForLine = semanticByLine == null
+        ? const <LspSemanticToken>[]
+        : (semanticByLine[index] ?? const <LspSemanticToken>[]);
 
     final diagRanges = _collectDiagnosticsRangesForLine(
       diagnostics: diagnostics,
       lineIndex: index,
       lineLength: lineText.length,
-      tool: tool,
     );
     final highlightRanges = _collectDocumentHighlightRangesForLine(
       highlights: highlights,
       lineIndex: index,
       lineLength: lineText.length,
-      tool: tool,
     );
     final semanticRanges = _collectSemanticRangesForLine(
       tokens: semanticTokensForLine,
       lineLength: lineText.length,
     );
 
-    if (diagRanges.isEmpty && highlightRanges.isEmpty && semanticRanges.isEmpty) {
+    if (diagRanges.isEmpty &&
+        highlightRanges.isEmpty &&
+        semanticRanges.isEmpty) {
       return textSpan;
     }
 
@@ -114,7 +112,9 @@ CodeLineSpanBuilder buildLspSpanBuilder({
         );
       }
       if (semantic?.fontWeight != null) {
-        effectiveStyle = effectiveStyle.copyWith(fontWeight: semantic!.fontWeight);
+        effectiveStyle = effectiveStyle.copyWith(
+          fontWeight: semantic!.fontWeight,
+        );
       }
       if (diagnostic != null) {
         effectiveStyle = effectiveStyle.copyWith(
@@ -133,18 +133,18 @@ CodeLineSpanBuilder buildLspSpanBuilder({
 }
 
 class _BaseRun {
-  const _BaseRun({
-    required this.start,
-    required this.end,
-    required this.style,
-  });
+  const _BaseRun({required this.start, required this.end, required this.style});
 
   final int start;
   final int end;
   final TextStyle style;
 }
 
-List<_BaseRun> _flattenTextSpan(TextSpan span, TextStyle fallbackStyle, int maxLength) {
+List<_BaseRun> _flattenTextSpan(
+  TextSpan span,
+  TextStyle fallbackStyle,
+  int maxLength,
+) {
   final runs = <_BaseRun>[];
   var offset = 0;
 
@@ -212,7 +212,6 @@ List<_DiagnosticOverlay> _collectDiagnosticsRangesForLine({
   required List<DiagnosticItem> diagnostics,
   required int lineIndex,
   required int lineLength,
-  required ToolTokens tool,
 }) {
   final result = <_DiagnosticOverlay>[];
 
@@ -231,7 +230,7 @@ List<_DiagnosticOverlay> _collectDiagnosticsRangesForLine({
     final clampedEnd = rangeEnd.clamp(0, lineLength);
     if (clampedStart >= clampedEnd) continue;
 
-    final (color, style) = _diagnosticDecoration(diagnostic.severity, tool);
+    final (color, style) = _diagnosticDecoration(diagnostic.severity);
     result.add(
       _DiagnosticOverlay(
         start: clampedStart,
@@ -246,18 +245,18 @@ List<_DiagnosticOverlay> _collectDiagnosticsRangesForLine({
   return result;
 }
 
-(Color, TextDecorationStyle) _diagnosticDecoration(int severity, ToolTokens tool) {
+(Color, TextDecorationStyle) _diagnosticDecoration(int severity) {
   switch (severity) {
     case 1:
-      return (tool.colors.diagnosticError, TextDecorationStyle.wavy);
+      return (Color(0xFFFF5B4D), TextDecorationStyle.wavy);
     case 2:
-      return (tool.colors.diagnosticWarning, TextDecorationStyle.wavy);
+      return (Color(0xFFFFB020), TextDecorationStyle.wavy);
     case 3:
-      return (tool.colors.diagnosticInfo, TextDecorationStyle.dotted);
+      return (Color(0xFF5C85FF), TextDecorationStyle.dotted);
     case 4:
-      return (tool.colors.textFaint, TextDecorationStyle.dotted);
+      return (Color(0xFF8B8E99), TextDecorationStyle.dotted);
     default:
-      return (tool.colors.textFaint, TextDecorationStyle.solid);
+      return (Color(0xFF8B8E99), TextDecorationStyle.solid);
   }
 }
 
@@ -277,7 +276,6 @@ List<_HighlightOverlay> _collectDocumentHighlightRangesForLine({
   required List<LspDocumentHighlight> highlights,
   required int lineIndex,
   required int lineLength,
-  required ToolTokens tool,
 }) {
   final result = <_HighlightOverlay>[];
   for (final highlight in highlights) {
@@ -292,8 +290,8 @@ List<_HighlightOverlay> _collectDocumentHighlightRangesForLine({
     if (clampedStart >= clampedEnd) continue;
 
     final bg = switch (highlight.kind) {
-      3 => tool.colors.focusRing.withOpacity(0.18),
-      _ => tool.colors.hover,
+      3 => Color(0xFF5C85FF).withOpacity(0.18),
+      _ => Color(0x14FFFFFF),
     };
 
     result.add(

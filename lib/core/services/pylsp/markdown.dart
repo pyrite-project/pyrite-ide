@@ -1,39 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/tool_ds/scope.dart';
 
 class ToolMarkdown extends StatelessWidget {
-  const ToolMarkdown(
-    this.markdown, {
-    super.key,
-    this.maxCodeBlockHeight,
-  });
+  const ToolMarkdown(this.markdown, {super.key, this.maxCodeBlockHeight});
 
   final String markdown;
   final double? maxCodeBlockHeight;
 
   @override
   Widget build(BuildContext context) {
-    final tool = context.tool;
     final blocks = _parseMarkdownBlocks(markdown);
 
     final children = <Widget>[];
     for (final block in blocks) {
       switch (block) {
         case _MdCodeBlock():
-          children.add(
-            _ToolCodeBlock(
-              language: block.language,
-              code: block.code,
-              maxHeight: maxCodeBlockHeight,
-            ),
-          );
+          children.add(_ToolCodeBlock(code: block.code));
         case _MdTextBlock():
           final built = _buildTextBlock(context, block.text);
           if (built.isNotEmpty) {
             children.addAll(built);
           }
       }
-      children.add(SizedBox(height: tool.space.xs));
     }
 
     if (children.isNotEmpty) {
@@ -118,7 +105,6 @@ List<_MdBlock> _parseMarkdownBlocks(String source) {
 }
 
 List<Widget> _buildTextBlock(BuildContext context, String text) {
-  final tool = context.tool;
   final lines = text.split('\n');
 
   final children = <Widget>[];
@@ -130,11 +116,11 @@ List<Widget> _buildTextBlock(BuildContext context, String text) {
     paragraphLines.clear();
     if (paragraph.isEmpty) return;
     children.add(
-      SelectableText.rich(
+      Text.rich(
         TextSpan(
           children: _inlineMarkdownSpans(context, paragraph),
+          style: TextStyle(fontSize: 15, height: 1.1),
         ),
-        style: tool.type.uiDense.copyWith(color: tool.colors.text),
       ),
     );
   }
@@ -145,7 +131,7 @@ List<Widget> _buildTextBlock(BuildContext context, String text) {
 
     if (trimmedLeft.isEmpty) {
       flushParagraph();
-      children.add(SizedBox(height: tool.space.xs));
+      children.add(SizedBox(height: 5));
       continue;
     }
 
@@ -157,8 +143,10 @@ List<Widget> _buildTextBlock(BuildContext context, String text) {
         children.add(
           SelectableText(
             headingText,
-            style: tool.type.ui.copyWith(
-              color: tool.colors.text,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.1,
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -170,12 +158,7 @@ List<Widget> _buildTextBlock(BuildContext context, String text) {
     final listItem = _parseListItem(trimmedLeft);
     if (listItem != null) {
       flushParagraph();
-      children.add(
-        _ToolListItem(
-          marker: listItem.marker,
-          text: listItem.text,
-        ),
-      );
+      children.add(_ToolListItem(marker: listItem.marker, text: listItem.text));
       continue;
     }
 
@@ -197,11 +180,11 @@ int _headingLevel(String line) {
   var level = 0;
   while (level < line.length &&
       level < 6 &&
-      line.codeUnitAt(level) == 35 /* # */) {
+      line.codeUnitAt(level) == 35 /* # */ ) {
     level++;
   }
   if (level == 0) return 0;
-  if (line.length > level && line.codeUnitAt(level) == 32 /* space */) {
+  if (line.length > level && line.codeUnitAt(level) == 32 /* space */ ) {
     return level;
   }
   return 0;
@@ -225,16 +208,22 @@ String? _parseQuote(String line) {
 }
 
 List<InlineSpan> _inlineMarkdownSpans(BuildContext context, String text) {
-  final tool = context.tool;
-  final normalStyle = tool.type.uiDense.copyWith(color: tool.colors.text);
-  final codeStyle = tool.type.monoDense.copyWith(
-    color: tool.colors.text,
-    backgroundColor: tool.colors.hover,
+  final normalStyle = TextStyle(
+    fontSize: 15,
+    height: 1.1,
+    color: Theme.of(context).colorScheme.onSurface,
+  );
+  final codeStyle = TextStyle(
+    fontSize: 15.5,
+    height: 1.15,
+    fontFamily: "JetBrainsMono",
+    fontFeatures: const [FontFeature.tabularFigures()],
+    color: Theme.of(context).colorScheme.onSurface,
   );
   final linkStyle = normalStyle.copyWith(
-    color: tool.colors.accent,
+    color: Color(0xFF2B5BD7),
     decoration: TextDecoration.underline,
-    decorationColor: tool.colors.accent.withAlpha(180),
+    decorationColor: Color(0xFF2B5BD7).withAlpha(180),
   );
 
   final spans = <InlineSpan>[];
@@ -248,7 +237,7 @@ List<InlineSpan> _inlineMarkdownSpans(BuildContext context, String text) {
 
   for (var i = 0; i < text.length; i++) {
     final codeUnit = text.codeUnitAt(i);
-    if (codeUnit != 96 /* ` */) continue;
+    if (codeUnit != 96 /* ` */ ) continue;
 
     final segment = text.substring(segmentStart, i);
     if (inCode) {
@@ -301,11 +290,7 @@ List<InlineSpan> _inlineLinks(
 }
 
 class _ToolCodeBlock extends StatelessWidget {
-  const _ToolCodeBlock({
-    required this.code,
-    this.language,
-    this.maxHeight,
-  });
+  const _ToolCodeBlock({required this.code, this.language, this.maxHeight});
 
   final String code;
   final String? language;
@@ -313,51 +298,31 @@ class _ToolCodeBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tool = context.tool;
-
-    final header = language == null || language!.isEmpty
-        ? null
-        : Padding(
-            padding: EdgeInsets.only(bottom: tool.space.xs),
-            child: Text(
-              language!,
-              style: tool.type.uiDense.copyWith(
-                color: tool.colors.textFaint,
-              ),
-            ),
-          );
-
-    final codeText = SelectableText(
+    final codeText = Text(
       code,
-      style: tool.type.monoDense.copyWith(color: tool.colors.textMuted),
+      style: TextStyle(
+        fontSize: 15,
+        height: 1.1,
+        fontFamily: "JetBrainsMono",
+        fontFeatures: const [FontFeature.tabularFigures()],
+        color: Theme.of(context).colorScheme.onPrimaryContainer,
+      ),
     );
-
-    final scroll = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: codeText,
-    );
-
-    final body = maxHeight == null
-        ? scroll
-        : ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight!),
-            child: SingleChildScrollView(child: scroll),
-          );
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: tool.colors.canvas,
-        border: Border.all(color: tool.colors.border, width: 1),
-        borderRadius: BorderRadius.circular(tool.radii.sm),
+        color: Theme.of(context).colorScheme.primaryContainer,
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Padding(
-        padding: EdgeInsets.all(tool.space.sm),
+        padding: EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (header != null) header,
-            body,
-          ],
+          children: [codeText],
         ),
       ),
     );
@@ -365,17 +330,13 @@ class _ToolCodeBlock extends StatelessWidget {
 }
 
 class _ToolListItem extends StatelessWidget {
-  const _ToolListItem({
-    required this.marker,
-    required this.text,
-  });
+  const _ToolListItem({required this.marker, required this.text});
 
   final String marker;
   final String text;
 
   @override
   Widget build(BuildContext context) {
-    final tool = context.tool;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -383,13 +344,23 @@ class _ToolListItem extends StatelessWidget {
           width: 18,
           child: Text(
             marker,
-            style: tool.type.uiDense.copyWith(color: tool.colors.textFaint),
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.1,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ),
         Expanded(
           child: SelectableText.rich(
-            TextSpan(children: _inlineMarkdownSpans(context, text)),
-            style: tool.type.uiDense.copyWith(color: tool.colors.text),
+            TextSpan(
+              children: _inlineMarkdownSpans(context, text),
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.1,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
           ),
         ),
       ],
@@ -404,19 +375,23 @@ class _ToolQuote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tool = context.tool;
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border(
-          left: BorderSide(color: tool.colors.border, width: 2),
+          left: BorderSide(
+            color: Theme.of(context).colorScheme.outline,
+            width: 2,
+          ),
         ),
       ),
       child: Padding(
-        padding: EdgeInsets.only(left: tool.space.sm),
+        padding: EdgeInsets.only(left: 2),
         child: SelectableText.rich(
           TextSpan(children: _inlineMarkdownSpans(context, text)),
-          style: tool.type.uiDense.copyWith(
-            color: tool.colors.textMuted,
+          style: TextStyle(
+            fontSize: 15,
+            height: 1.1,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ),

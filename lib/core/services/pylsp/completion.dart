@@ -26,6 +26,7 @@ Future<List<LspCompletionItem>> fetchCompletions({
   String? triggerCharacter,
 }) async {
   final triggerKind = triggerCharacter == null ? 1 : 2;
+  print(triggerCharacter);
   final result = await client.sendRequest('textDocument/completion', {
     'textDocument': {'uri': uri},
     'position': {'line': line, 'character': character},

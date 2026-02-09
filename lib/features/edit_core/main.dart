@@ -4,17 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
-import 'package:pyrite_ide/core/services/file.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/core/services/pylsp/features.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/core/services/pylsp/hover.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/pylsp/markdown.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/python.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:re_highlight/styles/atom-one-light.dart';
-import 'package:pyrite_ide/tool_ds/tool_ds.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_completion.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
@@ -277,7 +276,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
       _scheduleSemanticTokensFetch();
       _scheduleDocumentHighlightsFetch();
     });
-    final tool = context.tool;
     final syntaxTheme = Theme.of(context).brightness == Brightness.dark
         ? atomOneDarkTheme
         : atomOneLightTheme;
@@ -378,9 +376,8 @@ class _HoverTooltip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tool = context.tool;
     final screen = MediaQuery.of(context).size;
-    final margin = tool.space.sm;
+    final margin = 5.0;
 
     final left = globalPosition.dx.clamp(
       margin,
@@ -401,21 +398,16 @@ class _HoverTooltip extends StatelessWidget {
         ),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: tool.colors.panel,
-            border: Border.all(color: tool.colors.border, width: 1),
-            borderRadius: BorderRadius.circular(tool.radii.md),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+            borderRadius: BorderRadius.circular(5),
           ),
           child: Padding(
-            padding: EdgeInsets.all(tool.space.sm),
+            padding: EdgeInsets.all(5),
             child: SingleChildScrollView(
               child: kind == 'markdown'
-                  ? ToolMarkdown(text, maxCodeBlockHeight: 160)
-                  : SelectableText(
-                      text,
-                      style: tool.type.uiDense.copyWith(
-                        color: tool.colors.text,
-                      ),
-                    ),
+                  ? ToolMarkdown(text)
+                  : SelectableText(text),
             ),
           ),
         ),
