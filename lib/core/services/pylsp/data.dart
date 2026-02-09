@@ -3,10 +3,9 @@ import 'package:pyrite_ide/core/services/app.dart';
 
 var example = {
   "jsonrpc": "2.0",
-  "method": "textDocument\/publishDiagnostics",
+  "method": "textDocument/publishDiagnostics",
   "params": {
-    "uri":
-        "file:\/\/\/C:\/Users\/can1425\/handpyre-firm\/port\/boards\/pins_prefix.c",
+    "uri": "file:///C:/Users/can1425/handpyre-firm/port/boards/pins_prefix.c",
     "diagnostics": [
       {
         "source": "pycodestyle",
@@ -60,15 +59,14 @@ final StateProvider<String?> activeDiagnosticUri = StateProvider<String?>(
 final StateProvider<Map<String, List<DiagnosticItem>>> diagnosticsByUri =
     StateProvider<Map<String, List<DiagnosticItem>>>((ref) => {});
 
-final Provider<List<DiagnosticItem>> diagnostics = Provider<List<DiagnosticItem>>(
-  (ref) {
-    final uri = ref.watch(activeDiagnosticUri);
-    if (uri == null) return const [];
+final Provider<List<DiagnosticItem>> diagnostics =
+    Provider<List<DiagnosticItem>>((ref) {
+      final uri = ref.watch(activeDiagnosticUri);
+      if (uri == null) return const [];
 
-    final byUri = ref.watch(diagnosticsByUri);
-    return byUri[uri] ?? const [];
-  },
-);
+      final byUri = ref.watch(diagnosticsByUri);
+      return byUri[uri] ?? const [];
+    });
 
 void handleDiagnostics(Map<String, dynamic> params) {
   final String uri = params["uri"];
@@ -128,7 +126,8 @@ class Range {
   }
 }
 
-final StateProvider<Map<String, List<LspDocumentHighlight>>> documentHighlightsByUri =
+final StateProvider<Map<String, List<LspDocumentHighlight>>>
+documentHighlightsByUri =
     StateProvider<Map<String, List<LspDocumentHighlight>>>((ref) => {});
 
 final StateProvider<Map<String, Map<int, List<LspSemanticToken>>>>
@@ -142,7 +141,10 @@ void setDocumentHighlights(String uri, List<LspDocumentHighlight> highlights) {
   };
 }
 
-void setSemanticTokens(String uri, Map<int, List<LspSemanticToken>> tokensByLine) {
+void setSemanticTokens(
+  String uri,
+  Map<int, List<LspSemanticToken>> tokensByLine,
+) {
   container.read(semanticTokensByUri.notifier).state = {
     ...container.read(semanticTokensByUri),
     uri: tokensByLine,

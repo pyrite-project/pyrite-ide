@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/shared/studio_text.dart';
 
 class ProjectCard extends StatelessWidget {
   const ProjectCard({super.key});

@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 
 final StateProvider<Directory?> directory = StateProvider<Directory?>(
@@ -128,10 +127,10 @@ Future<File> getOpenFile(String path, WidgetRef ref) async {
 }
 
 Future<File?> createFile() async {
-  FileSaveLocation? _path = await getSaveLocation();
+  FileSaveLocation? path0 = await getSaveLocation();
   File? file;
-  if (_path != null) {
-    String path = _path.path;
+  if (path0 != null) {
+    String path = path0.path;
     file = File(path);
     await file.create();
     openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
@@ -146,10 +145,10 @@ void saveFile(File file, String content) async {
 }
 
 Future<bool> saveAs(String content) async {
-  FileSaveLocation? _path = await getSaveLocation();
+  FileSaveLocation? path0 = await getSaveLocation();
   File? file;
-  if (_path != null) {
-    String path = _path.path;
+  if (path0 != null) {
+    String path = path0.path;
     file = File(path);
     await file.create();
     file.writeAsString(content);

@@ -148,7 +148,6 @@ class TabWidget extends StatelessWidget {
             : TabDragFeedbackWidget(tab: tab, tabTheme: tabTheme);
 
         widget = Draggable<DraggableData>(
-          child: widget,
           feedback: Material(child: feedback),
           data: DraggableData(provider.controller, tab, provider.dragScope),
           feedbackOffset: draggableConfig.feedbackOffset,
@@ -181,13 +180,14 @@ class TabWidget extends StatelessWidget {
               draggableConfig.onDragCompleted!();
             }
           },
+          child: widget,
         );
 
         widget = Opacity(
-          child: widget,
           opacity: provider.draggingTabIndex != index
               ? 1
               : tabTheme.draggingOpacity,
+          child: widget,
         );
       }
     }
@@ -197,8 +197,8 @@ class TabWidget extends StatelessWidget {
       return DropTabWidget(
         provider: provider,
         newIndex: TabDataHelper.indexFrom(tab),
-        child: widget,
         halfWidthDrop: true,
+        child: widget,
       );
     }
     return widget;

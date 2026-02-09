@@ -387,5 +387,7 @@ void afterFileSave() {
   final TabData nowTab = container.read(tabbedViewController).selectedTab!;
   container.read(openFilesisSavedMap[nowTab.value["id"]]!.notifier).state =
       true;
-  nowTab.leading = (context, status) {};
+  nowTab.leading = (context, status) {
+    return null;
+  };
 }

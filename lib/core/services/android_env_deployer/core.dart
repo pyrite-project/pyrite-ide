@@ -5,7 +5,6 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/services/android_env_deployer/main.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 

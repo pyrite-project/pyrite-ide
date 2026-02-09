@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/file.dart';

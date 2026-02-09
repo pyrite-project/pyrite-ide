@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/home/main.dart';
-import 'package:pyrite_ide/pages/home/new_project.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
@@ -33,6 +32,7 @@ GoRouter routes = GoRouter(
     if (state.matchedLocation == "/") {
       return "/welcome";
     }
+    return null;
   },
   routes: [
     GoRoute(path: '/welcome', builder: (context, state) => const Welcome()),

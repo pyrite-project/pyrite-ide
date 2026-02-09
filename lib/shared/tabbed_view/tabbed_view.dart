@@ -24,7 +24,8 @@ import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
 /// Parameters:
 /// * [closeButtonTooltip]: optional tooltip for the close button.
 class TabbedView extends StatefulWidget {
-  TabbedView({
+  const TabbedView({
+    super.key,
     required this.controller,
     this.contentBuilder,
     this.tabReorderEnabled = true,
@@ -123,8 +124,8 @@ class _TabbedViewState extends State<TabbedView> {
     );
     children.add(LayoutId(id: 2, child: contentArea));
     return CustomMultiChildLayout(
-      children: children,
       delegate: _TabbedViewLayout(tabBarPosition: theme.tabsArea.position),
+      children: children,
     );
   }
 

@@ -22,6 +22,7 @@ import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 @internal
 class TabHeaderWidget extends StatelessWidget {
   const TabHeaderWidget({
+    super.key,
     required this.index,
     required this.status,
     required this.provider,
@@ -50,9 +51,9 @@ class TabHeaderWidget extends StatelessWidget {
     Widget textAndButtonsContainer = ClipRect(
       child: IntrinsicWidth(
         child: Row(
-          children: textAndButtons,
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: crossAxisAlignment,
+          children: textAndButtons,
         ),
       ),
     );
@@ -64,12 +65,10 @@ class TabHeaderWidget extends StatelessWidget {
       padding =
           statusTheme?.paddingWithoutButton ?? tabTheme.paddingWithoutButton;
     }
-    if (padding == null) {
-      padding = statusTheme?.padding ?? tabTheme.padding;
-    }
+    padding ??= statusTheme?.padding ?? tabTheme.padding;
 
     Widget widget = Container(
-      child: Container(child: textAndButtonsContainer, padding: padding),
+      child: Container(padding: padding, child: textAndButtonsContainer),
     );
 
     if (theme.tabsArea.position.isVertical &&
@@ -166,6 +165,7 @@ class TabHeaderWidget extends StatelessWidget {
         TabButton button = buttons[i];
         textAndButtons.add(
           Container(
+            padding: padding,
             child: TabButtonWidget(
               button: button,
               enabled: enabled,
@@ -180,7 +180,6 @@ class TabHeaderWidget extends StatelessWidget {
                   : tabTheme.buttonIconSize,
               themePadding: tabTheme.buttonPadding,
             ),
-            padding: padding,
           ),
         );
       }
@@ -240,6 +239,7 @@ class TabHeaderWidget extends StatelessWidget {
       );
       textAndButtons.add(
         Container(
+          padding: padding,
           child: TabButtonWidget(
             button: closeButton,
             enabled: enabled,
@@ -252,7 +252,6 @@ class TabHeaderWidget extends StatelessWidget {
             iconSize: tabTheme.buttonIconSize,
             themePadding: tabTheme.buttonPadding,
           ),
-          padding: padding,
         ),
       );
     }

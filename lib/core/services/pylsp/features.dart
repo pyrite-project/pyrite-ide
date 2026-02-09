@@ -32,9 +32,12 @@ Future<void> fetchSemanticTokens({
   if (!client.supportsSemanticTokens) return;
 
   try {
-    final result = await client.sendRequest('textDocument/semanticTokens/full', {
-      'textDocument': {'uri': uri},
-    });
+    final result = await client.sendRequest(
+      'textDocument/semanticTokens/full',
+      {
+        'textDocument': {'uri': uri},
+      },
+    );
 
     final data = _extractSemanticTokenData(result);
     if (data == null || data.isEmpty) {
@@ -57,7 +60,10 @@ List<int>? _extractSemanticTokenData(dynamic result) {
   if (result is Map) {
     final data = result['data'];
     if (data is List) {
-      return data.whereType<num>().map((e) => e.toInt()).toList(growable: false);
+      return data
+          .whereType<num>()
+          .map((e) => e.toInt())
+          .toList(growable: false);
     }
   }
   return null;

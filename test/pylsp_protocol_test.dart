@@ -8,9 +8,7 @@ void main() {
     final message = <String, dynamic>{
       'jsonrpc': '2.0',
       'method': 'textDocument/didChange',
-      'params': {
-        'text': '中文字符 mixed ASCII',
-      },
+      'params': {'text': '中文字符 mixed ASCII'},
     };
 
     final bytes = encodeLspMessage(message);
@@ -51,4 +49,3 @@ int _indexOfSubsequence(List<int> list, List<int> subsequence) {
   }
   return -1;
 }
-

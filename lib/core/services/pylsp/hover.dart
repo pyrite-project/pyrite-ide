@@ -3,10 +3,7 @@ import 'package:pyrite_ide/core/services/pylsp/core.dart';
 
 @immutable
 class LspHoverContent {
-  const LspHoverContent({
-    required this.text,
-    this.kind,
-  });
+  const LspHoverContent({required this.text, this.kind});
 
   final String text;
   final String? kind;
@@ -46,11 +43,7 @@ LspHoverContent? _parseHoverContents(dynamic contents) {
     if (value is String) {
       if (language is String) {
         final lang = language.trim();
-        final fenced = [
-          '```$lang'.trimRight(),
-          value,
-          '```',
-        ].join('\n');
+        final fenced = ['```$lang'.trimRight(), value, '```'].join('\n');
         return LspHoverContent(text: fenced, kind: 'markdown');
       }
 
@@ -75,13 +68,7 @@ LspHoverContent? _parseHoverContents(dynamic contents) {
         if (value is String) {
           if (language is String) {
             final lang = language.trim();
-            parts.add(
-              [
-                '```$lang'.trimRight(),
-                value,
-                '```',
-              ].join('\n'),
-            );
+            parts.add(['```$lang'.trimRight(), value, '```'].join('\n'));
             kind = 'markdown';
           } else {
             parts.add(value);

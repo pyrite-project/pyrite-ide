@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/android_env_deployer/core.dart';
 import 'package:pyrite_ide/core/services/android_env_deployer/main.dart';
-import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/python.dart';

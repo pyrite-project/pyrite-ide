@@ -18,7 +18,7 @@ import 'package:tabbed_view/src/internal/tabs_area/tabs_area_layout_child.dart';
 /// Widget for the tabs and buttons.
 @internal
 class TabsArea extends StatefulWidget {
-  const TabsArea({required this.provider});
+  const TabsArea({super.key, required this.provider});
 
   final TabbedViewProvider provider;
 
@@ -66,10 +66,10 @@ class _TabsAreaState extends State<TabsArea> {
     );
 
     Widget tabsAreaLayout = TabsAreaLayout(
-      children: children,
       theme: theme,
       hiddenTabs: _hiddenTabs,
       selectedTabIndex: controller.selectedIndex,
+      children: children,
     );
     tabsAreaLayout = ClipRect(child: tabsAreaLayout);
 
@@ -77,12 +77,12 @@ class _TabsAreaState extends State<TabsArea> {
 
     // Apply the theme's color and border directly.
     return Container(
-      child: content,
       decoration: BoxDecoration(
         color: tabsAreaTheme.color,
         borderRadius: _buildBorderRadius(theme: tabsAreaTheme),
         border: _buildBorder(theme: tabsAreaTheme),
       ),
+      child: content,
     );
   }
 
