@@ -20,8 +20,15 @@ class ProjectFiles extends ConsumerWidget {
         title: Text("项目文件"),
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
-          IconButton(onPressed: () {}, icon: Icon(Icons.add)),
-          IconButton(onPressed: () {}, icon: Icon(Icons.refresh)),
+          IconButton(
+            onPressed: () async {
+              ref.watch(treeItems.notifier).state = await buildFileListItems(
+                ref,
+                await getFilesList(ref),
+              );
+            },
+            icon: Icon(Icons.refresh),
+          ),
         ],
       ),
       body: Padding(
@@ -49,21 +56,24 @@ class ProjectFiles extends ConsumerWidget {
                 },
                 nodes: ref.watch(treeItems),
                 loadData: (node) => _loadChildren(node, ref),
-                nodeBuilder: (node) => Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        node.data.icon,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(node.data.name),
-                    ],
+                nodeBuilder: (node) => Tooltip(
+                  message: node.data.name,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          node.data.icon,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(node.data.name),
+                      ],
+                    ),
                   ),
                 ),
               ),
