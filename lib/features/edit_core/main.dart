@@ -328,6 +328,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
               client: client,
             );
           },
+          autofocus: true,
         ),
       ),
     );

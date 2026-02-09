@@ -55,7 +55,7 @@ class LspAutocompleteListView extends ConsumerStatefulWidget
     required this.editorController,
   });
 
-  final ValueNotifier<CodeAutocompleteEditingValue> notifier;
+  final ValueNotifier<CodeAutocompleteEditingValue>? notifier;
   final ValueChanged<CodeAutocompleteResult> onSelected;
   final String uri;
   final CodeLineEditingController editorController;
@@ -83,13 +83,13 @@ class _LspAutocompleteListViewState
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    widget.notifier.addListener(_onValueChanged);
+    widget.notifier?.addListener(_onValueChanged);
     _fetch();
   }
 
   @override
   void dispose() {
-    widget.notifier.removeListener(_onValueChanged);
+    widget.notifier?.removeListener(_onValueChanged);
     _scrollController.dispose();
     _debounceTimer?.cancel(); // 取消防抖定时器
     super.dispose();
@@ -97,20 +97,24 @@ class _LspAutocompleteListViewState
 
   void _onValueChanged() {
     _debounceTimer?.cancel(); // 取消之前的定时器
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
       // 300毫秒后执行请求
       _fetch();
     });
 
-    final selectedIndex = widget.notifier.value.index;
-    setState(() {});
-    if (selectedIndex != _lastSelectedIndex) {
-      _lastSelectedIndex = selectedIndex;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _ensureIndexVisible(selectedIndex);
-      });
+    final selectedIndex = widget.notifier?.value.index;
+    if (selectedIndex != null) {
+      setState(() {});
+      if (selectedIndex != _lastSelectedIndex) {
+        _lastSelectedIndex = selectedIndex;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ensureIndexVisible(selectedIndex);
+        });
+      }
     }
   }
+
+  // ... 其他方法保持不变
 
   Future<void> _fetch() async {
     final epoch = ++_requestEpoch;
@@ -157,47 +161,54 @@ class _LspAutocompleteListViewState
 
     if (!mounted || epoch != _requestEpoch) return;
 
-    final input = widget.notifier.value.input;
-    final filtered = input.isEmpty
-        ? items
-        : items
-              .where((item) {
-                final label = item.label;
-                return label.length >= input.length &&
-                    label.substring(0, input.length).toLowerCase() ==
-                        input.toLowerCase();
-              })
-              .toList(growable: false);
+    final input = widget.notifier?.value.input;
+    if (input != null) {
+      final filtered = input.isEmpty
+          ? items
+          : items
+                .where((item) {
+                  final label = item.label;
+                  return label.length >= input.length &&
+                      label.substring(0, input.length).toLowerCase() ==
+                          input.toLowerCase();
+                })
+                .toList(growable: false);
 
-    final prompts = filtered
-        .take(80)
-        .map(
-          (item) => LspCompletionPrompt(
-            label: item.label,
-            detail: item.detail,
-            insertText: item.insertText,
-            input: input,
-          ),
-        )
-        .toList(growable: false);
+      final prompts = filtered
+          .take(80)
+          .map(
+            (item) => LspCompletionPrompt(
+              label: item.label,
+              detail: item.detail,
+              insertText: item.insertText,
+              input: input,
+            ),
+          )
+          .toList(growable: false);
 
-    _setPrompts(prompts.isEmpty ? [] : prompts);
+      _setPrompts(prompts.isEmpty ? [] : prompts);
+    }
   }
 
   void _setPrompts(List<CodePrompt> prompts) {
-    final value = widget.notifier.value;
-    widget.notifier.value = value.copyWith(prompts: prompts, index: 0);
+    final value = widget.notifier?.value;
+    if (value != null) {
+      widget.notifier?.value = value.copyWith(prompts: prompts);
+    }
+
+    /*
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
     });
+    */
   }
 
   @override
   Widget build(BuildContext context) {
-    final value = widget.notifier.value;
-    final prompts = value.prompts;
+    final value = widget.notifier?.value;
+    final prompts = value?.prompts;
 
-    if (value.prompts.isEmpty) {
+    if (value == null || value.prompts.isEmpty) {
       return SizedBox.shrink();
     }
 
@@ -220,7 +231,7 @@ class _LspAutocompleteListViewState
           child: ListView.builder(
             controller: _scrollController,
             itemExtent: LspAutocompleteListView._itemHeight,
-            itemCount: prompts.length,
+            itemCount: prompts!.length,
             itemBuilder: (context, index) {
               final prompt = prompts[index];
               final selected = index == value.index;
