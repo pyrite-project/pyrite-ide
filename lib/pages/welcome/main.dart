@@ -17,7 +17,6 @@ class Welcome extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (Platform.isAndroid) {
-      pythonDeployer.initialize();
       if (ref.watch(state)) {
         return Scaffold(
           appBar: AppBar(title: Text("欢迎")),
@@ -65,12 +64,15 @@ class Welcome extends ConsumerWidget {
           ),
         );
       } else {
-        context.go("/index");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          context.go("/index");
+        });
         return Text("go");
       }
     } else {
-      context.go('/index');
-      ref.read(lspClientProvider);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.go("/index");
+      });
       return Scaffold(appBar: AppBar(title: Text("欢迎")));
     }
   }

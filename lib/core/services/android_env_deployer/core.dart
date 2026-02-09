@@ -21,8 +21,9 @@ class PythonDeployer {
 
   final CodeLineEditingController printController = CodeLineEditingController();
 
-  void print(String message) {
+  void _debugLog(String message) {
     printController.text = '${printController.text}\n$message';
+    print(message);
   }
 
   Future<void> initialize() async {
@@ -49,14 +50,13 @@ class PythonDeployer {
       env['PYTHONHOME'] = pythonDir.path;
       env['PYTHONPATH'] = path.join(libDir.path, 'python3.12', 'site-packages');
 
-      print('Python directory: ${pythonDir.path}');
-      print('Python executable: ${pythonExecutable.path}');
-      print('Environment: ${env.toString()}');
+      _debugLog('Python directory: ${pythonDir.path}');
+      _debugLog('Python executable: ${pythonExecutable.path}');
+      _debugLog('Environment: ${env.toString()}');
 
       if (await pythonExecutable.exists() &&
           await isPackageInstalled("pylsp")) {
-        print('Python Env already deployed');
-        container.read(lspClientProvider);
+        _debugLog('Python Env already deployed');
         Future(() => container.read(state.notifier).state = false);
         // await testPython();
         return;
@@ -64,7 +64,7 @@ class PythonDeployer {
       await deployPython();
       Future(() => container.read(state.notifier).state = false);
     } catch (e) {
-      print('Python initialization failed: $e');
+      _debugLog('Python initialization failed: $e');
       rethrow;
     }
 
@@ -73,7 +73,7 @@ class PythonDeployer {
 
   Future<void> deployPython() async {
     try {
-      print('Deploying start');
+      _debugLog('Deploying start');
       final ByteData data = await rootBundle.load(pythonAssetPath);
       final Uint8List bytes = data.buffer.asUint8List();
       Archive archive = ZipDecoder().decodeBytes(bytes);
@@ -89,7 +89,7 @@ class PythonDeployer {
         }
       }
 
-      print('Successfully released the assets. Next step. (1/5)');
+      _debugLog('Successfully released the assets. Next step. (1/5)');
 
       archive = ZipDecoder().decodeBytes(
         await File('${binDir.path}.zip').readAsBytes(),
@@ -106,7 +106,7 @@ class PythonDeployer {
         }
       }
 
-      print('Successfully deployed Python bin. Next step. (2/5)');
+      _debugLog('Successfully deployed Python bin. Next step. (2/5)');
 
       archive = ZipDecoder().decodeBytes(
         await File('${libDir.path}.zip').readAsBytes(),
@@ -123,8 +123,8 @@ class PythonDeployer {
         }
       }
 
-      print('Successfully deployed Python lib (50%). Next step. (3/5)');
-      print('下一步将部署大量 Python 标准库文件，等待时间较长，请耐心等待');
+      _debugLog('Successfully deployed Python lib (50%). Next step. (3/5)');
+      _debugLog('下一步将部署大量 Python 标准库文件，等待时间较长，请耐心等待');
 
       archive = ZipDecoder().decodeBytes(
         await File(path.join(libDir.path, 'python3.12.zip')).readAsBytes(),
@@ -143,9 +143,9 @@ class PythonDeployer {
         }
       }
 
-      print('Successfully deployed Python lib (100%). Next step. (4/5)');
+      _debugLog('Successfully deployed Python lib (100%). Next step. (4/5)');
     } catch (e) {
-      print('Failed to deploy Python: $e');
+      _debugLog('Failed to deploy Python: $e');
       rethrow;
     }
   }
@@ -154,19 +154,19 @@ class PythonDeployer {
     try {
       await Process.run('chmod', ['777', file.path]);
     } catch (e) {
-      print('Warning: Failed to set executable: $e');
+      _debugLog('Warning: Failed to set executable: $e');
     }
   }
 
   Future<void> testPython() async {
     try {
-      print('Testing Python installation...');
+      _debugLog('Testing Python installation...');
       final result = await Process.run(pythonExecutable.path, [
         '--version',
       ], environment: env);
 
       if (result.exitCode == 0) {
-        print('Python version: ${result.stdout}');
+        _debugLog('Python version: ${result.stdout}');
       } else {
         throw Exception('Python test failed: ${result.stderr}');
       }
@@ -176,9 +176,9 @@ class PythonDeployer {
         'import pylsp; print(f"Python {pylsp} ready!")',
       ], environment: env);
 
-      print('Python execution test: ${testResult.stdout}');
+      _debugLog('Python execution test: ${testResult.stdout}');
     } catch (e) {
-      print('Python test failed: $e');
+      _debugLog('Python test failed: $e');
       rethrow;
     }
   }
@@ -217,21 +217,21 @@ class PythonDeployer {
 
   Future<bool> installPipPackage(String package) async {
     try {
-      print('Installing $package');
+      _debugLog('Installing $package');
 
       final result = await executePython(
         args: ['-m', 'pip', 'install', package],
       );
 
       if (result.exitCode == 0) {
-        print('$package installed successfully (5/5)');
+        _debugLog('$package installed successfully (5/5)');
         return true;
       } else {
-        print('Failed to install $package: ${result.stderr}');
+        _debugLog('Failed to install $package: ${result.stderr}');
         return false;
       }
     } catch (e) {
-      print('Installation error: $e');
+      _debugLog('Installation error: $e');
       return false;
     }
   }

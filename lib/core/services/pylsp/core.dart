@@ -5,16 +5,14 @@ import 'package:pyrite_ide/core/services/android_env_deployer/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/protocol.dart';
 
 void _debugLog(String message) {
-  assert(() {
-    // ignore: avoid_print
-    print(message);
-    return true;
-  }());
+  pythonDeployer.printController.text =
+      '${pythonDeployer.printController.text}\n$message';
+  print(message);
 }
 
 typedef _LspLaunch = ({String executable, List<String> arguments});
 
-List<_LspLaunch> _lspLaunchCandidates() {
+Future<List<_LspLaunch>> _lspLaunchCandidates() async {
   final envPylsp = Platform.environment['PYRITE_IDE_PYLSP']?.trim();
   final envPython = Platform.environment['PYRITE_IDE_PYTHON']?.trim();
 
@@ -61,6 +59,7 @@ List<_LspLaunch> _lspLaunchCandidates() {
       ]);
     }
     if (Platform.isAndroid) {
+      await pythonDeployer.initialize();
       candidates.add((
         executable: pythonDeployer.pythonExecutable.path,
         arguments: const ['-m', 'pylsp'],
@@ -83,7 +82,7 @@ Future<Process> startLspServer() async {
   _debugLog('[LSP] Starting Python LSP Server...');
 
   final errors = <String>[];
-  for (final candidate in _lspLaunchCandidates()) {
+  for (final candidate in await _lspLaunchCandidates()) {
     final printableArgs = candidate.arguments
         .map((a) => a.contains(' ') ? '"$a"' : a)
         .join(' ');
