@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/tools/board_manager.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
-import 'package:pyrite_ide/src/rust/api/main.dart';
 
 class Tools extends ConsumerWidget {
   const Tools({super.key});
@@ -35,25 +34,9 @@ class Tools extends ConsumerWidget {
   }
 
   Widget buildBoardManager(WidgetRef ref) {
-    updatePortList(ref);
-    return CustomScrollView(
-      slivers: [
-        SliverList.builder(
-          itemCount: ref.watch(portList).length,
-          itemBuilder: (context, index) {
-            return ListTile(
-              title: Text(ref.watch(portList)[index].portName),
-              subtitle: Text("点击以尝试连接"),
-              onTap: () {
-                ref.read(selectedPort.notifier).state = ref.read(
-                  portList,
-                )[index];
-
-                connectPort(portName: ref.read(selectedPort)!.portName);
-              },
-            );
-          },
-        ),
+    // updatePortList(ref);
+    return CustomScrollView(slivers: [
+        
       ],
     );
   }

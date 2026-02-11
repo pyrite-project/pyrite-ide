@@ -4,13 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/features/window.dart';
-import 'package:pyrite_ide/src/rust/frb_generated.dart';
 
 // PyriteIDE: Hello World.
 void main() async {
   container = ProviderContainer();
   UseWindow().init();
-  await RustLib.init();
 
   runApp(
     UncontrolledProviderScope(container: container, child: const PyriteIDE()),

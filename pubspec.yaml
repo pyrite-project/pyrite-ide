@@ -61,11 +61,6 @@ dependencies:
   archive: ^4.0.7
   path_provider: ^2.1.5
   path: ^1.9.1
-  rust_lib_pyrite_ide:
-    path: rust_builder
-  flutter_rust_bridge: 2.11.1
-
-
   meta: any
   tolyui_tree: any
 dev_dependencies:
