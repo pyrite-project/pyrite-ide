@@ -63,6 +63,9 @@ dependencies:
   path: ^1.9.1
   meta: any
   tolyui_tree: any
+  flutter_libserialport: ^0.6.0
+  usb_serial: ^0.5.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

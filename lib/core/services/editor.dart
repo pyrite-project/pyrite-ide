@@ -25,6 +25,9 @@ final Map<String, int> textLengthHintByPath = {};
 
 LspClient? client;
 
+final Terminal repl = Terminal(onOutput: (data) => repl.write(data));
+final TerminalController replController = TerminalController();
+
 final StateProvider<TabbedViewController> tabbedViewController =
     StateProvider<TabbedViewController>(
       (ref) => TabbedViewController(
@@ -90,8 +93,6 @@ final StateProvider<TabbedViewController> tabbedViewController =
         },
       ),
     );
-
-final Terminal terminal = Terminal();
 
 Duration _didChangeDebounceForTextLength(int length) {
   if (length <= 50 * 1000) return const Duration(milliseconds: 250);

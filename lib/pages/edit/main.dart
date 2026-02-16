@@ -225,7 +225,7 @@ class ReplView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TerminalView(terminal);
+    return TerminalView(repl, controller: replController);
   }
 }
 

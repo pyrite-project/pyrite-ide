@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   file_selector_linux
+  flutter_libserialport
   open_file_linux
   screen_retriever_linux
   window_manager
