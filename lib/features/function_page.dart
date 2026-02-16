@@ -5,12 +5,60 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:xterm/xterm.dart';
+
+Widget consolePage() {
+  return DefaultTabController(
+    length: 2,
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TabBar(
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  Tab(text: "REPL", height: 35),
+                  Tab(text: "问题", height: 35),
+                ],
+                isScrollable: true,
+              ),
+            ),
+          ],
+        ),
+
+        Expanded(child: TabBarView(children: [ReplView(), QuestionView()])),
+      ],
+    ),
+  );
+}
+
+List<shadcn.ResizablePane> buildConsoleView(WidgetRef ref, Widget child) {
+  final List<shadcn.ResizablePane> children = [];
+  children.add(
+    shadcn.ResizablePane.flex(initialFlex: 3, minSize: 50, child: child),
+  );
+
+  if (ref.watch(consolePageShow)) {
+    children.add(
+      shadcn.ResizablePane.flex(
+        initialFlex: 1,
+        minSize: 10,
+        child: consolePage(),
+      ),
+    );
+  }
+
+  return children;
+}
 
 class MobileView extends ConsumerWidget {
   const MobileView({super.key, required this.child, required this.state});
@@ -34,7 +82,19 @@ class MobileView extends ConsumerWidget {
     });
     return Scaffold(
       bottomNavigationBar: bottomNavigationBar(context, ref),
-      body: child,
+      body: shadcn.ShadcnLayer(
+        theme: shadcn.ThemeData(
+          colorScheme: Theme.of(context).brightness == Brightness.light
+              ? shadcn.ColorSchemes.lightDefaultColor
+              : shadcn.ColorSchemes.darkDefaultColor,
+        ),
+        child: shadcn.ResizablePanel.vertical(
+          draggerBuilder: (context) {
+            return shadcn.HorizontalResizableDragger();
+          },
+          children: buildConsoleView(ref, child),
+        ),
+      ),
     );
   }
 
@@ -82,7 +142,21 @@ class TabletView extends ConsumerWidget {
       body: Row(
         children: [
           railNavigationBar(context, ref),
-          Expanded(child: child),
+          Expanded(
+            child: shadcn.ShadcnLayer(
+              theme: shadcn.ThemeData(
+                colorScheme: Theme.of(context).brightness == Brightness.light
+                    ? shadcn.ColorSchemes.lightDefaultColor
+                    : shadcn.ColorSchemes.darkDefaultColor,
+              ),
+              child: shadcn.ResizablePanel.vertical(
+                draggerBuilder: (context) {
+                  return shadcn.HorizontalResizableDragger();
+                },
+                children: buildConsoleView(ref, child),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -90,7 +164,7 @@ class TabletView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
-      minWidth: 40,
+      minWidth: 60,
       backgroundColor: Theme.of(context).colorScheme.surface,
       destinations: tabletRailItems,
       selectedIndex: ref.watch(tabletSelectedIndex),
@@ -184,7 +258,13 @@ class DesktopView extends ConsumerWidget {
       );
     }
     children.add(
-      shadcn.ResizablePane.flex(initialFlex: 4, minSize: 300, child: Edit()),
+      shadcn.ResizablePane.flex(
+        initialFlex: 4,
+        minSize: 300,
+        child: shadcn.ResizablePanel.vertical(
+          children: buildConsoleView(ref, Edit()),
+        ),
+      ),
     );
     if (ref.watch(expansionPageShow)) {
       children.add(
@@ -230,6 +310,39 @@ class FunctionPageAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SliverAppBar.large(title: UseText(title ?? appName));
+  }
+}
+
+class ReplView extends StatelessWidget {
+  const ReplView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return TerminalView(repl, controller: replController);
+  }
+}
+
+class QuestionView extends ConsumerWidget {
+  const QuestionView({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ScrollConfiguration(
+      behavior: NoScrollbarBehavior(),
+      child: ListView.builder(
+        addAutomaticKeepAlives: false,
+        itemCount: ref.watch(diagnostics).length,
+        itemBuilder: (context, index) {
+          List<DiagnosticItem> nowDiagnostics = ref.watch(diagnostics);
+          return ListTile(
+            title: Text(nowDiagnostics[index].message),
+            subtitle: Text(
+              "[行 ${nowDiagnostics[index].range.start["line"] + 1}, 列 ${nowDiagnostics[index].range.start["character"] + 1}]",
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 

@@ -53,43 +53,8 @@ class Edit extends ConsumerWidget {
         toolbarHeight: 50,
         backgroundColor: Theme.of(context).colorScheme.surface,
       ),
-      body: shadcn.ShadcnLayer(
-        theme: shadcn.ThemeData(
-          colorScheme: Theme.of(context).brightness == Brightness.light
-              ? shadcn.ColorSchemes.lightDefaultColor
-              : shadcn.ColorSchemes.darkDefaultColor,
-        ),
-        child: shadcn.ResizablePanel.vertical(
-          draggerBuilder: (context) {
-            return shadcn.HorizontalResizableDragger();
-          },
-          children: _build(context, ref),
-        ),
-      ),
+      body: body(context, ref),
     );
-  }
-
-  List<shadcn.ResizablePane> _build(BuildContext context, WidgetRef ref) {
-    final List<shadcn.ResizablePane> children = [];
-    children.add(
-      shadcn.ResizablePane.flex(
-        initialFlex: 3,
-        minSize: 50,
-        child: body(context, ref),
-      ),
-    );
-
-    if (ref.watch(consolePageShow)) {
-      children.add(
-        shadcn.ResizablePane.flex(
-          initialFlex: 1,
-          minSize: 10,
-          child: consolePage(context),
-        ),
-      );
-    }
-
-    return children;
   }
 
   Widget body(BuildContext context, WidgetRef ref) {
@@ -113,32 +78,6 @@ class Edit extends ConsumerWidget {
         ),
       ),
       child: TabbedView(controller: ref.watch(tabbedViewController)),
-    );
-  }
-
-  Widget consolePage(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TabBar(
-                  tabAlignment: TabAlignment.start,
-                  tabs: [
-                    Tab(text: "REPL", height: 35),
-                    Tab(text: "问题", height: 35),
-                  ],
-                  isScrollable: true,
-                ),
-              ),
-            ],
-          ),
-
-          Expanded(child: TabBarView(children: [ReplView(), QuestionView()])),
-        ],
-      ),
     );
   }
 }
