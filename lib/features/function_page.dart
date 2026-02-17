@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/core/services/board_manager/main.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
@@ -313,12 +314,41 @@ class FunctionPageAppBar extends StatelessWidget {
   }
 }
 
-class ReplView extends StatelessWidget {
+class ReplView extends ConsumerWidget {
   const ReplView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return TerminalView(repl, controller: replController);
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        Expanded(child: TerminalView(repl, controller: replController)),
+        Row(
+          children: [
+            Icon(Icons.chevron_right),
+            Expanded(
+              child: TextField(
+                controller: commandEditorController,
+                decoration: InputDecoration.collapsed(hintText: "在此键入命令"),
+                minLines: 1,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontFamily: "JetBrainsMono",
+                  fontFamilyFallback: ["HarmonyOS Sans SC"],
+                ),
+                onSubmitted: (value) {
+                  if (ref.read(connectState)) {
+                    final String command = commandEditorController.text;
+                    commandEditorController.clear();
+                    // repl.write(command);
+                    sendCommand(ref, command);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart';
 import 'package:pyrite_ide/core/services/board_manager/desktop.dart' as desktop;
 import 'package:pyrite_ide/core/services/board_manager/android.dart' as android;
+import 'package:pyrite_ide/core/services/board_manager/main.dart';
 
 class Tools extends ConsumerWidget {
   const Tools({super.key});
@@ -29,7 +30,6 @@ class Tools extends ConsumerWidget {
                 ),
               ],
             ),
-
             Expanded(child: TabBarView(children: [buildBoardManager(ref)])),
           ],
         ),
@@ -39,9 +39,19 @@ class Tools extends ConsumerWidget {
 
   Widget buildBoardManager(WidgetRef ref) {
     if (Platform.isAndroid) {
-      android.updateDeviceList(ref);
+      android.update(ref);
       return CustomScrollView(
         slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 15, right: 15, top: 10),
+              child: Text(
+                (ref.watch(connectState))
+                    ? "已连接：${ref.watch(android.selectedPortName)!}"
+                    : "暂未连接",
+              ),
+            ),
+          ),
           SliverList.builder(
             itemCount: ref.watch(android.devices).length,
             itemBuilder: (context, index) {
@@ -89,8 +99,22 @@ class Tools extends ConsumerWidget {
         ],
       );
     } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        desktop.update(ref);
+      });
       return CustomScrollView(
         slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 15, right: 15, top: 10),
+              child: Text(
+                (ref.watch(connectState))
+                    ? "已连接：${ref.watch(desktop.selectedPortName)!}"
+                    : "暂未连接",
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(child: Divider()),
           SliverList.builder(
             itemCount: ref.watch(desktop.ports).length,
             itemBuilder: (context, index) {

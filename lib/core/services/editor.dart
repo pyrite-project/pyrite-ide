@@ -25,7 +25,7 @@ final Map<String, int> textLengthHintByPath = {};
 
 LspClient? client;
 
-final Terminal repl = Terminal(onOutput: (data) => repl.write(data));
+final Terminal repl = Terminal();
 final TerminalController replController = TerminalController();
 
 final StateProvider<TabbedViewController> tabbedViewController =

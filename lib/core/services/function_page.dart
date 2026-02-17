@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 
@@ -20,3 +21,5 @@ final StateProvider<bool> consolePageShow = StateProvider<bool>((ref) => true);
 final StateProvider<bool> expansionPageShow = StateProvider<bool>(
   (ref) => true,
 );
+
+final TextEditingController commandEditorController = TextEditingController();
