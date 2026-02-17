@@ -416,7 +416,9 @@ class WindowActionBar extends StatelessWidget {
           },
         ),
         IconButton(
-          hoverColor: Theme.of(context).colorScheme.error.withOpacity(0.3),
+          hoverColor: Theme.of(
+            context,
+          ).colorScheme.error.withValues(alpha: 0.3),
           icon: Icon(Icons.close, size: 20),
           onPressed: () => windowManager.close(),
         ),

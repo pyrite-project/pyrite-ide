@@ -1,9 +1,7 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart';
 import 'package:pyrite_ide/core/services/board_manager/desktop.dart' as desktop;
 import 'package:pyrite_ide/core/services/board_manager/android.dart' as android;
 import 'package:pyrite_ide/core/services/board_manager/main.dart';

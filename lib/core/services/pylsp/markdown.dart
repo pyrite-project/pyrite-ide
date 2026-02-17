@@ -290,11 +290,9 @@ List<InlineSpan> _inlineLinks(
 }
 
 class _ToolCodeBlock extends StatelessWidget {
-  const _ToolCodeBlock({required this.code, this.language, this.maxHeight});
+  const _ToolCodeBlock({required this.code});
 
   final String code;
-  final String? language;
-  final double? maxHeight;
 
   @override
   Widget build(BuildContext context) {

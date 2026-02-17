@@ -1,6 +1,7 @@
+// ignore_for_file: invalid_use_of_internal_member, implementation_imports
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:meta/meta.dart';
 
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
@@ -21,11 +22,9 @@ import 'package:tabbed_view/src/internal/tabs_area/tab_drag_feedback_widget.dart
 import 'package:pyrite_ide/shared/tabbed_view/tab_header_widget.dart';
 
 /// Listener for the tabs with the mouse over.
-@internal
 typedef UpdateHoveredIndex = void Function(int? tabIndex);
 
 /// The tab widget. Displays the tab text and its buttons.
-@internal
 class TabWidget extends StatelessWidget {
   const TabWidget({
     required UniqueKey key,

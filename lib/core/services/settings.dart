@@ -28,13 +28,6 @@ Future<ByteData> loadFontData() async {
 void customizationEditorTextFont() async {
   Future<ByteData> data = loadFontData();
   ByteData data0 = await data;
-  String pattern;
-
-  if (Platform.isWindows) {
-    pattern = "\\";
-  } else {
-    pattern = "/";
-  }
 
   if (data0 != _null) {
     final FontLoader font = FontLoader("自定义");

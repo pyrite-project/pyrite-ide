@@ -46,6 +46,7 @@ class ProjectFiles extends ConsumerWidget {
                     );
                     ref.read(tabbedViewController).addTab(newTab);
                     ref.read(tabbedViewController).selectTab(newTab);
+                    // ignore: use_build_context_synchronously
                     if (!ResponsiveBreakpoints.of(context).isDesktop) {
                       ref.watch(nowViewSelectedIndex.notifier).state =
                           nowNavigationBarItems.length;

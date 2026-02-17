@@ -290,7 +290,7 @@ List<_HighlightOverlay> _collectDocumentHighlightRangesForLine({
     if (clampedStart >= clampedEnd) continue;
 
     final bg = switch (highlight.kind) {
-      3 => Color(0xFF5C85FF).withOpacity(0.18),
+      3 => Color(0xFF5C85FF).withValues(alpha: 0.18),
       _ => Color(0x14FFFFFF),
     };
 

@@ -77,7 +77,7 @@ class EditorSettings extends ConsumerWidget {
         ),
       );
     });
-    final result = await showDialog(
+    await showDialog(
       context: context,
       builder: (context) =>
           SimpleDialog(title: Text("选择编辑器字体"), children: children),

@@ -22,7 +22,7 @@ class PythonDeployer {
 
   void _debugLog(String message) {
     printController.text = '${printController.text}\n$message';
-    print(message);
+    // print(message);
   }
 
   Future<void> initialize() async {

@@ -38,12 +38,11 @@ void connectPort(WidgetRef ref, String name) async {
       ref.read(selectedPort.notifier).state!,
       timeout: 3,
     );
-    StreamSubscription<Uint8List>? subscription =
-        ref.read(subscriptionProvider.notifier).state = reader.stream.listen((
-          data,
-        ) {
-          repl.write(utf8.decode(data));
-        });
+    ref.read(subscriptionProvider.notifier).state = reader.stream.listen((
+      data,
+    ) {
+      repl.write(utf8.decode(data));
+    });
     update(ref);
   }
 }
@@ -55,10 +54,6 @@ void dicconnectPort(WidgetRef ref) {
 }
 
 bool getConnectState(WidgetRef ref) {
-  final StreamSubscription<Uint8List>? subscription = ref
-      .watch(subscriptionProvider.notifier)
-      .state;
-
   if (ref.read(selectedPortName) == null) return false;
 
   if (SerialPort(ref.read(selectedPortName)!).serialNumber == null) {

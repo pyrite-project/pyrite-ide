@@ -7,7 +7,7 @@ import 'package:pyrite_ide/core/services/pylsp/protocol.dart';
 void _debugLog(String message) {
   pythonDeployer.printController.text =
       '${pythonDeployer.printController.text}\n$message';
-  print(message);
+  // print(message);
 }
 
 typedef _LspLaunch = ({String executable, List<String> arguments});
@@ -528,7 +528,7 @@ class _ByteLspMessageTransformer
   }
 }
 
-/// 将 JSON 字符串流解码为 Map<String, dynamic> 对象流的转换器
+/// 将 JSON 字符串流解码为 Map 对象流的转换器
 class _JsonDecoder extends StreamTransformerBase<String, Map<String, dynamic>> {
   const _JsonDecoder();
 

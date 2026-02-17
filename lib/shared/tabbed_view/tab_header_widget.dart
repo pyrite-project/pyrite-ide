@@ -1,6 +1,7 @@
+// ignore_for_file: invalid_use_of_internal_member, implementation_imports
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:meta/meta.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/file.dart';
@@ -19,7 +20,6 @@ import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
 import 'package:tabbed_view/src/internal/tab/tab_button_widget.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 
-@internal
 class TabHeaderWidget extends StatelessWidget {
   const TabHeaderWidget({
     super.key,
@@ -67,9 +67,7 @@ class TabHeaderWidget extends StatelessWidget {
     }
     padding ??= statusTheme?.padding ?? tabTheme.padding;
 
-    Widget widget = Container(
-      child: Container(padding: padding, child: textAndButtonsContainer),
-    );
+    Widget widget = Container(padding: padding, child: textAndButtonsContainer);
 
     if (theme.tabsArea.position.isVertical &&
         sideTabsLayout == SideTabsLayout.rotated) {

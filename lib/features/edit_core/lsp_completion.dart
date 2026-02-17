@@ -149,12 +149,14 @@ class _LspAutocompleteListViewState
         character: selection.extentOffset,
         triggerCharacter: triggerCharacter,
       );
+      /*
       print(
         'Fetched ${items.length} completion items with trigger: $triggerCharacter',
       );
       for (var item in items) {
         print('  - ${item.label} (${item.kind})');
       }
+      */
     } catch (_) {
       items = const [];
     }

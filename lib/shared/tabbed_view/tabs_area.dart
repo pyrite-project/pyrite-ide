@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:meta/meta.dart';
+// ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
+import 'package:flutter/material.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_status.dart';
 import 'package:tabbed_view/src/tabbed_view_controller.dart';
@@ -16,7 +16,6 @@ import 'package:tabbed_view/src/internal/tabs_area/tabs_area_layout.dart';
 import 'package:tabbed_view/src/internal/tabs_area/tabs_area_layout_child.dart';
 
 /// Widget for the tabs and buttons.
-@internal
 class TabsArea extends StatefulWidget {
   const TabsArea({super.key, required this.provider});
 

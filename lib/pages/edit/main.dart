@@ -1,14 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:flutter/material.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/ui.dart';
 
 class Edit extends ConsumerWidget {

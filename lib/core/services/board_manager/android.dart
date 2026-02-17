@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:usb_serial/usb_serial.dart';
 import 'package:pyrite_ide/core/services/editor.dart';
 
@@ -41,15 +39,13 @@ void connectPort(WidgetRef ref, UsbDevice device) async {
           UsbPort.STOPBITS_1,
           UsbPort.PARITY_NONE,
         );
-    StreamSubscription<Uint8List> subscription =
-        ref.read(subscriptionProvider.notifier).state = ref
-            .read(selectedPort.notifier)
-            .state!
-            .inputStream!
-            .listen((data) {
-              print(data);
-              repl.write(utf8.decode(data));
-            });
+    ref.read(subscriptionProvider.notifier).state = ref
+        .read(selectedPort.notifier)
+        .state!
+        .inputStream!
+        .listen((data) {
+          repl.write(utf8.decode(data));
+        });
     update(ref);
     ref.read(connectState.notifier).state = state;
   }
@@ -67,19 +63,15 @@ void dicconnectPort(WidgetRef ref) {
 }
 
 bool getConnectState(WidgetRef ref) {
-  final StreamSubscription<Uint8List>? subscription = ref
-      .watch(subscriptionProvider.notifier)
-      .state;
-
   if (ref.read(selectedPortName) == null) return false;
 
-  List<String> _port = [];
+  List<String> portNames = [];
   for (var device in ref.read(devices)) {
-    _port.add(device.deviceName);
+    portNames.add(device.deviceName);
   }
 
-  // usb_serial 库保证了设备列表随硬件接入/弹出事件而及时变动，故这里采用判断 selectedPort 是否位于列表中来判断连接状态
-  if (!_port.contains(ref.read(selectedPortName))) return false;
+  // usb_serial 库保证了设备列表随硬件接入/弹出事件而及时变动，故这里采用判断 selectedPortName 是否位于列表中来判断连接状态
+  if (!portNames.contains(ref.read(selectedPortName))) return false;
 
   if (ref.read(subscriptionProvider.notifier).state != null) return true;
 
