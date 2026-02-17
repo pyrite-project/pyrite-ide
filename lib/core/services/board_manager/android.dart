@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
 import 'package:usb_serial/usb_serial.dart';
-import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 
 StateProvider<List<UsbDevice>> devices = StateProvider<List<UsbDevice>>(
   (ref) => [],

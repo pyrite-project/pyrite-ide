@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/draggable_data.dart';

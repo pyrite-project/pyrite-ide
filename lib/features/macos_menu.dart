@@ -1,11 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
-import 'package:pyrite_ide/core/services/editor.dart';
-import 'package:pyrite_ide/core/services/file.dart';
+import 'package:pyrite_ide/core/services/editor/ui.dart';
+import 'package:pyrite_ide/core/services/file/ui.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
 
 class MacOSMenu extends ConsumerWidget {
   const MacOSMenu({super.key, required this.app});
@@ -42,45 +41,100 @@ class MacOSMenu extends ConsumerWidget {
           PlatformMenuItemGroup(
             members: [
               PlatformMenuItem(
-                label: '新建文件…',
-                shortcut: const SingleActivator(
-                  LogicalKeyboardKey.keyN,
-                  meta: true,
-                ),
-                onSelected: () {
-                  unawaited(_newFile(ref));
-                },
+                label: '新建文件',
+                onSelected: () => createFileAction(ref),
               ),
               PlatformMenuItem(
-                label: '打开文件…',
-                shortcut: const SingleActivator(
-                  LogicalKeyboardKey.keyO,
-                  meta: true,
-                ),
-                onSelected: () {
-                  unawaited(_openFile(ref));
-                },
+                label: '打开文件',
+                onSelected: () => openFileAction(ref),
               ),
               PlatformMenuItem(
-                label: '打开文件夹…',
-                shortcut: const SingleActivator(
-                  LogicalKeyboardKey.keyO,
-                  meta: true,
-                  shift: true,
-                ),
-                onSelected: () {
-                  unawaited(_openFolder(ref));
-                },
+                label: '打开文件夹',
+                onSelected: () => openFolderAction(ref),
               ),
             ],
           ),
         ],
       ),
       PlatformMenu(
+        label: '编辑',
+        menus: [
+          PlatformMenuItem(
+            label: "撤销",
+            shortcut: const SingleActivator(
+              LogicalKeyboardKey.keyZ,
+              control: true,
+            ),
+            onSelected: () => undoAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "恢复",
+            shortcut: const SingleActivator(
+              LogicalKeyboardKey.keyZ,
+              control: true,
+              shift: true,
+            ),
+            onSelected: () => redoAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "剪切",
+            shortcut: const SingleActivator(
+              LogicalKeyboardKey.keyX,
+              control: true,
+            ),
+            onSelected: () => cutAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "复制",
+            shortcut: const SingleActivator(
+              LogicalKeyboardKey.keyC,
+              control: true,
+            ),
+            onSelected: () => copyAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "粘贴",
+            shortcut: const SingleActivator(
+              LogicalKeyboardKey.keyV,
+              control: true,
+            ),
+            onSelected: () => pasteAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "光标移动至行首",
+            onSelected: () => moveCursorToLineStartAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "光标移动至行尾",
+            onSelected: () => moveCursorToLineEndAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "光标移动至开头",
+            onSelected: () => moveCursorToPageStartAction(ref),
+          ),
+          PlatformMenuItem(
+            label: "光标移动至结尾",
+            onSelected: () => moveCursorToPageEndAction(ref),
+          ),
+        ],
+      ),
+      PlatformMenu(
         label: '视图',
-        menus: const [
-          PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.toggleFullScreen,
+        menus: [
+          PlatformMenuItem(
+            label: "切换“功能”开启状态",
+            onSelected: () => ref.read(functionPageShow.notifier).state = !ref
+                .read(functionPageShow),
+          ),
+          PlatformMenuItem(
+            label: "切换“控制台”开启状态",
+            onSelected: () => ref.read(consolePageShow.notifier).state = !ref
+                .read(consolePageShow),
+          ),
+          PlatformMenuItem(
+            label: "切换“拓展”开启状态",
+            onSelected: () => ref.read(expansionPageShow.notifier).state = !ref
+                .read(expansionPageShow),
           ),
         ],
       ),
@@ -99,33 +153,5 @@ class MacOSMenu extends ConsumerWidget {
         ],
       ),
     ];
-  }
-
-  Future<void> _newFile(WidgetRef ref) async {
-    final file = await createFile();
-    if (file == null) return;
-
-    final controller = await createNewEditorController(file, ref);
-    final tab = await createNewFileTab(file, ref, controller);
-    ref.read(tabbedViewController).addTab(tab);
-    ref.read(tabbedViewController).selectTab(tab);
-  }
-
-  Future<void> _openFile(WidgetRef ref) async {
-    final file = await getFile();
-    if (file == null) return;
-
-    final controller = await createNewEditorController(file, ref);
-    final tab = await createNewFileTab(file, ref, controller);
-    ref.read(tabbedViewController).addTab(tab);
-    ref.read(tabbedViewController).selectTab(tab);
-  }
-
-  Future<void> _openFolder(WidgetRef ref) async {
-    await getDirectory(ref);
-    ref.read(treeItems.notifier).state = await buildFileListItems(
-      ref,
-      await getFilesList(ref),
-    );
   }
 }

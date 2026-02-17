@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/file.dart';
+import 'package:pyrite_ide/core/services/file/main.dart';
 
 const Map<String, String> editorTextFonts = {
   "JetBrains Mono": "JetBrainsMono",

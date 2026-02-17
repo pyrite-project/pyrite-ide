@@ -6,7 +6,7 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
-import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/features/window.dart';
@@ -263,6 +263,9 @@ class DesktopView extends ConsumerWidget {
         initialFlex: 4,
         minSize: 300,
         child: shadcn.ResizablePanel.vertical(
+          draggerBuilder: (context) {
+            return shadcn.HorizontalResizableDragger();
+          },
           children: buildConsoleView(ref, Edit()),
         ),
       ),

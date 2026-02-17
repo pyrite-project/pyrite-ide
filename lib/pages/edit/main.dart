@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:re_editor/re_editor.dart';

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
-import 'package:pyrite_ide/core/services/editor.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 
 StateProvider<List<String>> ports = StateProvider<List<String>>((ref) => []);
 StateProvider<String?> selectedPortName = StateProvider<String?>((ref) => null);

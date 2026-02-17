@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/file.dart';
+import 'package:pyrite_ide/core/services/file/ui.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 class EditorWelcome extends ConsumerWidget {
@@ -53,23 +53,19 @@ class EditorWelcome extends ConsumerWidget {
               ),
               children: [
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => createFileAction(ref),
                   icon: Icon(Icons.add),
-                  label: Text("新建项目"),
+                  label: Text("新建文件"),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () async {
-                    await getDirectory(ref);
-                    ref.watch(treeItems.notifier).state =
-                        await buildFileListItems(ref, await getFilesList(ref));
-                  },
+                  onPressed: () => openFolderAction(ref),
                   icon: Icon(Icons.folder_outlined),
-                  label: Text("打开项目"),
+                  label: Text("打开文件夹"),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: Icon(Icons.add),
-                  label: Text("打开终端"),
+                  onPressed: () => openFileAction(ref),
+                  icon: Icon(Icons.file_open_outlined),
+                  label: Text("打开文件"),
                 ),
               ],
             ),
