@@ -97,7 +97,7 @@ class _LspAutocompleteListViewState
 
   void _onValueChanged() {
     _debounceTimer?.cancel(); // 取消之前的定时器
-    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 50), () {
       // 300毫秒后执行请求
       _fetch();
     });

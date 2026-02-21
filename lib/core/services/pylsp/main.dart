@@ -7,8 +7,7 @@ import 'package:pyrite_ide/core/services/pylsp/data.dart';
 class LspClientNotifier extends AsyncNotifier<LspClient> {
   @override
   Future<LspClient> build() async {
-    final process = await startLspServer();
-    final client = LspClient(process);
+    final client = await connectToLspServer();
 
     ref.onDispose(() => client.close());
 

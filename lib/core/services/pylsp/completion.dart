@@ -32,7 +32,7 @@ Future<List<LspCompletionItem>> fetchCompletions({
     'position': {'line': line, 'character': character},
     'context': {
       'triggerKind': triggerKind,
-      if (triggerCharacter != null) 'triggerCharacter': triggerCharacter,
+      'triggerCharacter': ?triggerCharacter,
     },
   });
 

@@ -17,7 +17,7 @@ Future<LspHoverContent?> fetchHover({
 }) async {
   final result = await client.sendRequest('textDocument/hover', {
     'textDocument': {'uri': uri},
-    'position': {'line': line, 'character': character},
+    'position': {'line': line + 1, 'character': character},
   });
 
   if (result is! Map) return null;

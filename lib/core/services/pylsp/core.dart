@@ -1,140 +1,43 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:pyrite_ide/core/services/android_env_deployer/core.dart';
-import 'package:pyrite_ide/core/services/pylsp/protocol.dart';
 
 void _debugLog(String message) {
-  pythonDeployer.printController.text =
-      '${pythonDeployer.printController.text}\n$message';
-  // print(message);
+  // ignore: avoid_print
+  print(message);
 }
 
-typedef _LspLaunch = ({String executable, List<String> arguments});
+/// 连接到已运行的 LSP WebSocket 服务器（假设监听 127.0.0.1:2026）
+Future<LspClient> connectToLspServer() async {
+  _debugLog('[LSP] Connecting to Python LSP Server at ws://127.0.0.1:2026...');
 
-Future<List<_LspLaunch>> _lspLaunchCandidates() async {
-  final envPylsp = Platform.environment['PYRITE_IDE_PYLSP']?.trim();
-  final envPython = Platform.environment['PYRITE_IDE_PYTHON']?.trim();
+  const maxAttempts = 20;
+  const delay = Duration(milliseconds: 200);
+  WebSocket? socket;
 
-  final candidates = <_LspLaunch>[
-    if (envPylsp != null && envPylsp.isNotEmpty)
-      (executable: envPylsp, arguments: const []),
-    (executable: 'pylsp', arguments: const []),
-  ];
-
-  if (Platform.isMacOS) {
-    candidates.addAll([
-      (executable: '/opt/homebrew/bin/pylsp', arguments: const []),
-      (executable: '/usr/local/bin/pylsp', arguments: const []),
-    ]);
-  }
-
-  if (envPython != null && envPython.isNotEmpty) {
-    candidates.add((executable: envPython, arguments: const ['-m', 'pylsp']));
-  }
-
-  if (Platform.isWindows) {
-    candidates.addAll([
-      (executable: 'py', arguments: const ['-m', 'pylsp']),
-      (executable: 'python', arguments: const ['-m', 'pylsp']),
-      (executable: 'python3', arguments: const ['-m', 'pylsp']),
-    ]);
-  } else {
-    candidates.addAll([
-      (executable: 'python3', arguments: const ['-m', 'pylsp']),
-      (executable: 'python', arguments: const ['-m', 'pylsp']),
-    ]);
-
-    if (Platform.isMacOS) {
-      candidates.addAll([
-        (executable: '/usr/bin/python3', arguments: const ['-m', 'pylsp']),
-        (
-          executable: '/opt/homebrew/bin/python3',
-          arguments: const ['-m', 'pylsp'],
-        ),
-        (
-          executable: '/usr/local/bin/python3',
-          arguments: const ['-m', 'pylsp'],
-        ),
-      ]);
-    }
-    if (Platform.isAndroid) {
-      await pythonDeployer.initialize();
-      candidates.add((
-        executable: pythonDeployer.pythonExecutable.path,
-        arguments: const ['-m', 'pylsp'],
-      ));
-    }
-  }
-
-  final seen = <String>{};
-  final deduped = <_LspLaunch>[];
-  for (final candidate in candidates) {
-    final key =
-        '${candidate.executable}\u0000${candidate.arguments.join('\u0001')}';
-    if (seen.add(key)) deduped.add(candidate);
-  }
-
-  return deduped;
-}
-
-Future<Process> startLspServer() async {
-  _debugLog('[LSP] Starting Python LSP Server...');
-
-  final errors = <String>[];
-  for (final candidate in await _lspLaunchCandidates()) {
-    final printableArgs = candidate.arguments
-        .map((a) => a.contains(' ') ? '"$a"' : a)
-        .join(' ');
-    final printableCommand = [
-      candidate.executable.contains(' ')
-          ? '"${candidate.executable}"'
-          : candidate.executable,
-      if (printableArgs.isNotEmpty) printableArgs,
-    ].join(' ');
-
+  for (int i = 0; i < maxAttempts; i++) {
     try {
-      final Process process;
-      if (Platform.isAndroid) {
-        process = await Process.start(
-          candidate.executable,
-          candidate.arguments,
-          environment: pythonDeployer.env,
-        );
-      } else {
-        process = await Process.start(
-          candidate.executable,
-          candidate.arguments,
-        );
-      }
-      _debugLog('[LSP] Started using: $printableCommand (PID: ${process.pid})');
-
-      // 监听服务器的标准错误输出，这对于调试至关重要
-      process.stderr.listen((data) {
-        assert(() {
-          final text = utf8.decode(data, allowMalformed: true);
-          _debugLog('[LSP Server stderr]: $text');
-          return true;
-        }());
-      });
-
-      return process;
-    } catch (e) {
-      errors.add('- $printableCommand: $e');
+      socket = await WebSocket.connect('ws://127.0.0.1:2026');
+      break;
+    } catch (_) {
+      await Future.delayed(delay);
     }
   }
 
-  throw StateError(
-    'Unable to start Python LSP Server (pylsp).\n'
-    'Tried:\n${errors.join('\n')}\n\n'
-    'Fix:\n'
-    '- Install Python 3 and python-lsp-server (pylsp), or\n'
-    "- Set env vars 'PYRITE_IDE_PYTHON' or 'PYRITE_IDE_PYLSP' to an absolute path.",
-  );
+  if (socket == null) {
+    throw StateError(
+      'Failed to connect to LSP WebSocket server on port 2026 after ${maxAttempts * delay.inMilliseconds}ms.\n'
+      'Please ensure the Python LSP server is running and port 2026 is accessible.',
+    );
+  }
+
+  _debugLog('[LSP] WebSocket connected.');
+  return LspClient.fromWebSocket(socket);
 }
 
+/// LSP 客户端，基于 WebSocket 实现，保持与原有 stdio 版本完全一致的接口和行为
 class LspClient {
-  final Process _process;
+  final WebSocket _socket;
   final StreamController<Map<String, dynamic>> _notificationsController =
       StreamController.broadcast();
 
@@ -143,7 +46,10 @@ class LspClient {
   int _id = 0;
   bool _isListening = false;
   bool _closed = false;
-  StreamSubscription<Map<String, dynamic>>? _incomingSubscription;
+  StreamSubscription<dynamic>? _incomingSubscription;
+  Timer? _heartbeatTimer;
+  DateTime _lastMessageTime = DateTime.now();
+  DateTime _lastPingTime = DateTime.now();
 
   int _textDocumentSyncChange = 1;
   bool get supportsIncrementalSync => _textDocumentSyncChange == 2;
@@ -154,10 +60,96 @@ class LspClient {
   List<String> get semanticTokenTypes => _semanticTokenTypes;
   List<String> get semanticTokenModifiers => _semanticTokenModifiers;
 
-  LspClient(this._process);
+  LspClient.fromWebSocket(this._socket) {
+    _startListening();
+  }
 
-  void _writeLspMessage(Map<String, dynamic> message) {
-    _process.stdin.add(encodeLspMessage(message));
+  void _startListening() {
+    _isListening = true;
+    _lastMessageTime = DateTime.now();
+    _lastPingTime = DateTime.now();
+
+    // 启动心跳检测
+    _heartbeatTimer = Timer.periodic(Duration(seconds: 10), (timer) {
+      if (_closed) {
+        _debugLog('Heartbeat: Client is closed, stopping timer');
+        timer.cancel();
+        return;
+      }
+
+      final timeSinceLastMessage = DateTime.now().difference(_lastMessageTime);
+      final timeSinceLastPing = DateTime.now().difference(_lastPingTime);
+
+      _debugLog(
+        'Heartbeat check: last message ${timeSinceLastMessage.inSeconds} seconds ago, '
+        'last ping ${timeSinceLastPing.inSeconds} seconds ago',
+      );
+
+      // 如果 30 秒内没有收到任何消息，发送 ping
+      if (timeSinceLastMessage > Duration(seconds: 30)) {
+        _debugLog('No message received for 30 seconds, connection may be dead');
+        _debugLog('Attempting to send ping to verify connection');
+
+        try {
+          _lastPingTime = DateTime.now();
+          // 发送一个简单的请求来测试连接是否仍然活跃
+          sendRequest('textDocument/documentSymbol', {
+                'textDocument': {'uri': 'file:///test.py'},
+              })
+              .timeout(
+                Duration(seconds: 5),
+                onTimeout: () {
+                  _debugLog('Ping request timed out, closing connection');
+                  _closeInternal();
+                },
+              )
+              .catchError((error) {
+                _debugLog('Ping request failed: $error');
+                _closeInternal();
+              });
+        } catch (e) {
+          _debugLog('Failed to send ping: $e');
+          _closeInternal();
+        }
+      }
+    });
+
+    _incomingSubscription = _socket.listen(
+      (dynamic data) {
+        _lastMessageTime = DateTime.now();
+        final String jsonString;
+        if (data is String) {
+          jsonString = data;
+        } else if (data is List<int>) {
+          jsonString = utf8.decode(data, allowMalformed: true);
+        } else {
+          _debugLog('[LSP Client] Unexpected data type: ${data.runtimeType}');
+          return;
+        }
+
+        try {
+          final message = jsonDecode(jsonString) as Map<String, dynamic>;
+          _handleIncomingMessage(message);
+        } catch (e) {
+          _debugLog('[LSP Client] Failed to parse JSON: $e');
+        }
+      },
+      onError: (error) {
+        _debugLog('[LSP Client] WebSocket error: $error');
+        _debugLog('[LSP Client] Error stack trace: ${StackTrace.current}');
+        _closeInternal();
+      },
+      onDone: () {
+        _debugLog('[LSP Client] WebSocket closed unexpectedly');
+        _debugLog(
+          '[LSP Client] Client state at close: closed=$_closed, listening=$_isListening',
+        );
+        _debugLog('[LSP Client] Pending requests: ${_pendingRequests.length}');
+        _debugLog('[LSP Client] Close stack trace: ${StackTrace.current}');
+        _closeInternal();
+      },
+      cancelOnError: false,
+    );
   }
 
   void _applyServerCapabilities(dynamic initializeResult) {
@@ -196,39 +188,31 @@ class LspClient {
 
   /// 初始化 LSP 客户端
   Future<void> initialize({String? rootUri}) async {
-    if (_closed) {
-      throw StateError('Client is closed');
-    }
+    _debugLog('[LSP] Starting initialization...');
 
     try {
-      // 【关键修改】我们不再使用 json_rpc.Peer，而是直接监听流
-      _isListening = true;
-
-      // 监听来自服务器的消息
-      _incomingSubscription = _createIncomingStream().listen(
-        _handleIncomingMessage,
-        onError: (Object error, StackTrace stackTrace) {
-          _debugLog('[LSP Client] Stream error: $error');
-        },
-        onDone: () {
-          _debugLog('[LSP Client] Stream done.');
-          _isListening = false;
-        },
-        cancelOnError: false,
-      );
-
-      // 发送初始化请求
+      _debugLog('[LSP] Sending initialize request...');
       final result =
           await sendRequest('initialize', {
             'processId': pid,
             'rootUri': rootUri,
+            'initializationOptions': {}, // 添加初始化选项
             'capabilities': {
               'textDocument': {
                 'hover': {
                   'contentFormat': ['markdown', 'plaintext'],
                 },
                 'completion': {
-                  'completionItem': {'snippetSupport': true},
+                  'completionItem': {
+                    'snippetSupport': true,
+                    'resolveSupport': {
+                      'properties': [
+                        'documentation',
+                        'detail',
+                        'additionalTextEdits',
+                      ],
+                    },
+                  },
                 },
                 'documentHighlight': {},
                 'semanticTokens': {
@@ -248,6 +232,12 @@ class LspClient {
                   'didSave': true,
                 },
               },
+              'workspace': {
+                'workspaceFolders': {
+                  'supported': true,
+                  'changeNotifications': true,
+                },
+              },
             },
           }).timeout(
             const Duration(seconds: 5),
@@ -256,41 +246,49 @@ class LspClient {
             },
           );
 
-      _applyServerCapabilities(result);
+      _debugLog('[LSP] Initialize response received');
 
-      // 初始化完成后，发送 initialized 通知
-      sendNotification('initialized');
+      _applyServerCapabilities(result);
+      _debugLog('[LSP] Server capabilities applied');
+
+      sendNotification('initialized', {});
+      _debugLog('[LSP] Initialized notification sent');
+
+      await Future.delayed(Duration(milliseconds: 200));
+      _debugLog('[LSP] Initialization completed successfully');
     } catch (e) {
-      // 发生错误时关闭客户端，防止资源泄漏
+      _debugLog('[LSP] Initialization failed: $e');
       await close();
-      rethrow; // 重新抛出错误，让调用者处理
+      rethrow;
     }
   }
 
-  /// 处理来自服务器的消息
   void _handleIncomingMessage(Map<String, dynamic> message) {
-    // 检查是否是响应
     if (message.containsKey('id')) {
       final idValue = message['id'];
+      _debugLog('[LSP] Received response for id: $idValue');
+      if (message.containsKey('result')) {
+        _debugLog(
+          '[LSP] Response result type: ${message['result'].runtimeType}',
+        );
+      }
       if (idValue is int) {
-        final completer = _pendingRequests[idValue];
+        final completer = _pendingRequests.remove(idValue);
         if (completer != null) {
-          _pendingRequests.remove(idValue);
+          _debugLog('[LSP] Completer found for id: $idValue, completing...');
           if (message.containsKey('result')) {
             completer.complete(message['result']);
           } else if (message.containsKey('error')) {
             completer.completeError(message['error']);
           }
+        } else {
+          _debugLog('[LSP] No completer found for id: $idValue');
         }
       }
-    }
-    // 否则是通知
-    else if (message.containsKey('method')) {
+    } else if (message.containsKey('method')) {
       final method = message['method'] as String;
-      final params = message['params'];
-
-      // 将通知转发到通知流
-      _notificationsController.add({'method': method, 'params': params});
+      _debugLog('[LSP] Received notification: $method');
+      _notificationsController.add(message);
     }
   }
 
@@ -310,15 +308,20 @@ class LspClient {
         'jsonrpc': '2.0',
         'id': id,
         'method': method,
-        if (params != null) 'params': params,
+        'params': ?params,
       };
 
-      // 通过 LSP framing 发送（Content-Length 必须按 UTF-8 字节数计算）
-      _writeLspMessage(request);
+      // 直接发送 JSON 字符串
+      _socket.add(jsonEncode(request));
 
       return await completer.future.timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 30),
         onTimeout: () {
+          _debugLog('[LSP Client] Request timed out: $method');
+          _debugLog('[LSP Client] Pending requests: ${_pendingRequests.keys}');
+          _debugLog(
+            '[LSP Client] Client state: closed=$_closed, listening=$_isListening',
+          );
           throw TimeoutException('LSP request timed out: $method');
         },
       );
@@ -338,11 +341,15 @@ class LspClient {
     final notification = {
       'jsonrpc': '2.0',
       'method': method,
-      if (params != null) 'params': params,
+      'params': ?params,
     };
 
-    // 通过 LSP framing 发送（Content-Length 必须按 UTF-8 字节数计算）
-    _writeLspMessage(notification);
+    try {
+      // 直接发送 JSON 字符串
+      _socket.add(jsonEncode(notification));
+    } catch (e) {
+      _debugLog('[LSP Client] Failed to send notification: $method, error: $e');
+    }
   }
 
   /// 监听来自服务器的通知
@@ -351,6 +358,9 @@ class LspClient {
 
   /// 关闭客户端
   Future<void> close() async {
+    _debugLog('[LSP Client] Closing LSP client');
+    _debugLog('[LSP Client] Close called from: ${StackTrace.current}');
+
     if (_closed) return;
     _closed = true;
     _isListening = false;
@@ -362,21 +372,39 @@ class LspClient {
     }
     _pendingRequests.clear();
 
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+
     await _incomingSubscription?.cancel();
     await _notificationsController.close();
-    _process.kill();
+    await _socket.close();
   }
 
-  /// 来自服务器 stdout 的 LSP 消息流
-  Stream<Map<String, dynamic>> _createIncomingStream() {
-    return _process.stdout
-        .transform(const _ByteLspMessageTransformer())
-        .transform(utf8.decoder)
-        .transform(const _JsonDecoder())
-        .where((data) => data.isNotEmpty);
+  void _closeInternal() {
+    _debugLog('[LSP Client] Internal close called');
+    _debugLog('[LSP Client] Close called from: ${StackTrace.current}');
+
+    if (_closed) return;
+    _closed = true;
+    _isListening = false;
+
+    for (final completer in _pendingRequests.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(StateError('LSP client closed'));
+      }
+    }
+    _pendingRequests.clear();
+
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+
+    _incomingSubscription?.cancel();
+    _notificationsController.close();
+    _socket.close();
   }
 }
 
+// 以下常量与原始代码完全相同，保留
 const List<String> _kSemanticTokenTypes = [
   'namespace',
   'type',
@@ -415,134 +443,3 @@ const List<String> _kSemanticTokenModifiers = [
   'documentation',
   'defaultLibrary',
 ];
-
-/// 用于处理 LSP 协议消息的字节流转换器
-class _ByteLspMessageTransformer
-    extends StreamTransformerBase<List<int>, List<int>> {
-  const _ByteLspMessageTransformer();
-
-  @override
-  Stream<List<int>> bind(Stream<List<int>> stream) {
-    final controller = StreamController<List<int>>();
-
-    // 使用 List<int> 作为缓冲区 + 读指针，避免频繁 removeRange 导致的 O(n) 拷贝。
-    var buffer = <int>[];
-    var readIndex = 0;
-    var contentLength = 0;
-    var readingHeader = true;
-
-    void compactBufferIfNeeded() {
-      if (readIndex == 0) return;
-      if (readIndex >= buffer.length) {
-        buffer = <int>[];
-        readIndex = 0;
-        return;
-      }
-      // 避免缓冲区无限增长
-      if (readIndex > 8 * 1024 && readIndex > buffer.length ~/ 2) {
-        buffer = buffer.sublist(readIndex);
-        readIndex = 0;
-      }
-    }
-
-    int indexOfHeaderEnd() {
-      for (var i = readIndex; i <= buffer.length - 4; i++) {
-        if (buffer[i] == 13 &&
-            buffer[i + 1] == 10 &&
-            buffer[i + 2] == 13 &&
-            buffer[i + 3] == 10) {
-          return i;
-        }
-      }
-      return -1;
-    }
-
-    stream.listen(
-      (data) {
-        // 将新数据追加到缓冲区
-        buffer.addAll(data);
-
-        while (true) {
-          if (readingHeader) {
-            // 查找头部结束标记 \r\n\r\n (字节值为 13, 10, 13, 10)
-            final headerEnd = indexOfHeaderEnd();
-
-            if (headerEnd == -1) {
-              compactBufferIfNeeded();
-              break;
-            }
-
-            // 解析 Content-Length
-            // 将头部字节转换为字符串以便解析
-            final headerStr = ascii.decode(
-              buffer.sublist(readIndex, headerEnd),
-              allowInvalid: true,
-            );
-
-            final lengthMatch = RegExp(
-              r'Content-Length: (\d+)',
-            ).firstMatch(headerStr);
-
-            if (lengthMatch == null) {
-              controller.addError(
-                'Invalid LSP message: missing Content-Length',
-              );
-              return;
-            }
-
-            contentLength = int.parse(lengthMatch.group(1)!);
-
-            // 移动读指针越过 header（包括 \r\n\r\n）
-            readIndex = headerEnd + 4;
-
-            readingHeader = false;
-          } else {
-            // 检查缓冲区中的字节数是否足够
-            if (buffer.length - readIndex < contentLength) {
-              compactBufferIfNeeded();
-              break;
-            }
-
-            // 提取消息体
-            final endIndex = readIndex + contentLength;
-            final messageBytes = buffer.sublist(readIndex, endIndex);
-
-            controller.add(messageBytes);
-
-            // 移动读指针
-            readIndex = endIndex;
-
-            readingHeader = true;
-            compactBufferIfNeeded();
-          }
-
-          if (buffer.isEmpty) break;
-        }
-      },
-      onError: controller.addError,
-      onDone: controller.close,
-      cancelOnError: true,
-    );
-
-    return controller.stream;
-  }
-}
-
-/// 将 JSON 字符串流解码为 Map 对象流的转换器
-class _JsonDecoder extends StreamTransformerBase<String, Map<String, dynamic>> {
-  const _JsonDecoder();
-
-  @override
-  Stream<Map<String, dynamic>> bind(Stream<String> stream) {
-    return stream.map((jsonString) {
-      try {
-        return jsonDecode(jsonString) as Map<String, dynamic>;
-      } catch (e) {
-        _debugLog(
-          '[LSP Client] Failed to decode JSON (len=${jsonString.length}): $e',
-        );
-        rethrow;
-      }
-    });
-  }
-}
