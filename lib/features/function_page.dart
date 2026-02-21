@@ -86,8 +86,8 @@ class MobileView extends ConsumerWidget {
       body: shadcn.ShadcnLayer(
         theme: shadcn.ThemeData(
           colorScheme: Theme.of(context).brightness == Brightness.light
-              ? shadcn.ColorSchemes.lightDefaultColor
-              : shadcn.ColorSchemes.darkDefaultColor,
+              ? shadcn.ColorSchemes.lightNeutral
+              : shadcn.ColorSchemes.darkNeutral,
         ),
         child: shadcn.ResizablePanel.vertical(
           draggerBuilder: (context) {
@@ -147,8 +147,8 @@ class TabletView extends ConsumerWidget {
             child: shadcn.ShadcnLayer(
               theme: shadcn.ThemeData(
                 colorScheme: Theme.of(context).brightness == Brightness.light
-                    ? shadcn.ColorSchemes.lightDefaultColor
-                    : shadcn.ColorSchemes.darkDefaultColor,
+                    ? shadcn.ColorSchemes.lightNeutral
+                    : shadcn.ColorSchemes.darkNeutral,
               ),
               child: shadcn.ResizablePanel.vertical(
                 draggerBuilder: (context) {
@@ -286,8 +286,8 @@ class DesktopView extends ConsumerWidget {
     return shadcn.ShadcnLayer(
       theme: shadcn.ThemeData(
         colorScheme: Theme.of(context).brightness == Brightness.light
-            ? shadcn.ColorSchemes.lightDefaultColor
-            : shadcn.ColorSchemes.darkDefaultColor,
+            ? shadcn.ColorSchemes.lightNeutral
+            : shadcn.ColorSchemes.darkNeutral,
       ),
       child: shadcn.ResizablePanel.horizontal(
         draggerBuilder: (context) {

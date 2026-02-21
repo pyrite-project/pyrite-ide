@@ -45,7 +45,7 @@ dependencies:
   animations: ^2.0.11
   responsive_framework: ^1.5.1
   iconify_flutter_plus: ^1.0.4
-  shadcn_flutter: ^0.0.47
+  shadcn_flutter: ^0.0.50
   dynamic_color: ^1.8.1
   window_manager: ^0.5.1
   file_selector: ^1.1.0
