@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
+import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/core/services/pylsp/features.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
@@ -321,12 +322,22 @@ class _EditCoreState extends ConsumerState<EditCore> {
           ),
           wordWrap: ref.watch(editorWordWrap),
           onChanged: (value) {
-            final TabData nowTab = ref.read(tabbedViewController).selectedTab!;
-            scheduleDidChange(
-              path: nowTab.value["id"],
-              controller: nowTab.value["editor_controller"],
-              client: client,
-            );
+            TabData nowTab;
+            try {
+              nowTab = ref.read(tabbedViewController).selectedTab!;
+              scheduleDidChange(
+                path: nowTab.value["id"],
+                controller: nowTab.value["editor_controller"],
+                client: client,
+              );
+            } catch (e) {
+              nowTab = ref.read(expansionViewController).selectedTab!;
+              scheduleDidChange(
+                path: nowTab.value["id"],
+                controller: nowTab.value["editor_controller"],
+                client: client,
+              );
+            }
           },
           autofocus: true,
         ),

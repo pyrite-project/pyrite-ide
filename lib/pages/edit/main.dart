@@ -99,7 +99,7 @@ class ExpansionPage extends ConsumerWidget {
                             .value["type"] ==
                         "file") {
                   CodeLineEditingController editorController = ref
-                      .read(tabbedViewController)
+                      .read(expansionViewController)
                       .selectedTab!
                       .value["editor_controller"];
                   editorController.undo();
