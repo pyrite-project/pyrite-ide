@@ -19,17 +19,30 @@ android {
         jvmTarget = '17'
     }
 
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
+    packagingOptions {
+        doNotStrip "*/arm64-v8a/libpython*.so"
+        doNotStrip "*/armeabi-v7a/libpython*.so"
+        doNotStrip "*/x86/libpython*.so"
+        doNotStrip "*/x86_64/libpython*.so"
+    }
+
     defaultConfig {
         applicationId "com.can1425.pyrite_ide"
         minSdkVersion flutter.minSdkVersion
-        //noinspection ExpiredTargetSdkVersion
-        targetSdk 28
+        targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode
         versionName flutter.versionName
 
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a" //, "arm64-v8a", "x86", "x86_64"
         }
+        
         /*
         chaquopy {
             version "3.10"

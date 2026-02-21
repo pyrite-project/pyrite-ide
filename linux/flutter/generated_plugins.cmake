@@ -8,6 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_libserialport
   open_file_linux
   screen_retriever_linux
+  serious_python_linux
   window_manager
 )
 

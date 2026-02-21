@@ -7,6 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_windows
   flutter_libserialport
   screen_retriever_windows
+  serious_python_windows
   window_manager
 )
 
