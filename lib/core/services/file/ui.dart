@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
-import 'package:pyrite_ide/core/services/file/main.dart';
+import 'package:pyrite_ide/core/services/file/local.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
 void createFileAction(WidgetRef ref) async {

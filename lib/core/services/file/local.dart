@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 
-final StateProvider<Directory?> directory = StateProvider<Directory?>(
+final StateProvider<Directory?> rootDirectory = StateProvider<Directory?>(
+  (ref) => null,
+);
+final StateProvider<String?> selectedPath = StateProvider<String?>(
   (ref) => null,
 );
 
@@ -32,7 +35,7 @@ Future<Directory?> getDirectory(WidgetRef ref) async {
   final Directory? dir;
   if (path != null) {
     dir = Directory(path);
-    ref.watch(directory.notifier).state = dir;
+    ref.watch(rootDirectory.notifier).state = dir;
     return dir;
   } else {
     return null;
@@ -54,9 +57,9 @@ Future<Stream<FileSystemEntity>> getFilesList(
   String? path,
 }) async {
   Stream<FileSystemEntity> datas;
-  if (ref.read(directory) != null &&
-      (path == null || path == ref.read(directory)!.path)) {
-    datas = ref.read(directory)!.list();
+  if (ref.read(rootDirectory) != null &&
+      (path == null || path == ref.read(rootDirectory)!.path)) {
+    datas = ref.read(rootDirectory)!.list();
   } else {
     if (path != null) {
       datas = Directory(path).list();

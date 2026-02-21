@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/riverpod.dart';
-import 'package:pyrite_ide/core/services/file/main.dart';
+import 'package:pyrite_ide/core/services/file/local.dart';
 import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 
@@ -11,7 +11,7 @@ class LspClientNotifier extends AsyncNotifier<LspClient> {
 
     ref.onDispose(() => client.close());
 
-    final workspaceDir = ref.read(directory);
+    final workspaceDir = ref.read(rootDirectory);
     final rootUri = workspaceDir == null
         ? null
         : Uri.directory(workspaceDir.path).toString();
