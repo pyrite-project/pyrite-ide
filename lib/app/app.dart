@@ -41,7 +41,7 @@ class PyriteIDE extends ConsumerWidget {
           ),
           routerConfig: routes,
           builder: (context, child) {
-            ref.read(lspClientProvider);
+            // ref.read(lspClientProvider);
             return Material(
               child: ResponsiveBreakpoints.builder(
                 child: child!,

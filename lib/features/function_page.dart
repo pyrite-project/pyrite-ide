@@ -197,7 +197,7 @@ class DesktopView extends ConsumerWidget {
       // e.g. "/settings/about" => "/settings"
       if (selectedIndexValue >= desktopRailItems.length) {
         selectedIndexValue = 0;
-        context.go(home);
+        context.go(file);
       }
       ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
     });

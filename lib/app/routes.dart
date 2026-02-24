@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
-import 'package:pyrite_ide/pages/home/main.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
@@ -9,6 +8,7 @@ import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
 import 'package:pyrite_ide/pages/tools/main.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 
 CustomTransitionPage topCustomTransitionPage({
   required Widget child,
@@ -29,18 +29,17 @@ CustomTransitionPage topCustomTransitionPage({
 GoRouter routes = GoRouter(
   redirect: (context, state) {
     if (state.matchedLocation == "/") {
-      return "/index";
+      if (ResponsiveBreakpoints.of(context).isDesktop) {
+        return "/file";
+      } else {
+        return "/editor";
+      }
     }
     return null;
   },
   routes: [
     ShellRoute(
       routes: [
-        GoRoute(
-          path: '/index',
-          pageBuilder: (context, state) =>
-              topCustomTransitionPage(child: const Home(), state: state),
-        ),
         GoRoute(
           path: '/file',
           pageBuilder: (context, state) => topCustomTransitionPage(
@@ -82,11 +81,10 @@ GoRouter routes = GoRouter(
 );
 
 // 地址别名
-const String home = '/index';
 const String file = '/file';
 const String tools = '/tools';
 const String settings = '/settings';
 const String edit = '/edit';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [home, file, tools, settings, edit];
+const List<String> routesName = [file, tools, settings, edit];
