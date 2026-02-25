@@ -45,16 +45,16 @@ void openFolderAction(WidgetRef ref) async {
 
 void saveFileAction(WidgetRef ref) {
   final TabData? nowTab = ref.read(tabbedViewController).selectedTab;
-  if (nowTab != null && nowTab.value["type"] == "file") {
-    saveFile(nowTab.value["file"], nowTab.value["editor_controller"].text);
+  if (nowTab != null && nowTab.value.type == "file") {
+    saveFile(nowTab.value.file!, nowTab.value.editorController!.text);
     afterFileSave();
   }
 }
 
 void saveAsAction(WidgetRef ref) async {
   final TabData? nowTab = ref.read(tabbedViewController).selectedTab;
-  if (nowTab != null && nowTab.value["type"] == "file") {
-    final bool state = await saveAs(nowTab.value["editor_controller"].text);
+  if (nowTab != null && nowTab.value.type == "file") {
+    final bool state = await saveAs(nowTab.value.editorController!.text);
     if (state) afterFileSave();
   }
 }

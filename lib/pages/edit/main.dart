@@ -22,12 +22,13 @@ class Edit extends ConsumerWidget {
               icon: Icon(Icons.undo, size: 20),
               onPressed: () {
                 if (ref.read(tabbedViewController).selectedTab != null &&
-                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                    ref.read(tabbedViewController).selectedTab!.value.type ==
                         "file") {
                   CodeLineEditingController editorController = ref
                       .read(tabbedViewController)
                       .selectedTab!
-                      .value["editor_controller"];
+                      .value
+                      .editorController!;
                   editorController.undo();
                 }
               },
@@ -36,12 +37,13 @@ class Edit extends ConsumerWidget {
               icon: Icon(Icons.redo, size: 20),
               onPressed: () {
                 if (ref.read(tabbedViewController).selectedTab != null &&
-                    ref.read(tabbedViewController).selectedTab!.value["type"] ==
+                    ref.read(tabbedViewController).selectedTab!.value.type ==
                         "file") {
                   CodeLineEditingController editorController = ref
                       .read(tabbedViewController)
                       .selectedTab!
-                      .value["editor_controller"];
+                      .value
+                      .editorController!;
                   editorController.redo();
                 }
               },
@@ -93,15 +95,13 @@ class ExpansionPage extends ConsumerWidget {
               icon: Icon(Icons.undo, size: 20),
               onPressed: () {
                 if (ref.read(expansionViewController).selectedTab != null &&
-                    ref
-                            .read(expansionViewController)
-                            .selectedTab!
-                            .value["type"] ==
+                    ref.read(expansionViewController).selectedTab!.value.type ==
                         "file") {
                   CodeLineEditingController editorController = ref
                       .read(expansionViewController)
                       .selectedTab!
-                      .value["editor_controller"];
+                      .value
+                      .editorController!;
                   editorController.undo();
                 }
               },
@@ -110,15 +110,13 @@ class ExpansionPage extends ConsumerWidget {
               icon: Icon(Icons.redo, size: 20),
               onPressed: () {
                 if (ref.read(expansionViewController).selectedTab != null &&
-                    ref
-                            .read(expansionViewController)
-                            .selectedTab!
-                            .value["type"] ==
+                    ref.read(expansionViewController).selectedTab!.value.type ==
                         "file") {
                   CodeLineEditingController editorController = ref
                       .read(expansionViewController)
                       .selectedTab!
-                      .value["editor_controller"];
+                      .value
+                      .editorController!;
                   editorController.redo();
                 }
               },

@@ -35,8 +35,8 @@ final StateProvider<TabbedViewController> expansionViewController =
           ),
         ],
         onTabRemove: (tabData) {
-          if (tabData.value["type"] == "file") {
-            final String path = tabData.value["id"];
+          if (tabData.value.type == "file") {
+            final String path = tabData.value.filePath;
             final String uri = Uri.file(path).toString();
 
             // Dispose editor resources eagerly to avoid leaks on large files.
@@ -44,33 +44,6 @@ final StateProvider<TabbedViewController> expansionViewController =
             final controller = editorControllerMap[path];
             controller?.dispose();
             editorControllerMap.remove(path);
-
-            documentVersions.remove(path);
-            didChangeDebounceTimers.remove(path)?.cancel();
-            lastSyncedTextByPath.remove(path);
-            textLengthHintByPath.remove(path);
-
-            // Drop diagnostics for closed documents to keep memory bounded.
-            ref.read(diagnosticsByUri.notifier).state = {
-              ...ref.read(diagnosticsByUri),
-            }..remove(uri);
-            ref.read(documentHighlightsByUri.notifier).state = {
-              ...ref.read(documentHighlightsByUri),
-            }..remove(uri);
-            ref.read(semanticTokensByUri.notifier).state = {
-              ...ref.read(semanticTokensByUri),
-            }..remove(uri);
-
-            unawaited(() async {
-              try {
-                final client = await PythonLspService(ref).client;
-                client.sendNotification('textDocument/didClose', {
-                  'textDocument': {'uri': uri},
-                });
-              } catch (_) {
-                // Ignore: LSP may be unavailable during shutdown/init.
-              }
-            }());
           }
         },
       ),

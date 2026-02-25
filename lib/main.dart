@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:serious_python/serious_python.dart';
@@ -21,7 +22,7 @@ void main() {
   UseWindow().init();
 
   SeriousPython.run(getPythonPath()!);
-  container.read(lspClientProvider);
+  // container.read(lspClientProvider);
 
   runApp(
     UncontrolledProviderScope(container: container, child: const PyriteIDE()),

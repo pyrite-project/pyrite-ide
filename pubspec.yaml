@@ -66,7 +66,9 @@ dependencies:
   flutter_libserialport: ^0.6.0
   usb_serial: ^0.5.2
   serious_python: ^0.9.9
-  web_socket_channel: ^2.4.0
+  web_socket_channel: ^3.0.3
+  code_forge:
+    git: https://github.com/Can1425/code_forge
 
 dev_dependencies:
   flutter_test:

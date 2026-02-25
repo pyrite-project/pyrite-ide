@@ -7,7 +7,6 @@ void _debugLog(String message) {
   print(message);
 }
 
-/// 连接到已运行的 LSP WebSocket 服务器（假设监听 127.0.0.1:2026）
 Future<LspClient> connectToLspServer() async {
   _debugLog('[LSP] Connecting to Python LSP Server at ws://127.0.0.1:2026...');
 
@@ -17,7 +16,7 @@ Future<LspClient> connectToLspServer() async {
 
   for (int i = 0; i < maxAttempts; i++) {
     try {
-      socket = await WebSocket.connect('ws://127.0.0.1:2026');
+      socket = await WebSocket.connect('ws://127.0.0.1:2025');
       break;
     } catch (_) {
       await Future.delayed(delay);

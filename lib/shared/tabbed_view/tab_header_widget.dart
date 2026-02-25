@@ -197,8 +197,8 @@ class TabHeaderWidget extends StatelessWidget {
         tabTheme.closeIcon,
         onPressed: () async {
           final TabData nowTab = provider.controller.selectedTab!;
-          final String path = nowTab.value["id"];
-          if (nowTab.value["type"] == "file" &&
+          final String path = nowTab.value.filePath;
+          if (nowTab.value.type == "file" &&
               !container.read(openFilesisSavedMap[path]!)) {
             showDialog(
               context: context,
@@ -209,8 +209,8 @@ class TabHeaderWidget extends StatelessWidget {
                   TextButton(
                     onPressed: () async {
                       saveFile(
-                        nowTab.value["file"],
-                        nowTab.value["editor_controller"].text,
+                        nowTab.value.file!,
+                        nowTab.value.editorController!.text,
                       );
                       afterFileSave();
                       context.pop();
