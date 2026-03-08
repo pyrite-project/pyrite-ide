@@ -178,28 +178,6 @@ class AppActionBar extends ConsumerWidget {
               shortcut: SingleActivator(LogicalKeyboardKey.keyV, control: true),
             ),
             PopupMenuDivider(),
-            buildMenuItemButton(
-              context,
-              "光标移动至行首",
-              () => moveCursorToLineStartAction(ref),
-              leadingIconData: Icons.start,
-            ),
-            buildMenuItemButton(
-              context,
-              "光标移动至行尾",
-              () => moveCursorToLineEndAction(ref),
-            ),
-            buildMenuItemButton(
-              context,
-              "光标移动至开头",
-              () => moveCursorToPageStartAction(ref),
-              leadingIconData: Icons.eject,
-            ),
-            buildMenuItemButton(
-              context,
-              "光标移动至结尾",
-              () => moveCursorToPageEndAction(ref),
-            ),
           ],
           child: Text("编辑"),
         ),

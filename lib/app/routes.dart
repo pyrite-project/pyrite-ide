@@ -69,9 +69,9 @@ GoRouter routes = GoRouter(
           ],
         ),
         GoRoute(
-          path: '/edit',
+          path: '/editor',
           pageBuilder: (context, state) =>
-              topCustomTransitionPage(child: const Edit(), state: state),
+              topCustomTransitionPage(child: const Editor(), state: state),
         ),
       ],
       builder: (context, state, child) =>
@@ -84,7 +84,7 @@ GoRouter routes = GoRouter(
 const String file = '/file';
 const String tools = '/tools';
 const String settings = '/settings';
-const String edit = '/edit';
+const String edit = '/editor';
 
 // 为 NavigationBar 提供
 const List<String> routesName = [file, tools, settings, edit];

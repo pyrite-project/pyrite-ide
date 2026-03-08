@@ -1,7 +1,7 @@
 $env:SERIOUS_PYTHON_SITE_PACKAGES = "E:\Can1425\pyrite_ide\build\__pypackages__"
 
 # Android
-dart run serious_python:main package python --platform Android --requirements "--pre" --requirements "-rpython/requirements.txt" --asset "assets/android/python.zip" --verbose
+dart run serious_python:main package python --platform Android --requirements "--pre" --requirements "-rpython/requirements.txt" --requirements "--find-links=python/android_wheel/" --asset "assets/android/python.zip" --verbose
 
 # Windows
 dart run serious_python:main package python --platform Windows --requirements "--pre" --requirements "-rpython/requirements.txt" --asset "assets/windows/python.zip" --verbose

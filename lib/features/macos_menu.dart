@@ -100,22 +100,6 @@ class MacOSMenu extends ConsumerWidget {
             ),
             onSelected: () => pasteAction(ref),
           ),
-          PlatformMenuItem(
-            label: "光标移动至行首",
-            onSelected: () => moveCursorToLineStartAction(ref),
-          ),
-          PlatformMenuItem(
-            label: "光标移动至行尾",
-            onSelected: () => moveCursorToLineEndAction(ref),
-          ),
-          PlatformMenuItem(
-            label: "光标移动至开头",
-            onSelected: () => moveCursorToPageStartAction(ref),
-          ),
-          PlatformMenuItem(
-            label: "光标移动至结尾",
-            onSelected: () => moveCursorToPageEndAction(ref),
-          ),
         ],
       ),
       PlatformMenu(

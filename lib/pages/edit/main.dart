@@ -1,5 +1,7 @@
+import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
+import 'package:pyrite_ide/core/services/editor/ui.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:re_editor/re_editor.dart';
@@ -9,8 +11,8 @@ import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:flutter/material.dart';
 import 'package:xterm/ui.dart';
 
-class Edit extends ConsumerWidget {
-  const Edit({super.key});
+class Editor extends ConsumerWidget {
+  const Editor({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,33 +22,11 @@ class Edit extends ConsumerWidget {
           children: [
             IconButton(
               icon: Icon(Icons.undo, size: 20),
-              onPressed: () {
-                if (ref.read(tabbedViewController).selectedTab != null &&
-                    ref.read(tabbedViewController).selectedTab!.value.type ==
-                        "file") {
-                  CodeLineEditingController editorController = ref
-                      .read(tabbedViewController)
-                      .selectedTab!
-                      .value
-                      .editorController!;
-                  editorController.undo();
-                }
-              },
+              onPressed: () => undoAction(ref),
             ),
             IconButton(
               icon: Icon(Icons.redo, size: 20),
-              onPressed: () {
-                if (ref.read(tabbedViewController).selectedTab != null &&
-                    ref.read(tabbedViewController).selectedTab!.value.type ==
-                        "file") {
-                  CodeLineEditingController editorController = ref
-                      .read(tabbedViewController)
-                      .selectedTab!
-                      .value
-                      .editorController!;
-                  editorController.redo();
-                }
-              },
+              onPressed: () => redoAction(ref),
             ),
           ],
         ),
@@ -93,33 +73,11 @@ class ExpansionPage extends ConsumerWidget {
           children: [
             IconButton(
               icon: Icon(Icons.undo, size: 20),
-              onPressed: () {
-                if (ref.read(expansionViewController).selectedTab != null &&
-                    ref.read(expansionViewController).selectedTab!.value.type ==
-                        "file") {
-                  CodeLineEditingController editorController = ref
-                      .read(expansionViewController)
-                      .selectedTab!
-                      .value
-                      .editorController!;
-                  editorController.undo();
-                }
-              },
+              onPressed: () => undoAction(ref),
             ),
             IconButton(
               icon: Icon(Icons.redo, size: 20),
-              onPressed: () {
-                if (ref.read(expansionViewController).selectedTab != null &&
-                    ref.read(expansionViewController).selectedTab!.value.type ==
-                        "file") {
-                  CodeLineEditingController editorController = ref
-                      .read(expansionViewController)
-                      .selectedTab!
-                      .value
-                      .editorController!;
-                  editorController.redo();
-                }
-              },
+              onPressed: () => redoAction(ref),
             ),
           ],
         ),

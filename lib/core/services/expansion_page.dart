@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
@@ -8,7 +9,7 @@ import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
-final Map<String, CodeLineEditingController> expansionControllerMap = {};
+final Map<String, CodeForgeController> expansionControllerMap = {};
 
 final StateProvider<TabbedViewController> expansionViewController =
     StateProvider<TabbedViewController>(

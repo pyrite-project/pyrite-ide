@@ -65,10 +65,10 @@ dependencies:
   tolyui_tree: any
   flutter_libserialport: ^0.6.0
   usb_serial: ^0.5.2
-  serious_python: ^0.9.9
+  serious_python: 
+    path: serious-python/src/serious_python
   web_socket_channel: ^3.0.3
-  code_forge:
-    git: https://github.com/Can1425/code_forge
+  code_forge: 9.1.0
 
 dev_dependencies:
   flutter_test:

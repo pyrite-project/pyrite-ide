@@ -17,7 +17,7 @@ import 'package:re_editor/re_editor.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:xterm/xterm.dart';
 
-final Map<String, CodeLineEditingController> editorControllerMap = {};
+final Map<String, CodeForgeController> editorControllerMap = {};
 
 LspClient? client;
 
@@ -124,8 +124,9 @@ Future<CodeForgeController> createNewEditorController(
   }
   final String initialText = await file.readAsString();
   final uri = Uri.file(file.path).toString().split(pattern);
-  final filePath = uri.removeLast();
-  final workspacePath = uri.join(pattern);
+  final List<String> _workspacePath = List.from(uri);
+  _workspacePath.removeLast();
+  final String workspacePath = uri.join(pattern);
   CodeForgeController controller = CodeForgeController(
     lspConfig: LspSocketConfig(
       workspacePath: workspacePath,
@@ -134,6 +135,8 @@ Future<CodeForgeController> createNewEditorController(
     ),
   );
   controller.text = initialText;
+  controller.openedFile = file.path;
+  // controller 在初始化 LSP 的时候会对 openedFile 进行非空断言
   return controller;
 }
 

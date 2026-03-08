@@ -266,7 +266,7 @@ class DesktopView extends ConsumerWidget {
           draggerBuilder: (context) {
             return shadcn.HorizontalResizableDragger();
           },
-          children: buildConsoleView(ref, Edit()),
+          children: buildConsoleView(ref, Editor()),
         ),
       ),
     );

@@ -124,12 +124,11 @@ packages:
   code_forge:
     dependency: "direct main"
     description:
-      path: "."
-      ref: HEAD
-      resolved-ref: "96b69018ef08cceb3975c59c10523588ae54cfef"
-      url: "https://github.com/Can1425/code_forge"
-    source: git
-    version: "8.4.1"
+      name: code_forge
+      sha256: "9504dd0dfe0cfb45565f6beb5586afa5deb6ed83c762640bd4027bf1660a273b"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
+    version: "9.1.0"
   collection:
     dependency: transitive
     description:
@@ -984,51 +983,45 @@ packages:
   serious_python:
     dependency: "direct main"
     description:
-      name: serious_python
-      sha256: "6d286a652a32d637655ed8081a255ac10b1beeb0842b6bdd473cc1ece9fcbfc5"
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.9.9"
+      path: "serious-python/src/serious_python"
+      relative: true
+    source: path
+    version: "0.9.11"
   serious_python_android:
     dependency: transitive
     description:
-      name: serious_python_android
-      sha256: e4c4c09a9c79916a530f2b642d00b5d4f7d4aaa53faef72a50fd910a76d64e93
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.9.9"
+      path: "serious-python/src/serious_python_android"
+      relative: true
+    source: path
+    version: "0.9.11"
   serious_python_darwin:
     dependency: transitive
     description:
-      name: serious_python_darwin
-      sha256: e12f247d8dee6308d7c2a99556ef004ec575c7a30e0a56a5e184136f82e999ca
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.9.9"
+      path: "serious-python/src/serious_python_darwin"
+      relative: true
+    source: path
+    version: "0.9.11"
   serious_python_linux:
     dependency: transitive
     description:
-      name: serious_python_linux
-      sha256: bb86e88aa7640e3d198bdb658ae085dc7e434f849f47fe6822ad324e849c7d87
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.9.9"
+      path: "serious-python/src/serious_python_linux"
+      relative: true
+    source: path
+    version: "0.9.11"
   serious_python_platform_interface:
     dependency: transitive
     description:
-      name: serious_python_platform_interface
-      sha256: "0c27e0891681d4d92c25c3e6a912c3f954211221beba1e03c2d28622248bb7ca"
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.9.9"
+      path: "serious-python/src/serious_python_platform_interface"
+      relative: true
+    source: path
+    version: "0.9.11"
   serious_python_windows:
     dependency: transitive
     description:
-      name: serious_python_windows
-      sha256: "792d6eec6f9352c2d0b2e5373bd215193f7ba5158b4972d7278a3ef7efdaad62"
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.9.9"
+      path: "serious-python/src/serious_python_windows"
+      relative: true
+    source: path
+    version: "0.9.11"
   shadcn_flutter:
     dependency: "direct main"
     description:
@@ -1484,5 +1477,5 @@ packages:
     source: hosted
     version: "0.0.6"
 sdks:
-  dart: ">=3.10.8 <4.0.0"
+  dart: ">=3.11.0 <4.0.0"
   flutter: ">=3.38.4"
