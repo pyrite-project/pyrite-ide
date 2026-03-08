@@ -1,3 +1,6 @@
 [submodule "python"]
 	path = python
 	url = https://github.com/Can1425/pyrite-ide-python
+[submodule "serious-python"]
+	path = serious-python
+	url = https://github.com/Can1425/serious-python
