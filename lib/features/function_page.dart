@@ -26,17 +26,14 @@ Widget consolePage() {
             Expanded(
               child: TabBar(
                 tabAlignment: TabAlignment.start,
-                tabs: [
-                  Tab(text: "REPL", height: 35),
-                  Tab(text: "问题", height: 35),
-                ],
+                tabs: [Tab(text: "REPL", height: 30)],
                 isScrollable: true,
               ),
             ),
           ],
         ),
 
-        Expanded(child: TabBarView(children: [ReplView(), QuestionView()])),
+        Expanded(child: TabBarView(children: [ReplView()])),
       ],
     ),
   );

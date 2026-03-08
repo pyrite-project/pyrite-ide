@@ -177,7 +177,6 @@ class AppActionBar extends ConsumerWidget {
               leadingIconData: Icons.paste,
               shortcut: SingleActivator(LogicalKeyboardKey.keyV, control: true),
             ),
-            PopupMenuDivider(),
           ],
           child: Text("编辑"),
         ),

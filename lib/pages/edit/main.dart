@@ -121,27 +121,3 @@ class ReplView extends StatelessWidget {
     return TerminalView(repl, controller: replController);
   }
 }
-
-class QuestionView extends ConsumerWidget {
-  const QuestionView({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ScrollConfiguration(
-      behavior: NoScrollbarBehavior(),
-      child: ListView.builder(
-        addAutomaticKeepAlives: false,
-        itemCount: ref.watch(diagnostics).length,
-        itemBuilder: (context, index) {
-          List<DiagnosticItem> nowDiagnostics = ref.watch(diagnostics);
-          return ListTile(
-            title: Text(nowDiagnostics[index].message),
-            subtitle: Text(
-              "[行 ${nowDiagnostics[index].range.start["line"] + 1}, 列 ${nowDiagnostics[index].range.start["character"] + 1}]",
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
