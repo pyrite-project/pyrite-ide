@@ -2,9 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/file/local.dart' as local;
-import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/file/ui.dart';
-import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 
 class ProjectFiles extends ConsumerWidget {
@@ -34,7 +32,9 @@ class ProjectFiles extends ConsumerWidget {
               onTap: (node) async {
                 if (!node.data.isDicrectory) {
                   File file = await local.getOpenFile(node.id, ref);
-                  openFileAction(context, ref, file: file);
+                  if (context.mounted) {
+                    openFileAction(context, ref, file: file);
+                  }
                 }
               },
               nodes: ref.watch(local.treeItems),
@@ -70,7 +70,7 @@ class ProjectFiles extends ConsumerWidget {
     TreeNode<local.FileTreeItem> node,
     WidgetRef ref,
   ) async {
-    print(node.isExpanded);
+    // print(node.isExpanded);
     if (node.isLeaf == null) {
       return await local.buildFileListItems(
         ref,

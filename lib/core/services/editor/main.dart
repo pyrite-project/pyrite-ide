@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:code_forge/LSP/lsp.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter/material.dart';
@@ -9,12 +8,9 @@ import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/file/local.dart';
 import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
-import 'package:pyrite_ide/core/services/pylsp/main.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
-import 'package:pyrite_ide/features/edit_core/lsp_span_builder.dart';
 import 'package:pyrite_ide/pages/edit/welcome.dart';
-import 'package:re_editor/re_editor.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:xterm/xterm.dart';
 
@@ -65,7 +61,7 @@ final StateProvider<TabbedViewController> tabbedViewController =
         onTabRemove: (tabData) {
           if (tabData.value.type == "file") {
             final String path = tabData.value.filePath;
-            final String uri = Uri.file(path).toString();
+            // final String uri = Uri.file(path).toString();
 
             // Dispose editor resources eagerly to avoid leaks on large files.
             openFilesMap.remove(path);
@@ -125,7 +121,8 @@ Future<CodeForgeController> createNewEditorController(
   }
   final String initialText = await file.readAsString();
   final uri = Uri.file(file.path).toString().split(pattern);
-  final fileName = uri.removeLast();
+  // final fileName = uri.removeLast();
+  uri.removeLast();
   final workspacePath = uri.join(pattern);
   CodeForgeController controller = CodeForgeController(
     lspConfig: (ref.read(useLsp))

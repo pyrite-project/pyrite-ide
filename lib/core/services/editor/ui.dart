@@ -1,29 +1,32 @@
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
-import 'package:re_editor/re_editor.dart';
 
 void undoAction(WidgetRef ref) {
   if (ref.read(tabbedViewController).selectedTab != null &&
       ref.read(tabbedViewController).selectedTab!.value.type == "file") {
+    /*
     CodeForgeController editorController = ref
         .read(tabbedViewController)
         .selectedTab!
         .value
         .editorController!;
-    // editorController.undo();
+    editorController.undo();
+    */
   }
 }
 
 void redoAction(WidgetRef ref) {
   if (ref.read(tabbedViewController).selectedTab != null &&
       ref.read(tabbedViewController).selectedTab!.value.type == "file") {
+    /*
     CodeForgeController editorController = ref
         .read(tabbedViewController)
         .selectedTab!
         .value
         .editorController!;
-    // editorController.redo();
+    editorController.redo();
+    */
   }
 }
 

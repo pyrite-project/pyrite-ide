@@ -1,11 +1,7 @@
-import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/editor/ui.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
-import 'package:pyrite_ide/core/services/pylsp/data.dart';
-import 'package:re_editor/re_editor.dart';
-import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:flutter/material.dart';

@@ -516,22 +516,6 @@ packages:
       url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
     source: hosted
     version: "0.20.2"
-  isolate_contactor:
-    dependency: transitive
-    description:
-      name: isolate_contactor
-      sha256: "6ba8434ceb58238a1389d6365111a3efe7baa1c68a66f4db6d63d351cf6c3a0f"
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "4.1.0"
-  isolate_manager:
-    dependency: transitive
-    description:
-      name: isolate_manager
-      sha256: "22ed0c25f80ec3b5f21e3a55d060f4650afff33f27c2dff34c0f9409d5759ae5"
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "4.1.5+1"
   jovial_misc:
     dependency: transitive
     description:
@@ -884,14 +868,6 @@ packages:
       url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
     source: hosted
     version: "3.2.2"
-  re_editor:
-    dependency: "direct main"
-    description:
-      name: re_editor
-      sha256: dd4e6ca7350a8fa0cda4e425b82a0c3c010f0f6b3f618c74223e05b8129ab629
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "0.8.0"
   re_highlight:
     dependency: "direct main"
     description:
