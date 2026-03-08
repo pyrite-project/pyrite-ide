@@ -63,7 +63,7 @@ class EditorWelcome extends ConsumerWidget {
                   label: Text("打开文件夹"),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => openFileAction(ref),
+                  onPressed: () => openFileAction(context, ref),
                   icon: Icon(Icons.file_open_outlined),
                   label: Text("打开文件"),
                 ),

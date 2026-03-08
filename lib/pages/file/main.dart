@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/file/local.dart' as local;
 import 'package:pyrite_ide/core/services/editor/main.dart';
+import 'package:pyrite_ide/core/services/file/ui.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 
@@ -25,64 +26,42 @@ class ProjectFiles extends ConsumerWidget {
           ),
         ],
       ),
-      body: MaterialButton(
-        hoverColor: Theme.of(context).colorScheme.surface,
-        splashColor: Theme.of(context).colorScheme.surface,
-        onPressed: () => ref.read(local.selectedPath.notifier).state = null,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: TolyTree<local.FileTreeItem>(
-                  showConnectingLines: true,
-                  onTap: (node) async {
-                    ref.read(local.selectedPath.notifier).state = node.id;
-                    print(ref.read(local.selectedPath));
-                    if (!node.data.isDicrectory) {
-                      File file = await local.getOpenFile(node.id, ref);
-                      TabData newTab = await createNewFileTab(
-                        file,
-                        ref,
-                        await createNewEditorController(file, ref),
-                      );
-                      ref.read(tabbedViewController).addTab(newTab);
-                      ref.read(tabbedViewController).selectTab(newTab);
-                    }
-                  },
-                  nodes: ref.watch(local.treeItems),
-                  loadData: (node) => _loadChildren(node, ref),
-                  nodeBuilder: (node) => Tooltip(
-                    message:
-                        "${node.data.name}${(ref.watch(local.selectedPath) == node.id) ? "（已选择）" : ""}",
-                    child: Container(
-                      color: (ref.watch(local.selectedPath) == node.id)
-                          ? Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest
-                          : null,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 4,
-                        horizontal: 4,
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: TolyTree<local.FileTreeItem>(
+              showConnectingLines: true,
+              onTap: (node) async {
+                if (!node.data.isDicrectory) {
+                  File file = await local.getOpenFile(node.id, ref);
+                  openFileAction(context, ref, file: file);
+                }
+              },
+              nodes: ref.watch(local.treeItems),
+              loadData: (node) => _loadChildren(node, ref),
+              nodeBuilder: (node) => Tooltip(
+                message: node.data.name,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 4,
+                    horizontal: 0,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        node.data.icon,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 18,
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            node.data.icon,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(node.data.name),
-                        ],
-                      ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(node.data.name),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

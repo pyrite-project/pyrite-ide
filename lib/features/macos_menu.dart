@@ -13,10 +13,10 @@ class MacOSMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return PlatformMenuBar(menus: _build(ref), child: app);
+    return PlatformMenuBar(menus: _build(context, ref), child: app);
   }
 
-  List<PlatformMenuItem> _build(WidgetRef ref) {
+  List<PlatformMenuItem> _build(BuildContext context, WidgetRef ref) {
     return [
       PlatformMenu(
         label: appName,
@@ -46,7 +46,7 @@ class MacOSMenu extends ConsumerWidget {
               ),
               PlatformMenuItem(
                 label: '打开文件',
-                onSelected: () => openFileAction(ref),
+                onSelected: () => openFileAction(context, ref),
               ),
               PlatformMenuItem(
                 label: '打开文件夹',

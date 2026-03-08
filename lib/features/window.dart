@@ -95,7 +95,7 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "打开文件",
-              () => openFileAction(ref),
+              () => openFileAction(context, ref),
               leadingIconData: Icons.open_in_browser,
             ),
             buildMenuItemButton(

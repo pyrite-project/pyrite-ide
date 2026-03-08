@@ -124,9 +124,8 @@ Future<CodeForgeController> createNewEditorController(
   }
   final String initialText = await file.readAsString();
   final uri = Uri.file(file.path).toString().split(pattern);
-  final List<String> _workspacePath = List.from(uri);
-  _workspacePath.removeLast();
-  final String workspacePath = uri.join(pattern);
+  final fileName = uri.removeLast();
+  final workspacePath = uri.join(pattern);
   CodeForgeController controller = CodeForgeController(
     lspConfig: LspSocketConfig(
       workspacePath: workspacePath,
@@ -136,7 +135,6 @@ Future<CodeForgeController> createNewEditorController(
   );
   controller.text = initialText;
   controller.openedFile = file.path;
-  // controller 在初始化 LSP 的时候会对 openedFile 进行非空断言
   return controller;
 }
 

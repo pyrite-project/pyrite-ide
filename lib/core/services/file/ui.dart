@@ -1,8 +1,12 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/file/local.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
 void createFileAction(WidgetRef ref) async {
@@ -22,8 +26,8 @@ void createFileAction(WidgetRef ref) async {
   }
 }
 
-void openFileAction(WidgetRef ref) async {
-  File? file = await getFile();
+void openFileAction(BuildContext context, WidgetRef ref, {File? file}) async {
+  file ??= await getFile();
   if (file != null) {
     final TabData newTab = await createNewFileTab(
       file,
@@ -32,6 +36,13 @@ void openFileAction(WidgetRef ref) async {
     );
     ref.read(tabbedViewController).addTab(newTab);
     ref.read(tabbedViewController).selectTab(newTab);
+    if (context.mounted) {
+      if (ResponsiveBreakpoints.of(context).isMobile) {
+        ref.read(mobileSelectedIndex.notifier).state = 3;
+      } else if (ResponsiveBreakpoints.of(context).isTablet) {
+        ref.read(tabletSelectedIndex.notifier).state = 3;
+      }
+    }
   }
 }
 
