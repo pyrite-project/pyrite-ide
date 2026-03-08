@@ -3,6 +3,7 @@ import 'package:pyrite_ide/pages/edit/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
+import 'package:pyrite_ide/pages/settings/lsp.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
@@ -60,6 +61,10 @@ GoRouter routes = GoRouter(
             GoRoute(
               path: '/editor',
               builder: (context, state) => const EditorSettings(),
+            ),
+            GoRoute(
+              path: '/lsp',
+              builder: (context, state) => const LspSettings(),
             ),
             GoRoute(
               path: "/style",

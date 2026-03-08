@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/file/local.dart';
 import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/core/services/pylsp/main.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_span_builder.dart';
 import 'package:pyrite_ide/pages/edit/welcome.dart';
@@ -127,11 +128,15 @@ Future<CodeForgeController> createNewEditorController(
   final fileName = uri.removeLast();
   final workspacePath = uri.join(pattern);
   CodeForgeController controller = CodeForgeController(
-    lspConfig: LspSocketConfig(
-      workspacePath: workspacePath,
-      languageId: "python",
-      serverUrl: "ws://127.0.0.1:2026",
-    ),
+    lspConfig: (ref.read(useLsp))
+        ? LspSocketConfig(
+            workspacePath: workspacePath,
+            languageId: "python",
+            serverUrl: "ws://${ref.read(lspWebScoketPath)}",
+            disableWarning: ref.read(disableWarning),
+            disableError: ref.read(disableError),
+          )
+        : null,
   );
   controller.text = initialText;
   controller.openedFile = file.path;

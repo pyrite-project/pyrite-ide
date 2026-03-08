@@ -40,3 +40,10 @@ void customizationEditorTextFont() async {
 StateProvider<double> editorFontSize = StateProvider<double>((ref) => 15);
 StateProvider<bool> editorWordWrap = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);
+
+StateProvider<bool> useLsp = StateProvider<bool>((ref) => true);
+StateProvider<String> lspWebScoketPath = StateProvider<String>(
+  (ref) => "127.0.0.1:2026",
+);
+StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
+StateProvider<bool> disableError = StateProvider<bool>((ref) => false);

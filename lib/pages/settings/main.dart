@@ -28,6 +28,12 @@ class Settings extends StatelessWidget {
               subtitle: UseText("终端字体及大小、交互式解释器模式"),
             ),
             ListTile(
+              leading: Icon(Icons.message),
+              title: UseText("语言服务器"),
+              subtitle: UseText("是否启用语言服务器、WebSocket 地址"),
+              onTap: () => context.push("/settings/lsp"),
+            ),
+            ListTile(
               leading: Icon(Icons.color_lens),
               title: UseText("外观与风格"),
               subtitle: UseText("颜色风格、显示模式"),
