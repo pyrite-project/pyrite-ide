@@ -2,7 +2,6 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
-    // id "com.chaquo.python"
 }
 
 android {
@@ -38,21 +37,6 @@ android {
         targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode
         versionName flutter.versionName
-
-        ndk {
-            abiFilters "arm64-v8a", "x86_64" //, "arm64-v8a", "x86", "x86_64"
-        }
-        
-        /*
-        chaquopy {
-            version "3.10"
-        }
-        python {
-            pip {
-                install "python-lsp-server[all]"
-            }
-        }
-        */
     }
 
     buildTypes {
