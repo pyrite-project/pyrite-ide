@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/pages/edit/main.dart';
+import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';

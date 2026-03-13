@@ -108,12 +108,3 @@ class ExpansionPage extends ConsumerWidget {
     );
   }
 }
-
-class ReplView extends StatelessWidget {
-  const ReplView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return TerminalView(repl, controller: replController);
-  }
-}

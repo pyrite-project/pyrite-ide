@@ -9,12 +9,16 @@ import 'package:pyrite_ide/core/services/board_manager/main.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/window.dart';
-import 'package:pyrite_ide/pages/edit/main.dart';
+import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
+
+import 'package:pyrite_ide/core/services/board_manager/desktop.dart' as desktop;
+import 'package:pyrite_ide/core/services/board_manager/android.dart' as android;
 
 Widget consolePage() {
   return DefaultTabController(
@@ -80,18 +84,25 @@ class MobileView extends ConsumerWidget {
     });
     return Scaffold(
       bottomNavigationBar: bottomNavigationBar(context, ref),
-      body: shadcn.ShadcnLayer(
-        theme: shadcn.ThemeData(
-          colorScheme: Theme.of(context).brightness == Brightness.light
-              ? shadcn.ColorSchemes.lightNeutral
-              : shadcn.ColorSchemes.darkNeutral,
-        ),
-        child: shadcn.ResizablePanel.vertical(
-          draggerBuilder: (context) {
-            return shadcn.HorizontalResizableDragger();
-          },
-          children: buildConsoleView(ref, child),
-        ),
+      body: Column(
+        children: [
+          Expanded(
+            child: shadcn.ShadcnLayer(
+              theme: shadcn.ThemeData(
+                colorScheme: Theme.of(context).brightness == Brightness.light
+                    ? shadcn.ColorSchemes.lightNeutral
+                    : shadcn.ColorSchemes.darkNeutral,
+              ),
+              child: shadcn.ResizablePanel.vertical(
+                draggerBuilder: (context) {
+                  return shadcn.HorizontalResizableDragger();
+                },
+                children: buildConsoleView(ref, child),
+              ),
+            ),
+          ),
+          EditorToolsBar(),
+        ],
       ),
     );
   }
@@ -137,24 +148,32 @@ class TabletView extends ConsumerWidget {
       }
     });
     return Scaffold(
-      body: Row(
+      body: Column(
         children: [
-          railNavigationBar(context, ref),
           Expanded(
-            child: shadcn.ShadcnLayer(
-              theme: shadcn.ThemeData(
-                colorScheme: Theme.of(context).brightness == Brightness.light
-                    ? shadcn.ColorSchemes.lightNeutral
-                    : shadcn.ColorSchemes.darkNeutral,
-              ),
-              child: shadcn.ResizablePanel.vertical(
-                draggerBuilder: (context) {
-                  return shadcn.HorizontalResizableDragger();
-                },
-                children: buildConsoleView(ref, child),
-              ),
+            child: Row(
+              children: [
+                railNavigationBar(context, ref),
+                Expanded(
+                  child: shadcn.ShadcnLayer(
+                    theme: shadcn.ThemeData(
+                      colorScheme:
+                          Theme.of(context).brightness == Brightness.light
+                          ? shadcn.ColorSchemes.lightNeutral
+                          : shadcn.ColorSchemes.darkNeutral,
+                    ),
+                    child: shadcn.ResizablePanel.vertical(
+                      draggerBuilder: (context) {
+                        return shadcn.HorizontalResizableDragger();
+                      },
+                      children: buildConsoleView(ref, child),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+          EditorToolsBar(),
         ],
       ),
     );
@@ -199,10 +218,17 @@ class DesktopView extends ConsumerWidget {
       ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
     });
     return Scaffold(
-      body: Row(
+      body: Column(
         children: [
-          railNavigationBar(context, ref),
-          Expanded(child: pageStructure(context, ref)),
+          Expanded(
+            child: Row(
+              children: [
+                railNavigationBar(context, ref),
+                Expanded(child: pageStructure(context, ref)),
+              ],
+            ),
+          ),
+          EditorToolsBar(),
         ],
       ),
     );
@@ -406,6 +432,97 @@ class FunctionPage extends StatelessWidget {
     } else {
       nowViewSelectedIndex = mobileSelectedIndex;
       return buildTitleBar(MobileView(state: state, child: child));
+    }
+  }
+}
+
+class EditorToolsBar extends ConsumerWidget {
+  const EditorToolsBar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: EdgeInsetsGeometry.symmetric(vertical: 5, horizontal: 20),
+      child: Row(
+        spacing: 10,
+        children: [buildLspState(ref), buildBoardConnectState(ref)],
+      ),
+    );
+  }
+
+  Widget buildLspState(WidgetRef ref) {
+    if (ref.watch(lspState) == true) {
+      return Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: Colors.green,
+              borderRadius: BorderRadius.circular(100),
+            ),
+          ),
+          SizedBox(width: 5),
+          Text("LSP"),
+        ],
+      );
+    } else if (ref.watch(lspState) == null) {
+      return Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: Colors.grey,
+              borderRadius: BorderRadius.circular(100),
+            ),
+          ),
+          SizedBox(width: 5),
+          Text("LSP"),
+        ],
+      );
+    } else {
+      return Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(100),
+            ),
+          ),
+          SizedBox(width: 5),
+          Text("LSP"),
+        ],
+      );
+    }
+  }
+
+  Widget buildBoardConnectState(WidgetRef ref) {
+    var platform;
+    if (Platform.isAndroid) {
+      return Row(
+        children: [
+          Icon(Icons.power),
+          Text(
+            (ref.watch(connectState))
+                ? "已连接：${ref.watch(android.selectedPortName)!}"
+                : "暂未连接",
+          ),
+        ],
+      );
+    } else {
+      return Row(
+        children: [
+          Icon(Icons.power, size: 15),
+          Text(
+            (ref.watch(connectState))
+                ? "已连接：${ref.watch(desktop.selectedPortName)!}"
+                : "暂未连接",
+          ),
+        ],
+      );
     }
   }
 }

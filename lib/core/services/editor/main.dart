@@ -10,13 +10,13 @@ import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
-import 'package:pyrite_ide/pages/edit/welcome.dart';
+import 'package:pyrite_ide/pages/editor/welcome.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:xterm/xterm.dart';
 
 final Map<String, CodeForgeController> editorControllerMap = {};
 
-LspClient? client;
+final StateProvider<bool?> lspState = StateProvider<bool?>((ref) => null);
 
 final Terminal repl = Terminal();
 final TerminalController replController = TerminalController();
@@ -58,6 +58,21 @@ final StateProvider<TabbedViewController> tabbedViewController =
             ),
           ),
         ],
+        onTabSelection: (tabIndex, tabData) {
+          if ((tabData!.value as TabDataValue).type == "file") {
+            if ((tabData.value as TabDataValue).editorController?.lspConfig !=
+                null) {
+              ref
+                  .read(lspState.notifier)
+                  .state = (tabData.value as TabDataValue)
+                  .editorController!
+                  .lspConfig!
+                  .isInitialized;
+            }
+          } else {
+            ref.read(lspState.notifier).state = null;
+          }
+        },
         onTabRemove: (tabData) {
           if (tabData.value.type == "file") {
             final String path = tabData.value.filePath;
@@ -69,6 +84,7 @@ final StateProvider<TabbedViewController> tabbedViewController =
             controller?.dispose();
             editorControllerMap.remove(path);
           }
+          ref.read(lspState.notifier).state = null;
         },
       ),
     );
@@ -99,6 +115,16 @@ Future<TabData> createNewFileTab(
 
   final uri = Uri.file(file.path).toString();
   ref.read(activeDiagnosticUri.notifier).state = uri;
+
+  if (value.editorController?.lspConfig != null) {
+    ref.read(lspState.notifier).state =
+        value.editorController!.lspConfig!.isInitialized;
+    await value.editorController!.lspConfig!.initialize();
+    ref.read(lspState.notifier).state =
+        value.editorController!.lspConfig!.isInitialized;
+  } else {
+    ref.read(lspState.notifier).state = null;
+  }
 
   return TabData(
     value: value,
@@ -137,22 +163,28 @@ Future<CodeForgeController> createNewEditorController(
   );
   controller.text = initialText;
   controller.openedFile = file.path;
+  editorControllerMap[file.path] = controller;
   return controller;
 }
 
 void onTabTap(
-  TabData tab,
+  TabData tabData,
   TabbedViewController controller,
   int newTabIndex,
   dynamic ref,
 ) async {
   controller.selectedIndex = newTabIndex;
-  if (tab.value.type == "file") {
-    ref.read(activeDiagnosticUri.notifier).state = Uri.file(
-      tab.value.filePath,
-    ).toString();
+  if (tabData.value.type == "file") {
+    if ((tabData.value as TabDataValue).editorController?.lspConfig != null) {
+      ref.read(lspState.notifier).state = (tabData.value as TabDataValue)
+          .editorController!
+          .lspConfig!
+          .isInitialized;
+    } else {
+      ref.read(lspState.notifier).state = null;
+    }
   } else {
-    ref.read(activeDiagnosticUri.notifier).state = null;
+    ref.read(lspState.notifier).state = null;
   }
 }
 
@@ -161,12 +193,18 @@ void afterTabClose(
   TabbedViewController controller,
   dynamic ref,
 ) async {
-  final selectedTab = controller.selectedTab;
-  if (selectedTab != null && selectedTab.value.type == "file") {
-    ref.read(activeDiagnosticUri.notifier).state = Uri.file(
-      selectedTab.value.filePath,
-    ).toString();
-    return;
+  final tabData = controller.selectedTab;
+  if (tabData?.value.type == "file") {
+    if ((tabData?.value as TabDataValue).editorController?.lspConfig != null) {
+      ref.read(lspState.notifier).state = (tabData?.value as TabDataValue)
+          .editorController!
+          .lspConfig!
+          .isInitialized;
+    } else {
+      ref.read(lspState.notifier).state = null;
+    }
+  } else {
+    ref.read(lspState.notifier).state = null;
   }
 
   cleanDiagnostics(ref);
