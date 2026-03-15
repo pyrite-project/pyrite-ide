@@ -22,7 +22,7 @@ import 'package:pyrite_ide/core/services/board_manager/android.dart' as android;
 
 Widget consolePage() {
   return DefaultTabController(
-    length: 2,
+    length: 1,
     child: Column(
       children: [
         Row(
@@ -378,30 +378,6 @@ class ReplView extends ConsumerWidget {
   }
 }
 
-class QuestionView extends ConsumerWidget {
-  const QuestionView({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ScrollConfiguration(
-      behavior: NoScrollbarBehavior(),
-      child: ListView.builder(
-        addAutomaticKeepAlives: false,
-        itemCount: ref.watch(diagnostics).length,
-        itemBuilder: (context, index) {
-          List<DiagnosticItem> nowDiagnostics = ref.watch(diagnostics);
-          return ListTile(
-            title: Text(nowDiagnostics[index].message),
-            subtitle: Text(
-              "[行 ${nowDiagnostics[index].range.start["line"] + 1}, 列 ${nowDiagnostics[index].range.start["character"] + 1}]",
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 Widget buildTitleBar(Widget child) {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     return Column(
@@ -441,87 +417,74 @@ class EditorToolsBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: EdgeInsetsGeometry.symmetric(vertical: 5, horizontal: 20),
+    return Row(
+      children: [
+        buildLspState(context, ref),
+        buildBoardConnectState(context, ref),
+      ],
+    );
+  }
+
+  Widget buildLspState(BuildContext context, WidgetRef ref) {
+    Color color;
+    switch (ref.watch(lspState)) {
+      case true:
+        color = Colors.green;
+        break;
+      case false:
+        color = Colors.red;
+        break;
+      default:
+        color = Colors.grey;
+        break;
+    }
+    return MaterialButton(
+      onPressed: () => context.push("/settings/lsp"),
       child: Row(
-        spacing: 10,
-        children: [buildLspState(ref), buildBoardConnectState(ref)],
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(100),
+            ),
+          ),
+          SizedBox(width: 5),
+          Text("LSP"),
+        ],
       ),
     );
   }
 
-  Widget buildLspState(WidgetRef ref) {
-    if (ref.watch(lspState) == true) {
-      return Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: Colors.green,
-              borderRadius: BorderRadius.circular(100),
-            ),
-          ),
-          SizedBox(width: 5),
-          Text("LSP"),
-        ],
-      );
-    } else if (ref.watch(lspState) == null) {
-      return Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: Colors.grey,
-              borderRadius: BorderRadius.circular(100),
-            ),
-          ),
-          SizedBox(width: 5),
-          Text("LSP"),
-        ],
-      );
-    } else {
-      return Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(100),
-            ),
-          ),
-          SizedBox(width: 5),
-          Text("LSP"),
-        ],
-      );
-    }
-  }
-
-  Widget buildBoardConnectState(WidgetRef ref) {
-    var platform;
+  Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
     if (Platform.isAndroid) {
-      return Row(
-        children: [
-          Icon(Icons.power),
-          Text(
-            (ref.watch(connectState))
-                ? "已连接：${ref.watch(android.selectedPortName)!}"
-                : "暂未连接",
-          ),
-        ],
+      return MaterialButton(
+        onPressed: () => context.push("/tools/device"),
+        child: Row(
+          children: [
+            Icon(Icons.power, size: 15),
+            Text(
+              (ref.watch(connectState))
+                  ? "已连接：${ref.watch(android.selectedPortName)!}"
+                  : "暂未连接",
+            ),
+          ],
+        ),
       );
     } else {
-      return Row(
-        children: [
-          Icon(Icons.power, size: 15),
-          Text(
-            (ref.watch(connectState))
-                ? "已连接：${ref.watch(desktop.selectedPortName)!}"
-                : "暂未连接",
-          ),
-        ],
+      return MaterialButton(
+        onPressed: () => context.push("/tools"),
+        child: Row(
+          children: [
+            Icon(Icons.power, size: 15),
+            Text(
+              (ref.watch(connectState))
+                  ? "已连接：${ref.watch(desktop.selectedPortName)!}"
+                  : "暂未连接",
+            ),
+          ],
+        ),
       );
     }
   }
