@@ -35,22 +35,20 @@ class Editor extends ConsumerWidget {
 
   Widget body(BuildContext context, WidgetRef ref) {
     return TabbedViewTheme(
-      data: TabbedViewThemeData.minimalist(
-        tabRadius: 5,
+      data: TabbedViewThemeData.underline(
         colorSet: MaterialColor(
           Theme.of(context).colorScheme.primary.toARGB32(),
           <int, Color>{
-            50: Theme.of(context).colorScheme.secondaryContainer,
-            100: Theme.of(context).colorScheme.onSecondary,
-            200: Theme.of(context).colorScheme.secondaryContainer,
-            300: Theme.of(context).colorScheme.secondaryContainer,
+            50: Theme.of(context).colorScheme.surface,
             400: Theme.of(context).colorScheme.secondaryContainer,
-            500: Theme.of(context).colorScheme.secondaryContainer,
-            600: Theme.of(context).colorScheme.secondaryContainer,
-            700: Theme.of(context).colorScheme.secondaryContainer,
-            800: Theme.of(context).colorScheme.secondary,
+            500: Theme.of(context).colorScheme.surface,
+            700: Theme.of(context).colorScheme.secondary,
             900: Theme.of(context).colorScheme.onSecondaryContainer,
           },
+        ),
+        underlineColorSet: MaterialColor(
+          Theme.of(context).colorScheme.primary.toARGB32(),
+          <int, Color>{},
         ),
       ),
       child: TabbedView(controller: ref.watch(tabbedViewController)),
@@ -86,22 +84,20 @@ class ExpansionPage extends ConsumerWidget {
 
   Widget body(BuildContext context, WidgetRef ref) {
     return TabbedViewTheme(
-      data: TabbedViewThemeData.minimalist(
-        tabRadius: 5,
+      data: TabbedViewThemeData.underline(
         colorSet: MaterialColor(
           Theme.of(context).colorScheme.primary.toARGB32(),
           <int, Color>{
-            50: Theme.of(context).colorScheme.secondaryContainer,
-            100: Theme.of(context).colorScheme.onSecondary,
-            200: Theme.of(context).colorScheme.secondaryContainer,
-            300: Theme.of(context).colorScheme.secondaryContainer,
+            50: Theme.of(context).colorScheme.surface,
             400: Theme.of(context).colorScheme.secondaryContainer,
-            500: Theme.of(context).colorScheme.secondaryContainer,
-            600: Theme.of(context).colorScheme.secondaryContainer,
-            700: Theme.of(context).colorScheme.secondaryContainer,
-            800: Theme.of(context).colorScheme.secondary,
+            500: Theme.of(context).colorScheme.surface,
+            700: Theme.of(context).colorScheme.secondary,
             900: Theme.of(context).colorScheme.onSecondaryContainer,
           },
+        ),
+        underlineColorSet: MaterialColor(
+          Theme.of(context).colorScheme.primary.toARGB32(),
+          <int, Color>{},
         ),
       ),
       child: TabbedView(controller: ref.watch(expansionViewController)),

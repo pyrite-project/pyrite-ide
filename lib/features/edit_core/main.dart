@@ -25,11 +25,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
   @override
   Widget build(BuildContext context) {
     final theme = Map.of(ref.watch(editorThemeMode));
-    theme["root"] = TextStyle(
-      color: theme["root"]?.color,
-      backgroundColor: theme["root"]?.backgroundColor?.withAlpha(225),
-    );
-
     return CodeForge(
       filePath: widget.file.path,
       editorTheme: theme,
