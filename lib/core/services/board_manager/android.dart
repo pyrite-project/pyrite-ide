@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
 import 'package:usb_serial/usb_serial.dart';
 import 'package:pyrite_ide/core/services/editor/main.dart';
@@ -45,6 +46,11 @@ void connectPort(WidgetRef ref, UsbDevice device) async {
         .inputStream!
         .listen((data) {
           repl.write(utf8.decode(data));
+          for (void Function(Uint8List data) callback in container.read(
+            serialDataCallbacks,
+          )) {
+            callback(data);
+          }
         });
     update(ref);
     ref.read(connectState.notifier).state = state;
@@ -78,8 +84,32 @@ bool getConnectState(WidgetRef ref) {
   return false;
 }
 
-void sendCommand(WidgetRef ref, String command) {
-  if (ref.read(selectedPortName) != null) {
-    ref.read(selectedPort.notifier).state!.write(utf8.encode("$command\r\n"));
+// 添加分块发送的参数
+void sendCommand(WidgetRef ref, String command, {bool chunked = true}) {
+  if (chunked && command.length > 64) {
+    _sendChunkedCommand(ref, command);
+  } else {
+    _sendDirectCommand(ref, command);
+  }
+}
+
+// 直接发送命令
+void _sendDirectCommand(WidgetRef ref, String command) {
+  ref
+      .read(selectedPort.notifier)
+      .state
+      ?.write(Uint8List.fromList(command.codeUnits));
+}
+
+// 分块发送命令
+void _sendChunkedCommand(WidgetRef ref, String command) async {
+  const chunkSize = 16; // 较小的块大小，避免缓冲区溢出
+  for (int i = 0; i < command.length; i += chunkSize) {
+    final end = (i + chunkSize < command.length)
+        ? i + chunkSize
+        : command.length;
+    final chunk = command.substring(i, end);
+    _sendDirectCommand(ref, chunk);
+    await Future.delayed(Duration(milliseconds: 1)); // 块间延迟
   }
 }

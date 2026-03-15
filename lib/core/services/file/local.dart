@@ -7,9 +7,6 @@ import 'package:pyrite_ide/shared/toly_tree.dart';
 final StateProvider<Directory?> rootDirectory = StateProvider<Directory?>(
   (ref) => null,
 );
-final StateProvider<String?> selectedPath = StateProvider<String?>(
-  (ref) => null,
-);
 
 final StateProvider<List<TreeNode<FileTreeItem>>> treeItems =
     StateProvider<List<TreeNode<FileTreeItem>>>((ref) => []);

@@ -45,7 +45,7 @@ class Tools extends ConsumerWidget {
               padding: const EdgeInsets.only(left: 15, right: 15, top: 10),
               child: Text(
                 (ref.watch(connectState))
-                    ? "已连接：${ref.watch(android.selectedPortName)!}"
+                    ? "已连接：${getConnectedPortName(ref)}"
                     : "暂未连接",
               ),
             ),
@@ -63,10 +63,7 @@ class Tools extends ConsumerWidget {
                     padding: EdgeInsets.all(5),
                     child: FilledButton(
                       onPressed: () {
-                        android.connectPort(
-                          ref,
-                          ref.watch(android.devices)[index],
-                        );
+                        connectPort(ref, ref.watch(android.devices)[index]);
                         // startReplLinster(ref);
                       },
                       child: Text("尝试连接"),
@@ -107,7 +104,7 @@ class Tools extends ConsumerWidget {
               padding: const EdgeInsets.only(left: 15, right: 15, top: 10),
               child: Text(
                 (ref.watch(connectState))
-                    ? "已连接：${ref.watch(desktop.selectedPortName)!}"
+                    ? "已连接：${getConnectedPortName(ref)}"
                     : "暂未连接",
               ),
             ),
@@ -126,10 +123,7 @@ class Tools extends ConsumerWidget {
                     padding: EdgeInsets.all(5),
                     child: FilledButton(
                       onPressed: () {
-                        desktop.connectPort(
-                          ref,
-                          ref.watch(desktop.ports)[index],
-                        );
+                        connectPort(ref, ref.watch(desktop.ports)[index]);
                         // startReplLinster(ref);
                       },
                       child: Text("尝试连接"),
