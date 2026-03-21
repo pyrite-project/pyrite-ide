@@ -5,7 +5,7 @@ class MainFlutterWindow: NSWindow {
   /// Must match the height used by `UseTitleBar` in Flutter.
 
   private let flutterHeaderHeight: CGFloat = 36
-  private let flutterHeaderHeight: CGFloat = 45
+  // private let flutterHeaderHeight: CGFloat = 45
   private var trafficLightObserverTokens: [NSObjectProtocol] = []
 
   deinit {
