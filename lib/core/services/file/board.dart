@@ -21,7 +21,7 @@ class FileTreeItem {
   });
 }
 
-Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
+Future<String> _getCommandResult(WidgetRef ref, {required String command}) async {
   final completer = Completer<String>();
   String result = "";
   bool completed = false;
@@ -32,11 +32,12 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
     final decoded = utf8.decode(data);
     print("Received chunk: $decoded");
     result += decoded;
-    if (decoded.contains("!@#PyriteIDEEnd#@!") &&
-        decoded.contains("!@#PyriteIDEEnd#@!")) {
+    if (decoded.contains("!@#PyriteIDEEnd#@!")) {
       print("Full data received, length: ${result.length}");
       completed = true;
       completer.complete(result);
+
+      // 移除当前callback
       ref.read(serialDataCallbacks.notifier).state = ref
           .read(serialDataCallbacks)
           .where((cb) => cb != callback)
@@ -56,27 +57,17 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
     sendCommand(ref, "\x04");
     await Future.delayed(Duration(milliseconds: 50));
 
-    String command = "import uos\n";
-    command += "try:\n";
-    command += "  l=[]\n";
-    command += "  for f in uos.ilistdir('$path'):\n";
-    command +=
-        '    l.append({"path": "${(path[path.length - 1] != '/') ? '$path/' : path}"+f[0], "name": f[0], "type": "folder" if f[1]==0x4000 else "file"})\n';
-    command += "  print('!@#PyriteIDEStart#@!'+str(l)+'!@#PyriteIDEEnd#@!')\n";
-    command += "except OSError:\n";
-    command += "  print([])\n";
-
     sendCommand(ref, command);
     await Future.delayed(Duration(milliseconds: 100));
 
     sendCommand(ref, "\x04");
 
-    final filesList = await completer.future.timeout(
+    final res = await completer.future.timeout(
       Duration(milliseconds: 10000),
       onTimeout: () => result,
     );
 
-    return filesList;
+    return res;
   } finally {
     completed = true;
     ref.read(serialDataCallbacks.notifier).state = ref
@@ -88,11 +79,11 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
   }
 }
 
-Future<List<Map<String, String>>> getFilesList(
+Future<String> getCommandResult(
   WidgetRef ref, {
-  String path = "/",
+  required String command,
 }) async {
-  String originalData = await _getFilesList(ref, path: path);
+  String originalData = await _getCommandResult(ref, command: command);
 
   // print(originalData);
 
@@ -111,15 +102,30 @@ Future<List<Map<String, String>>> getFilesList(
     endIdentifierIndex + endIdentifier.length,
   ];
 
-  String filesListString = originalData.substring(
+  String resultString = originalData.substring(
     startIdentifierPosition[1],
     endIdentifierPosition[0],
   );
+  // print(resultString);
 
-  filesListString = filesListString.replaceAll("'", '"');
-  // print(filesListString);
+  return resultString;
+}
 
-  return (jsonDecode(filesListString) as List)
+Future<List<Map<String, String>>> getFilesList(
+  WidgetRef ref, {
+  String path = "/",
+}) async {
+  String command = "import uos\n";
+  command += "try:\n";
+  command += "  l=[]\n";
+  command += "  for f in uos.ilistdir('$path'):\n";
+  command +=
+      '    l.append({"path": "${(path[path.length - 1] != '/') ? '$path/' : path}"+f[0], "name": f[0], "type": "folder" if f[1]==0x4000 else "file"})\n';
+  command += "  print('!@#PyriteIDEStart#@!'+str(l)+'!@#PyriteIDEEnd#@!')\n";
+  command += "except OSError:\n";
+  command += "  print([])\n";
+  var originalData = await getCommandResult(ref, command: command);
+  return (jsonDecode(originalData.replaceAll("'", "\"")) as List)
       .cast<Map<String, dynamic>>()
       .map((map) => map.map((key, value) => MapEntry(key, value.toString())))
       .toList();
@@ -131,7 +137,7 @@ Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
   bool update = true,
 }) async {
   List<TreeNode<FileTreeItem>> items = [];
-
+  print("debug: buildFileListItems with datas $datas");
   for (Map<String, String> data in datas) {
     if (data["type"] == "folder") {
       items.add(
@@ -161,4 +167,18 @@ Future<List<TreeNode<FileTreeItem>>> buildFileListItems(
   }
 
   return items;
+}
+
+Future<String> getFileContent(
+  WidgetRef ref, {
+  required String path,
+}) async {
+  String command = "try:\n";
+  command += "  with open('$path', 'r') as f:\n";
+  command += "    print('!@#PyriteIDEStart#@!'+f.read()+'!@#PyriteIDEEnd#@!')\n";
+  command += "except Exception as e:\n";
+  command += "  print('$path', e)\n";
+  String contentString = await _getCommandResult(ref, command: command);
+  String resultString = contentString.split("!@#PyriteIDEStart#@!")[1].split("!@#PyriteIDEEnd#@!")[0];
+  return resultString;
 }
