@@ -460,7 +460,7 @@ class EditorToolsBar extends ConsumerWidget {
   Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
     if (Platform.isAndroid) {
       return MaterialButton(
-        onPressed: () => context.push("/tools/device"),
+        onPressed: () => context.push("/tools"),
         child: Row(
           children: [
             Icon(Icons.power, size: 15),
