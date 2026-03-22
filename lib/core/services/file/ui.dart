@@ -28,6 +28,14 @@ void createFileAction(WidgetRef ref) async {
 void openFileAction(BuildContext context, WidgetRef ref, {File? file}) async {
   file ??= await getFile();
   if (file != null) {
+    // print(ref.read(tabbedViewController).tabs);
+    print("DBGFILE $file");
+    print("DBGTABS ${ref.read(tabbedViewController).tabs.map((t) => t.value.file)}");
+    if (ref.read(tabbedViewController).tabs.any((tab) => tab.value.file == file)) {
+      print("exist $file");
+      ref.read(tabbedViewController).selectTab(ref.read(tabbedViewController).tabs.firstWhere((tab) => tab.value.file == file));
+      return;
+    }
     final TabData newTab = await createNewFileTab(
       file,
       ref,
