@@ -86,7 +86,7 @@ void _sendDirectCommand(WidgetRef ref, String command) {
   ref
       .read(selectedPort.notifier)
       .state
-      ?.write(Uint8List.fromList(command.codeUnits));
+      ?.write(utf8.encode(command));
 }
 
 // 分块发送命令

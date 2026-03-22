@@ -366,7 +366,7 @@ class ReplView extends ConsumerWidget {
                     final String command = commandEditorController.text;
                     commandEditorController.clear();
                     // repl.write(command);
-                    sendCommand(ref, command);
+                    sendCommand(ref, "$command\r\n");
                   }
                 },
               ),

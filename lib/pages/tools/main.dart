@@ -136,34 +136,6 @@ class Tools extends ConsumerWidget {
                     'Transport',
                     port.transport.toString(),
                   ),
-                  buildCardListTile(
-                    context,
-                    'USB Bus',
-                    port.busNumber?.toString(),
-                  ),
-                  buildCardListTile(
-                    context,
-                    'USB Device',
-                    port.deviceNumber?.toString(),
-                  ),
-                  buildCardListTile(
-                    context,
-                    'Vendor ID',
-                    port.vendorId?.toString(),
-                  ),
-                  buildCardListTile(
-                    context,
-                    'Product ID',
-                    port.productId?.toString(),
-                  ),
-                  buildCardListTile(context, 'Manufacturer', port.manufacturer),
-                  buildCardListTile(context, 'Product Name', port.productName),
-                  buildCardListTile(
-                    context,
-                    'Serial Number',
-                    port.serialNumber,
-                  ),
-                  buildCardListTile(context, 'MAC Address', port.macAddress),
                 ],
               );
             },
