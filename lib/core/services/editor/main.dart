@@ -113,9 +113,6 @@ Future<TabData> createNewFileTab(
     editorController: editorController,
   );
 
-  final uri = Uri.file(file.path).toString();
-  ref.read(activeDiagnosticUri.notifier).state = uri;
-
   if (value.editorController?.lspConfig != null) {
     ref.read(lspState.notifier).state =
         value.editorController!.lspConfig!.isInitialized;

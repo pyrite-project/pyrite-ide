@@ -28,19 +28,17 @@ void createFileAction(WidgetRef ref) async {
 void openFileAction(BuildContext context, WidgetRef ref, {File? file}) async {
   file ??= await getFile();
   if (file != null) {
-    // print(ref.read(tabbedViewController).tabs);
-    print("DBGFILE $file");
-    print("DBGTABS ${ref.read(tabbedViewController).tabs.map((t) => t.value.file)}");
-    if (ref.read(tabbedViewController).tabs.any((tab) => tab.value.file == file)) {
-      print("exist $file");
-      ref.read(tabbedViewController).selectTab(ref.read(tabbedViewController).tabs.firstWhere((tab) => tab.value.file == file));
-      return;
-    }
     final TabData newTab = await createNewFileTab(
       file,
       ref,
       await createNewEditorController(file, ref),
     );
+    for (TabData tab in ref.read(tabbedViewController).tabs) {
+      if ((tab.value as TabDataValue).filePath == file.path) {
+        ref.read(tabbedViewController).selectTab(tab);
+        return;
+      }
+    }
     ref.read(tabbedViewController).addTab(newTab);
     ref.read(tabbedViewController).selectTab(newTab);
     if (context.mounted) {
