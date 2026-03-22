@@ -11,11 +11,17 @@ import 'package:tabbed_view/tabbed_view.dart';
 void createFileAction(WidgetRef ref) async {
   final file = await createFile();
   if (file != null) {
-    final TabData newTab = await createNewFileTab(
+    final TabData? newTab = await createNewFileTab(
       file,
       ref,
       await createNewEditorController(file, ref),
     );
+
+    if (newTab == null) {
+      print("cannot open file");
+      return;
+    }
+
     ref.read(tabbedViewController).addTab(newTab);
     ref.read(tabbedViewController).selectTab(newTab);
     ref.watch(treeItems.notifier).state = await buildFileListItems(
@@ -28,11 +34,17 @@ void createFileAction(WidgetRef ref) async {
 void openFileAction(BuildContext context, WidgetRef ref, {File? file}) async {
   file ??= await getFile();
   if (file != null) {
-    final TabData newTab = await createNewFileTab(
+    final TabData? newTab = await createNewFileTab(
       file,
       ref,
       await createNewEditorController(file, ref),
     );
+
+    if (newTab == null) {
+      print("cannot open file");
+      return;
+    }
+
     for (TabData tab in ref.read(tabbedViewController).tabs) {
       if ((tab.value as TabDataValue).filePath == file.path) {
         ref.read(tabbedViewController).selectTab(tab);

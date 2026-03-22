@@ -89,13 +89,17 @@ final StateProvider<TabbedViewController> tabbedViewController =
       ),
     );
 
-Future<TabData> createNewFileTab(
+Future<TabData?> createNewFileTab(
   File file,
   WidgetRef ref,
-  CodeForgeController editorController,
+  CodeForgeController? editorController,
 ) async {
   if (openFilesisSavedMap[file.path] == null) {
     openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
+  }
+
+  if (editorController == null) {
+    return null;
   }
 
   String pattern = "\\";
@@ -131,7 +135,7 @@ Future<TabData> createNewFileTab(
   );
 }
 
-Future<CodeForgeController> createNewEditorController(
+Future<CodeForgeController?> createNewEditorController(
   File file,
   WidgetRef ref,
 ) async {
@@ -142,7 +146,12 @@ Future<CodeForgeController> createNewEditorController(
   } else {
     pattern = "/";
   }
-  final String initialText = await file.readAsString();
+  String initialText = "";
+  try {
+    initialText = await file.readAsString();
+  } on FileSystemException {
+    return null;
+  }
   final uri = Uri.file(file.path).toString().split(pattern);
   // final fileName = uri.removeLast();
   uri.removeLast();
