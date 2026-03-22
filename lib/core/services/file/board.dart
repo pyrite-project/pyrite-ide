@@ -30,12 +30,18 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
     if (completed) return;
 
     final decoded = utf8.decode(data);
-    if (decoded.contains("\x04")) {
+    print("Received chunk: $decoded");
+    result += decoded;
+    if (decoded.contains("!@#PyriteIDEEnd#@!") &&
+        decoded.contains("!@#PyriteIDEEnd#@!")) {
+      print("Full data received, length: ${result.length}");
       completed = true;
       completer.complete(result);
-      return;
+      ref.read(serialDataCallbacks.notifier).state = ref
+          .read(serialDataCallbacks)
+          .where((cb) => cb != callback)
+          .toList();
     }
-    result += decoded;
   }
 
   ref.read(serialDataCallbacks.notifier).state = [
@@ -44,7 +50,7 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
   ];
 
   try {
-    await enterRawRepl(ref);
+    enterRawRepl(ref);
     await Future.delayed(Duration(milliseconds: 50));
 
     sendCommand(ref, "\x04");
@@ -66,7 +72,7 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
     sendCommand(ref, "\x04");
 
     final filesList = await completer.future.timeout(
-      Duration(milliseconds: 300),
+      Duration(milliseconds: 10000),
       onTimeout: () => result,
     );
 
@@ -78,7 +84,7 @@ Future<String> _getFilesList(WidgetRef ref, {String path = "/"}) async {
         .where((cb) => cb != callback)
         .toList();
 
-    await exitRawRepl(ref);
+    exitRawRepl(ref);
   }
 }
 
@@ -88,7 +94,7 @@ Future<List<Map<String, String>>> getFilesList(
 }) async {
   String originalData = await _getFilesList(ref, path: path);
 
-  print(originalData);
+  // print(originalData);
 
   final String startIdentifier = "!@#PyriteIDEStart#@!";
   final String endIdentifier = "!@#PyriteIDEEnd#@!";
@@ -111,7 +117,7 @@ Future<List<Map<String, String>>> getFilesList(
   );
 
   filesListString = filesListString.replaceAll("'", '"');
-  print(filesListString);
+  // print(filesListString);
 
   return (jsonDecode(filesListString) as List)
       .cast<Map<String, dynamic>>()

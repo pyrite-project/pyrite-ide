@@ -131,6 +131,29 @@ class ProjectFiles extends ConsumerWidget {
 
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
     if (ref.watch(connectState)) {
+      if (ref.watch(board.treeItems).isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: .center,
+            children: [
+              Icon(
+                Icons.power_outlined,
+                size: 50,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              SizedBox(height: 10),
+              TextBodyMedium(
+                "MicroPython 设备文件为空",
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              TextBodyMedium(
+                "请尝试点击上方刷新按钮刷新",
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+            ],
+          ),
+        );
+      }
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -215,7 +238,7 @@ class ProjectFiles extends ConsumerWidget {
   ) async {
     // print(node.isExpanded);
     if (node.isLeaf == null) {
-      print(node.id);
+      // print(node.id);
       return await board.buildFileListItems(
         ref,
         await board.getFilesList(ref, path: node.id),

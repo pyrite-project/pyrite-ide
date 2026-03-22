@@ -47,6 +47,7 @@ void connectPort(WidgetRef ref, String name) {
         serialDataCallbacks,
       )) {
         callback(data);
+        print(callback);
       }
     });
     update(ref);
@@ -83,21 +84,18 @@ void sendCommand(WidgetRef ref, String command, {bool chunked = true}) {
 
 // 直接发送命令
 void _sendDirectCommand(WidgetRef ref, String command) {
-  ref
-      .read(selectedPort.notifier)
-      .state
-      ?.write(utf8.encode(command));
+  ref.read(selectedPort.notifier).state?.write(utf8.encode(command));
 }
 
 // 分块发送命令
 void _sendChunkedCommand(WidgetRef ref, String command) async {
-  const chunkSize = 16; // 较小的块大小，避免缓冲区溢出
+  const chunkSize = 32; // 较小的块大小，避免缓冲区溢出
   for (int i = 0; i < command.length; i += chunkSize) {
     final end = (i + chunkSize < command.length)
         ? i + chunkSize
         : command.length;
     final chunk = command.substring(i, end);
     _sendDirectCommand(ref, chunk);
-    await Future.delayed(Duration(milliseconds: 1)); // 块间延迟
+    await Future.delayed(Duration(milliseconds: 2)); // 块间延迟
   }
 }

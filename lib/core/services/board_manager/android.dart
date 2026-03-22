@@ -103,13 +103,13 @@ void _sendDirectCommand(WidgetRef ref, String command) {
 
 // 分块发送命令
 void _sendChunkedCommand(WidgetRef ref, String command) async {
-  const chunkSize = 16; // 较小的块大小，避免缓冲区溢出
+  const chunkSize = 32; // 较小的块大小，避免缓冲区溢出
   for (int i = 0; i < command.length; i += chunkSize) {
     final end = (i + chunkSize < command.length)
         ? i + chunkSize
         : command.length;
     final chunk = command.substring(i, end);
     _sendDirectCommand(ref, chunk);
-    await Future.delayed(Duration(milliseconds: 1)); // 块间延迟
+    await Future.delayed(Duration(milliseconds: 2)); // 块间延迟
   }
 }
