@@ -37,7 +37,6 @@ class Tools extends ConsumerWidget {
 
   Widget buildBoardManager(WidgetRef ref) {
     if (Platform.isAndroid) {
-      android.update(ref);
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -94,9 +93,6 @@ class Tools extends ConsumerWidget {
         ],
       );
     } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        desktop.update(ref);
-      });
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(

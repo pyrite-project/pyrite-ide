@@ -25,12 +25,9 @@ void connectPort(WidgetRef ref, String name) {
   ref.read(selectedPortName.notifier).state = name;
   ref.read(selectedPort.notifier).state = SerialPort(name);
   ref.read(selectedPort.notifier).state = SerialPort(name);
-  final bool connectState = ref
-      .read(selectedPort.notifier)
-      .state!
-      .openReadWrite();
+  final bool state = ref.read(selectedPort.notifier).state!.openReadWrite();
   SerialPortConfig config = SerialPortConfig();
-  if (connectState) {
+  if (state) {
     config.baudRate = 115200;
     config.bits = 8;
     config.parity = SerialPortParity.none;

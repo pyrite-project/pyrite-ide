@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/board_manager/main.dart';
+import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:dynamic_color/dynamic_color.dart';
@@ -13,6 +15,16 @@ class PyriteIDE extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(periodicTaskManagerProvider)
+          .registerTask(
+            name: "port_message_update",
+            interval: const Duration(seconds: 1),
+            callback: () => update(ref),
+          );
+    });
+
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
         final app = MaterialApp.router(

@@ -150,3 +150,11 @@ Future<bool> exitRawRepl(
         .toList();
   }
 }
+
+void update(WidgetRef ref) {
+  if (Platform.isAndroid) {
+    android.update(ref);
+  } else {
+    desktop.update(ref);
+  }
+}
