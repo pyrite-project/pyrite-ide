@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 final StateProvider<List<TreeNode<FileTreeItem>>> treeItems =
     StateProvider<List<TreeNode<FileTreeItem>>>((ref) => []);
@@ -181,4 +184,19 @@ Future<String> getFileContent(
   String contentString = await _getCommandResult(ref, command: command);
   String resultString = contentString.split("!@#PyriteIDEStart#@!")[1].split("!@#PyriteIDEEnd#@!")[0];
   return resultString;
+}
+
+Future<File> getFileName(TreeNode<FileTreeItem> node) async {
+  final supportDir = await getApplicationSupportDirectory();
+  print("debug: appSupportDir ${supportDir.path}");
+  List<String> fileNameList = node.id.split("/");
+  String fileNameResult = "";
+  for (int i = 1; i < fileNameList.length; i++) {
+    fileNameResult = path.join(fileNameResult, fileNameList[i]);
+  }
+  File file = File(path.join(supportDir.path, fileNameResult));
+  file.create(recursive: true, exclusive: false);
+  print("debug: open board file ${file.path}");
+
+  return File(fileNameResult);
 }
