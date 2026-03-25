@@ -2,16 +2,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
-import 'package:pyrite_ide/core/services/file/board.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/file/local.dart' as local;
 import 'package:pyrite_ide/core/services/file/board.dart' as board;
 import 'package:pyrite_ide/core/services/file/ui.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
-import 'package:path/path.dart' as path;
 
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
@@ -29,7 +27,7 @@ class ProjectFiles extends ConsumerWidget {
                   .buildFileListItems(ref, await local.getFilesList(ref));
               ref.watch(board.treeItems.notifier).state = [];
               ref.watch(board.treeItems.notifier).state = await board
-                  .buildFileListItems(ref, await getFilesList(ref));
+                  .buildFileListItems(ref, await board.getFilesList(ref));
             },
             icon: Icon(Icons.refresh),
           ),
@@ -71,7 +69,7 @@ class ProjectFiles extends ConsumerWidget {
                 if (!node.data.isDicrectory) {
                   File file = await local.getOpenFile(node.id, ref);
                   if (context.mounted) {
-                    openFileAction(context, ref, file: file);
+                    openFileAction(context, ref, file: file, device: Device(micropython: false));
                   }
                 }
               },
@@ -163,20 +161,11 @@ class ProjectFiles extends ConsumerWidget {
               showConnectingLines: true,
               onTap: (node) async {
                 if (!node.data.isDicrectory) {
-                    final supportDir = await getApplicationSupportDirectory();
-                    print("debug: appSupportDir ${supportDir.path}");
-                    List<String> fileName = node.id.split("/");
-                    String fileNameResult = "";
-                    for (int i = 1; i < fileName.length; i++) {
-                      fileNameResult = path.join(fileNameResult, fileName[i]);
-                    }
-                    File file = File(path.join(supportDir.path, fileNameResult));
-                    file.create(recursive: true, exclusive: false);
-                    print("debug: open board file ${file.path}");
-                    String content = await getFileContent(ref, path: node.id);
-                    await file.writeAsString(content);
+                  final File file = await board.getLocalFilePath(node);
+                  final String content = await board.getFileContent(ref, path: node.id);
+                  await file.writeAsString(content);
                   if (context.mounted) {
-                    openFileAction(context, ref, file: file);
+                    openFileAction(context, ref, file: file, device: Device(micropython: true, file: node.id));
                   }
                 }
               },

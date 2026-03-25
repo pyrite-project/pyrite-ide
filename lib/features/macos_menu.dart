@@ -52,6 +52,10 @@ class MacOSMenu extends ConsumerWidget {
                 label: '打开文件夹',
                 onSelected: () => openFolderAction(ref),
               ),
+              PlatformMenuItem(
+                label: "保存当前文件",
+                onSelected: () => saveFileAction(ref),
+              ),
             ],
           ),
         ],
