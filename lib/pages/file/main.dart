@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/board_manager/main.dart';
+import 'package:pyrite_ide/core/services/editor/main.dart';
 import 'package:pyrite_ide/core/services/file/local.dart' as local;
 import 'package:pyrite_ide/core/services/file/board.dart' as board;
 import 'package:pyrite_ide/core/services/file/ui.dart';
@@ -68,7 +69,7 @@ class ProjectFiles extends ConsumerWidget {
                 if (!node.data.isDicrectory) {
                   File file = await local.getOpenFile(node.id, ref);
                   if (context.mounted) {
-                    openFileAction(context, ref, file: file);
+                    openFileAction(context, ref, file: file, device: Device(micropython: false));
                   }
                 }
               },
@@ -160,11 +161,11 @@ class ProjectFiles extends ConsumerWidget {
               showConnectingLines: true,
               onTap: (node) async {
                 if (!node.data.isDicrectory) {
-                    final File file = await board.getFileName(node);
-                    final String content = await board.getFileContent(ref, path: node.id);
-                    await file.writeAsString(content);
+                  final File file = await board.getLocalFilePath(node);
+                  final String content = await board.getFileContent(ref, path: node.id);
+                  await file.writeAsString(content);
                   if (context.mounted) {
-                    openFileAction(context, ref, file: file);
+                    openFileAction(context, ref, file: file, device: Device(micropython: true, file: node.id));
                   }
                 }
               },

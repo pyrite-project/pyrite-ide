@@ -186,7 +186,24 @@ Future<String> getFileContent(
   return resultString;
 }
 
-Future<File> getFileName(TreeNode<FileTreeItem> node) async {
+Future<String> saveFile(
+  WidgetRef ref,
+  String path,
+  String content,
+) async {
+  print("debug: saveFile with path $path, content length ${content.length}");
+  String command = "try:\n";
+  command += "  with open('$path', 'w') as f:\n";
+  command += "    f.write('''$content''')\n";
+  command += "    print('!@#PyriteIDEStart#@!SaveFileSuccessfully!@#PyriteIDEEnd#@!')\n";
+  command += "except Exception as e:\n";
+  command += "  print('$path', e)\n";
+  String contentString = await _getCommandResult(ref, command: command);
+  String resultString = contentString.split("!@#PyriteIDEStart#@!")[1].split("!@#PyriteIDEEnd#@!")[0];
+  return resultString;
+}
+
+Future<File> getLocalFilePath(TreeNode<FileTreeItem> node) async {
   final supportDir = await getApplicationSupportDirectory();
   print("debug: appSupportDir ${supportDir.path}");
   List<String> fileNameList = node.id.split("/");
@@ -198,5 +215,5 @@ Future<File> getFileName(TreeNode<FileTreeItem> node) async {
   file.create(recursive: true, exclusive: false);
   print("debug: open board file ${file.path}");
 
-  return File(fileNameResult);
+  return file;
 }

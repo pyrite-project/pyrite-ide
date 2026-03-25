@@ -27,11 +27,23 @@ class TabDataValue {
     required this.filePath,
     this.editorController,
     this.file,
+    this.device,
   });
   final String type;
   final String filePath;
   final File? file;
   final CodeForgeController? editorController;
+  final Device? device;
+}
+
+class Device {
+  final bool micropython;
+  final String? file;
+
+  Device({
+    this.micropython = false,
+    this.file,
+  });
 }
 
 final StateProvider<TabbedViewController> tabbedViewController =
@@ -93,6 +105,7 @@ Future<TabData?> createNewFileTab(
   File file,
   WidgetRef ref,
   CodeForgeController? editorController,
+  Device device,
 ) async {
   if (openFilesisSavedMap[file.path] == null) {
     openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
@@ -115,6 +128,7 @@ Future<TabData?> createNewFileTab(
     filePath: file.path,
     file: file,
     editorController: editorController,
+    device: device,
   );
 
   if (value.editorController?.lspConfig != null) {
