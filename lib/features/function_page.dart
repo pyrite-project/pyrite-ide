@@ -5,20 +5,16 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
-import 'package:pyrite_ide/core/services/board_manager/main.dart';
-import 'package:pyrite_ide/core/services/editor/main.dart';
+import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
+import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/pylsp/data.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
-
-import 'package:pyrite_ide/core/services/board_manager/desktop.dart' as desktop;
-import 'package:pyrite_ide/core/services/board_manager/android.dart' as android;
 
 Widget consolePage() {
   return DefaultTabController(
@@ -401,18 +397,13 @@ class EditorToolsBar extends ConsumerWidget {
   }
 
   Widget buildLspState(BuildContext context, WidgetRef ref) {
-    Color color;
-    switch (ref.watch(lspState)) {
-      case true:
-        color = Colors.green;
-        break;
-      case false:
-        color = Colors.red;
-        break;
-      default:
-        color = Colors.grey;
-        break;
-    }
+    Color? color = ref
+        .watch(lspState)
+        ?.when(
+          data: (initialized) => initialized ? Colors.green : Colors.red,
+          loading: () => Colors.red,
+          error: (err, _) => Colors.red,
+        );
     return MaterialButton(
       onPressed: () => context.push("/settings/lsp"),
       child: Row(
@@ -421,7 +412,7 @@ class EditorToolsBar extends ConsumerWidget {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: color,
+              color: (color != null) ? color : Colors.grey,
               borderRadius: BorderRadius.circular(100),
             ),
           ),
@@ -433,34 +424,18 @@ class EditorToolsBar extends ConsumerWidget {
   }
 
   Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
-    if (Platform.isAndroid) {
-      return MaterialButton(
-        onPressed: () => context.push("/tools"),
-        child: Row(
-          children: [
-            Icon(Icons.power, size: 15),
-            Text(
-              (ref.watch(connectState))
-                  ? "已连接：${ref.watch(android.selectedPortName)!}"
-                  : "暂未连接",
-            ),
-          ],
-        ),
-      );
-    } else {
-      return MaterialButton(
-        onPressed: () => context.push("/tools"),
-        child: Row(
-          children: [
-            Icon(Icons.power, size: 15),
-            Text(
-              (ref.watch(connectState))
-                  ? "已连接：${ref.watch(desktop.selectedPortName)!}"
-                  : "暂未连接",
-            ),
-          ],
-        ),
-      );
-    }
+    return MaterialButton(
+      onPressed: () => context.push("/tools"),
+      child: Row(
+        children: [
+          Icon(Icons.power, size: 15),
+          Text(
+            (ref.watch(getUsbSerialProvider()).isConnected)
+                ? "已连接：${ref.watch(getUsbSerialProvider()).selectedPortName!}"
+                : "暂未连接",
+          ),
+        ],
+      ),
+    );
   }
 }

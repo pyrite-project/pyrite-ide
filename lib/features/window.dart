@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
-import 'package:pyrite_ide/core/services/editor/ui.dart';
+import 'package:pyrite_ide/core/services/editor/edtior_actions_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_actions_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/file/ui.dart';
 import 'package:window_manager/window_manager.dart';
 
 class UseWindow {
@@ -82,7 +83,8 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "新建文件",
-              () => createFileAction(ref),
+              () =>
+                  ref.read(tabbedViewControllerProvider.notifier).createFile(),
               leadingIconData: Icons.add,
             ),
             buildMenuItemButton(
@@ -95,13 +97,15 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "打开文件",
-              () => openFileAction(context, ref),
+              () => ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .openFile(context),
               leadingIconData: Icons.open_in_browser,
             ),
             buildMenuItemButton(
               context,
               "打开文件夹",
-              () => openFolderAction(ref),
+              () => ref.read(openFolderAction),
               leadingIconData: Icons.folder_open,
             ),
             buildMenuItemButton(
@@ -114,13 +118,13 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "保存当前文件",
-              () => saveFileAction(ref),
+              () => ref.read(saveFileAction),
               leadingIconData: Icons.save,
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
-              () => saveAsAction(ref),
+              () => ref.read(saveAsAction),
               leadingIconData: Icons.save_as,
             ),
           ],
@@ -140,14 +144,14 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "撤销",
-              () => undoAction(ref),
+              () => ref.read(undoAction),
               leadingIconData: Icons.undo,
               shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
             ),
             buildMenuItemButton(
               context,
               "恢复",
-              () => redoAction(ref),
+              () => ref.read(redoAction),
               leadingIconData: Icons.redo,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyZ,
@@ -159,21 +163,21 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "剪切",
-              () => cutAction(ref),
+              () => ref.read(cutAction),
               leadingIconData: Icons.cut,
               shortcut: SingleActivator(LogicalKeyboardKey.keyX, control: true),
             ),
             buildMenuItemButton(
               context,
               "复制",
-              () => copyAction(ref),
+              () => ref.read(copyAction),
               leadingIconData: Icons.copy,
               shortcut: SingleActivator(LogicalKeyboardKey.keyC, control: true),
             ),
             buildMenuItemButton(
               context,
               "粘贴",
-              () => pasteAction(ref),
+              () => ref.read(pasteAction),
               leadingIconData: Icons.paste,
               shortcut: SingleActivator(LogicalKeyboardKey.keyV, control: true),
             ),

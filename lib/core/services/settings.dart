@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/file/local.dart';
+import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 
 const Map<String, String> editorTextFonts = {
   "JetBrains Mono": "JetBrainsMono",
@@ -16,7 +16,7 @@ final StateProvider<String> editorTextFontProvider = StateProvider<String>(
 final ByteData _null = ByteData(0);
 
 Future<ByteData> loadFontData() async {
-  File? file = await getFile();
+  File? file = await local.getFile();
   if (file != null) {
     final bytes = await file.readAsBytes();
     return ByteData.sublistView(bytes);

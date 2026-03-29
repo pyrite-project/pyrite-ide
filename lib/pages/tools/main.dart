@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/board_manager/desktop.dart' as desktop;
-import 'package:pyrite_ide/core/services/board_manager/android.dart' as android;
-import 'package:pyrite_ide/core/services/board_manager/main.dart';
+import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 
 class Tools extends ConsumerWidget {
   const Tools({super.key});
@@ -43,26 +43,32 @@ class Tools extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.only(left: 15, right: 15, top: 10),
               child: Text(
-                (ref.watch(connectState))
-                    ? "已连接：${getConnectedPortName(ref)}"
+                (ref.watch(androidUsbSerialProvider).isConnected)
+                    ? "已连接：${ref.watch(androidUsbSerialProvider).selectedPortName}"
                     : "暂未连接",
               ),
             ),
           ),
           SliverList.builder(
-            itemCount: ref.watch(android.devices).length,
+            itemCount: ref.watch(androidUsbSerialProvider).devices.length,
             itemBuilder: (context, index) {
-              final port = ref.watch(android.devices)[index];
+              final port = ref.watch(androidUsbSerialProvider).devices[index];
               return ExpansionTile(
                 childrenPadding: EdgeInsets.only(left: 15, right: 15),
-                title: Text(ref.watch(android.devices)[index].deviceName),
+                title: Text(
+                  ref.watch(androidUsbSerialProvider).devices[index].deviceName,
+                ),
                 children: [
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(5),
                     child: FilledButton(
                       onPressed: () {
-                        connectPort(ref, ref.watch(android.devices)[index]);
+                        ref
+                            .read(androidUsbSerialProvider.notifier)
+                            .connectPort(
+                              ref.read(androidUsbSerialProvider).devices[index],
+                            );
                         // startReplLinster(ref);
                       },
                       child: Text("尝试连接"),
@@ -99,27 +105,37 @@ class Tools extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.only(left: 15, right: 15, top: 10),
               child: Text(
-                (ref.watch(connectState))
-                    ? "已连接：${getConnectedPortName(ref)}"
+                (ref.watch(desktopUsbSerialProvider).isConnected)
+                    ? "已连接：${ref.watch(desktopUsbSerialProvider).selectedPortName}"
                     : "暂未连接",
               ),
             ),
           ),
           SliverToBoxAdapter(child: Divider()),
           SliverList.builder(
-            itemCount: ref.watch(desktop.ports).length,
+            itemCount: ref.watch(desktopUsbSerialProvider).portNames.length,
             itemBuilder: (context, index) {
-              final port = SerialPort(ref.watch(desktop.ports)[index]);
+              final port = SerialPort(
+                ref.watch(desktopUsbSerialProvider).portNames[index],
+              );
               return ExpansionTile(
                 childrenPadding: EdgeInsets.only(left: 15, right: 15),
-                title: Text(ref.watch(desktop.ports)[index]),
+                title: Text(
+                  ref.watch(desktopUsbSerialProvider).portNames[index],
+                ),
                 children: [
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(5),
                     child: FilledButton(
                       onPressed: () {
-                        connectPort(ref, ref.watch(desktop.ports)[index]);
+                        ref
+                            .read(desktopUsbSerialProvider.notifier)
+                            .connectPort(
+                              ref
+                                  .read(desktopUsbSerialProvider)
+                                  .portNames[index],
+                            );
                         // startReplLinster(ref);
                       },
                       child: Text("尝试连接"),
@@ -143,7 +159,7 @@ class Tools extends ConsumerWidget {
 
   Widget buildCardListTile(BuildContext context, String name, String? value) {
     return Card(
-      child: ListTile(title: Text(value ?? 'N/A'), subtitle: Text(name)),
+      child: ListTile(title: Text(value ?? 'null'), subtitle: Text(name)),
     );
   }
 }

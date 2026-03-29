@@ -67,11 +67,13 @@ dependencies:
   serious_python: 
     path: serious-python/src/serious_python
   web_socket_channel: ^3.0.3
-  code_forge: 9.1.0
+  code_forge: ^9.4.0
+  extension_type_unions: ^1.0.10
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  riverpod_generator:
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -81,6 +83,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   integration_test:
     sdk: flutter
+  build_runner: ^2.5.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -2,11 +2,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:pyrite_ide/core/services/board_manager/main.dart';
-import 'package:pyrite_ide/core/services/editor/main.dart';
-import 'package:pyrite_ide/core/services/file/local.dart' as local;
-import 'package:pyrite_ide/core/services/file/board.dart' as board;
-import 'package:pyrite_ide/core/services/file/ui.dart';
+import 'package:pyrite_ide/core/models/file.dart';
+import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_actions_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
+import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/shared/toly_tree.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
@@ -23,11 +27,13 @@ class ProjectFiles extends ConsumerWidget {
         actions: [
           IconButton(
             onPressed: () async {
-              ref.watch(local.treeItems.notifier).state = await local
-                  .buildFileListItems(ref, await local.getFilesList(ref));
-              ref.watch(board.treeItems.notifier).state = [];
-              ref.watch(board.treeItems.notifier).state = await board
-                  .buildFileListItems(ref, await board.getFilesList(ref));
+              ref
+                  .read(localFileItemsProvider.notifier)
+                  .buildRootFileListItems();
+              ref.watch(boardFileItemsProvider.notifier).clear();
+              ref
+                  .watch(boardFileItemsProvider.notifier)
+                  .buildRootFileListItems();
             },
             icon: Icon(Icons.refresh),
           ),
@@ -59,21 +65,23 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget buildProjectFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(local.rootDirectory) != null) {
+    if (ref.watch(localWorkspaceProvider) != null) {
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
-            child: TolyTree<local.FileTreeItem>(
+            child: TolyTree<LocalFileTreeItem>(
               showConnectingLines: true,
               onTap: (node) async {
                 if (!node.data.isDicrectory) {
-                  File file = await local.getOpenFile(node.id, ref);
+                  File file = File(node.id);
                   if (context.mounted) {
-                    openFileAction(context, ref, file: file, device: Device(micropython: false));
+                    ref
+                        .read(tabbedViewControllerProvider.notifier)
+                        .openFile(context, file: file);
                   }
                 }
               },
-              nodes: ref.watch(local.treeItems),
+              nodes: ref.watch(localFileItemsProvider),
               loadData: (node) => _loadProjectChildren(node, ref),
               nodeBuilder: (node) => Tooltip(
                 message: node.data.name,
@@ -120,7 +128,7 @@ class ProjectFiles extends ConsumerWidget {
             ),
             SizedBox(height: 10),
             FilledButton(
-              onPressed: () => openFolderAction(ref),
+              onPressed: () => ref.read(openFolderAction),
               child: Text("打开文件夹"),
             ),
           ],
@@ -130,8 +138,8 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(connectState)) {
-      if (ref.watch(board.treeItems).isEmpty) {
+    if (ref.watch(getUsbSerialProvider()).isConnected) {
+      if (ref.watch(boardFileItemsProvider).isEmpty) {
         return Center(
           child: Column(
             mainAxisAlignment: .center,
@@ -157,19 +165,28 @@ class ProjectFiles extends ConsumerWidget {
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
-            child: TolyTree<board.FileTreeItem>(
+            child: TolyTree<BoardFileTreeItem>(
               showConnectingLines: true,
               onTap: (node) async {
                 if (!node.data.isDicrectory) {
                   final File file = await board.getLocalFilePath(node);
-                  final String content = await board.getFileContent(ref, path: node.id);
+                  final String content = await ref
+                      .read(boardFileItemsProvider.notifier)
+                      .getFileContent(node.id);
                   await file.writeAsString(content);
                   if (context.mounted) {
-                    openFileAction(context, ref, file: file, device: Device(micropython: true, file: node.id));
+                    ref
+                        .read(tabbedViewControllerProvider.notifier)
+                        .openFile(
+                          context,
+                          file: file,
+                          isBoardFile: true,
+                          boardFilePath: node.id,
+                        );
                   }
                 }
               },
-              nodes: ref.watch(board.treeItems),
+              nodes: ref.watch(boardFileItemsProvider),
               loadData: (node) => _loadBoardChildren(node, ref),
               nodeBuilder: (node) => Tooltip(
                 message: node.data.name,
@@ -225,33 +242,29 @@ class ProjectFiles extends ConsumerWidget {
     }
   }
 
-  Future<List<TreeNode<local.FileTreeItem>>> _loadProjectChildren(
-    TreeNode<local.FileTreeItem> node,
+  Future<List<TreeNode<LocalFileTreeItem>>> _loadProjectChildren(
+    TreeNode<LocalFileTreeItem> node,
     WidgetRef ref,
   ) async {
     // print(node.isExpanded);
     if (node.isLeaf == null) {
-      return await local.buildFileListItems(
-        ref,
-        await local.getFilesList(ref, path: node.id),
-        update: false,
-      );
+      return await local.buildFileListItems(await local.getFilesList(node.id));
     } else {
       return [];
     }
   }
 
-  Future<List<TreeNode<board.FileTreeItem>>> _loadBoardChildren(
-    TreeNode<board.FileTreeItem> node,
+  Future<List<TreeNode<BoardFileTreeItem>>> _loadBoardChildren(
+    TreeNode<BoardFileTreeItem> node,
     WidgetRef ref,
   ) async {
     // print(node.isExpanded);
     if (node.isLeaf == null) {
       // print(node.id);
       return await board.buildFileListItems(
-        ref,
-        await board.getFilesList(ref, path: node.id),
-        update: false,
+        await ref
+            .read(boardFileItemsProvider.notifier)
+            .getFilesList(path: node.id),
       );
     } else {
       return [];

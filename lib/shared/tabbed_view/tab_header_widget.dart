@@ -3,8 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/editor/main.dart';
-import 'package:pyrite_ide/core/services/file/local.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -198,8 +198,7 @@ class TabHeaderWidget extends StatelessWidget {
         onPressed: () async {
           final TabData nowTab = provider.controller.selectedTab!;
           final String path = nowTab.value.filePath;
-          if (nowTab.value.type == "file" &&
-              !container.read(openFilesisSavedMap[path]!)) {
+          if (false) {
             showDialog(
               context: context,
               builder: (context) => AlertDialog(
@@ -208,11 +207,13 @@ class TabHeaderWidget extends StatelessWidget {
                 actions: [
                   TextButton(
                     onPressed: () async {
-                      saveFile(
+                      local.saveFile(
                         nowTab.value.file!,
                         nowTab.value.editorController!.text,
                       );
-                      afterFileSave();
+                      container
+                          .read(tabbedViewControllerProvider.notifier)
+                          .afterFileSave();
                       context.pop();
                       await _onClose(context, index);
                     },
@@ -267,7 +268,9 @@ class TabHeaderWidget extends StatelessWidget {
       index = provider.controller.tabs.indexOf(tabData);
       if (index != -1) {
         provider.controller.removeTab(index);
-        afterTabClose(index, provider.controller, container);
+        container
+            .read(tabbedViewControllerProvider.notifier)
+            .afterTabClose(index);
       }
     }
   }

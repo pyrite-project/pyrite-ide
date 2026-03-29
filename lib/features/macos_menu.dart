@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
-import 'package:pyrite_ide/core/services/editor/ui.dart';
-import 'package:pyrite_ide/core/services/file/ui.dart';
+import 'package:pyrite_ide/core/services/editor/edtior_actions_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_actions_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 
 class MacOSMenu extends ConsumerWidget {
@@ -42,19 +43,23 @@ class MacOSMenu extends ConsumerWidget {
             members: [
               PlatformMenuItem(
                 label: '新建文件',
-                onSelected: () => createFileAction(ref),
+                onSelected: () => ref
+                    .read(tabbedViewControllerProvider.notifier)
+                    .createFile(),
               ),
               PlatformMenuItem(
                 label: '打开文件',
-                onSelected: () => openFileAction(context, ref),
+                onSelected: () => ref
+                    .read(tabbedViewControllerProvider.notifier)
+                    .openFile(context),
               ),
               PlatformMenuItem(
                 label: '打开文件夹',
-                onSelected: () => openFolderAction(ref),
+                onSelected: () => ref.read(openFolderAction),
               ),
               PlatformMenuItem(
                 label: "保存当前文件",
-                onSelected: () => saveFileAction(ref),
+                onSelected: () => ref.read(saveAsAction),
               ),
             ],
           ),
@@ -69,7 +74,7 @@ class MacOSMenu extends ConsumerWidget {
               LogicalKeyboardKey.keyZ,
               control: true,
             ),
-            onSelected: () => undoAction(ref),
+            onSelected: () => ref.read(undoAction),
           ),
           PlatformMenuItem(
             label: "恢复",
@@ -78,7 +83,7 @@ class MacOSMenu extends ConsumerWidget {
               control: true,
               shift: true,
             ),
-            onSelected: () => redoAction(ref),
+            onSelected: () => ref.read(redoAction),
           ),
           PlatformMenuItem(
             label: "剪切",
@@ -86,7 +91,7 @@ class MacOSMenu extends ConsumerWidget {
               LogicalKeyboardKey.keyX,
               control: true,
             ),
-            onSelected: () => cutAction(ref),
+            onSelected: () => ref.read(cutAction),
           ),
           PlatformMenuItem(
             label: "复制",
@@ -94,7 +99,7 @@ class MacOSMenu extends ConsumerWidget {
               LogicalKeyboardKey.keyC,
               control: true,
             ),
-            onSelected: () => copyAction(ref),
+            onSelected: () => ref.read(copyAction),
           ),
           PlatformMenuItem(
             label: "粘贴",
@@ -102,7 +107,7 @@ class MacOSMenu extends ConsumerWidget {
               LogicalKeyboardKey.keyV,
               control: true,
             ),
-            onSelected: () => pasteAction(ref),
+            onSelected: () => ref.read(pasteAction),
           ),
         ],
       ),

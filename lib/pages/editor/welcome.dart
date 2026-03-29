@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/file/ui.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_actions_provider.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 class EditorWelcome extends ConsumerWidget {
@@ -53,17 +54,21 @@ class EditorWelcome extends ConsumerWidget {
               ),
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => createFileAction(ref),
+                  onPressed: () => ref
+                      .read(tabbedViewControllerProvider.notifier)
+                      .createFile(),
                   icon: Icon(Icons.add),
                   label: Text("新建文件"),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => openFolderAction(ref),
+                  onPressed: () => ref.read(openFolderAction),
                   icon: Icon(Icons.folder_outlined),
                   label: Text("打开文件夹"),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => openFileAction(context, ref),
+                  onPressed: () => ref
+                      .read(tabbedViewControllerProvider.notifier)
+                      .openFile(context),
                   icon: Icon(Icons.file_open_outlined),
                   label: Text("打开文件"),
                 ),

@@ -2,9 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/editor/main.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/draggable_data.dart';
@@ -25,7 +25,7 @@ import 'package:pyrite_ide/shared/tabbed_view/tab_header_widget.dart';
 typedef UpdateHoveredIndex = void Function(int? tabIndex);
 
 /// The tab widget. Displays the tab text and its buttons.
-class TabWidget extends StatelessWidget {
+class TabWidget extends ConsumerWidget {
   const TabWidget({
     required UniqueKey key,
     required this.index,
@@ -44,7 +44,7 @@ class TabWidget extends StatelessWidget {
   final SizeHolder sizeHolder;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final TabData tab = provider.controller.tabs[index];
     final TabbedViewThemeData theme = TabbedViewTheme.of(context);
     final TabThemeData tabTheme = theme.tab;
@@ -119,7 +119,9 @@ class TabWidget extends StatelessWidget {
       onExit: (event) => updateHoveredIndex(null),
       child: provider.draggingTabIndex == null
           ? GestureDetector(
-              onTap: () => onTabTap(tab, provider.controller, index, container),
+              onTap: () => ref
+                  .watch(tabbedViewControllerProvider.notifier)
+                  .onTabTap(tab, index),
               onSecondaryTapDown: (details) {
                 if (provider.onTabSecondaryTap != null) {
                   TabData tab = provider.controller.tabs[index];
