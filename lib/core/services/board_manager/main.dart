@@ -12,7 +12,7 @@ StateProvider<bool> connectState = StateProvider<bool>((ref) => false);
 StateProvider<List<void Function(Uint8List data)>> serialDataCallbacks =
     StateProvider((ref) => []);
 
-void sendCommand(WidgetRef ref, String command) {
+void sendCommand(dynamic ref, String command) {
   if (Platform.isAndroid) {
     android.sendCommand(ref, command);
   } else {

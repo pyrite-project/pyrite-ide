@@ -5,6 +5,7 @@ import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/board_manager/main.dart';
 import 'package:pyrite_ide/core/services/file/local.dart';
 import 'package:pyrite_ide/core/services/pylsp/core.dart';
 import 'package:pyrite_ide/core/services/pylsp/data.dart';
@@ -18,7 +19,9 @@ final Map<String, CodeForgeController> editorControllerMap = {};
 
 final StateProvider<bool?> lspState = StateProvider<bool?>((ref) => null);
 
-final Terminal repl = Terminal();
+final Terminal repl = Terminal(
+  onOutput: (data) => sendCommand(container, data),
+);
 final TerminalController replController = TerminalController();
 
 class TabDataValue {
@@ -40,10 +43,7 @@ class Device {
   final bool micropython;
   final String? file;
 
-  Device({
-    this.micropython = false,
-    this.file,
-  });
+  Device({this.micropython = false, this.file});
 }
 
 final StateProvider<TabbedViewController> tabbedViewController =

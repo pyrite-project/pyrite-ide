@@ -85,7 +85,7 @@ bool getConnectState(WidgetRef ref) {
 }
 
 // 添加分块发送的参数
-void sendCommand(WidgetRef ref, String command, {bool chunked = true}) {
+void sendCommand(dynamic ref, String command, {bool chunked = true}) {
   if (chunked && command.length > 64) {
     _sendChunkedCommand(ref, command);
   } else {
@@ -94,7 +94,7 @@ void sendCommand(WidgetRef ref, String command, {bool chunked = true}) {
 }
 
 // 直接发送命令
-void _sendDirectCommand(WidgetRef ref, String command) {
+void _sendDirectCommand(dynamic ref, String command) {
   ref
       .read(selectedPort.notifier)
       .state
@@ -102,7 +102,7 @@ void _sendDirectCommand(WidgetRef ref, String command) {
 }
 
 // 分块发送命令
-void _sendChunkedCommand(WidgetRef ref, String command) async {
+void _sendChunkedCommand(dynamic ref, String command) async {
   const chunkSize = 32; // 较小的块大小，避免缓冲区溢出
   for (int i = 0; i < command.length; i += chunkSize) {
     final end = (i + chunkSize < command.length)

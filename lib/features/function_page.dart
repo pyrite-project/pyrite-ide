@@ -348,31 +348,6 @@ class ReplView extends ConsumerWidget {
     return Column(
       children: [
         Expanded(child: TerminalView(repl, controller: replController)),
-        Row(
-          children: [
-            Icon(Icons.chevron_right),
-            Expanded(
-              child: TextField(
-                controller: commandEditorController,
-                decoration: InputDecoration.collapsed(hintText: "在此键入命令"),
-                minLines: 1,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontFamily: "JetBrainsMono",
-                  fontFamilyFallback: ["HarmonyOS Sans SC"],
-                ),
-                onSubmitted: (value) {
-                  if (ref.read(connectState)) {
-                    final String command = commandEditorController.text;
-                    commandEditorController.clear();
-                    // repl.write(command);
-                    sendCommand(ref, "$command\r\n");
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
