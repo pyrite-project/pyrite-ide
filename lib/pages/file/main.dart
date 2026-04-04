@@ -6,9 +6,8 @@ import 'package:pyrite_ide/core/models/file.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_actions_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -65,7 +64,7 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget buildProjectFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(localWorkspaceProvider) != null) {
+    if (ref.watch(workspaceProvider) != null) {
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -128,7 +127,8 @@ class ProjectFiles extends ConsumerWidget {
             ),
             SizedBox(height: 10),
             FilledButton(
-              onPressed: () => ref.read(openFolderAction),
+              onPressed: () =>
+                  ref.read(localFileItemsProvider.notifier).openFolder(),
               child: Text("打开文件夹"),
             ),
           ],

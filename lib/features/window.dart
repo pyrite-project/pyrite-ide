@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
-import 'package:pyrite_ide/core/services/editor/edtior_actions_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_actions_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -105,7 +106,7 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "打开文件夹",
-              () => ref.read(openFolderAction),
+              () => ref.read(localFileItemsProvider.notifier).openFolder(),
               leadingIconData: Icons.folder_open,
             ),
             buildMenuItemButton(
@@ -118,13 +119,13 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "保存当前文件",
-              () => ref.read(saveFileAction),
+              () => ref.read(workspaceProvider.notifier).saveFile(),
               leadingIconData: Icons.save,
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
-              () => ref.read(saveAsAction),
+              () => ref.read(workspaceProvider.notifier).saveAs(),
               leadingIconData: Icons.save_as,
             ),
           ],
@@ -144,14 +145,14 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "撤销",
-              () => ref.read(undoAction),
+              ref.read(editorControllerMapProvider.notifier).undo,
               leadingIconData: Icons.undo,
               shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
             ),
             buildMenuItemButton(
               context,
               "恢复",
-              () => ref.read(redoAction),
+              ref.read(editorControllerMapProvider.notifier).redo,
               leadingIconData: Icons.redo,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyZ,
@@ -163,21 +164,21 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "剪切",
-              () => ref.read(cutAction),
+              ref.read(editorControllerMapProvider.notifier).cut,
               leadingIconData: Icons.cut,
               shortcut: SingleActivator(LogicalKeyboardKey.keyX, control: true),
             ),
             buildMenuItemButton(
               context,
               "复制",
-              () => ref.read(copyAction),
+              ref.read(editorControllerMapProvider.notifier).copy,
               leadingIconData: Icons.copy,
               shortcut: SingleActivator(LogicalKeyboardKey.keyC, control: true),
             ),
             buildMenuItemButton(
               context,
               "粘贴",
-              () => ref.read(pasteAction),
+              ref.read(editorControllerMapProvider.notifier).paste,
               leadingIconData: Icons.paste,
               shortcut: SingleActivator(LogicalKeyboardKey.keyV, control: true),
             ),

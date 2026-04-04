@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/editor/edtior_actions_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
@@ -17,11 +17,13 @@ class Editor extends ConsumerWidget {
           children: [
             IconButton(
               icon: Icon(Icons.undo, size: 20),
-              onPressed: () => ref.read(undoAction),
+              onPressed: () =>
+                  ref.read(editorControllerMapProvider.notifier).undo(),
             ),
             IconButton(
               icon: Icon(Icons.redo, size: 20),
-              onPressed: () => ref.read(redoAction),
+              onPressed: () =>
+                  ref.read(editorControllerMapProvider.notifier).redo(),
             ),
           ],
         ),
@@ -66,11 +68,11 @@ class ExpansionPage extends ConsumerWidget {
           children: [
             IconButton(
               icon: Icon(Icons.undo, size: 20),
-              onPressed: () => ref.read(undoAction),
+              onPressed: ref.read(editorControllerMapProvider.notifier).undo,
             ),
             IconButton(
               icon: Icon(Icons.redo, size: 20),
-              onPressed: () => ref.read(redoAction),
+              onPressed: ref.read(editorControllerMapProvider.notifier).redo,
             ),
           ],
         ),

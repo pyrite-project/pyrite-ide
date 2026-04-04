@@ -74,7 +74,7 @@ Future<File?> createFile() async {
   return file;
 }
 
-void saveFile(File file, String content) async {
+void saveLocalFile(File file, String content) async {
   await file.writeAsString(content);
 }
 
