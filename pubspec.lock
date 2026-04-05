@@ -1135,44 +1135,50 @@ packages:
   serious_python:
     dependency: "direct main"
     description:
-      path: "serious-python/src/serious_python"
-      relative: true
-    source: path
+      name: serious_python
+      sha256: "0abcada8911050a733fb6cc23c7020b311145ff543a3874c6eae7117b899c912"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
     version: "0.9.11"
   serious_python_android:
     dependency: transitive
     description:
-      path: "serious-python/src/serious_python_android"
-      relative: true
-    source: path
+      name: serious_python_android
+      sha256: "1b98252d1097e39f2d6a1504165361cd0b62822e4ff0931f58966be0088e4d8c"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
     version: "0.9.11"
   serious_python_darwin:
     dependency: transitive
     description:
-      path: "serious-python/src/serious_python_darwin"
-      relative: true
-    source: path
+      name: serious_python_darwin
+      sha256: "3441b3b636fd8698cc30269a340f7942dbc214e214f4c5f0c361cd0fcbcc69fe"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
     version: "0.9.11"
   serious_python_linux:
     dependency: transitive
     description:
-      path: "serious-python/src/serious_python_linux"
-      relative: true
-    source: path
+      name: serious_python_linux
+      sha256: "0625c9067f757654075b3b31df7ab81d203cd31d0a8aca6b90c7aecef0e1d320"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
     version: "0.9.11"
   serious_python_platform_interface:
     dependency: transitive
     description:
-      path: "serious-python/src/serious_python_platform_interface"
-      relative: true
-    source: path
+      name: serious_python_platform_interface
+      sha256: "1181ce6745d76f62b37de95bfb9a87bbc18f378ac9a39efc5ad8bf82e9746f48"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
     version: "0.9.11"
   serious_python_windows:
     dependency: transitive
     description:
-      path: "serious-python/src/serious_python_windows"
-      relative: true
-    source: path
+      name: serious_python_windows
+      sha256: a6299cb41bc2f3d6b6ed6161ec613d7715dececbe2b8b8d5fb0c17cc91154f27
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
     version: "0.9.11"
   shadcn_flutter:
     dependency: "direct main"
