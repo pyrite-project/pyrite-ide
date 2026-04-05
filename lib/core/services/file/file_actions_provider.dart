@@ -27,7 +27,10 @@ final Provider saveFileAction = Provider((ref) {
             nowTab.value.editorController!.text,
           );
     } else {
-      local.saveFile(nowTab.value.file!, nowTab.value.editorController!.text);
+      local.saveLocalFile(
+        nowTab.value.file!,
+        nowTab.value.editorController!.text,
+      );
     }
     ref.read(tabbedViewControllerProvider.notifier).afterFileSave();
   }
