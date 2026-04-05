@@ -42,7 +42,10 @@ jobs:
             output_path: build/linux/x64/release/bundle/*
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Set up Java
         uses: actions/setup-java@v4
