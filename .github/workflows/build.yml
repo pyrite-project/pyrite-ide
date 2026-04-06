@@ -25,7 +25,7 @@ jobs:
             command: |
               dart run serious_python:main package python --platform Windows --requirements "--pre" --requirements "-rpython/requirements.txt" --asset "assets/windows/python.zip" --verbose
               flutter build windows --release --verbose
-              Compress-Archive -Path build/windows/runner/Release -DestinationPath PyriteIDE-windows.zip
+              Compress-Archive -Path D:/a/pyrite-ide/pyrite-ide/build/windows/runner/Release -DestinationPath PyriteIDE-windows.zip
             output_path: PyriteIDE-windows.zip
           - os: macos-latest
             target: macos
