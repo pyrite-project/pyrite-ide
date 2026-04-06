@@ -8,7 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
 
 class PluginRunManagerNotifier
-    extends StateNotifier<Map<int, PluginRunManager>> {
+    extends StateNotifier<Map<Plugin, PluginRunManager>> {
   final Ref ref;
   PluginRunManagerNotifier(this.ref) : super({});
 
@@ -18,10 +18,9 @@ class PluginRunManagerNotifier
     final PluginRunManager runManager = PluginRunManager(
       port: await freePort(),
     );
-    state = {...state, runManager.port: runManager};
+    state = {...state, plugin: runManager};
     SeriousPython.runProgram("__main__.py");
   }
-  // 稍等我去翻一下很久之前的代码
 
   void update() {}
 
@@ -29,15 +28,11 @@ class PluginRunManagerNotifier
 }
 
 // 这是运行时管理器，插件管理器另论
-// 我一直没弄清什么是runtime (
-// 我这里的 runtime 很狭隘，就是指插件进入生命周期后，说人话就是它启动后（
-// 启动后的所有操作吗，这里是一个 Provider，提供当前正在生命周期内的插件的 PluginRunManager（就是你之前的 bridge）
-// 刚才去看了一下什么是riverpod,清楚了
 
 final StateNotifierProvider<
   PluginRunManagerNotifier,
-  Map<int, PluginRunManager>
+  Map<Plugin, PluginRunManager>
 >
-pluginManagerProvider = StateNotifierProvider(
+pluginRunManagerProvider = StateNotifierProvider(
   (ref) => PluginRunManagerNotifier(ref),
 );

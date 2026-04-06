@@ -108,7 +108,7 @@ class PluginRunManager {
     send(request);
   }
 
-  Future<String> _getRegManagerNameMap() async {
+  Future<String> _getRegister() async {
     final String request = jsonEncode({
       'cmd': 'Commands.GetRegister',
       'data': {},
@@ -116,9 +116,9 @@ class PluginRunManager {
     return await requestWithResponse(request);
   }
 
-  Future<Map<String, dynamic>> getRegManagerNameMap() async {
-    final String rawResponse = await _getRegManagerNameMap();
+  Future<Map<String, dynamic>> getPages() async {
+    final String rawResponse = await _getRegister();
     final Map data = jsonDecode(rawResponse) as Map;
-    return data['data']['managers'];
+    return data['data']['pages'];
   }
 }
