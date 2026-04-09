@@ -119,6 +119,7 @@ class PluginRunManager {
   Future<Map<String, dynamic>> getPages() async {
     final String rawResponse = await _getRegister();
     final Map data = jsonDecode(rawResponse) as Map;
+    print("DATA$data");
     return data['data']['pages'];
   }
 }

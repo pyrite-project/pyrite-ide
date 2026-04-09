@@ -30,7 +30,7 @@ class Plugins extends ConsumerWidget {
                   name: "test",
                   permissions: [PluginPermission.ui],
                 ),
-                "E:\\Can1425\\pyrite_ide\\python.zip",
+                "/Users/kaixin/pyrite-project/pyrite-ide/a.zip",
               );
               ref
                   .read(pluginManagerProvider.notifier)
@@ -101,9 +101,10 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     // Local widget library:
     _runtime.update(coreName, createCoreWidgets());
     _runtime.update(materialName, createMaterialWidgets());
-    ref
+    await ref
         .read(pluginRunManagerProvider.notifier)
         .start(ref.read(pluginManagerProvider)[widget.pluginId]!);
+    print("${ref.read(pluginRunManagerProvider)}  ${ref.read(pluginManagerProvider)}  ${widget.pluginId}");
     pages = await ref
         .read(pluginRunManagerProvider)[ref.read(
           pluginManagerProvider,
@@ -121,11 +122,14 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
 
   @override
   Widget build(BuildContext context) {
+    if (pages.isEmpty) {
+      return Text("");
+    }
     return Scaffold(
       body: RemoteWidget(
         runtime: _runtime,
         widget: FullyQualifiedWidgetName(
-          pagesLibNames[ref.watch(page)]!,
+          pagesLibNames[ref.read(page)]!,
           "root",
           // widget,
         ),

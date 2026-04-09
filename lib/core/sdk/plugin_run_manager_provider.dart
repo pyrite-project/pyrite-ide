@@ -12,13 +12,16 @@ class PluginRunManagerNotifier
   final Ref ref;
   PluginRunManagerNotifier(this.ref) : super({});
 
-  void start(Plugin plugin) async {
-    Directory root = await getApplicationDocumentsDirectory();
-    Directory.current = path.join(root.path, "plugin", plugin.id);
+  Future<void> start(Plugin plugin) async {
+    print("RUN START");
+    Directory root = await getApplicationSupportDirectory();
+    Directory target = await Directory(path.join(root.path, "plugin", plugin.id)).create(recursive: true);
+    Directory.current = target.path;
     final PluginRunManager runManager = PluginRunManager(
-      port: await freePort(),
+      port: 8765,
     );
     state = {...state, plugin: runManager};
+    print("STATE $state");
     SeriousPython.runProgram("__main__.py");
   }
 
