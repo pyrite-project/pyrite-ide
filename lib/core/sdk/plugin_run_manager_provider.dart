@@ -15,14 +15,18 @@ class PluginRunManagerNotifier
   Future<void> start(Plugin plugin) async {
     print("RUN START");
     Directory root = await getApplicationSupportDirectory();
-    Directory target = await Directory(path.join(root.path, "plugin", plugin.id)).create(recursive: true);
+    Directory target = await Directory(
+      path.join(root.path, "plugin", plugin.id),
+    ).create(recursive: true);
+
     Directory.current = target.path;
-    final PluginRunManager runManager = PluginRunManager(
-      port: 8765,
-    );
+    final PluginRunManager runManager = PluginRunManager(port: 8765);
     state = {...state, plugin: runManager};
     print("STATE $state");
-    SeriousPython.runProgram("__main__.py");
+    SeriousPython.runProgram(
+      path.join(target.path, "__main__.py"),
+      script: Platform.isWindows ? "" : null,
+    );
   }
 
   void update() {}

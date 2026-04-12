@@ -24,22 +24,15 @@ class Plugins extends ConsumerWidget {
         children: [
           FilledButton(
             onPressed: () async {
-              await install(
-                Plugin(
-                  id: "test",
-                  name: "test",
-                  permissions: [PluginPermission.ui],
-                ),
-                "/Users/kaixin/pyrite-project/pyrite-ide/a.zip",
-              );
-              ref
+              await ref
                   .read(pluginManagerProvider.notifier)
-                  .register(
+                  .install(
                     Plugin(
                       id: "test",
                       name: "test",
                       permissions: [PluginPermission.ui],
                     ),
+                    "C:\\Users\\can1425\\Desktop\\python.zip",
                   );
             },
             child: Text("注册并安装"),
@@ -104,7 +97,9 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     await ref
         .read(pluginRunManagerProvider.notifier)
         .start(ref.read(pluginManagerProvider)[widget.pluginId]!);
-    print("${ref.read(pluginRunManagerProvider)}  ${ref.read(pluginManagerProvider)}  ${widget.pluginId}");
+    print(
+      "${ref.read(pluginRunManagerProvider)}  ${ref.read(pluginManagerProvider)}  ${widget.pluginId}",
+    );
     pages = await ref
         .read(pluginRunManagerProvider)[ref.read(
           pluginManagerProvider,
@@ -129,7 +124,7 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
       body: RemoteWidget(
         runtime: _runtime,
         widget: FullyQualifiedWidgetName(
-          pagesLibNames[ref.read(page)]!,
+          pagesLibNames[ref.watch(page)]!,
           "root",
           // widget,
         ),

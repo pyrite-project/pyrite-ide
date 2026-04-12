@@ -64,7 +64,8 @@ dependencies:
   tolyui_tree: any
   flutter_libserialport: ^0.6.0
   usb_serial: ^0.5.2
-  serious_python: 0.9.11
+  serious_python:
+    path: E:\Can1425\serious-python\src\serious_python
   web_socket_channel: ^3.0.3
   code_forge: ^9.4.0
   extension_type_unions: ^1.0.10

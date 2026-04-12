@@ -20,7 +20,7 @@ void main() {
   container = ProviderContainer();
   UseWindow().init();
 
-  SeriousPython.run(getPythonPath()!);
+  // SeriousPython.run(getPythonPath()!);
   // container.read(lspClientProvider);
 
   runApp(

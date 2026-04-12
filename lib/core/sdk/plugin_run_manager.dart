@@ -25,11 +25,11 @@ class PluginRunManager {
         final Map<String, dynamic> data = jsonDecode(message as String);
 
         // 兼容 Python 端 MessageCommands.RESPONSE 的序列化
-        final cmdStr = data['cmd']?.toString().toUpperCase() ?? '';
+        final cmdStr = data['cmd']?.toString() ?? '';
         // final hasManagerData = data['data'] != null && data['data']['manager'] != null;
         // final hasRegNameData = data['data'] != null && data['data']['reg_name'] != null;
         final hasManagerData =
-            data['data'] != null && data['data']['managers'] != null;
+            data['data'] != null && data['data']['pages'] != null;
 
         if (cmdStr.contains('Commands.Response') || hasManagerData) {
           if (_responseQueue.isNotEmpty) {
@@ -119,7 +119,7 @@ class PluginRunManager {
   Future<Map<String, dynamic>> getPages() async {
     final String rawResponse = await _getRegister();
     final Map data = jsonDecode(rawResponse) as Map;
-    print("DATA$data");
+    print("DATA: $data");
     return data['data']['pages'];
   }
 }
