@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/utils.dart';
+import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
 
@@ -44,12 +46,16 @@ class Plugins extends ConsumerWidget {
                 return ListTile(
                   title: Text(showPlugins[index].name),
                   subtitle: Text(showPlugins[index].status.toString()),
-                  onTap: () => context.go(
-                    Uri(
-                      path: '/plugins/body',
-                      queryParameters: {'id': showPlugins[index].id},
-                    ).toString(),
-                  ),
+                  onTap: () {
+                    ref.read(selectedPluginId.notifier).state =
+                        showPlugins[index].id;
+                    context.push(
+                      Uri(
+                        path: '/plugins/body',
+                        queryParameters: {'id': showPlugins[index].id},
+                      ).toString(),
+                    );
+                  },
                 );
               },
             ),
@@ -60,8 +66,6 @@ class Plugins extends ConsumerWidget {
   }
 }
 
-final StateProvider<String> page = StateProvider((ref) => "home");
-
 class PluginBody extends ConsumerStatefulWidget {
   const PluginBody({super.key, required this.pluginId});
 
@@ -71,7 +75,7 @@ class PluginBody extends ConsumerStatefulWidget {
   ConsumerState<ConsumerStatefulWidget> createState() => _PluginBodyState();
 }
 
-class _PluginBodyState extends ConsumerState<PluginBody> {
+class _PluginBodyState extends ConsumerState<PluginBody> with RouteAware {
   final Runtime _runtime = Runtime();
   final DynamicContent _data = DynamicContent();
   late RemoteWidgetLibrary _remoteWidgets;
@@ -85,13 +89,24 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
   Map<String, dynamic> pages = {};
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
   void initState() {
     _loadRemoteWidgets();
     super.initState();
   }
 
   Future<void> _loadRemoteWidgets() async {
-    // Local widget library:
     _runtime.update(coreName, createCoreWidgets());
     _runtime.update(materialName, createMaterialWidgets());
     await ref

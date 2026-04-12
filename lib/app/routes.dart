@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/plugins/main.dart';
@@ -29,6 +30,7 @@ CustomTransitionPage topCustomTransitionPage({
 }
 
 GoRouter routes = GoRouter(
+  observers: [routeObserver],
   redirect: (context, state) {
     if (state.matchedLocation == "/") {
       if (ResponsiveBreakpoints.of(context).isDesktop) {

@@ -3,6 +3,15 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
 
+enum LifecycleHooks {
+  onInstall,
+  onStart,
+  onPause,
+  onResume,
+  onDispose,
+  onUninstall,
+}
+
 class PluginRunManager {
   PluginRunManager({required this.port});
   final int port;
@@ -21,13 +30,9 @@ class PluginRunManager {
 
     _channel!.stream.listen(
       (message) {
-        // print("Received from server: $message");
         final Map<String, dynamic> data = jsonDecode(message as String);
 
-        // 兼容 Python 端 MessageCommands.RESPONSE 的序列化
         final cmdStr = data['cmd']?.toString() ?? '';
-        // final hasManagerData = data['data'] != null && data['data']['manager'] != null;
-        // final hasRegNameData = data['data'] != null && data['data']['reg_name'] != null;
         final hasManagerData =
             data['data'] != null && data['data']['pages'] != null;
 
@@ -108,18 +113,26 @@ class PluginRunManager {
     send(request);
   }
 
-  Future<String> _getRegister() async {
+  Future<void> sendLifecycleHooks(LifecycleHooks lifecycle) async {
+    await connect();
+
+    final String text = lifecycle.toString().replaceRange(15, 17, "On");
     final String request = jsonEncode({
-      'cmd': 'Commands.GetRegister',
-      'data': {},
+      'cmd': 'Commands.LifecycleHooks',
+      'data': {"lifecycleHook": text},
     });
+
+    send(request);
+  }
+
+  Future<String> _getPages() async {
+    final String request = jsonEncode({'cmd': 'Commands.GetPages', 'data': {}});
     return await requestWithResponse(request);
   }
 
   Future<Map<String, dynamic>> getPages() async {
-    final String rawResponse = await _getRegister();
+    final String rawResponse = await _getPages();
     final Map data = jsonDecode(rawResponse) as Map;
-    print("DATA: $data");
     return data['data']['pages'];
   }
 }

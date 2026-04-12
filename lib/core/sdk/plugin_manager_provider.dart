@@ -15,11 +15,13 @@ class Plugin {
     required this.name,
     this.status = PluginStatus.installing,
     this.permissions = const [],
+    this.keepAlive = true,
   });
   final String id;
   final String name;
   final PluginStatus status;
   final List permissions;
+  final bool keepAlive;
 
   Plugin copyWith({
     String? id,
