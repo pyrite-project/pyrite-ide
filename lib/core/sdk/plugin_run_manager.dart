@@ -122,14 +122,14 @@ class PluginRunManager {
   Future<void> sendCallback(
     String name,
     DynamicMap args,
-    String manager,
+    String page,
   ) async {
     await connect();
 
     final String request = jsonEncode({
       'cmd': 'Commands.EventCallback',
       'data': {
-        'manager': manager,
+        'page': page,
         'callback': {'event': name, 'args': _convertToSerializable(args)},
       },
     });

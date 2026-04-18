@@ -34,7 +34,7 @@ class Plugins extends ConsumerWidget {
                       name: "test",
                       permissions: [PluginPermission.ui],
                     ),
-                    "C:\\Users\\can1425\\Desktop\\python.zip",
+                    "/Users/kaixin/pyrite-project/pyrite-ide-plugin-example/assets/macos/python.zip",
                   );
             },
             child: Text("注册并安装"),
@@ -144,6 +144,15 @@ class _PluginBodyState extends ConsumerState<PluginBody> with RouteAware {
           // widget,
         ),
         data: _data,
+        onEvent: (String name, DynamicMap arguments) {
+          debugPrint(
+            'user triggered event "$name" with data: $arguments',
+          );
+          ref
+            .read(pluginRunManagerProvider)[ref.read(
+              pluginManagerProvider,
+            )[widget.pluginId]]!.sendCallback(name, arguments, ref.watch(page));
+        },
       ),
     );
   }
