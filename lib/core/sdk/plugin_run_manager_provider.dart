@@ -29,15 +29,16 @@ class PluginRunManagerNotifier
 
     Directory.current = target.path;
     final int port = await freePort();
-    final PluginRunManager runManager = PluginRunManager(port: port);
-    state = {...state, plugin: runManager};
-    runManager.sendLifecycleHooks(LifecycleHooks.onStart);
-    print("STATE $state");
     SeriousPython.runProgram(
       path.join(target.path, "__main__.py"),
       script: Platform.isWindows ? "" : null,
       environmentVariables: {"PYRITE_IDE_PLUGIN_PORT": "$port"},
     );
+
+    final PluginRunManager runManager = PluginRunManager(port: port);
+    state = {...state, plugin: runManager};
+    await runManager.sendLifecycleHooks(LifecycleHooks.onStart);
+    print("STATE $state");
   }
 
   void update() {}

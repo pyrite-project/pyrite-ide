@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
@@ -21,12 +22,34 @@ class PluginRunManager {
   final List<Completer<String>> _responseQueue = [];
 
   Future<void> connect() async {
-    // 如果已经连接且未关闭，则直接返回
     if (_channel != null && _channel!.closeCode == null) return;
 
-    _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:$port'));
-    await _channel!.ready;
-    print("WebSocket Connected.");
+    const maxRetries = 10;
+    const retryDelay = Duration(milliseconds: 500);
+
+    for (var attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        print("try to connect to ws://localhost:$port (attempt $attempt)");
+        _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:$port'));
+        await _channel!.ready;
+        print("WebSocket Connected.");
+        break;
+      } on SocketException catch (e) {
+        print("SocketException in PluginRunManager: $e");
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+        } else {
+          rethrow;
+        }
+      } on WebSocketChannelException catch (e) {
+        print("WebSocketChannelException in PluginRunManager: $e");
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+        } else {
+          rethrow;
+        }
+      }
+    }
 
     _channel!.stream.listen(
       (message) {
@@ -69,6 +92,7 @@ class PluginRunManager {
   }
 
   void send(String message) {
+    print("send message $message");
     if (_channel != null) {
       _channel!.sink.add(message);
     }
