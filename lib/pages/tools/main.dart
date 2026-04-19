@@ -4,7 +4,6 @@ import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 
 class Tools extends ConsumerWidget {
   const Tools({super.key});

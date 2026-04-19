@@ -4,15 +4,6 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
 
-enum LifecycleHooks {
-  onInstall,
-  onStart,
-  onPause,
-  onResume,
-  onDispose,
-  onUninstall,
-}
-
 class PluginRunManager {
   PluginRunManager({required this.port});
   final int port;
@@ -24,7 +15,7 @@ class PluginRunManager {
   Future<void> connect() async {
     if (_channel != null && _channel!.closeCode == null) return;
 
-    const maxRetries = 10;
+    const maxRetries = 20;
     const retryDelay = Duration(milliseconds: 500);
 
     for (var attempt = 1; attempt <= maxRetries; attempt++) {
@@ -119,11 +110,7 @@ class PluginRunManager {
     return value.toString();
   }
 
-  Future<void> sendCallback(
-    String name,
-    DynamicMap args,
-    String page,
-  ) async {
+  Future<void> sendCallback(String name, DynamicMap args, String page) async {
     await connect();
 
     final String request = jsonEncode({
@@ -137,13 +124,12 @@ class PluginRunManager {
     send(request);
   }
 
-  Future<void> sendLifecycleHooks(LifecycleHooks lifecycle) async {
+  Future<void> sendLifecycleHooks(String lifecycle) async {
     await connect();
 
-    final String text = lifecycle.toString().replaceRange(15, 17, "On");
     final String request = jsonEncode({
       'cmd': 'Commands.LifecycleHooks',
-      'data': {"lifecycleHook": text},
+      'data': {"lifecycleHook": lifecycle},
     });
 
     send(request);

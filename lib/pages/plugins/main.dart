@@ -1,10 +1,10 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/utils.dart';
+import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
@@ -34,7 +34,7 @@ class Plugins extends ConsumerWidget {
                       name: "test",
                       permissions: [PluginPermission.ui],
                     ),
-                    "/Users/kaixin/pyrite-project/pyrite-ide-plugin-example/assets/macos/python.zip",
+                    (await openFile())!.path,
                   );
             },
             child: Text("注册并安装"),
@@ -75,7 +75,7 @@ class PluginBody extends ConsumerStatefulWidget {
   ConsumerState<ConsumerStatefulWidget> createState() => _PluginBodyState();
 }
 
-class _PluginBodyState extends ConsumerState<PluginBody> with RouteAware {
+class _PluginBodyState extends ConsumerState<PluginBody> {
   final Runtime _runtime = Runtime();
   final DynamicContent _data = DynamicContent();
   late RemoteWidgetLibrary _remoteWidgets;
@@ -87,18 +87,6 @@ class _PluginBodyState extends ConsumerState<PluginBody> with RouteAware {
   ]);
   Map<String, LibraryName?> pagesLibNames = {};
   Map<String, dynamic> pages = {};
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
-  }
-
-  @override
-  void dispose() {
-    routeObserver.unsubscribe(this);
-    super.dispose();
-  }
 
   @override
   void initState() {
@@ -122,6 +110,7 @@ class _PluginBodyState extends ConsumerState<PluginBody> with RouteAware {
         .getPages();
     for (var entry in pages.entries) {
       String rfwCode = entry.value;
+      print(rfwCode);
       _remoteWidgets = parseLibraryFile(rfwCode);
       LibraryName pageLibName = LibraryName(<String>[entry.key]);
       _runtime.update(pageLibName, _remoteWidgets);
@@ -145,13 +134,12 @@ class _PluginBodyState extends ConsumerState<PluginBody> with RouteAware {
         ),
         data: _data,
         onEvent: (String name, DynamicMap arguments) {
-          debugPrint(
-            'user triggered event "$name" with data: $arguments',
-          );
+          debugPrint('user triggered event "$name" with data: $arguments');
           ref
-            .read(pluginRunManagerProvider)[ref.read(
-              pluginManagerProvider,
-            )[widget.pluginId]]!.sendCallback(name, arguments, ref.watch(page));
+              .read(pluginRunManagerProvider)[ref.read(
+                pluginManagerProvider,
+              )[widget.pluginId]]!
+              .sendCallback(name, arguments, ref.watch(page));
         },
       ),
     );

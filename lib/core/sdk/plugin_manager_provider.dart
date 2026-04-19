@@ -4,39 +4,7 @@ import 'package:archive/archive_io.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-
-enum PluginStatus { usable, installing, disusable, uninstall }
-
-enum PluginPermission { ui }
-
-class Plugin {
-  const Plugin({
-    required this.id,
-    required this.name,
-    this.status = PluginStatus.installing,
-    this.permissions = const [],
-    this.keepAlive = true,
-  });
-  final String id;
-  final String name;
-  final PluginStatus status;
-  final List permissions;
-  final bool keepAlive;
-
-  Plugin copyWith({
-    String? id,
-    String? name,
-    PluginStatus? status,
-    List? permissions,
-  }) {
-    return Plugin(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      status: status ?? this.status,
-      permissions: permissions ?? this.permissions,
-    );
-  }
-}
+import 'package:pyrite_ide/core/sdk/types.dart';
 
 class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   final Ref ref;

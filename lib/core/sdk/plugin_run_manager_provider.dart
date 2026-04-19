@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/app/routes.dart';
-import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -14,12 +14,19 @@ class PluginRunManagerNotifier
   PluginRunManagerNotifier(this.ref) : super({});
 
   Future<void> start(Plugin plugin) async {
+    for (var entery in state.entries) {
+      if (entery.key.id == plugin.id) {
+        return;
+      }
+    }
+    /*
     state.forEach((key, value) {
       if (key.id == plugin.id) {
         // state[plugin]!.sendLifecycleHooks(LifecycleHooks.onResume);
         return;
       }
     });
+    */
     print("RUN START");
 
     final Directory root = await getApplicationSupportDirectory();
@@ -89,8 +96,6 @@ class PluginRunManagerNotifier
     });
   }
 }
-
-// 这是运行时管理器，插件管理器另论
 
 final StateNotifierProvider<
   PluginRunManagerNotifier,
