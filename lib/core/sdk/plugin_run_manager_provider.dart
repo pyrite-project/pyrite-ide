@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/sdk/utils.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -36,6 +37,18 @@ class PluginRunManagerNotifier
 
     Directory.current = target.path;
     final int port = await freePort();
+    final String runtimeModulePaths = [
+      path.join(target.path, "__packages__"),
+      path.join(target.path, "site-packages"),
+    ].map(escapeForPythonString).join("::");
+    await SeriousPython.run(
+      "assets/python_runtime_boot.zip",
+      appFileName: "setup_sys_path.py",
+      environmentVariables: {
+        "RUNTIME_MODULE_PATHS": runtimeModulePaths,
+        "RUNTIME_REPLACE_MODULE_PATHS": "1",
+      },
+    );
     SeriousPython.runProgram(
       path.join(target.path, "__main__.py"),
       script: Platform.isWindows ? "" : null,

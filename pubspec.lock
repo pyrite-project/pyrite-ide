@@ -1151,42 +1151,42 @@ packages:
   serious_python:
     dependency: "direct main"
     description:
-      path: "E:\\Can1425\\serious-python\\src\\serious_python"
-      relative: false
+      path: "python_runtime/src/serious_python"
+      relative: true
     source: path
     version: "0.9.11"
   serious_python_android:
     dependency: transitive
     description:
-      path: "../serious-python/src/serious_python_android"
+      path: "python_runtime/src/serious_python_android"
       relative: true
     source: path
     version: "0.9.11"
   serious_python_darwin:
     dependency: transitive
     description:
-      path: "../serious-python/src/serious_python_darwin"
+      path: "python_runtime/src/serious_python_darwin"
       relative: true
     source: path
     version: "0.9.11"
   serious_python_linux:
     dependency: transitive
     description:
-      path: "../serious-python/src/serious_python_linux"
+      path: "python_runtime/src/serious_python_linux"
       relative: true
     source: path
     version: "0.9.11"
   serious_python_platform_interface:
     dependency: transitive
     description:
-      path: "../serious-python/src/serious_python_platform_interface"
+      path: "python_runtime/src/serious_python_platform_interface"
       relative: true
     source: path
     version: "0.9.11"
   serious_python_windows:
     dependency: transitive
     description:
-      path: "../serious-python/src/serious_python_windows"
+      path: "python_runtime/src/serious_python_windows"
       relative: true
     source: path
     version: "0.9.11"

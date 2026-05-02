@@ -5,21 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/features/window.dart';
-
-String? getPythonPath() {
-  if (Platform.isAndroid) return "assets/android/python.zip";
-  if (Platform.isWindows) return "assets/windows/python.zip";
-  if (Platform.isLinux) return "assets/linux/python.zip";
-  if (Platform.isMacOS) return "assets/macos/python.zip";
-  return null;
-}
+import 'package:serious_python/serious_python.dart';
 
 // PyriteIDE: Hello World.
 void main() {
   container = ProviderContainer();
   UseWindow().init();
 
-  // SeriousPython.run(getPythonPath()!);
+  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
   // container.read(lspClientProvider);
 
   runApp(

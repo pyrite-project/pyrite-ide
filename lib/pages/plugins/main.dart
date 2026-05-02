@@ -30,8 +30,8 @@ class Plugins extends ConsumerWidget {
                   .read(pluginManagerProvider.notifier)
                   .install(
                     Plugin(
-                      id: "test",
-                      name: "test",
+                      id: "old",
+                      name: "old",
                       permissions: [PluginPermission.ui],
                     ),
                     (await openFile())!.path,

@@ -16,3 +16,10 @@ Future<void> install(Plugin plugin, String packagePath) async {
 
   await extractArchiveToDisk(archive, target.path);
 }
+
+String escapeForPythonString(String s) {
+  return s
+      .replaceAll('\\', '\\\\')
+      .replaceAll("'", "\\'")
+      .replaceAll('"', '\\"');
+}
