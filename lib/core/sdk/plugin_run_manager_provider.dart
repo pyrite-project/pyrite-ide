@@ -38,7 +38,7 @@ class PluginRunManagerNotifier
     Directory.current = target.path;
     final int port = await freePort();
     final String runtimeModulePaths = [
-      path.join(target.path, "__packages__"),
+      path.join(target.path, "__pypackages__"),
       path.join(target.path, "site-packages"),
     ].map(escapeForPythonString).join("::");
     await SeriousPython.run(
@@ -55,7 +55,10 @@ class PluginRunManagerNotifier
       environmentVariables: {"PYRITE_IDE_PLUGIN_PORT": "$port"},
     );
 
-    final PluginRunManager runManager = PluginRunManager(port: port);
+    final PluginRunManager runManager = PluginRunManager(port: port, assetsPath: target.path);
+    runManager.onRefresh = (pages) {
+      ref.read(pluginPagesProvider.notifier).loadPages(plugin.id, pages);
+    };
     state = {...state, plugin: runManager};
     await runManager.sendLifecycleHooks(LifecycleHooks.onStart);
     print("STATE $state");
@@ -116,4 +119,20 @@ final StateNotifierProvider<
 >
 pluginRunManagerProvider = StateNotifierProvider(
   (ref) => PluginRunManagerNotifier(ref),
+);
+
+class PluginPagesNotifier extends StateNotifier<Map<String, Map<String, String>>> {
+  PluginPagesNotifier() : super({});
+
+  void loadPages(String pluginId, Map<String, String> pages) {
+    state = {...state, pluginId: pages};
+  }
+
+  void clearPages(String pluginId) {
+    state = {...state}..remove(pluginId);
+  }
+}
+
+final pluginPagesProvider = StateNotifierProvider<PluginPagesNotifier, Map<String, Map<String, String>>>(
+  (ref) => PluginPagesNotifier(),
 );

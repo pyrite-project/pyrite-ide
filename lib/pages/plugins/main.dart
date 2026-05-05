@@ -81,47 +81,54 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
   late RemoteWidgetLibrary _remoteWidgets;
 
   static const LibraryName coreName = LibraryName(<String>['core', 'widgets']);
-  static const LibraryName materialName = LibraryName(<String>[
-    'core',
-    'material',
-  ]);
+  static const LibraryName materialName = LibraryName(<String>['core', 'material',]);
   Map<String, LibraryName?> pagesLibNames = {};
-  Map<String, dynamic> pages = {};
 
   @override
   void initState() {
-    _loadRemoteWidgets();
     super.initState();
+    _initPluginRunManager();
   }
 
-  Future<void> _loadRemoteWidgets() async {
-    _runtime.update(coreName, createCoreWidgets());
-    _runtime.update(materialName, createMaterialWidgets());
+  Future<void> _initPluginRunManager() async {
     await ref
         .read(pluginRunManagerProvider.notifier)
         .start(ref.read(pluginManagerProvider)[widget.pluginId]!);
     print(
       "${ref.read(pluginRunManagerProvider)}  ${ref.read(pluginManagerProvider)}  ${widget.pluginId}",
     );
-    pages = await ref
-        .read(pluginRunManagerProvider)[ref.read(
-          pluginManagerProvider,
-        )[widget.pluginId]]!
-        .getPages();
+    _runtime.update(coreName, createCoreWidgets());
+    _runtime.update(materialName, createMaterialWidgets());
+  }
+
+  Future<void> _loadPages(Map<String, String> pages) async {
     for (var entry in pages.entries) {
       String rfwCode = entry.value;
-      print(rfwCode);
-      _remoteWidgets = parseLibraryFile(rfwCode);
-      LibraryName pageLibName = LibraryName(<String>[entry.key]);
-      _runtime.update(pageLibName, _remoteWidgets);
-      pagesLibNames[entry.key] = pageLibName;
+      print("loading rfw code for page[${entry.key}]:\n$rfwCode");
+      try {
+        _remoteWidgets = parseLibraryFile(rfwCode);
+        if (!pagesLibNames.containsKey(entry.key)) {
+          LibraryName pageLibName = LibraryName(<String>[entry.key]);
+          pagesLibNames[entry.key] = pageLibName;
+        }
+        _runtime.update(pagesLibNames[entry.key]!, _remoteWidgets);
+      } catch (e) {
+        print("Failed to parse RFW for page[${entry.key}]: $e");
+      }
     }
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (pages.isEmpty) {
+    ref.listen(pluginPagesProvider, (prev, next) {
+      final pluginPages = next[widget.pluginId];
+      if (pluginPages != null && pluginPages != prev?[widget.pluginId]) {
+        _loadPages(pluginPages);
+      }
+    });
+
+    if (pagesLibNames.isEmpty) {
       return Text("");
     }
     return Scaffold(

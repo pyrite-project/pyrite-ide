@@ -5,9 +5,11 @@ import 'dart:convert';
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
 
 class PluginRunManager {
-  PluginRunManager({required this.port});
+  PluginRunManager({required this.port, required this.assetsPath});
   final int port;
+  final String assetsPath;
   WebSocketChannel? _channel;
+  void Function(Map<String, String> pages)? onRefresh;
 
   // 用于按顺序存储 Completer (解决请求与响应的匹配)
   final List<Completer<String>> _responseQueue = [];
@@ -50,7 +52,7 @@ class PluginRunManager {
         final hasManagerData =
             data['data'] != null && data['data']['pages'] != null;
 
-        if (cmdStr.contains('Commands.Response') || hasManagerData) {
+        if (cmdStr.contains('Commands.Response') && hasManagerData) {
           if (_responseQueue.isNotEmpty) {
             // 取出最早的一个请求并完成它 (先进先出)
             final completer = _responseQueue.removeAt(0);
@@ -58,6 +60,18 @@ class PluginRunManager {
               completer.complete(message);
             }
           }
+        } else if (cmdStr.contains('Commands.GetPath')) {
+          final String request = jsonEncode({
+            'cmd': 'Commands.GetPath',
+            'data': {
+              'path_type': 'PathType.Assets',
+              'path': assetsPath,
+            },
+          });
+
+          send(request);
+        } else if (cmdStr.contains('Commands.Refresh')) {
+          _handleRefresh(data);
         } else {
           print("Received push notification from server: $data");
         }
@@ -135,14 +149,10 @@ class PluginRunManager {
     send(request);
   }
 
-  Future<String> _getPages() async {
-    final String request = jsonEncode({'cmd': 'Commands.GetPages', 'data': {}});
-    return await requestWithResponse(request);
-  }
-
-  Future<Map<String, dynamic>> getPages() async {
-    final String rawResponse = await _getPages();
-    final Map data = jsonDecode(rawResponse) as Map;
-    return data['data']['pages'];
+  void _handleRefresh(Map<String, dynamic> data) {
+    final rawPages = data['data']?['pages'];
+    print("Refresh received, pages data: $rawPages");
+    final pages = Map<String, String>.from(rawPages ?? {});
+    onRefresh?.call(pages);
   }
 }
