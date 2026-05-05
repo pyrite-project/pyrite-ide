@@ -78,11 +78,13 @@ class PluginBody extends ConsumerStatefulWidget {
 class _PluginBodyState extends ConsumerState<PluginBody> {
   final Runtime _runtime = Runtime();
   final DynamicContent _data = DynamicContent();
-  late RemoteWidgetLibrary _remoteWidgets;
 
   static const LibraryName coreName = LibraryName(<String>['core', 'widgets']);
   static const LibraryName materialName = LibraryName(<String>['core', 'material',]);
   Map<String, LibraryName?> pagesLibNames = {};
+
+  Map<String, String>? _lastPages;
+  Map<String, dynamic>? _lastVars;
 
   @override
   void initState() {
@@ -94,24 +96,20 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     await ref
         .read(pluginRunManagerProvider.notifier)
         .start(ref.read(pluginManagerProvider)[widget.pluginId]!);
-    print(
-      "${ref.read(pluginRunManagerProvider)}  ${ref.read(pluginManagerProvider)}  ${widget.pluginId}",
-    );
     _runtime.update(coreName, createCoreWidgets());
     _runtime.update(materialName, createMaterialWidgets());
   }
 
-  Future<void> _loadPages(Map<String, String> pages) async {
+  void _loadPages(Map<String, String> pages) {
     for (var entry in pages.entries) {
       String rfwCode = entry.value;
-      print("loading rfw code for page[${entry.key}]:\n$rfwCode");
       try {
-        _remoteWidgets = parseLibraryFile(rfwCode);
+        RemoteWidgetLibrary remoteWidgets = parseLibraryFile(rfwCode);
         if (!pagesLibNames.containsKey(entry.key)) {
           LibraryName pageLibName = LibraryName(<String>[entry.key]);
           pagesLibNames[entry.key] = pageLibName;
         }
-        _runtime.update(pagesLibNames[entry.key]!, _remoteWidgets);
+        _runtime.update(pagesLibNames[entry.key]!, remoteWidgets);
       } catch (e) {
         print("Failed to parse RFW for page[${entry.key}]: $e");
       }
@@ -119,12 +117,29 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     setState(() {});
   }
 
+  void _applyVars(Map<String, dynamic> vars) {
+    for (var entry in vars.entries) {
+      _data.update(entry.key, entry.value);
+    }
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    ref.listen(pluginPagesProvider, (prev, next) {
-      final pluginPages = next[widget.pluginId];
-      if (pluginPages != null && pluginPages != prev?[widget.pluginId]) {
-        _loadPages(pluginPages);
+    ref.listen(pluginRunManagerProvider, (_, next) {
+      final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
+      if (plugin == null) return;
+
+      final pages = next[plugin]?.pages;
+      if (pages != null && pages.isNotEmpty && pages != _lastPages) {
+        _lastPages = pages;
+        _loadPages(pages);
+      }
+
+      final vars = next[plugin]?.vars;
+      if (vars != null && vars != _lastVars) {
+        _lastVars = vars;
+        _applyVars(vars);
       }
     });
 

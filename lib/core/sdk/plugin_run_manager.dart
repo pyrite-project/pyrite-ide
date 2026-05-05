@@ -9,7 +9,10 @@ class PluginRunManager {
   final int port;
   final String assetsPath;
   WebSocketChannel? _channel;
-  void Function(Map<String, String> pages)? onRefresh;
+  Map<String, String> pages = {};
+  void Function()? onRefresh;
+  Map<String, dynamic> vars = {};
+  void Function()? onSetVar;
 
   // 用于按顺序存储 Completer (解决请求与响应的匹配)
   final List<Completer<String>> _responseQueue = [];
@@ -49,29 +52,28 @@ class PluginRunManager {
         final Map<String, dynamic> data = jsonDecode(message as String);
 
         final cmdStr = data['cmd']?.toString() ?? '';
-        final hasManagerData =
+        final hasPagesData =
             data['data'] != null && data['data']['pages'] != null;
+        final hasPathTypeData =
+            data['data'] != null && data['data']['pathType'] != null;
+        final hasVarData =
+            data['data'] != null && data['data']['varName'] != null && data['data']['varValue'] != null;
 
-        if (cmdStr.contains('Commands.Response') && hasManagerData) {
-          if (_responseQueue.isNotEmpty) {
-            // 取出最早的一个请求并完成它 (先进先出)
-            final completer = _responseQueue.removeAt(0);
-            if (!completer.isCompleted) {
-              completer.complete(message);
-            }
-          }
-        } else if (cmdStr.contains('Commands.GetPath')) {
+        if (cmdStr.contains('Commands.SDK.Request.GetPath') && hasPathTypeData) {
           final String request = jsonEncode({
-            'cmd': 'Commands.GetPath',
+            'cmd': 'Commands.IDE.Response.GetPath',
             'data': {
-              'path_type': 'PathType.Assets',
-              'path': assetsPath,
+              'pathType': data['data']['pathType'],
+              'path': {
+                "PathType.Assets": assetsPath
+              }[data['data']['pathType']],
             },
           });
-
           send(request);
-        } else if (cmdStr.contains('Commands.Refresh')) {
+        } else if (cmdStr.contains('Commands.SDK.Request.Refresh') && hasPagesData) {
           _handleRefresh(data);
+        } else if (cmdStr.contains('Commands.SDK.Request.SetVar') && hasVarData) {
+          _handleSetVar(data);
         } else {
           print("Received push notification from server: $data");
         }
@@ -128,7 +130,7 @@ class PluginRunManager {
     await connect();
 
     final String request = jsonEncode({
-      'cmd': 'Commands.EventCallback',
+      'cmd': 'Commands.IDE.Request.EventCallback',
       'data': {
         'page': page,
         'callback': {'event': name, 'args': _convertToSerializable(args)},
@@ -142,7 +144,7 @@ class PluginRunManager {
     await connect();
 
     final String request = jsonEncode({
-      'cmd': 'Commands.LifecycleHooks',
+      'cmd': 'Commands.IDE.Request.LifecycleHooks',
       'data': {"lifecycleHook": lifecycle},
     });
 
@@ -150,9 +152,17 @@ class PluginRunManager {
   }
 
   void _handleRefresh(Map<String, dynamic> data) {
-    final rawPages = data['data']?['pages'];
+    final rawPages = data['data']!['pages'];
     print("Refresh received, pages data: $rawPages");
-    final pages = Map<String, String>.from(rawPages ?? {});
-    onRefresh?.call(pages);
+    pages = Map<String, String>.from(rawPages ?? {});
+    onRefresh?.call();
+  }
+
+  void _handleSetVar(Map<String, dynamic> data) {
+    final varName = data['data']!['varName'];
+    final varValue = data['data']!['varValue'];
+    print("SetVar received, varName: $varName, varValue: $varValue");
+    vars = {...vars, varName: varValue};
+    onSetVar?.call();
   }
 }

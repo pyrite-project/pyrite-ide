@@ -56,8 +56,11 @@ class PluginRunManagerNotifier
     );
 
     final PluginRunManager runManager = PluginRunManager(port: port, assetsPath: target.path);
-    runManager.onRefresh = (pages) {
-      ref.read(pluginPagesProvider.notifier).loadPages(plugin.id, pages);
+    runManager.onRefresh = () {
+      state = {...state};
+    };
+    runManager.onSetVar = () {
+      state = {...state};
     };
     state = {...state, plugin: runManager};
     await runManager.sendLifecycleHooks(LifecycleHooks.onStart);
@@ -121,18 +124,3 @@ pluginRunManagerProvider = StateNotifierProvider(
   (ref) => PluginRunManagerNotifier(ref),
 );
 
-class PluginPagesNotifier extends StateNotifier<Map<String, Map<String, String>>> {
-  PluginPagesNotifier() : super({});
-
-  void loadPages(String pluginId, Map<String, String> pages) {
-    state = {...state, pluginId: pages};
-  }
-
-  void clearPages(String pluginId) {
-    state = {...state}..remove(pluginId);
-  }
-}
-
-final pluginPagesProvider = StateNotifierProvider<PluginPagesNotifier, Map<String, Map<String, String>>>(
-  (ref) => PluginPagesNotifier(),
-);
