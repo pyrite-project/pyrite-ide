@@ -75,7 +75,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   }
 
   void createFile() async {
-    final file = await local.createFile();
+    final file = await local.sysCreateFile();
     if (file != null) {
       final TabData? newTab = await _createNewFileTab(
         file,
@@ -102,7 +102,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     bool isBoardFile = false,
     String? boardFilePath,
   }) async {
-    file ??= await local.getFile();
+    file ??= await local.sysGetFile();
     if (file != null) {
       final TabData? newTab = await _createNewFileTab(
         file,

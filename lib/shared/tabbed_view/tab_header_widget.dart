@@ -207,7 +207,7 @@ class TabHeaderWidget extends StatelessWidget {
                 actions: [
                   TextButton(
                     onPressed: () async {
-                      local.saveLocalFile(
+                      local.writeFile(
                         nowTab.value.file!,
                         nowTab.value.editorController!.text,
                       );

@@ -5,43 +5,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/file.dart';
-import 'package:pyrite_ide/shared/toly_tree.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:super_tree/super_tree.dart';
 
-Future<List<TreeNode<BoardFileTreeItem>>> buildFileListItems(
+Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
   List<Map<String, String>> datas,
 ) async {
-  List<TreeNode<BoardFileTreeItem>> items = [];
+  List<TreeNode<FileSystemItem>> items = [];
   // print("debug: buildFileListItems with datas $datas");
   for (Map<String, String> data in datas) {
     if (data["type"] == "folder") {
       items.add(
         TreeNode(
           id: data["path"]!,
-          data: BoardFileTreeItem(
-            name: data["name"]!,
-            icon: Icons.folder,
-            isDicrectory: true,
-          ),
+          data: FolderItem(data["name"]!),
+          canLoadChildren: true,
         ),
       );
       // print(data.path);
     } else {
-      items.add(
-        TreeNode(
-          id: data["path"]!,
-          data: BoardFileTreeItem(name: data["name"]!, icon: Icons.file_open),
-          isLeaf: false,
-        ),
-      );
+      items.add(TreeNode(id: data["path"]!, data: FileItem(data["name"]!)));
     }
   }
 
   return items;
 }
 
-Future<File> getLocalFilePath(TreeNode<BoardFileTreeItem> node) async {
+Future<File> getLocalFilePath(TreeNode<FileSystemItem> node) async {
   final supportDir = await getApplicationSupportDirectory();
   print("debug: appSupportDir ${supportDir.path}");
   List<String> fileNameList = node.id.split("/");
