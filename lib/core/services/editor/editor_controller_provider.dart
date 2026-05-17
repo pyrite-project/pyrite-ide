@@ -10,7 +10,10 @@ class EditorControllerMapNotifier
   final Ref ref;
   EditorControllerMapNotifier(this.ref) : super({});
 
-  Future<CodeForgeController?> createNewEditorController(File file) async {
+  Future<CodeForgeController?> createNewEditorController(
+    File file, {
+    String? initialText,
+  }) async {
     String pattern = "\\";
 
     if (Platform.isWindows) {
@@ -18,11 +21,13 @@ class EditorControllerMapNotifier
     } else {
       pattern = "/";
     }
-    String initialText = "";
-    try {
-      initialText = await file.readAsString();
-    } on FileSystemException {
-      return null;
+    String text = initialText ?? "";
+    if (initialText == null) {
+      try {
+        text = await file.readAsString();
+      } on FileSystemException {
+        return null;
+      }
     }
     final uri = Uri.file(file.path).toString().split(pattern);
     // final fileName = uri.removeLast();
@@ -39,8 +44,8 @@ class EditorControllerMapNotifier
             )
           : null,
     );
-    controller.text = initialText;
     controller.openedFile = file.path;
+    controller.text = text;
     state = {...state, file.path: controller};
     return controller;
   }

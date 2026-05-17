@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
@@ -196,9 +197,10 @@ class TabHeaderWidget extends StatelessWidget {
       TabButton closeButton = TabButton.icon(
         tabTheme.closeIcon,
         onPressed: () async {
-          final TabData nowTab = provider.controller.selectedTab!;
-          final String path = nowTab.value.filePath;
-          if (false) {
+          final TabData tabData = provider.controller.tabs[index];
+          final value = tabData.value;
+          final bool isUnsaved = value is TabDataValue && !value.isSaved;
+          if (isUnsaved) {
             showDialog(
               context: context,
               builder: (context) => AlertDialog(
@@ -208,8 +210,8 @@ class TabHeaderWidget extends StatelessWidget {
                   TextButton(
                     onPressed: () async {
                       local.writeFile(
-                        nowTab.value.file!,
-                        nowTab.value.editorController!.text,
+                        value.file!.path,
+                        value.editorController!.text,
                       );
                       container
                           .read(tabbedViewControllerProvider.notifier)

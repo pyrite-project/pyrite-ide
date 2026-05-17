@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart'
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
@@ -14,6 +15,7 @@ import 'package:pyrite_ide/pages/editor/welcome.dart';
 
 class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   final Ref ref;
+  VoidCallback? onUnsavedChange;
 
   TabbedViewControllerNotifier(this.ref) : super(_buildTabbedViewController());
 
@@ -45,6 +47,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     File file,
     CodeForgeController? editorController, {
     bool isBoardFile = false,
+    bool isSaved = true,
   }) async {
     if (editorController == null) {
       return null;
@@ -64,14 +67,38 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       file: file,
       editorController: editorController,
       isBoardFile: isBoardFile,
+      isSaved: isSaved,
     );
 
-    return TabData(
+    final tab = TabData(
       value: value,
       text: file.path.split(pattern).last,
       content: EditCore(file: file, editorController: editorController),
       keepAlive: true,
     );
+
+    String savedText = editorController.text;
+    editorController.addListener(() {
+      if (tab.value is TabDataValue) {
+        final val = tab.value as TabDataValue;
+        final currentText = editorController.text;
+        if (currentText == savedText) return;
+        savedText = currentText;
+        if (val.isSaved) {
+          val.isSaved = false;
+          tab.leading = (context, status) => Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(Icons.circle, size: 8, color: Colors.orange),
+              );
+          final idx = state.selectedIndex;
+          state = TabbedViewController(List.from(state.tabs));
+          if (idx != null) state.selectedIndex = idx;
+          onUnsavedChange?.call();
+        }
+      }
+    });
+
+    return tab;
   }
 
   void createFile() async {
@@ -161,9 +188,57 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void afterFileSave() {
     final TabData nowTab = state.selectedTab!;
+    if (nowTab.value is TabDataValue) {
+      (nowTab.value as TabDataValue).isSaved = true;
+    }
     nowTab.leading = (context, status) {
       return null;
     };
+  }
+
+  Future<void> restoreTabs(
+    List<PersistedTab> persistedTabs,
+    int selectedIndex,
+  ) async {
+    final List<TabData> tabs = [];
+
+    tabs.addAll(_buildTabbedViewController().tabs);
+
+    for (final persisted in persistedTabs) {
+      if (persisted.isBoardFile) continue;
+      final file = File(persisted.filePath);
+      if (!await file.exists()) {
+        if (persisted.unsavedContent == null) continue;
+      }
+      final controller = await ref
+          .read(editorControllerMapProvider.notifier)
+          .createNewEditorController(
+            file,
+            initialText: persisted.unsavedContent,
+          );
+      if (controller == null) continue;
+      final tab = await _createNewFileTab(
+        file,
+        controller,
+        isBoardFile: persisted.isBoardFile,
+        isSaved: persisted.isSaved,
+      );
+      if (tab != null) {
+        if (!persisted.isSaved && persisted.unsavedContent != null) {
+          tab.leading = (context, status) => Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(Icons.circle, size: 8, color: Colors.orange),
+              );
+        }
+        tabs.add(tab);
+      }
+    }
+
+    final newController = TabbedViewController(tabs);
+    if (selectedIndex > 0 && selectedIndex < tabs.length) {
+      newController.selectedIndex = selectedIndex;
+    }
+    state = newController;
   }
 }
 

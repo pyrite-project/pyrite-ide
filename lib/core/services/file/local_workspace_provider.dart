@@ -15,6 +15,10 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   LocalWorkspaceNotifier(this.ref) : super(null);
 
+  void setDirectory(Directory dir) {
+    state = dir;
+  }
+
   Future<Directory?> getDirectory() async {
     final String? path = await getDirectoryPath();
     final Directory? dir;
