@@ -56,6 +56,9 @@ void _applyData(PersistedData data) {
       data.mobileSelectedIndex;
   container.read(tabletSelectedIndex.notifier).state =
       data.tabletSelectedIndex;
+  container.read(functionPageShow.notifier).state = data.functionPageShow;
+  container.read(consolePageShow.notifier).state = data.consolePageShow;
+  container.read(expansionPageShow.notifier).state = data.expansionPageShow;
 }
 
 void _triggerSave() {

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 class PersistedTab {
   final String filePath;
   final bool isBoardFile;
@@ -45,6 +43,9 @@ class PersistedData {
   final int desktopSelectedIndex;
   final int mobileSelectedIndex;
   final int tabletSelectedIndex;
+  final bool functionPageShow;
+  final bool consolePageShow;
+  final bool expansionPageShow;
 
   PersistedData({
     this.workspacePath,
@@ -63,5 +64,8 @@ class PersistedData {
     this.desktopSelectedIndex = 0,
     this.mobileSelectedIndex = 0,
     this.tabletSelectedIndex = 0,
+    this.functionPageShow = true,
+    this.consolePageShow = true,
+    this.expansionPageShow = true,
   });
 }
