@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -397,24 +398,23 @@ class ProjectFiles extends ConsumerWidget {
           mainAxisAlignment: .center,
           children: [
             Icon(
-              Icons.folder_outlined,
+              Icons.devices,
               size: 50,
               color: Theme.of(context).colorScheme.secondary,
             ),
             SizedBox(height: 10),
             TextBodyMedium(
-              "欢迎来到 PyriteIDE",
+              "尚未连接到 MicroPython 设备",
               color: Theme.of(context).colorScheme.secondary,
             ),
             TextBodyMedium(
-              "请先打开一个项目文件夹",
+              "请前往设备管理连接一个设备",
               color: Theme.of(context).colorScheme.secondary,
             ),
             SizedBox(height: 10),
             FilledButton(
-              onPressed: () =>
-                  ref.read(localFileItemsProvider.notifier).openFolder(),
-              child: Text("打开文件夹"),
+              onPressed: () => context.push("/tools"),
+              child: Text("设备管理"),
             ),
           ],
         ),
