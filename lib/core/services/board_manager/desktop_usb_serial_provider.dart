@@ -74,7 +74,10 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     return false;
   }
 
-  // 添加分块发送的参数
+  void sendBytes(Uint8List bytes) {
+    state.selectedPort!.write(bytes);
+  }
+
   void sendCommand(String command, {bool chunked = true}) {
     if (chunked && command.length > 64) {
       _sendChunkedCommand(command);
@@ -97,7 +100,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
           : command.length;
       final chunk = command.substring(i, end);
       _sendDirectCommand(chunk);
-      await Future.delayed(Duration(milliseconds: 2)); // 块间延迟
+      await Future.delayed(Duration(milliseconds: 1)); // 块间延迟
     }
   }
 

@@ -70,13 +70,13 @@ class StyleSettings extends ConsumerWidget {
                 ),
                 ChoiceChip(
                   label: Text("火焰橙"),
-                  selected: ref.watch(themeColor) == Colors.deepOrange,
+                  selected: ref.watch(themeColor)?.toARGB32() == Colors.deepOrange.toARGB32(),
                   onSelected: (value) =>
                       ref.read(themeColor.notifier).state = Colors.deepOrange,
                 ),
                 ChoiceChip(
                   label: Text("掌控蓝"),
-                  selected: ref.watch(themeColor) == Colors.blue,
+                  selected: ref.watch(themeColor)?.toARGB32() == Colors.blue.toARGB32(),
                   onSelected: (value) =>
                       ref.read(themeColor.notifier).state = Colors.blue,
                 ),

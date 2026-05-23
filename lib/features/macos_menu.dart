@@ -5,7 +5,7 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 
 class MacOSMenu extends ConsumerWidget {
@@ -62,7 +62,7 @@ class MacOSMenu extends ConsumerWidget {
               PlatformMenuItem(
                 label: "保存当前文件",
                 onSelected: () =>
-                    ref.read(workspaceProvider.notifier).saveFile(),
+                    ref.read(localWorkspaceProvider.notifier).saveFile(),
               ),
             ],
           ),
