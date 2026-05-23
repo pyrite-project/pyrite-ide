@@ -67,6 +67,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
+          flutter-version: "3.19.6"
 
       - name: Install automake and libtool
         if: matrix.target == 'macos'
