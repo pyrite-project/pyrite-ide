@@ -105,7 +105,7 @@ void main() async {
 
   UseWindow().init();
 
-  // SeriousPython.run(getPythonPath()!);
+  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
   // container.read(lspClientProvider);
 
   runApp(

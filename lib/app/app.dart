@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
@@ -15,6 +16,7 @@ class PyriteIDE extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.read(getUsbSerialProvider().notifier).registerUpdateTask();
+    ref.read(pluginRunManagerProvider.notifier).setupRouterListener();
 
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
