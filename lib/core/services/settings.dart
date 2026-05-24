@@ -16,7 +16,7 @@ final StateProvider<String> editorTextFontProvider = StateProvider<String>(
 final ByteData _null = ByteData(0);
 
 Future<ByteData> loadFontData() async {
-  File? file = await local.getFile();
+  File? file = await local.sysGetFile();
   if (file != null) {
     final bytes = await file.readAsBytes();
     return ByteData.sublistView(bytes);

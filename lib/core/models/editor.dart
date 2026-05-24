@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:code_forge/code_forge/controller.dart';
 
 class TabDataValue {
-  const TabDataValue({
+  TabDataValue({
     required this.type,
     required this.filePath,
     this.file,
@@ -15,5 +15,5 @@ class TabDataValue {
   final File? file;
   final CodeForgeController? editorController;
   final bool? isBoardFile;
-  final bool isSaved;
+  bool isSaved;
 }

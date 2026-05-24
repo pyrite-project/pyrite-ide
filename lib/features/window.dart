@@ -6,7 +6,7 @@ import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -119,13 +119,13 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "保存当前文件",
-              () => ref.read(workspaceProvider.notifier).saveFile(),
+              () => ref.read(localWorkspaceProvider.notifier).saveFile(),
               leadingIconData: Icons.save,
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
-              () => ref.read(workspaceProvider.notifier).saveAs(),
+              () => ref.read(localWorkspaceProvider.notifier).saveAs(),
               leadingIconData: Icons.save_as,
             ),
           ],

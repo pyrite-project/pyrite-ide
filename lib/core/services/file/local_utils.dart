@@ -1,20 +1,26 @@
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/models/file.dart';
-import 'package:pyrite_ide/shared/toly_tree.dart';
+import 'package:super_tree/super_tree.dart';
 
-Future<List<TreeNode<LocalFileTreeItem>>> buildFileListItems(
-  Stream<FileSystemEntity> datas,
-) async {
-  List<TreeNode<LocalFileTreeItem>> items = [];
-  String pattern;
-
+String getPattern() {
+  final String pattern;
   if (Platform.isWindows) {
     pattern = "\\";
   } else {
     pattern = "/";
   }
+
+  return pattern;
+}
+
+Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
+  Stream<FileSystemEntity> datas,
+) async {
+  List<TreeNode<FileSystemItem>> items = [];
+  String pattern = getPattern();
 
   try {
     await for (FileSystemEntity data in datas) {
@@ -22,11 +28,8 @@ Future<List<TreeNode<LocalFileTreeItem>>> buildFileListItems(
         items.add(
           TreeNode(
             id: data.path,
-            data: LocalFileTreeItem(
-              name: data.path.split(pattern).last,
-              icon: Icons.folder,
-              isDicrectory: true,
-            ),
+            data: FolderItem(data.path.split(pattern).last),
+            canLoadChildren: true,
           ),
         );
         // print(data.path);
@@ -34,11 +37,7 @@ Future<List<TreeNode<LocalFileTreeItem>>> buildFileListItems(
         items.add(
           TreeNode(
             id: data.path,
-            data: LocalFileTreeItem(
-              name: data.path.split(pattern).last,
-              icon: Icons.file_open,
-            ),
-            isLeaf: false,
+            data: FileItem(data.path.split(pattern).last),
           ),
         );
       }
@@ -50,7 +49,7 @@ Future<List<TreeNode<LocalFileTreeItem>>> buildFileListItems(
   return items;
 }
 
-Future<File?> getFile() async {
+Future<File?> sysGetFile() async {
   final XFile? file = await openFile();
   if (file != null) {
     return File(file.path);
@@ -59,7 +58,7 @@ Future<File?> getFile() async {
   }
 }
 
-Future<File?> createFile() async {
+Future<File?> sysCreateFile() async {
   FileSaveLocation? path0 = await getSaveLocation();
   File? file;
   if (path0 != null) {
@@ -73,11 +72,12 @@ Future<File?> createFile() async {
   return file;
 }
 
-void saveLocalFile(File file, String content) async {
+void writeFile(String path, String content) async {
+  final File file = File(path);
   await file.writeAsString(content);
 }
 
-Future<bool> saveAs(String content) async {
+Future<bool> sysSaveAs(String content) async {
   FileSaveLocation? path0 = await getSaveLocation();
   File? file;
   if (path0 != null) {
@@ -94,4 +94,103 @@ Future<bool> saveAs(String content) async {
 
 Future<Stream<FileSystemEntity>> getFilesList(String path) async {
   return Directory(path).list();
+}
+
+Future<void> renameDir(String path, String newName) async {
+  final directory = Directory(path);
+  final newPath0 = path.split(getPattern());
+  newPath0.last = newName;
+  final newPath = newPath0.join(getPattern());
+  await directory.rename(newPath);
+}
+
+Future<void> renameFile(String path, String newName) async {
+  final file = File(path);
+  final newPath0 = path.split(getPattern());
+  newPath0.last = newName;
+  final newPath = newPath0.join(getPattern());
+  await file.rename(newPath);
+}
+
+Future<void> deleteDir(String path) async {
+  final directiry = Directory(path);
+  await directiry.delete();
+}
+
+Future<void> deleteFile(String path) async {
+  final file = File(path);
+  await file.delete();
+}
+
+Future<String> getFileContent(String path) async {
+  final File file = File(path);
+  return await file.readAsString();
+}
+
+Future<String> createFileWithUniqueName(String desiredPath) async {
+  final uniquePath = await getUniqueFilePath(desiredPath);
+
+  final directory = path.dirname(uniquePath);
+  await Directory(directory).create(recursive: true);
+
+  final file = File(uniquePath);
+  await file.create();
+
+  return uniquePath;
+}
+
+Future<String> getUniqueFilePath(
+  String originalPath, {
+  int maxAttempts = 10000,
+}) async {
+  // 先检查原始路径是否可用
+  if (!await File(originalPath).exists()) {
+    return originalPath;
+  }
+
+  final directory = path.dirname(originalPath);
+  final basename = path.basenameWithoutExtension(originalPath);
+  final extension = path.extension(originalPath);
+
+  int attempt = 1;
+  while (attempt <= maxAttempts) {
+    final candidatePath = path.join(
+      directory,
+      '$basename ($attempt)$extension',
+    );
+    if (!await File(candidatePath).exists()) {
+      return candidatePath;
+    }
+    attempt++;
+  }
+
+  throw Exception('无法生成唯一文件名，已达最大尝试次数 ($maxAttempts)');
+}
+
+Future<String> getUniqueFolderPath(
+  String desiredPath, {
+  int maxAttempts = 10000,
+}) async {
+  if (!await Directory(desiredPath).exists()) {
+    return desiredPath;
+  }
+  final dir = path.dirname(desiredPath);
+  final basename = path.basename(desiredPath);
+  int attempt = 1;
+  while (attempt <= maxAttempts) {
+    final candidate = path.join(dir, '$basename ($attempt)');
+    if (!await Directory(candidate).exists()) {
+      return candidate;
+    }
+    attempt++;
+  }
+  throw Exception('无法生成唯一文件夹名，已达最大尝试次数 $maxAttempts');
+}
+
+Future<String> createFolderWithUniqueName(String desiredPath) async {
+  final uniquePath = await getUniqueFolderPath(desiredPath);
+  final parentDir = path.dirname(uniquePath);
+  await Directory(parentDir).create(recursive: true);
+  await Directory(uniquePath).create();
+  return uniquePath;
 }

@@ -1,18 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/file.dart';
-import 'package:pyrite_ide/core/services/file/workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
-import 'package:pyrite_ide/shared/toly_tree.dart';
+import 'package:super_tree/super_tree.dart';
 
 class LocalFileItemsNotifier
-    extends StateNotifier<List<TreeNode<LocalFileTreeItem>>> {
+    extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   final Ref ref;
 
   LocalFileItemsNotifier(this.ref) : super(const []);
 
-  Future<List<TreeNode<LocalFileTreeItem>>> buildRootFileListItems() async {
-    List<TreeNode<LocalFileTreeItem>> items = await local.buildFileListItems(
-      await ref.read(workspaceProvider.notifier).getFilesList(),
+  Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
+    List<TreeNode<FileSystemItem>> items = await local.buildFileListItems(
+      await ref.read(localWorkspaceProvider.notifier).getFilesList(),
     );
     state = items;
 
@@ -20,14 +20,14 @@ class LocalFileItemsNotifier
   }
 
   void openFolder() async {
-    await ref.read(workspaceProvider.notifier).getDirectory();
+    await ref.read(localWorkspaceProvider.notifier).getDirectory();
     buildRootFileListItems();
   }
 }
 
 final StateNotifierProvider<
   LocalFileItemsNotifier,
-  List<TreeNode<LocalFileTreeItem>>
+  List<TreeNode<FileSystemItem>>
 >
 localFileItemsProvider = StateNotifierProvider(
   (ref) => LocalFileItemsNotifier(ref),

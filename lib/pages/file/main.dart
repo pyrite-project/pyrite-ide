@@ -2,17 +2,20 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:pyrite_ide/core/models/file.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/workspace_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
+import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
-import 'package:pyrite_ide/shared/toly_tree.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:super_context_menu/super_context_menu.dart';
+import 'package:super_tree/super_tree.dart';
 
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
@@ -29,7 +32,7 @@ class ProjectFiles extends ConsumerWidget {
               ref
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems();
-              ref.watch(boardFileItemsProvider.notifier).clear();
+              ref.watch(boardWorkspaceProvider.notifier).clear();
               ref
                   .watch(boardFileItemsProvider.notifier)
                   .buildRootFileListItems();
@@ -51,7 +54,7 @@ class ProjectFiles extends ConsumerWidget {
           children: [
             shadcn.ResizablePane.flex(
               initialFlex: 1,
-              child: buildProjectFiles(context, ref),
+              child: buildLocalFiles(context, ref),
             ),
             shadcn.ResizablePane.flex(
               initialFlex: 1,
@@ -63,48 +66,154 @@ class ProjectFiles extends ConsumerWidget {
     );
   }
 
-  Widget buildProjectFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(workspaceProvider) != null) {
-      return CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: TolyTree<LocalFileTreeItem>(
-              showConnectingLines: true,
-              onTap: (node) async {
-                if (!node.data.isDicrectory) {
-                  File file = File(node.id);
-                  if (context.mounted) {
-                    ref
-                        .read(tabbedViewControllerProvider.notifier)
-                        .openFile(context, file: file);
-                  }
-                }
-              },
-              nodes: ref.watch(localFileItemsProvider),
-              loadData: (node) => _loadProjectChildren(node, ref),
-              nodeBuilder: (node) => Tooltip(
-                message: node.data.name,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 0,
-                  ),
-                  child: Row(
+  Widget buildLocalFiles(BuildContext context, WidgetRef ref) {
+    if (ref.watch(localWorkspaceProvider) != null) {
+      return SuperTreeView<FileSystemItem>(
+        logic: TreeViewConfig(
+          enableDragAndDrop: ref.watch(localEnableDragAndDrop),
+          onNodeTap: (id) {
+            File file = File(id);
+            if (context.mounted) {
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .openFile(context, file: file);
+            }
+          },
+          namingStrategy: TreeNamingStrategy.always,
+        ),
+        style: SuperTreeThemes.material().treeStyle,
+        controller: ref.watch(localFileTreeViewControllerProvider),
+        prefixBuilder: (BuildContext context, TreeNode<FileSystemItem> node) {
+          return SuperTreeThemes.material().fileSystemIconProvider!.getIcon(
+            node,
+          );
+        },
+        contentBuilder:
+            (
+              BuildContext context,
+              TreeNode<FileSystemItem> node,
+              Widget? renameField,
+            ) {
+              if (renameField != null) {
+                return renameField;
+              }
+              return ContextMenuWidget(
+                child: Text(node.data.name),
+                menuProvider: (request) {
+                  ref
+                      .read(localFileTreeViewControllerProvider)
+                      .setSelectedNodeId(node.id);
+
+                  final TreeNode<FileSystemItem>? boardFileTarget = ref
+                      .read(boardWorkspaceProvider.notifier)
+                      .getFocusFileNode();
+                  final TreeNode<FileSystemItem>? localFileTarget = ref
+                      .read(localWorkspaceProvider.notifier)
+                      .getFocusFileNode();
+
+                  final TreeNode<FileSystemItem>? boardFolderTarget = ref
+                      .read(boardWorkspaceProvider.notifier)
+                      .getFocusFolderNode();
+                  final TreeNode<FileSystemItem>? localFolderTarget = ref
+                      .read(localWorkspaceProvider.notifier)
+                      .getFocusFolderNode();
+
+                  return Menu(
                     children: [
-                      Icon(
-                        node.data.icon,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 18,
+                      MenuAction(
+                        title: "重命名",
+                        callback: () => ref
+                            .read(localFileTreeViewControllerProvider)
+                            .setRenamingNodeId(node.id),
                       ),
-                      const SizedBox(width: 8),
-                      Text(node.data.name),
+                      MenuAction(
+                        title: "删除",
+                        callback: () => ref
+                            .read(localFileTreeViewControllerProvider)
+                            .removeNode(node),
+                      ),
+                      MenuSeparator(),
+                      MenuAction(
+                        title: "下载至 ${boardFolderTarget?.id ?? "/"}",
+                        callback: () async {
+                          if (node.data is FileItem) {
+                            final String content = await local.getFileContent(
+                              node.id,
+                            );
+                            await ref
+                                .read(boardWorkspaceProvider.notifier)
+                                .writeFile(
+                                  (boardFolderTarget?.id != null)
+                                      ? "${boardFolderTarget!.id}/${path.basename(node.id)}"
+                                      : "/${path.basename(node.id)}",
+                                  content,
+                                );
+                            ref
+                                .read(boardFileItemsProvider.notifier)
+                                .buildRootFileListItems();
+                          } else if (node.data is FolderItem) {
+                            await ref
+                                .read(boardWorkspaceProvider.notifier)
+                                .uploadFolder(
+                                  node.id,
+                                  (boardFolderTarget?.id != null)
+                                      ? "${boardFolderTarget!.id}/${path.basename(node.id)}"
+                                      : "/${path.basename(node.id)}",
+                                );
+                          }
+                        },
+                        attributes: MenuActionAttributes(
+                          disabled: !(ref
+                              .watch(getUsbSerialProvider())
+                              .isConnected),
+                        ),
+                      ),
+                      MenuAction(
+                        title: "下载至 ${boardFileTarget?.id ?? "（焦点非文件或未选择）"}",
+                        callback: () async {
+                          final String content = await local.getFileContent(
+                            node.id,
+                          );
+                          await ref
+                              .read(boardWorkspaceProvider.notifier)
+                              .writeFile(boardFileTarget!.id, content);
+                          ref
+                              .read(boardFileItemsProvider.notifier)
+                              .buildRootFileListItems();
+                        },
+                        attributes: MenuActionAttributes(
+                          disabled:
+                              !(ref
+                                  .watch(getUsbSerialProvider())
+                                  .isConnected) ||
+                              (boardFileTarget == null ||
+                                  (node.data is FolderItem)),
+                        ),
+                      ),
+                      MenuSeparator(),
+                      MenuAction(
+                        title:
+                            "在 ${localFolderTarget?.id ?? ref.read(localWorkspaceProvider)!.path} 新建文件",
+                        callback: () async {
+                          await ref
+                              .read(localWorkspaceProvider.notifier)
+                              .createFile("new_file", localFolderTarget);
+                        },
+                      ),
+                      MenuAction(
+                        title:
+                            "在 ${localFolderTarget?.id ?? ref.read(localWorkspaceProvider)!.path} 新建文件夹",
+                        callback: () async {
+                          await ref
+                              .read(localWorkspaceProvider.notifier)
+                              .createFolder("new_folder", localFolderTarget);
+                        },
+                      ),
                     ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+                  );
+                },
+              );
+            },
       );
     } else {
       return Center(
@@ -139,78 +248,149 @@ class ProjectFiles extends ConsumerWidget {
 
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
     if (ref.watch(getUsbSerialProvider()).isConnected) {
-      if (ref.watch(boardFileItemsProvider).isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: .center,
-            children: [
-              Icon(
-                Icons.power_outlined,
-                size: 50,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              SizedBox(height: 10),
-              TextBodyMedium(
-                "MicroPython 设备文件为空",
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              TextBodyMedium(
-                "请尝试点击上方刷新按钮刷新",
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-            ],
-          ),
-        );
-      }
-      return CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: TolyTree<BoardFileTreeItem>(
-              showConnectingLines: true,
-              onTap: (node) async {
-                if (!node.data.isDicrectory) {
-                  final File file = await board.getLocalFilePath(node);
-                  final String content = await ref
-                      .read(boardFileItemsProvider.notifier)
-                      .getFileContent(node.id);
-                  await file.writeAsString(content);
-                  if (context.mounted) {
-                    ref
-                        .read(tabbedViewControllerProvider.notifier)
-                        .openFile(
-                          context,
-                          file: file,
-                          isBoardFile: true,
-                          boardFilePath: node.id,
-                        );
-                  }
-                }
-              },
-              nodes: ref.watch(boardFileItemsProvider),
-              loadData: (node) => _loadBoardChildren(node, ref),
-              nodeBuilder: (node) => Tooltip(
-                message: node.data.name,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 0,
-                  ),
-                  child: Row(
+      return SuperTreeView<FileSystemItem>(
+        logic: TreeViewConfig(
+          enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
+          onNodeTap: (id) {
+            File file = File(id);
+            if (context.mounted) {
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .openFile(context, file: file);
+            }
+          },
+          namingStrategy: TreeNamingStrategy.always,
+        ),
+        style: SuperTreeThemes.material().treeStyle,
+        controller: ref.watch(boardFileTreeViewControllerProvider),
+        prefixBuilder: (BuildContext context, TreeNode<FileSystemItem> node) {
+          return SuperTreeThemes.material().fileSystemIconProvider!.getIcon(
+            node,
+          );
+        },
+        contentBuilder:
+            (
+              BuildContext context,
+              TreeNode<FileSystemItem> node,
+              Widget? renameField,
+            ) {
+              if (renameField != null) {
+                return renameField;
+              }
+              return ContextMenuWidget(
+                child: Text(node.data.name),
+                menuProvider: (request) {
+                  ref
+                      .read(boardFileTreeViewControllerProvider)
+                      .setSelectedNodeId(node.id);
+
+                  final TreeNode<FileSystemItem>? boardFileTarget = ref
+                      .read(boardWorkspaceProvider.notifier)
+                      .getFocusFileNode();
+                  final TreeNode<FileSystemItem>? localFileTarget = ref
+                      .read(localWorkspaceProvider.notifier)
+                      .getFocusFileNode();
+
+                  final TreeNode<FileSystemItem>? boardFolderTarget = ref
+                      .read(boardWorkspaceProvider.notifier)
+                      .getFocusFolderNode();
+                  final TreeNode<FileSystemItem>? localFolderTarget = ref
+                      .read(localWorkspaceProvider.notifier)
+                      .getFocusFolderNode();
+
+                  return Menu(
                     children: [
-                      Icon(
-                        node.data.icon,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 18,
+                      MenuAction(
+                        title: "重命名",
+                        callback: () => ref
+                            .read(boardFileTreeViewControllerProvider)
+                            .setRenamingNodeId(node.id),
                       ),
-                      const SizedBox(width: 8),
-                      Text(node.data.name),
+                      MenuAction(
+                        title: "删除",
+                        callback: () => ref
+                            .read(boardFileTreeViewControllerProvider)
+                            .removeNode(node),
+                      ),
+                      MenuSeparator(),
+                      MenuAction(
+                        title:
+                            "上传至 ${localFolderTarget?.id ?? ref.watch(localWorkspaceProvider)?.path}",
+                        callback: () async {
+                          if (node.data is FileItem) {
+                            final String content = await ref
+                                .read(boardWorkspaceProvider.notifier)
+                                .getFileContent(node.id);
+                            local.writeFile(
+                              (localFolderTarget?.id != null)
+                                  ? path.join(
+                                      localFolderTarget!.id,
+                                      path.basename(node.id),
+                                    )
+                                  : path.join(
+                                      ref.watch(localWorkspaceProvider)!.path,
+                                      path.basename(node.id),
+                                    ),
+                              content,
+                            );
+                          } else if (node.data is FolderItem) {
+                            await ref
+                                .read(boardWorkspaceProvider.notifier)
+                                .downloadFolder(
+                                  node.id,
+                                  (localFolderTarget?.id != null)
+                                      ? path.join(
+                                          localFolderTarget!.id,
+                                          path.basename(node.id),
+                                        )
+                                      : path.join(
+                                          ref
+                                              .watch(localWorkspaceProvider)!
+                                              .path,
+                                          path.basename(node.id),
+                                        ),
+                                );
+                          }
+
+                          ref
+                              .read(localFileItemsProvider.notifier)
+                              .buildRootFileListItems();
+                        },
+                        attributes: MenuActionAttributes(
+                          disabled:
+                              !(ref
+                                  .watch(getUsbSerialProvider())
+                                  .isConnected) ||
+                              (ref.watch(localWorkspaceProvider)?.path == null),
+                        ),
+                      ),
+                      MenuAction(
+                        title: "上传至 ${localFileTarget?.id ?? "（焦点非文件或未选择）"}",
+                        callback: () async {
+                          final String content = await ref
+                              .read(boardWorkspaceProvider.notifier)
+                              .getFileContent(node.id);
+                          local.writeFile(
+                            path.join(localFileTarget!.id),
+                            content,
+                          );
+                          ref
+                              .read(localFileItemsProvider.notifier)
+                              .buildRootFileListItems();
+                        },
+                        attributes: MenuActionAttributes(
+                          disabled:
+                              (localFileTarget == null) ||
+                              ((ref.watch(localWorkspaceProvider)?.path ==
+                                      null) ||
+                                  (node.data is FolderItem)),
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+                  );
+                },
+              );
+            },
       );
     } else {
       return Center(
@@ -218,56 +398,27 @@ class ProjectFiles extends ConsumerWidget {
           mainAxisAlignment: .center,
           children: [
             Icon(
-              Icons.power_outlined,
+              Icons.devices,
               size: 50,
               color: Theme.of(context).colorScheme.secondary,
             ),
             SizedBox(height: 10),
             TextBodyMedium(
-              "这里将展示 MicroPython 设备的文件",
+              "尚未连接到 MicroPython 设备",
               color: Theme.of(context).colorScheme.secondary,
             ),
             TextBodyMedium(
-              "请先连接一个 MicroPython 设备",
+              "请前往设备管理连接一个设备",
               color: Theme.of(context).colorScheme.secondary,
             ),
             SizedBox(height: 10),
             FilledButton(
               onPressed: () => context.push("/tools"),
-              child: Text("管理 MicroPython 设备"),
+              child: Text("设备管理"),
             ),
           ],
         ),
       );
-    }
-  }
-
-  Future<List<TreeNode<LocalFileTreeItem>>> _loadProjectChildren(
-    TreeNode<LocalFileTreeItem> node,
-    WidgetRef ref,
-  ) async {
-    // print(node.isExpanded);
-    if (node.isLeaf == null) {
-      return await local.buildFileListItems(await local.getFilesList(node.id));
-    } else {
-      return [];
-    }
-  }
-
-  Future<List<TreeNode<BoardFileTreeItem>>> _loadBoardChildren(
-    TreeNode<BoardFileTreeItem> node,
-    WidgetRef ref,
-  ) async {
-    // print(node.isExpanded);
-    if (node.isLeaf == null) {
-      // print(node.id);
-      return await board.buildFileListItems(
-        await ref
-            .read(boardFileItemsProvider.notifier)
-            .getFilesList(path: node.id),
-      );
-    } else {
-      return [];
     }
   }
 }
