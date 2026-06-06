@@ -44,7 +44,7 @@ class EditorControllerMapNotifier
             )
           : null,
     );
-    controller.openedFile = file.path;
+    // controller.openedFile = file.path;
     controller.text = text;
     state = {...state, file.path: controller};
     return controller;

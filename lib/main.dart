@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -92,6 +93,8 @@ void main() async {
       container.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
   }
+
+  await RustLib.init();
 
   if (data.tabs.isNotEmpty) {
     await container
