@@ -194,40 +194,67 @@ class StatusBarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final child = TextButton.icon(
-      style: TextButton.styleFrom(
-        foregroundColor: scheme.onSurfaceVariant,
-        minimumSize: Size(compact ? 44 : 56, 32),
-        padding: EdgeInsetsDirectional.only(
-          start: compact ? 8 : 10,
-          end: compact ? 8 : 12,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      onPressed: onPressed,
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Icon(icon, size: 16),
-          if (statusColor != null)
-            PositionedDirectional(
-              end: -3,
-              bottom: -3,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  borderRadius: BorderRadius.circular(99),
-                  border: Border.all(
-                    color: scheme.surfaceContainer,
-                    width: 1.5,
-                  ),
-                ),
-                child: const SizedBox(width: 8, height: 8),
+    final statusIcon = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon, size: 16),
+        if (statusColor != null)
+          PositionedDirectional(
+            end: -3,
+            bottom: -3,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: statusColor,
+                borderRadius: BorderRadius.circular(99),
+                border: Border.all(color: scheme.surfaceContainer, width: 1.5),
               ),
+              child: const SizedBox(width: 8, height: 8),
             ),
-        ],
-      ),
-      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+    );
+
+    final child = LayoutBuilder(
+      builder: (context, constraints) {
+        final hasBoundedWidth = constraints.maxWidth.isFinite;
+        final showLabel =
+            !compact || !hasBoundedWidth || constraints.maxWidth >= 72;
+        return TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: scheme.onSurfaceVariant,
+            minimumSize: Size(showLabel ? (compact ? 44 : 56) : 36, 32),
+            padding: showLabel
+                ? EdgeInsetsDirectional.only(
+                    start: compact ? 8 : 10,
+                    end: compact ? 8 : 12,
+                  )
+                : EdgeInsets.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          onPressed: onPressed,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              statusIcon,
+              if (showLabel) ...[
+                SizedBox(width: compact ? 4 : 6),
+                if (hasBoundedWidth)
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                else
+                  Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ],
+          ),
+        );
+      },
     );
 
     if (tooltip == null) return child;

@@ -229,6 +229,8 @@ class MobileView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final useNavigationDrawer =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final routeIndex = routesName.indexOf(
@@ -242,13 +244,75 @@ class MobileView extends ConsumerWidget {
       }
     });
     return Scaffold(
-      bottomNavigationBar: bottomNavigationBar(context, ref),
+      drawer: useNavigationDrawer ? mobileNavigationDrawer(context, ref) : null,
+      bottomNavigationBar: useNavigationDrawer
+          ? null
+          : bottomNavigationBar(context, ref),
       body: Column(
         children: [
           Expanded(child: child),
-          const EditorToolsBar(),
+          EditorToolsBar(showNavigationDrawerButton: useNavigationDrawer),
         ],
       ),
+    );
+  }
+
+  void selectDestination(BuildContext context, WidgetRef ref, int value) {
+    selectedIndexValue = value;
+    ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
+    ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
+    if (selectedIndexValue < desktopRailItems.length) {
+      ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
+    } else {
+      ref.read(desktopSelectedIndex.notifier).state = 0;
+    }
+    context.go(routesName[selectedIndexValue]);
+  }
+
+  Widget mobileNavigationDrawer(BuildContext context, WidgetRef ref) {
+    final selectedIndex = ref.watch(mobileSelectedIndex);
+    return Builder(
+      builder: (drawerContext) {
+        return NavigationDrawer(
+          selectedIndex:
+              selectedIndex >= 0 && selectedIndex < drawerItems.length
+              ? selectedIndex
+              : null,
+          onDestinationSelected: (value) {
+            Navigator.of(drawerContext).pop();
+            selectDestination(context, ref, value);
+          },
+          children: [
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(24, 18, 24, 12),
+                child: Row(
+                  children: [
+                    Image.asset(
+                      "assets/icons/app_icon.png",
+                      width: 32,
+                      height: 32,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        appName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ...drawerItems,
+          ],
+        );
+      },
     );
   }
 
@@ -256,17 +320,7 @@ class MobileView extends ConsumerWidget {
     return NavigationBar(
       destinations: bottomItems,
       selectedIndex: ref.watch(mobileSelectedIndex),
-      onDestinationSelected: (value) {
-        selectedIndexValue = value;
-        ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
-        ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
-        if (selectedIndexValue < desktopRailItems.length) {
-          ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
-        } else {
-          ref.read(desktopSelectedIndex.notifier).state = 0;
-        }
-        context.go(routesName[selectedIndexValue]);
-      },
+      onDestinationSelected: (value) => selectDestination(context, ref, value),
     );
   }
 }
@@ -532,7 +586,9 @@ class FunctionPage extends StatelessWidget {
 }
 
 class EditorToolsBar extends ConsumerWidget {
-  const EditorToolsBar({super.key});
+  const EditorToolsBar({super.key, this.showNavigationDrawerButton = false});
+
+  final bool showNavigationDrawerButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -547,7 +603,10 @@ class EditorToolsBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          if (!isMobile) ...[
+          if (showNavigationDrawerButton) ...[
+            const MobileNavigationDrawerButton(),
+            const SizedBox(width: 4),
+          ] else if (!isMobile) ...[
             buildLspState(context, ref),
             const SizedBox(width: 4),
           ],
@@ -563,18 +622,19 @@ class EditorToolsBar extends ConsumerWidget {
 
   Widget buildFileState(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
     if (value is! TabDataValue || value.type != "file") {
       return StatusBarButton(
         label: "欢迎页",
         icon: Icons.home_outlined,
+        compact: isMobile,
         tooltip: "当前未打开代码文件",
         onPressed: () {},
       );
     }
 
     final fileName = path.basename(value.filePath);
-    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final source = value.isBoardFile == true ? "设备" : "本地";
     final saved = value.isSaved;
     return StatusBarButton(
@@ -585,6 +645,7 @@ class EditorToolsBar extends ConsumerWidget {
           ? Icons.developer_board_outlined
           : Icons.description_outlined,
       statusColor: saved ? scheme.primary : scheme.tertiary,
+      compact: isMobile,
       tooltip: saved ? "再次保存当前文件" : "保存当前文件",
       onPressed: () async {
         await ref.read(localWorkspaceProvider.notifier).saveFile();
@@ -659,6 +720,24 @@ class EditorToolsBar extends ConsumerWidget {
         }
         ref.read(consolePageShow.notifier).state = !visible;
       },
+    );
+  }
+}
+
+class MobileNavigationDrawerButton extends StatelessWidget {
+  const MobileNavigationDrawerButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: "打开菜单",
+      style: IconButton.styleFrom(
+        minimumSize: const Size(36, 32),
+        fixedSize: const Size(36, 32),
+        padding: EdgeInsets.zero,
+      ),
+      onPressed: () => Scaffold.of(context).openDrawer(),
+      icon: const Icon(Icons.menu, size: 20),
     );
   }
 }

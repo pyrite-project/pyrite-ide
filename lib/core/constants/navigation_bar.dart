@@ -38,6 +38,29 @@ List<Widget> bottomItems = [
   ),
 ];
 
+List<Widget> drawerItems = [
+  NavigationDrawerDestination(
+    icon: itemsIcons[0],
+    selectedIcon: selectedItemsIcons[0],
+    label: UseText(itemsLabel[0]),
+  ),
+  NavigationDrawerDestination(
+    icon: itemsIcons[1],
+    selectedIcon: selectedItemsIcons[1],
+    label: UseText(itemsLabel[1]),
+  ),
+  NavigationDrawerDestination(
+    icon: itemsIcons[2],
+    selectedIcon: selectedItemsIcons[2],
+    label: UseText(itemsLabel[2]),
+  ),
+  const NavigationDrawerDestination(
+    icon: Icon(Icons.note_alt_outlined),
+    selectedIcon: Icon(Icons.edit_document),
+    label: UseText("编辑器"),
+  ),
+];
+
 List<NavigationRailDestination> tabletRailItems = [
   NavigationRailDestination(
     icon: itemsIcons[0],
