@@ -4,14 +4,12 @@ import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class StyleSettings extends ConsumerWidget {
-  const StyleSettings({super.key, this.compact = false});
-
-  final bool compact;
+  const StyleSettings({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final body = ListView(
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "主题模式",
@@ -72,20 +70,6 @@ class StyleSettings extends ConsumerWidget {
         ),
       ],
     );
-
-    if (compact) {
-      return Column(
-        children: [
-          const PaneHeader(
-            title: "外观与风格",
-            subtitle: "主题模式和 MD3 种子色",
-            leadingIcon: Icons.color_lens_outlined,
-            compact: true,
-          ),
-          Expanded(child: body),
-        ],
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(title: const Text("外观与风格")),

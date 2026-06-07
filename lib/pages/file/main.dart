@@ -19,37 +19,13 @@ import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_tree/super_tree.dart';
 
 class ProjectFiles extends ConsumerWidget {
-  const ProjectFiles({super.key, this.compact = false});
-
-  final bool compact;
+  const ProjectFiles({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final body = buildWorkspace(context, ref);
-    if (compact) return body;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("文件"),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          IconButton(
-            tooltip: "刷新本地和设备文件",
-            onPressed: () async {
-              ref
-                  .read(localFileItemsProvider.notifier)
-                  .buildRootFileListItems();
-              ref.read(boardWorkspaceProvider.notifier).clear();
-              ref
-                  .watch(boardFileItemsProvider.notifier)
-                  .buildRootFileListItems();
-            },
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: body,
-    );
+    return Scaffold(body: body);
   }
 
   Widget buildWorkspace(BuildContext context, WidgetRef ref) {
@@ -66,12 +42,12 @@ class ProjectFiles extends ConsumerWidget {
         children: [
           shadcn.ResizablePane.flex(
             initialFlex: 1,
-            minSize: compact ? 180 : 220,
+            minSize: 180,
             child: buildLocalFiles(context, ref),
           ),
           shadcn.ResizablePane.flex(
             initialFlex: 1,
-            minSize: compact ? 180 : 220,
+            minSize: 180,
             child: buildBoardFiles(context, ref),
           ),
         ],
@@ -88,7 +64,7 @@ class ProjectFiles extends ConsumerWidget {
             title: "本地项目",
             subtitle: localWorkspace.path,
             leadingIcon: Icons.folder_outlined,
-            compact: compact,
+            compact: true,
             actions: [
               IconButton(
                 tooltip: "新建文件",
@@ -117,7 +93,7 @@ class ProjectFiles extends ConsumerWidget {
               ),
             ],
           ),
-          buildLocalActionStrip(context, ref),
+          // buildLocalActionStrip(context, ref),
           Expanded(
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
@@ -329,7 +305,7 @@ class ProjectFiles extends ConsumerWidget {
                   ? () => uploadSelectedLocalItem(context, ref)
                   : null,
               icon: const Icon(Icons.upload_outlined, size: 18),
-              label: Text(compact ? "上传" : "上传选中项"),
+              label: Text("上传选中项"),
             ),
             const SizedBox(width: 6),
             TextButton.icon(
@@ -354,7 +330,7 @@ class ProjectFiles extends ConsumerWidget {
             title: "设备文件",
             subtitle: "已连接：${usb.selectedPortName}",
             leadingIcon: Icons.developer_board_outlined,
-            compact: compact,
+            compact: true,
             actions: [
               IconButton(
                 tooltip: "刷新设备文件",
@@ -368,7 +344,7 @@ class ProjectFiles extends ConsumerWidget {
               ),
             ],
           ),
-          buildBoardActionStrip(context, ref),
+          // buildBoardActionStrip(context, ref),
           Expanded(
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
@@ -573,7 +549,7 @@ class ProjectFiles extends ConsumerWidget {
                   ? () => downloadSelectedBoardItem(context, ref)
                   : null,
               icon: const Icon(Icons.download_outlined, size: 18),
-              label: Text(compact ? "下载" : "下载选中项"),
+              label: Text("下载选中项"),
             ),
             const SizedBox(width: 6),
             TextButton.icon(

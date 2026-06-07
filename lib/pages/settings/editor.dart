@@ -5,14 +5,12 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class EditorSettings extends ConsumerWidget {
-  const EditorSettings({super.key, this.compact = false});
-
-  final bool compact;
+  const EditorSettings({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final body = ListView(
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "字体",
@@ -57,20 +55,6 @@ class EditorSettings extends ConsumerWidget {
         ),
       ],
     );
-
-    if (compact) {
-      return Column(
-        children: [
-          const PaneHeader(
-            title: "编辑器设置",
-            subtitle: "字体和编辑行为",
-            leadingIcon: Icons.edit_outlined,
-            compact: true,
-          ),
-          Expanded(child: body),
-        ],
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(title: const Text("编辑器设置")),

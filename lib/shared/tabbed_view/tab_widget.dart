@@ -119,9 +119,17 @@ class TabWidget extends ConsumerWidget {
       onExit: (event) => updateHoveredIndex(null),
       child: provider.draggingTabIndex == null
           ? GestureDetector(
-              onTap: () => ref
-                  .watch(tabbedViewControllerProvider.notifier)
-                  .onTabTap(tab, index),
+              onTap: () {
+                final editorController =
+                    ref.read(tabbedViewControllerProvider);
+                if (identical(provider.controller, editorController)) {
+                  ref
+                      .read(tabbedViewControllerProvider.notifier)
+                      .onTabTap(tab, index);
+                } else {
+                  provider.controller.selectedIndex = index;
+                }
+              },
               onSecondaryTapDown: (details) {
                 if (provider.onTabSecondaryTap != null) {
                   TabData tab = provider.controller.tabs[index];

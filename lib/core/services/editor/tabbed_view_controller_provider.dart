@@ -34,7 +34,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             bottom: 5,
           ),
           child: Image.asset(
-            "assets/icons/app_icon.png",
+            "assets/icons/app_icon_appbar.png",
+            color: Theme.of(context).colorScheme.primary,
             width: 15,
             height: 15,
           ),

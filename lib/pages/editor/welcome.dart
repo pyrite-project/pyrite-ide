@@ -25,17 +25,14 @@ class EditorWelcome extends ConsumerWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset("assets/icons/app_icon.png", width: 72, height: 72),
+                Image.asset(
+                  "assets/icons/app_icon_appbar.png",
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 72,
+                  height: 72,
+                ),
                 const SizedBox(height: 20),
                 const TextLogo(),
-                const SizedBox(height: 10),
-                Text(
-                  "一个更轻量、清晰的 MicroPython 工作台",
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
                 const SizedBox(height: 18),
                 Wrap(
                   alignment: WrapAlignment.center,

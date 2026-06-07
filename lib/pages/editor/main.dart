@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:flutter/material.dart';
@@ -231,9 +232,67 @@ class ExpansionPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final selectedValue = ref.watch(expansionViewController).selectedTab?.value;
+    final fileValue =
+        selectedValue is TabDataValue && selectedValue.type == "file"
+        ? selectedValue
+        : null;
+    final canSave = fileValue != null;
     return Scaffold(
-      appBar: AppBar(title: const Text("扩展面板"), toolbarHeight: 50),
-      body: body(context, ref),
+      body: Column(
+        children: [
+          PaneHeader(
+            title: "拓展面板",
+            leadingIcon: Icons.expand_outlined,
+            actions: [
+              PopupMenuButton<String>(
+                tooltip: "更多编辑操作",
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  switch (value) {
+                    case "saveAs":
+                      ref.read(localWorkspaceProvider.notifier).saveAs();
+                      break;
+                    case "cut":
+                      ref.read(editorControllerMapProvider.notifier).cut();
+                      break;
+                    case "copy":
+                      ref.read(editorControllerMapProvider.notifier).copy();
+                      break;
+                    case "paste":
+                      ref.read(editorControllerMapProvider.notifier).paste();
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: "saveAs",
+                    enabled: canSave,
+                    child: const Text("另存为"),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: "cut",
+                    enabled: canSave,
+                    child: const Text("剪切"),
+                  ),
+                  PopupMenuItem(
+                    value: "copy",
+                    enabled: canSave,
+                    child: const Text("复制"),
+                  ),
+                  PopupMenuItem(
+                    value: "paste",
+                    enabled: canSave,
+                    child: const Text("粘贴"),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Expanded(child: body(context, ref)),
+        ],
+      ),
     );
   }
 

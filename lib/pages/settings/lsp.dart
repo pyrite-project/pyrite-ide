@@ -5,14 +5,12 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class LspSettings extends ConsumerWidget {
-  const LspSettings({super.key, this.compact = false});
-
-  final bool compact;
+  const LspSettings({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final body = ListView(
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "语言服务",
@@ -60,20 +58,6 @@ class LspSettings extends ConsumerWidget {
         ),
       ],
     );
-
-    if (compact) {
-      return Column(
-        children: [
-          const PaneHeader(
-            title: "语言服务器",
-            subtitle: "补全、诊断和 LSP 地址",
-            leadingIcon: Icons.data_object,
-            compact: true,
-          ),
-          Expanded(child: body),
-        ],
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(title: const Text("语言服务器设置")),

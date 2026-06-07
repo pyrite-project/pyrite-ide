@@ -290,7 +290,8 @@ class MobileView extends ConsumerWidget {
                 child: Row(
                   children: [
                     Image.asset(
-                      "assets/icons/app_icon.png",
+                      "assets/icons/app_icon_appbar.png",
+                      color: Theme.of(context).colorScheme.onSurface,
                       width: 32,
                       height: 32,
                     ),
@@ -308,7 +309,6 @@ class MobileView extends ConsumerWidget {
                 ),
               ),
             ),
-            const Divider(height: 1),
             ...drawerItems,
           ],
         );
@@ -365,6 +365,7 @@ class TabletView extends ConsumerWidget {
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
       minWidth: 72,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       labelType: NavigationRailLabelType.selected,
       destinations: tabletRailItems,
       selectedIndex: ref.watch(tabletSelectedIndex),
@@ -423,11 +424,8 @@ class DesktopView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       minWidth: 72,
-      leading: Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Image.asset("assets/icons/app_icon.png", width: 28, height: 28),
-      ),
       labelType: NavigationRailLabelType.selected,
       destinations: desktopRailItems,
       selectedIndex: ref.watch(desktopSelectedIndex),
@@ -442,29 +440,6 @@ class DesktopView extends ConsumerWidget {
     );
   }
 
-  Widget _buildFunctionPanel() {
-    final location = state.matchedLocation;
-    if (location.startsWith("/tools")) {
-      return const Tools(compact: true);
-    }
-    if (location.startsWith("/settings/editor")) {
-      return const EditorSettings(compact: true);
-    }
-    if (location.startsWith("/settings/lsp")) {
-      return const LspSettings(compact: true);
-    }
-    if (location.startsWith("/settings/style")) {
-      return const StyleSettings(compact: true);
-    }
-    if (location.startsWith("/settings/about")) {
-      return const About(compact: true);
-    }
-    if (location.startsWith("/settings")) {
-      return const Settings(compact: true);
-    }
-    return const ProjectFiles(compact: true);
-  }
-
   List<shadcn.ResizablePane> _pageStructure(
     BuildContext context,
     WidgetRef ref,
@@ -476,11 +451,7 @@ class DesktopView extends ConsumerWidget {
 
     if (showFunctionPanel) {
       children.add(
-        shadcn.ResizablePane.flex(
-          initialFlex: 2,
-          minSize: 220,
-          child: _buildFunctionPanel(),
-        ),
+        shadcn.ResizablePane.flex(initialFlex: 2, minSize: 220, child: child),
       );
     }
     children.add(

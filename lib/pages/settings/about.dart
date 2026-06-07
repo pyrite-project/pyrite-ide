@@ -4,15 +4,13 @@ import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 class About extends StatelessWidget {
-  const About({super.key, this.compact = false});
-
-  final bool compact;
+  const About({super.key});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final body = ListView(
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "Pyrite IDE",
@@ -20,7 +18,8 @@ class About extends StatelessWidget {
           children: [
             ListTile(
               leading: Image.asset(
-                "assets/icons/app_icon.png",
+                "assets/icons/app_icon_appbar.png",
+                color: Theme.of(context).colorScheme.primary,
                 width: 36,
                 height: 36,
               ),
@@ -42,20 +41,6 @@ class About extends StatelessWidget {
         ),
       ],
     );
-
-    if (compact) {
-      return Column(
-        children: [
-          const PaneHeader(
-            title: "关于",
-            subtitle: "产品信息",
-            leadingIcon: Icons.info_outline,
-            compact: true,
-          ),
-          Expanded(child: body),
-        ],
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(title: const UseText("关于")),

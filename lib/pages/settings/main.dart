@@ -4,14 +4,12 @@ import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 class Settings extends StatelessWidget {
-  const Settings({super.key, this.compact = false});
-
-  final bool compact;
+  const Settings({super.key});
 
   @override
   Widget build(BuildContext context) {
     final body = ListView(
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "工作区",
@@ -65,20 +63,6 @@ class Settings extends StatelessWidget {
         ),
       ],
     );
-
-    if (compact) {
-      return Column(
-        children: [
-          const PaneHeader(
-            title: "设置",
-            subtitle: "调整工作区和界面偏好",
-            leadingIcon: Icons.settings_outlined,
-            compact: true,
-          ),
-          Expanded(child: body),
-        ],
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(title: const Text("设置")),
