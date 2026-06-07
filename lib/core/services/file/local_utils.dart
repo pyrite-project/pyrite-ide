@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
-import 'package:pyrite_ide/core/models/file.dart';
 import 'package:super_tree/super_tree.dart';
 
 String getPattern() {

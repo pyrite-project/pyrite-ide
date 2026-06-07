@@ -114,7 +114,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
 
       if (newTab == null) {
-        print("cannot open file");
+        debugPrint("cannot open file");
         return;
       }
 

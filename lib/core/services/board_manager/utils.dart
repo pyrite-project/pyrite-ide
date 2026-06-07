@@ -49,7 +49,7 @@ final FutureProvider exitRawRepl = FutureProvider((ref) async {
     }
   });
 
-  ref.read(getUsbSerialProvider().notifier).sendCommand(ref, "\x02");
+  ref.read(getUsbSerialProvider().notifier).sendCommand("\x02");
 
   try {
     return await completer.future;

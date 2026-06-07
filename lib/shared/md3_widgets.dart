@@ -7,19 +7,23 @@ class PaneHeader extends StatelessWidget {
     this.subtitle,
     this.leadingIcon,
     this.actions = const [],
+    this.compact = false,
   });
 
   final String title;
   final String? subtitle;
   final IconData? leadingIcon;
   final List<Widget> actions;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      minHeight: subtitle == null ? 44 : 56,
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 8, 6),
+      constraints: BoxConstraints(
+        minHeight: compact ? 44 : (subtitle == null ? 44 : 56),
+      ),
+      padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
@@ -43,7 +47,7 @@ class PaneHeader extends StatelessWidget {
                     context,
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
-                if (subtitle != null)
+                if (subtitle != null && !compact)
                   Text(
                     subtitle!,
                     maxLines: 1,
@@ -117,6 +121,52 @@ class WorkspaceEmptyState extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class PillBadge extends StatelessWidget {
+  const PillBadge({
+    super.key,
+    required this.label,
+    this.icon,
+    this.containerColor,
+    this.foregroundColor,
+  });
+
+  final String label;
+  final IconData? icon;
+  final Color? containerColor;
+  final Color? foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreground = foregroundColor ?? scheme.onSecondaryContainer;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: containerColor ?? scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(8, 3, 8, 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: foreground),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: foreground,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -232,7 +282,7 @@ class SettingsSection extends StatelessWidget {
           DecoratedBox(
             decoration: BoxDecoration(
               color: scheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: scheme.outlineVariant),
             ),
             child: Column(children: children),

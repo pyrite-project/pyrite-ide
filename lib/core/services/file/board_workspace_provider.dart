@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path/path.dart' as p;
@@ -31,11 +31,11 @@ class BoardWorkspaceNotifier
     final mutex = ref.read(replMutexProvider);
     final stopwatch = Stopwatch()..start();
 
-    void _log(String msg) {
-      print('[BoardWS] [${stopwatch.elapsedMilliseconds}ms] $msg');
+    void logBoard(String msg) {
+      debugPrint('[BoardWS] [${stopwatch.elapsedMilliseconds}ms] $msg');
     }
 
-    _log('Starting command execution');
+    logBoard('Starting command execution');
 
     return mutex.runExclusive(() async {
       final completer = Completer<String>();
@@ -48,14 +48,14 @@ class BoardWorkspaceNotifier
 
         final decoded = utf8.decode(data, allowMalformed: true);
         result += decoded;
-        print(
+        debugPrint(
           '[BoardWS] Callback: +${data.length} bytes, total=${result.length}',
         );
 
         if (result.contains("!@#PyriteIDEEnd#@!")) {
           completed = true;
           timeoutTimer?.cancel();
-          _log('End marker found!');
+          logBoard('End marker found!');
           if (!completer.isCompleted) {
             completer.complete(result);
           }
@@ -66,12 +66,12 @@ class BoardWorkspaceNotifier
       ref.read(serialDataCallbacksProvider.notifier).add(callback);
 
       try {
-        _log('Entering RAW REPL...');
+        logBoard('Entering RAW REPL...');
         final enterStart = Stopwatch()..start();
         final entered = await ref
             .read(getUsbSerialProvider().notifier)
             .enterRawRepl();
-        _log(
+        logBoard(
           'enterRawRepl took ${enterStart.elapsedMilliseconds}ms, success: $entered',
         );
         if (!entered) {
@@ -79,7 +79,7 @@ class BoardWorkspaceNotifier
         }
 
         await Future.delayed(Duration(milliseconds: 500));
-        _log('After enter delay, sending command...');
+        logBoard('After enter delay, sending command...');
 
         const sendChunkSize = 32;
         const sendDelayMs = 1;
@@ -92,16 +92,16 @@ class BoardWorkspaceNotifier
               .sendCommand(command.substring(i, end), chunked: false);
           await Future.delayed(Duration(milliseconds: sendDelayMs));
         }
-        _log('Command fully sent, waiting for result');
+        logBoard('Command fully sent, waiting for result');
 
         ref.read(getUsbSerialProvider().notifier).sendCommand("\x04");
-        _log('Execute command sent (\\x04)');
+        logBoard('Execute command sent (\\x04)');
 
         timeoutTimer = Timer(Duration(milliseconds: timeoutMs), () {
           if (!completed) {
             completed = true;
             final previewLen = result.length < 200 ? result.length : 200;
-            _log(
+            logBoard(
               'TIMEOUT! Result (${result.length} chars): ${result.substring(0, previewLen)}',
             );
             if (!completer.isCompleted) {
@@ -117,24 +117,24 @@ class BoardWorkspaceNotifier
 
         return await completer.future;
       } catch (e) {
-        _log('Exception: $e');
+        logBoard('Exception: $e');
         completed = true;
         rethrow;
       } finally {
         completed = true;
-        _log('Cleanup: removing callback');
+        logBoard('Cleanup: removing callback');
         ref.read(serialDataCallbacksProvider.notifier).remove(callback);
 
         try {
-          _log('Exiting RAW REPL...');
+          logBoard('Exiting RAW REPL...');
 
           await Future.delayed(Duration(milliseconds: 100));
           ref.read(getUsbSerialProvider().notifier).sendCommand("\x02");
 
           await Future.delayed(Duration(milliseconds: 500));
-          _log('exitRawRepl sent');
+          logBoard('exitRawRepl sent');
         } catch (e) {
-          _log('exitRawRepl error: $e');
+          logBoard('exitRawRepl error: $e');
         }
       }
     });
@@ -190,7 +190,7 @@ class BoardWorkspaceNotifier
   Future<String> writeFile(String targetPath, String content) async {
     final bytes = utf8.encode(content);
     final b64Content = base64.encode(bytes);
-    print(
+    debugPrint(
       '[BoardWS] writeFile: path=$targetPath, content length=${content.length}, b64 length=${b64Content.length}',
     );
 
@@ -227,7 +227,9 @@ class BoardWorkspaceNotifier
       command += "  print('ERROR:', str(e))\n";
     }
 
-    print('[BoardWS] writeFile command lines: ${command.split('\n').length}');
+    debugPrint(
+      '[BoardWS] writeFile command lines: ${command.split('\n').length}',
+    );
 
     String contentString = await _getCommandResult(command);
     String resultString = contentString
@@ -384,29 +386,26 @@ class BoardWorkspaceNotifier
       final parentDir = p.dirname(remoteEntityPath).replaceAll('\\', '/');
 
       if (entity is io.Directory) {
-        print('[BoardWS] Creating remote dir: $remoteEntityPath');
+        debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
         try {
           await createFolder(remoteEntityPath);
           createdDirs.add(remoteEntityPath);
         } catch (e) {
-          print('[BoardWS] Failed to create dir: $e');
+          debugPrint('[BoardWS] Failed to create dir: $e');
         }
       } else if (entity is io.File) {
         if (!createdDirs.contains(parentDir)) {
-          print('[BoardWS] Creating parent dir: $parentDir');
+          debugPrint('[BoardWS] Creating parent dir: $parentDir');
           try {
             await createFolder(parentDir);
             createdDirs.add(parentDir);
           } catch (e) {
-            print('[BoardWS] Failed to create parent dir: $e');
+            debugPrint('[BoardWS] Failed to create parent dir: $e');
           }
         }
-        print('[BoardWS] Uploading file: $remoteEntityPath');
-        await writeFile(
-          remoteEntityPath,
-          await (entity as io.File).readAsString(),
-        );
-        print('[BoardWS] Uploaded: $remoteEntityPath');
+        debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
+        await writeFile(remoteEntityPath, await entity.readAsString());
+        debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
       }
     }
   }
@@ -428,10 +427,10 @@ class BoardWorkspaceNotifier
       if (item['type'] == 'folder') {
         await io.Directory(localItemPath).create(recursive: true);
       } else {
-        print('[BoardWS] Downloading: ${item['path']}');
+        debugPrint('[BoardWS] Downloading: ${item['path']}');
         final content = await getFileContent(item['path']!);
         await io.File(localItemPath).writeAsString(content);
-        print('[BoardWS] Downloaded: $localItemPath');
+        debugPrint('[BoardWS] Downloaded: $localItemPath');
       }
     }
   }

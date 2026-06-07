@@ -19,13 +19,18 @@ import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_tree/super_tree.dart';
 
 class ProjectFiles extends ConsumerWidget {
-  const ProjectFiles({super.key});
+  const ProjectFiles({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final body = buildWorkspace(context, ref);
+    if (compact) return body;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text("文件"),
+        title: const Text("文件"),
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           IconButton(
@@ -34,36 +39,42 @@ class ProjectFiles extends ConsumerWidget {
               ref
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems();
-              ref.watch(boardWorkspaceProvider.notifier).clear();
+              ref.read(boardWorkspaceProvider.notifier).clear();
               ref
                   .watch(boardFileItemsProvider.notifier)
                   .buildRootFileListItems();
             },
-            icon: Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      body: shadcn.ShadcnLayer(
-        theme: shadcn.ThemeData(
-          colorScheme: Theme.of(context).brightness == Brightness.light
-              ? shadcn.ColorSchemes.lightNeutral
-              : shadcn.ColorSchemes.darkNeutral,
-        ),
-        child: shadcn.ResizablePanel.vertical(
-          draggerBuilder: (context) {
-            return shadcn.HorizontalResizableDragger();
-          },
-          children: [
-            shadcn.ResizablePane.flex(
-              initialFlex: 1,
-              child: buildLocalFiles(context, ref),
-            ),
-            shadcn.ResizablePane.flex(
-              initialFlex: 1,
-              child: buildBoardFiles(context, ref),
-            ),
-          ],
-        ),
+      body: body,
+    );
+  }
+
+  Widget buildWorkspace(BuildContext context, WidgetRef ref) {
+    return shadcn.ShadcnLayer(
+      theme: shadcn.ThemeData(
+        colorScheme: Theme.of(context).brightness == Brightness.light
+            ? shadcn.ColorSchemes.lightNeutral
+            : shadcn.ColorSchemes.darkNeutral,
+      ),
+      child: shadcn.ResizablePanel.vertical(
+        draggerBuilder: (context) {
+          return shadcn.HorizontalResizableDragger();
+        },
+        children: [
+          shadcn.ResizablePane.flex(
+            initialFlex: 1,
+            minSize: compact ? 180 : 220,
+            child: buildLocalFiles(context, ref),
+          ),
+          shadcn.ResizablePane.flex(
+            initialFlex: 1,
+            minSize: compact ? 180 : 220,
+            child: buildBoardFiles(context, ref),
+          ),
+        ],
       ),
     );
   }
@@ -77,6 +88,7 @@ class ProjectFiles extends ConsumerWidget {
             title: "本地项目",
             subtitle: localWorkspace.path,
             leadingIcon: Icons.folder_outlined,
+            compact: compact,
             actions: [
               IconButton(
                 tooltip: "新建文件",
@@ -105,11 +117,15 @@ class ProjectFiles extends ConsumerWidget {
               ),
             ],
           ),
+          buildLocalActionStrip(context, ref),
           Expanded(
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(localEnableDragAndDrop),
                 onNodeTap: (id) {
+                  ref
+                      .read(localFileTreeViewControllerProvider)
+                      .setSelectedNodeId(id);
                   File file = File(id);
                   if (context.mounted) {
                     ref
@@ -168,6 +184,7 @@ class ProjectFiles extends ConsumerWidget {
                                   context,
                                   node.data.name,
                                 )) {
+                                  if (!context.mounted) return;
                                   ref
                                       .read(localFileTreeViewControllerProvider)
                                       .removeNode(node);
@@ -195,6 +212,7 @@ class ProjectFiles extends ConsumerWidget {
                                   ref
                                       .read(boardFileItemsProvider.notifier)
                                       .buildRootFileListItems();
+                                  if (!context.mounted) return;
                                   showActionSnackBar(
                                     context,
                                     "已上传到设备：$targetPath",
@@ -210,6 +228,7 @@ class ProjectFiles extends ConsumerWidget {
                                   ref
                                       .read(boardFileItemsProvider.notifier)
                                       .buildRootFileListItems();
+                                  if (!context.mounted) return;
                                   showActionSnackBar(
                                     context,
                                     "已上传文件夹到设备：$targetPath",
@@ -234,6 +253,7 @@ class ProjectFiles extends ConsumerWidget {
                                 ref
                                     .read(boardFileItemsProvider.notifier)
                                     .buildRootFileListItems();
+                                if (!context.mounted) return;
                                 showActionSnackBar(
                                   context,
                                   "已覆盖设备文件：${boardFileTarget.id}",
@@ -290,6 +310,41 @@ class ProjectFiles extends ConsumerWidget {
     }
   }
 
+  Widget buildLocalActionStrip(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: isConnected
+                  ? () => uploadSelectedLocalItem(context, ref)
+                  : null,
+              icon: const Icon(Icons.upload_outlined, size: 18),
+              label: Text(compact ? "上传" : "上传选中项"),
+            ),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              onPressed: () => ref
+                  .read(localFileItemsProvider.notifier)
+                  .buildRootFileListItems(),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text("刷新"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
     if (ref.watch(getUsbSerialProvider()).isConnected) {
       final usb = ref.watch(getUsbSerialProvider());
@@ -299,11 +354,12 @@ class ProjectFiles extends ConsumerWidget {
             title: "设备文件",
             subtitle: "已连接：${usb.selectedPortName}",
             leadingIcon: Icons.developer_board_outlined,
+            compact: compact,
             actions: [
               IconButton(
                 tooltip: "刷新设备文件",
                 onPressed: () {
-                  ref.watch(boardWorkspaceProvider.notifier).clear();
+                  ref.read(boardWorkspaceProvider.notifier).clear();
                   ref
                       .watch(boardFileItemsProvider.notifier)
                       .buildRootFileListItems();
@@ -312,11 +368,15 @@ class ProjectFiles extends ConsumerWidget {
               ),
             ],
           ),
+          buildBoardActionStrip(context, ref),
           Expanded(
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
                 onNodeTap: (id) async {
+                  ref
+                      .read(boardFileTreeViewControllerProvider)
+                      .setSelectedNodeId(id);
                   final node = ref
                       .read(boardFileTreeViewControllerProvider)
                       .findNodeById(id);
@@ -385,6 +445,7 @@ class ProjectFiles extends ConsumerWidget {
                                   context,
                                   node.data.name,
                                 )) {
+                                  if (!context.mounted) return;
                                   ref
                                       .read(boardFileTreeViewControllerProvider)
                                       .removeNode(node);
@@ -400,7 +461,7 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(localWorkspaceProvider)?.path ?? "（未打开本地项目）"}",
                               callback: () async {
-                                final localWorkspace = ref.watch(
+                                final localWorkspace = ref.read(
                                   localWorkspaceProvider,
                                 );
                                 if (localWorkspace == null) return;
@@ -419,6 +480,7 @@ class ProjectFiles extends ConsumerWidget {
                                       .read(boardWorkspaceProvider.notifier)
                                       .getFileContent(node.id);
                                   local.writeFile(targetPath, content);
+                                  if (!context.mounted) return;
                                   showActionSnackBar(
                                     context,
                                     "已下载到本地：$targetPath",
@@ -427,6 +489,7 @@ class ProjectFiles extends ConsumerWidget {
                                   await ref
                                       .read(boardWorkspaceProvider.notifier)
                                       .downloadFolder(node.id, targetPath);
+                                  if (!context.mounted) return;
                                   showActionSnackBar(
                                     context,
                                     "已下载文件夹到本地：$targetPath",
@@ -457,6 +520,7 @@ class ProjectFiles extends ConsumerWidget {
                                 ref
                                     .read(localFileItemsProvider.notifier)
                                     .buildRootFileListItems();
+                                if (!context.mounted) return;
                                 showActionSnackBar(
                                   context,
                                   "已覆盖本地文件：${localFileTarget.id}",
@@ -488,6 +552,130 @@ class ProjectFiles extends ConsumerWidget {
         onAction: () => context.push("/tools"),
       );
     }
+  }
+
+  Widget buildBoardActionStrip(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasLocalWorkspace = ref.watch(localWorkspaceProvider) != null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: hasLocalWorkspace
+                  ? () => downloadSelectedBoardItem(context, ref)
+                  : null,
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: Text(compact ? "下载" : "下载选中项"),
+            ),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              onPressed: () {
+                ref.read(boardWorkspaceProvider.notifier).clear();
+                ref
+                    .read(boardFileItemsProvider.notifier)
+                    .buildRootFileListItems();
+              },
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text("刷新"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> uploadSelectedLocalItem(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final selectedFile = ref
+        .read(localWorkspaceProvider.notifier)
+        .getFocusFileNode();
+    final selectedFolder = ref
+        .read(localWorkspaceProvider.notifier)
+        .getFocusFolderNode();
+    final selected = selectedFile ?? selectedFolder;
+    if (selected == null) {
+      showActionSnackBar(context, "先选择一个本地文件或文件夹");
+      return;
+    }
+
+    final boardFolderTarget = ref
+        .read(boardWorkspaceProvider.notifier)
+        .getFocusFolderNode();
+    final targetPath = boardFolderTarget?.id != null
+        ? "${boardFolderTarget!.id}/${path.basename(selected.id)}"
+        : "/${path.basename(selected.id)}";
+
+    if (selected.data is FileItem) {
+      final content = await local.getFileContent(selected.id);
+      await ref
+          .read(boardWorkspaceProvider.notifier)
+          .writeFile(targetPath, content);
+      if (!context.mounted) return;
+      showActionSnackBar(context, "已上传到设备：$targetPath");
+    } else {
+      await ref
+          .read(boardWorkspaceProvider.notifier)
+          .uploadFolder(selected.id, targetPath);
+      if (!context.mounted) return;
+      showActionSnackBar(context, "已上传文件夹到设备：$targetPath");
+    }
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+  }
+
+  Future<void> downloadSelectedBoardItem(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final selectedFile = ref
+        .read(boardWorkspaceProvider.notifier)
+        .getFocusFileNode();
+    final selectedFolder = ref
+        .read(boardWorkspaceProvider.notifier)
+        .getFocusFolderNode();
+    final selected = selectedFile ?? selectedFolder;
+    final localWorkspace = ref.read(localWorkspaceProvider);
+    if (selected == null) {
+      showActionSnackBar(context, "先选择一个设备文件或文件夹");
+      return;
+    }
+    if (localWorkspace == null) {
+      showActionSnackBar(context, "先打开一个本地项目");
+      return;
+    }
+
+    final localFolderTarget = ref
+        .read(localWorkspaceProvider.notifier)
+        .getFocusFolderNode();
+    final targetPath = localFolderTarget?.id != null
+        ? path.join(localFolderTarget!.id, path.basename(selected.id))
+        : path.join(localWorkspace.path, path.basename(selected.id));
+
+    if (selected.data is FileItem) {
+      final content = await ref
+          .read(boardWorkspaceProvider.notifier)
+          .getFileContent(selected.id);
+      local.writeFile(targetPath, content);
+      if (!context.mounted) return;
+      showActionSnackBar(context, "已下载到本地：$targetPath");
+    } else {
+      await ref
+          .read(boardWorkspaceProvider.notifier)
+          .downloadFolder(selected.id, targetPath);
+      if (!context.mounted) return;
+      showActionSnackBar(context, "已下载文件夹到本地：$targetPath");
+    }
+
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
   }
 
   Future<bool> confirmDelete(BuildContext context, String name) async {

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pyrite_ide/core/models/file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
@@ -31,7 +31,7 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
 
 Future<File> getLocalFilePath(TreeNode<FileSystemItem> node) async {
   final supportDir = await getApplicationSupportDirectory();
-  print("debug: appSupportDir ${supportDir.path}");
+  debugPrint("debug: appSupportDir ${supportDir.path}");
   List<String> fileNameList = node.id.split("/");
   String fileNameResult = "";
   for (int i = 1; i < fileNameList.length; i++) {
@@ -39,7 +39,7 @@ Future<File> getLocalFilePath(TreeNode<FileSystemItem> node) async {
   }
   File file = File(path.join(supportDir.path, fileNameResult));
   await file.create(recursive: true, exclusive: false);
-  print("debug: open board file ${file.path}");
+  debugPrint("debug: open board file ${file.path}");
 
   return file;
 }

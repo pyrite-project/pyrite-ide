@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
@@ -49,7 +50,7 @@ class PyriteIDE extends ConsumerWidget {
         behavior: SnackBarBehavior.floating,
         showCloseIcon: true,
         backgroundColor: scheme.inverseSurface,
-        contentTextStyle: TextStyle(color: scheme.inverseOnSurface),
+        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surfaceContainerLowest,
@@ -108,7 +109,10 @@ class PyriteIDE extends ConsumerWidget {
           },
         );
 
-        if (!Platform.isMacOS) return app;
+        if (!Platform.isMacOS ||
+            defaultTargetPlatform != TargetPlatform.macOS) {
+          return app;
+        }
         return MacOSMenu(app: app);
       },
     );

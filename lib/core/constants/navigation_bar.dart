@@ -32,7 +32,7 @@ List<Widget> bottomItems = [
     label: itemsLabel[2],
   ),
   const NavigationDestination(
-    icon: Icon(Icons.edit_document_outlined),
+    icon: Icon(Icons.note_alt_outlined),
     selectedIcon: Icon(Icons.edit_document),
     label: "编辑器",
   ),
@@ -55,7 +55,7 @@ List<NavigationRailDestination> tabletRailItems = [
     label: UseText(itemsLabel[2]),
   ),
   const NavigationRailDestination(
-    icon: Icon(Icons.edit_document_outlined),
+    icon: Icon(Icons.note_alt_outlined),
     selectedIcon: Icon(Icons.edit_document),
     label: UseText("编辑器"),
   ),

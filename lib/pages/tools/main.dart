@@ -7,13 +7,17 @@ import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provid
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class Tools extends ConsumerWidget {
-  const Tools({super.key});
+  const Tools({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final body = buildBoardManager(context, ref);
+    if (compact) return body;
     return Scaffold(
       appBar: AppBar(title: const Text("设备管理")),
-      body: buildBoardManager(context, ref),
+      body: body,
     );
   }
 
@@ -27,6 +31,7 @@ class Tools extends ConsumerWidget {
               context,
               state.isConnected,
               state.selectedPortName,
+              compact: compact,
               onDisconnect: state.isConnected
                   ? () => ref
                         .read(androidUsbSerialProvider.notifier)
@@ -34,11 +39,12 @@ class Tools extends ConsumerWidget {
                   : null,
             ),
           ),
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: PaneHeader(
               title: "可用设备",
               subtitle: "选择一个 USB 串口设备连接到 REPL",
               leadingIcon: Icons.usb,
+              compact: compact,
             ),
           ),
           if (state.devices.isEmpty)
@@ -122,6 +128,7 @@ class Tools extends ConsumerWidget {
               context,
               state.isConnected,
               state.selectedPortName,
+              compact: compact,
               onDisconnect: state.isConnected
                   ? () => ref
                         .read(desktopUsbSerialProvider.notifier)
@@ -129,11 +136,12 @@ class Tools extends ConsumerWidget {
                   : null,
             ),
           ),
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: PaneHeader(
               title: "可用串口",
               subtitle: "选择开发板对应的串口连接到 REPL",
               leadingIcon: Icons.usb,
+              compact: compact,
             ),
           ),
           if (state.portNames.isEmpty)
@@ -201,16 +209,17 @@ class Tools extends ConsumerWidget {
     bool isConnected,
     String? selectedPortName, {
     VoidCallback? onDisconnect,
+    bool compact = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.all(compact ? 8 : 16),
+      padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(
         color: isConnected
             ? scheme.primaryContainer
             : scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isConnected ? scheme.primary : scheme.outlineVariant,
         ),

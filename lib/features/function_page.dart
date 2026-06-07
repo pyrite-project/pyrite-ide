@@ -2,15 +2,26 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
+import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/settings/about.dart';
+import 'package:pyrite_ide/pages/settings/editor.dart';
+import 'package:pyrite_ide/pages/settings/lsp.dart';
+import 'package:pyrite_ide/pages/settings/main.dart';
+import 'package:pyrite_ide/pages/settings/style.dart';
+import 'package:pyrite_ide/pages/tools/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -18,16 +29,51 @@ import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
 
 Widget consolePage() {
-  return const Column(
-    children: [
-      PaneHeader(
-        title: "REPL",
-        subtitle: "MicroPython 交互式终端",
-        leadingIcon: Icons.terminal,
-      ),
-      Expanded(child: ReplView()),
-    ],
-  );
+  return const ConsolePage();
+}
+
+class ConsolePage extends ConsumerWidget {
+  const ConsolePage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
+    return Column(
+      children: [
+        PaneHeader(
+          title: "REPL",
+          subtitle: isConnected ? "MicroPython 交互式终端" : "连接设备后可输入命令",
+          leadingIcon: Icons.terminal,
+          actions: [
+            IconButton(
+              tooltip: "清空终端",
+              onPressed: () => repl.write('\x1b[2J\x1b[H'),
+              icon: const Icon(Icons.cleaning_services_outlined),
+            ),
+            IconButton(
+              tooltip: isConnected ? "中断设备运行" : "连接设备后可中断运行",
+              onPressed: isConnected
+                  ? () => ref
+                        .read(getUsbSerialProvider().notifier)
+                        .sendCommand("\x03")
+                  : null,
+              icon: const Icon(Icons.stop_circle_outlined),
+            ),
+            IconButton(
+              tooltip: isConnected ? "软重启设备" : "连接设备后可软重启",
+              onPressed: isConnected
+                  ? () => ref
+                        .read(getUsbSerialProvider().notifier)
+                        .sendCommand("\x04")
+                  : null,
+              icon: const Icon(Icons.restart_alt),
+            ),
+          ],
+        ),
+        const Expanded(child: ReplView()),
+      ],
+    );
+  }
 }
 
 List<shadcn.ResizablePane> buildConsoleView(
@@ -126,7 +172,9 @@ class FunctionPaneToggle extends ConsumerWidget {
       onPressed: () {
         ref.read(functionPageShow.notifier).state = !visible;
       },
-      icon: Icon(visible ? Icons.left_panel_close : Icons.left_panel_open),
+      icon: Icon(
+        visible ? Icons.keyboard_arrow_left : Icons.keyboard_arrow_right,
+      ),
     );
   }
 }
@@ -142,7 +190,9 @@ class ExpansionPaneToggle extends ConsumerWidget {
       onPressed: () {
         ref.read(expansionPageShow.notifier).state = !visible;
       },
-      icon: Icon(visible ? Icons.right_panel_close : Icons.right_panel_open),
+      icon: Icon(
+        visible ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_left,
+      ),
     );
   }
 }
@@ -319,7 +369,11 @@ class DesktopView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
-      minWidth: 64,
+      minWidth: 72,
+      leading: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Image.asset("assets/icons/app_icon.png", width: 28, height: 28),
+      ),
       labelType: NavigationRailLabelType.selected,
       destinations: desktopRailItems,
       selectedIndex: ref.watch(desktopSelectedIndex),
@@ -334,18 +388,44 @@ class DesktopView extends ConsumerWidget {
     );
   }
 
+  Widget _buildFunctionPanel() {
+    final location = state.matchedLocation;
+    if (location.startsWith("/tools")) {
+      return const Tools(compact: true);
+    }
+    if (location.startsWith("/settings/editor")) {
+      return const EditorSettings(compact: true);
+    }
+    if (location.startsWith("/settings/lsp")) {
+      return const LspSettings(compact: true);
+    }
+    if (location.startsWith("/settings/style")) {
+      return const StyleSettings(compact: true);
+    }
+    if (location.startsWith("/settings/about")) {
+      return const About(compact: true);
+    }
+    if (location.startsWith("/settings")) {
+      return const Settings(compact: true);
+    }
+    return const ProjectFiles(compact: true);
+  }
+
   List<shadcn.ResizablePane> _pageStructure(
-    Widget functionPage,
+    BuildContext context,
     WidgetRef ref,
   ) {
     final List<shadcn.ResizablePane> children = [];
+    final width = MediaQuery.sizeOf(context).width;
+    final showFunctionPanel = ref.watch(functionPageShow);
+    final showExpansionPanel = ref.watch(expansionPageShow) && width >= 1280;
 
-    if (ref.watch(functionPageShow)) {
+    if (showFunctionPanel) {
       children.add(
         shadcn.ResizablePane.flex(
           initialFlex: 2,
-          minSize: 200,
-          child: functionPage,
+          minSize: 220,
+          child: _buildFunctionPanel(),
         ),
       );
     }
@@ -361,7 +441,7 @@ class DesktopView extends ConsumerWidget {
         ),
       ),
     );
-    if (ref.watch(expansionPageShow)) {
+    if (showExpansionPanel) {
       children.add(
         shadcn.ResizablePane.flex(
           initialFlex: 2,
@@ -380,7 +460,7 @@ class DesktopView extends ConsumerWidget {
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },
-        children: _pageStructure(child, ref),
+        children: _pageStructure(context, ref),
       ),
     );
   }
@@ -457,6 +537,7 @@ class EditorToolsBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     return Container(
       height: 40,
       padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
@@ -466,13 +547,52 @@ class EditorToolsBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          buildLspState(context, ref),
+          if (!isMobile) ...[
+            buildLspState(context, ref),
+            const SizedBox(width: 4),
+          ],
+          Flexible(flex: isMobile ? 1 : 2, child: buildFileState(context, ref)),
           const SizedBox(width: 4),
           Flexible(child: buildBoardConnectState(context, ref)),
           const Spacer(),
           buildConsoleState(context, ref),
         ],
       ),
+    );
+  }
+
+  Widget buildFileState(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
+    if (value is! TabDataValue || value.type != "file") {
+      return StatusBarButton(
+        label: "欢迎页",
+        icon: Icons.home_outlined,
+        tooltip: "当前未打开代码文件",
+        onPressed: () {},
+      );
+    }
+
+    final fileName = path.basename(value.filePath);
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final source = value.isBoardFile == true ? "设备" : "本地";
+    final saved = value.isSaved;
+    return StatusBarButton(
+      label: isMobile
+          ? (saved ? "已保存" : "未保存")
+          : "$source · ${saved ? "已保存" : "未保存"} · $fileName",
+      icon: value.isBoardFile == true
+          ? Icons.developer_board_outlined
+          : Icons.description_outlined,
+      statusColor: saved ? scheme.primary : scheme.tertiary,
+      tooltip: saved ? "再次保存当前文件" : "保存当前文件",
+      onPressed: () async {
+        await ref.read(localWorkspaceProvider.notifier).saveFile();
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+      },
     );
   }
 
@@ -490,10 +610,12 @@ class EditorToolsBar extends ConsumerWidget {
         ? "LSP 异常"
         : "LSP 未就绪";
     final color = initialized
-        ? Colors.green
+        ? scheme.primary
         : isLoading
         ? scheme.tertiary
-        : scheme.error;
+        : hasError
+        ? scheme.error
+        : scheme.outline;
     return StatusBarButton(
       label: label,
       icon: Icons.data_object,
@@ -506,13 +628,17 @@ class EditorToolsBar extends ConsumerWidget {
   Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
     final usb = ref.watch(getUsbSerialProvider());
     final isConnected = usb.isConnected;
-    final label = isConnected ? "设备：${usb.selectedPortName!}" : "未连接设备";
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final label = isMobile
+        ? (isConnected ? usb.selectedPortName! : "设备")
+        : (isConnected ? "设备：${usb.selectedPortName!}" : "未连接设备");
     return StatusBarButton(
       label: label,
       icon: Icons.usb,
+      compact: isMobile,
       statusColor: isConnected
-          ? Colors.green
-          : Theme.of(context).colorScheme.error,
+          ? Theme.of(context).colorScheme.primary
+          : Theme.of(context).colorScheme.outline,
       tooltip: isConnected ? "打开设备管理" : "连接 MicroPython 设备",
       onPressed: () => context.push("/tools"),
     );
