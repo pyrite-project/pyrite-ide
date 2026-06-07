@@ -113,8 +113,8 @@ Future<void> renameFile(String path, String newName) async {
 }
 
 Future<void> deleteDir(String path) async {
-  final directiry = Directory(path);
-  await directiry.delete();
+  final directory = Directory(path);
+  await directory.delete(recursive: true);
 }
 
 Future<void> deleteFile(String path) async {

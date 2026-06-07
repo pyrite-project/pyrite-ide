@@ -11,51 +11,164 @@ import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
 
 Widget consolePage() {
-  return DefaultTabController(
-    length: 1,
-    child: Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TabBar(
-                tabAlignment: TabAlignment.start,
-                tabs: [Tab(text: "REPL", height: 30)],
-                isScrollable: true,
-              ),
-            ),
-          ],
-        ),
-
-        Expanded(child: TabBarView(children: [ReplView()])),
-      ],
-    ),
+  return const Column(
+    children: [
+      PaneHeader(
+        title: "REPL",
+        subtitle: "MicroPython 交互式终端",
+        leadingIcon: Icons.terminal,
+      ),
+      Expanded(child: ReplView()),
+    ],
   );
 }
 
-List<shadcn.ResizablePane> buildConsoleView(WidgetRef ref, Widget child) {
+List<shadcn.ResizablePane> buildConsoleView(
+  WidgetRef ref,
+  Widget child, {
+  bool allowConsole = true,
+}) {
   final List<shadcn.ResizablePane> children = [];
   children.add(
-    shadcn.ResizablePane.flex(initialFlex: 3, minSize: 50, child: child),
+    shadcn.ResizablePane.flex(initialFlex: 3, minSize: 240, child: child),
   );
 
-  if (ref.watch(consolePageShow)) {
+  if (allowConsole && ref.watch(consolePageShow)) {
     children.add(
       shadcn.ResizablePane.flex(
         initialFlex: 1,
-        minSize: 10,
+        minSize: 160,
         child: consolePage(),
       ),
     );
   }
 
   return children;
+}
+
+Widget buildShadcnLayer(BuildContext context, Widget child) {
+  return shadcn.ShadcnLayer(
+    theme: shadcn.ThemeData(
+      colorScheme: Theme.of(context).brightness == Brightness.light
+          ? shadcn.ColorSchemes.lightNeutral
+          : shadcn.ColorSchemes.darkNeutral,
+    ),
+    child: child,
+  );
+}
+
+Widget buildVerticalWorkspace(
+  BuildContext context,
+  WidgetRef ref,
+  Widget child, {
+  bool allowConsole = true,
+}) {
+  return buildShadcnLayer(
+    context,
+    shadcn.ResizablePanel.vertical(
+      draggerBuilder: (context) {
+        return shadcn.HorizontalResizableDragger();
+      },
+      children: buildConsoleView(ref, child, allowConsole: allowConsole),
+    ),
+  );
+}
+
+void showMobileConsoleSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) {
+      return SizedBox(
+        height: MediaQuery.of(context).size.height * 0.55,
+        child: consolePage(),
+      );
+    },
+  );
+}
+
+class ConsoleToggle extends ConsumerWidget {
+  const ConsoleToggle({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final consoleVisible = ref.watch(consolePageShow);
+    return IconButton(
+      tooltip: isMobile ? "打开 REPL" : (consoleVisible ? "隐藏 REPL" : "显示 REPL"),
+      onPressed: () {
+        if (isMobile) {
+          showMobileConsoleSheet(context);
+          return;
+        }
+        ref.read(consolePageShow.notifier).state = !consoleVisible;
+      },
+      icon: const Icon(Icons.terminal),
+    );
+  }
+}
+
+class FunctionPaneToggle extends ConsumerWidget {
+  const FunctionPaneToggle({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visible = ref.watch(functionPageShow);
+    return IconButton(
+      tooltip: visible ? "隐藏功能面板" : "显示功能面板",
+      onPressed: () {
+        ref.read(functionPageShow.notifier).state = !visible;
+      },
+      icon: Icon(visible ? Icons.left_panel_close : Icons.left_panel_open),
+    );
+  }
+}
+
+class ExpansionPaneToggle extends ConsumerWidget {
+  const ExpansionPaneToggle({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visible = ref.watch(expansionPageShow);
+    return IconButton(
+      tooltip: visible ? "隐藏扩展面板" : "显示扩展面板",
+      onPressed: () {
+        ref.read(expansionPageShow.notifier).state = !visible;
+      },
+      icon: Icon(visible ? Icons.right_panel_close : Icons.right_panel_open),
+    );
+  }
+}
+
+class RailTrailingActions extends StatelessWidget {
+  const RailTrailingActions({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Expanded(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FunctionPaneToggle(),
+              ExpansionPaneToggle(),
+              ConsoleToggle(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MobileView extends ConsumerWidget {
@@ -68,36 +181,22 @@ class MobileView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      selectedIndexValue = routesName.indexOf(
+      final routeIndex = routesName.indexOf(
         "/${state.matchedLocation.split("/")[1]}",
       );
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
-      if (selectedIndexValue != ref.read(mobileSelectedIndex)) {
-        selectedIndexValue = ref.read(mobileSelectedIndex);
-        context.go(routesName[selectedIndexValue]);
+      if (routeIndex != -1 && routeIndex != ref.read(mobileSelectedIndex)) {
+        selectedIndexValue = routeIndex;
+        ref.read(mobileSelectedIndex.notifier).state = routeIndex;
       }
     });
     return Scaffold(
       bottomNavigationBar: bottomNavigationBar(context, ref),
       body: Column(
         children: [
-          Expanded(
-            child: shadcn.ShadcnLayer(
-              theme: shadcn.ThemeData(
-                colorScheme: Theme.of(context).brightness == Brightness.light
-                    ? shadcn.ColorSchemes.lightNeutral
-                    : shadcn.ColorSchemes.darkNeutral,
-              ),
-              child: shadcn.ResizablePanel.vertical(
-                draggerBuilder: (context) {
-                  return shadcn.HorizontalResizableDragger();
-                },
-                children: buildConsoleView(ref, child),
-              ),
-            ),
-          ),
-          EditorToolsBar(),
+          Expanded(child: child),
+          const EditorToolsBar(),
         ],
       ),
     );
@@ -105,7 +204,6 @@ class MobileView extends ConsumerWidget {
 
   Widget bottomNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationBar(
-      // labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
       destinations: bottomItems,
       selectedIndex: ref.watch(mobileSelectedIndex),
       onDestinationSelected: (value) {
@@ -133,14 +231,14 @@ class TabletView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      selectedIndexValue = routesName.indexOf(
+      final routeIndex = routesName.indexOf(
         "/${state.matchedLocation.split("/")[1]}",
       );
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
-      if (selectedIndexValue != ref.read(mobileSelectedIndex)) {
-        selectedIndexValue = ref.read(mobileSelectedIndex);
-        context.go(routesName[selectedIndexValue]);
+      if (routeIndex != -1 && routeIndex != ref.read(tabletSelectedIndex)) {
+        selectedIndexValue = routeIndex;
+        ref.read(tabletSelectedIndex.notifier).state = routeIndex;
       }
     });
     return Scaffold(
@@ -150,26 +248,11 @@ class TabletView extends ConsumerWidget {
             child: Row(
               children: [
                 railNavigationBar(context, ref),
-                Expanded(
-                  child: shadcn.ShadcnLayer(
-                    theme: shadcn.ThemeData(
-                      colorScheme:
-                          Theme.of(context).brightness == Brightness.light
-                          ? shadcn.ColorSchemes.lightNeutral
-                          : shadcn.ColorSchemes.darkNeutral,
-                    ),
-                    child: shadcn.ResizablePanel.vertical(
-                      draggerBuilder: (context) {
-                        return shadcn.HorizontalResizableDragger();
-                      },
-                      children: buildConsoleView(ref, child),
-                    ),
-                  ),
-                ),
+                Expanded(child: buildVerticalWorkspace(context, ref, child)),
               ],
             ),
           ),
-          EditorToolsBar(),
+          const EditorToolsBar(),
         ],
       ),
     );
@@ -177,8 +260,8 @@ class TabletView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
-      minWidth: 60,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      minWidth: 72,
+      labelType: NavigationRailLabelType.selected,
       destinations: tabletRailItems,
       selectedIndex: ref.watch(tabletSelectedIndex),
       onDestinationSelected: (value) {
@@ -202,14 +285,18 @@ class DesktopView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      selectedIndexValue = routesName.indexOf(
+      final routeIndex = routesName.indexOf(
         "/${state.matchedLocation.split("/")[1]}",
       );
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
-      if (selectedIndexValue >= desktopRailItems.length) {
+      if (routeIndex >= desktopRailItems.length) {
         selectedIndexValue = 0;
         context.go(file);
+        return;
+      }
+      if (routeIndex != -1) {
+        selectedIndexValue = routeIndex;
       }
       ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
     });
@@ -224,7 +311,7 @@ class DesktopView extends ConsumerWidget {
               ],
             ),
           ),
-          EditorToolsBar(),
+          const EditorToolsBar(),
         ],
       ),
     );
@@ -232,26 +319,11 @@ class DesktopView extends ConsumerWidget {
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     return NavigationRail(
-      minWidth: 40,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      minWidth: 64,
+      labelType: NavigationRailLabelType.selected,
       destinations: desktopRailItems,
       selectedIndex: ref.watch(desktopSelectedIndex),
-      trailing: Expanded(
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            margin: const EdgeInsets.all(10),
-            child: IconButton(
-              onPressed: () {
-                ref.read(functionPageShow.notifier).state = !ref
-                    .read(functionPageShow.notifier)
-                    .state;
-              },
-              icon: const Icon(Icons.menu),
-            ),
-          ),
-        ),
-      ),
+      trailing: const RailTrailingActions(),
       onDestinationSelected: (value) {
         selectedIndexValue = value;
         ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
@@ -302,13 +374,9 @@ class DesktopView extends ConsumerWidget {
   }
 
   Widget pageStructure(BuildContext context, WidgetRef ref) {
-    return shadcn.ShadcnLayer(
-      theme: shadcn.ThemeData(
-        colorScheme: Theme.of(context).brightness == Brightness.light
-            ? shadcn.ColorSchemes.lightNeutral
-            : shadcn.ColorSchemes.darkNeutral,
-      ),
-      child: shadcn.ResizablePanel.horizontal(
+    return buildShadcnLayer(
+      context,
+      shadcn.ResizablePanel.horizontal(
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },
@@ -388,54 +456,83 @@ class EditorToolsBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Row(
-      children: [
-        buildLspState(context, ref),
-        buildBoardConnectState(context, ref),
-      ],
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 40,
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          buildLspState(context, ref),
+          const SizedBox(width: 4),
+          Flexible(child: buildBoardConnectState(context, ref)),
+          const Spacer(),
+          buildConsoleState(context, ref),
+        ],
+      ),
     );
   }
 
   Widget buildLspState(BuildContext context, WidgetRef ref) {
-    Color? color = ref
-        .watch(lspState)
-        ?.when(
-          data: (initialized) => initialized ? Colors.green : Colors.red,
-          loading: () => Colors.red,
-          error: (err, _) => Colors.red,
-        );
-    return MaterialButton(
+    final scheme = Theme.of(context).colorScheme;
+    final state = ref.watch(lspState);
+    final initialized = state?.valueOrNull == true;
+    final isLoading = state?.isLoading == true;
+    final hasError = state?.hasError == true;
+    final label = initialized
+        ? "LSP 正常"
+        : isLoading
+        ? "LSP 启动中"
+        : hasError
+        ? "LSP 异常"
+        : "LSP 未就绪";
+    final color = initialized
+        ? Colors.green
+        : isLoading
+        ? scheme.tertiary
+        : scheme.error;
+    return StatusBarButton(
+      label: label,
+      icon: Icons.data_object,
+      statusColor: color,
+      tooltip: "语言服务器设置",
       onPressed: () => context.push("/settings/lsp"),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: (color != null) ? color : Colors.grey,
-              borderRadius: BorderRadius.circular(100),
-            ),
-          ),
-          SizedBox(width: 5),
-          Text("LSP"),
-        ],
-      ),
     );
   }
 
   Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
-    return MaterialButton(
+    final usb = ref.watch(getUsbSerialProvider());
+    final isConnected = usb.isConnected;
+    final label = isConnected ? "设备：${usb.selectedPortName!}" : "未连接设备";
+    return StatusBarButton(
+      label: label,
+      icon: Icons.usb,
+      statusColor: isConnected
+          ? Colors.green
+          : Theme.of(context).colorScheme.error,
+      tooltip: isConnected ? "打开设备管理" : "连接 MicroPython 设备",
       onPressed: () => context.push("/tools"),
-      child: Row(
-        children: [
-          Icon(Icons.power, size: 15),
-          Text(
-            (ref.watch(getUsbSerialProvider()).isConnected)
-                ? "已连接：${ref.watch(getUsbSerialProvider()).selectedPortName!}"
-                : "暂未连接",
-          ),
-        ],
-      ),
+    );
+  }
+
+  Widget buildConsoleState(BuildContext context, WidgetRef ref) {
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final visible = ref.watch(consolePageShow);
+    return StatusBarButton(
+      label: isMobile ? "REPL" : (visible ? "REPL 显示" : "REPL 隐藏"),
+      icon: Icons.terminal,
+      compact: isMobile,
+      tooltip: isMobile ? "打开 REPL" : (visible ? "隐藏 REPL" : "显示 REPL"),
+      onPressed: () {
+        if (isMobile) {
+          showMobileConsoleSheet(context);
+          return;
+        }
+        ref.read(consolePageShow.notifier).state = !visible;
+      },
     );
   }
 }

@@ -11,15 +11,15 @@ class TabsPersistedData {
   TabsPersistedData({required this.tabs, required this.selectedTabIndex});
 
   Map<String, dynamic> toJson() => {
-        'tabs': tabs.map((t) => t.toJson()).toList(),
-        'selectedTabIndex': selectedTabIndex,
-      };
+    'tabs': tabs.map((t) => t.toJson()).toList(),
+    'selectedTabIndex': selectedTabIndex,
+  };
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
       TabsPersistedData(
-        tabs: (json['tabs'] as List<dynamic>?)
-                ?.map(
-                    (t) => PersistedTab.fromJson(t as Map<String, dynamic>))
+        tabs:
+            (json['tabs'] as List<dynamic>?)
+                ?.map((t) => PersistedTab.fromJson(t as Map<String, dynamic>))
                 .toList() ??
             [],
         selectedTabIndex: json['selectedTabIndex'] as int? ?? 0,
@@ -40,7 +40,8 @@ class TabsPersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return TabsPersistedData.fromJson(json);
     } catch (e) {
       debugPrint('TabsPersistence: Failed to load: $e');

@@ -90,13 +90,6 @@ class AppActionBar extends ConsumerWidget {
             ),
             buildMenuItemButton(
               context,
-              "新建窗口（暂不可用）",
-              null,
-              leadingIconData: Icons.window_sharp,
-            ),
-            PopupMenuDivider(),
-            buildMenuItemButton(
-              context,
               "打开文件",
               () => ref
                   .read(tabbedViewControllerProvider.notifier)
@@ -108,12 +101,6 @@ class AppActionBar extends ConsumerWidget {
               "打开文件夹",
               () => ref.read(localFileItemsProvider.notifier).openFolder(),
               leadingIconData: Icons.folder_open,
-            ),
-            buildMenuItemButton(
-              context,
-              "打开最近的文件或文件夹（暂不可用）",
-              null,
-              trailingIconData: Icons.chevron_right,
             ),
             PopupMenuDivider(),
             buildMenuItemButton(
@@ -145,14 +132,14 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "撤销",
-              ref.read(editorControllerMapProvider.notifier).undo,
+              null,
               leadingIconData: Icons.undo,
               shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
             ),
             buildMenuItemButton(
               context,
               "恢复",
-              ref.read(editorControllerMapProvider.notifier).redo,
+              null,
               leadingIconData: Icons.redo,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyZ,

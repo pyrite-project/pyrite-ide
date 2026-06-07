@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class LspSettings extends ConsumerWidget {
   const LspSettings({super.key});
@@ -8,51 +10,55 @@ class LspSettings extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("语言服务器设置"),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-      ),
-      body: Padding(
-        padding: EdgeInsetsGeometry.only(left: 5, right: 5),
-        child: ListView(
-          children: [
-            ListTile(
-              title: Text("启用语言服务器"),
-              subtitle: Text("更改将会在新标签页中生效"),
-              trailing: Switch(
+      appBar: AppBar(title: Text("语言服务器设置")),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          SettingsSection(
+            title: "语言服务",
+            description: "设置会在新打开的编辑器标签页中生效。",
+            children: [
+              SwitchListTile(
+                title: const Text("启用语言服务器"),
+                subtitle: const Text("提供补全、诊断和跳转等编辑能力"),
                 value: ref.watch(useLsp),
                 onChanged: (value) {
                   ref.read(useLsp.notifier).state = value;
                 },
               ),
-            ),
-            ListTile(
-              title: Text("WebSocket 地址"),
-              subtitle: Text(ref.watch(lspWebScoketPath)),
-              onTap: () => showPathDialog(context, ref),
-            ),
-            ListTile(
-              title: Text("抑制警告"),
-              subtitle: Text("更改将会在新标签页中生效，关闭后将不会有下划线标识警告"),
-              trailing: Switch(
-                value: ref.watch(disableWarning),
+              const SectionDivider(),
+              ListTile(
+                title: const Text("WebSocket 地址"),
+                subtitle: Text(ref.watch(lspWebScoketPath)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showPathDialog(context, ref),
+              ),
+            ],
+          ),
+          SettingsSection(
+            title: "诊断显示",
+            description: "控制编辑器是否显示语言服务器返回的问题标记。",
+            children: [
+              SwitchListTile(
+                title: const Text("显示警告诊断"),
+                subtitle: const Text("开启后，警告会以下划线标识"),
+                value: !ref.watch(disableWarning),
                 onChanged: (value) {
-                  ref.read(disableWarning.notifier).state = value;
+                  ref.read(disableWarning.notifier).state = !value;
                 },
               ),
-            ),
-            ListTile(
-              title: Text("抑制错误"),
-              subtitle: Text("更改将会在新标签页中生效，关闭后将不会有下划线标识错误"),
-              trailing: Switch(
-                value: ref.watch(disableError),
+              const SectionDivider(),
+              SwitchListTile(
+                title: const Text("显示错误诊断"),
+                subtitle: const Text("开启后，错误会以下划线标识"),
+                value: !ref.watch(disableError),
                 onChanged: (value) {
-                  ref.read(disableError.notifier).state = value;
+                  ref.read(disableError.notifier).state = !value;
                 },
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -62,45 +68,33 @@ class LspSettings extends ConsumerWidget {
     controller.text = ref.read(lspWebScoketPath);
     await showDialog(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: Text("输入地址"),
-        children: [
-          SimpleDialogOption(child: TextField(controller: controller)),
-          SimpleDialogOption(child: Text("请注意，若该地址不正确，服务器启动将会静默失败")),
-          SimpleDialogOption(
-            child: FilledButton(
-              onPressed: () {
-                ref.read(lspWebScoketPath.notifier).state = controller.text;
-              },
-              child: Text("确定"),
-            ),
+      builder: (context) => AlertDialog(
+        title: const Text("WebSocket 地址"),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            labelText: "地址",
+            helperText: "例如 127.0.0.1:8765",
+            prefixText: "ws://",
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              final messenger = ScaffoldMessenger.of(context);
+              ref.read(lspWebScoketPath.notifier).state = value;
+              context.pop();
+              messenger.showSnackBar(
+                const SnackBar(content: Text("语言服务器地址已更新")),
+              );
+            },
+            child: const Text("保存"),
           ),
         ],
-      ),
-    );
-  }
-
-  void showFontSizeDialog(BuildContext context) async {
-    await showDialog(
-      context: context,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final size = ref.watch(editorFontSize);
-          return SimpleDialog(
-            title: Text("字体大小"),
-            children: [
-              Slider(
-                min: 5,
-                max: 50,
-                divisions: 45,
-                value: size,
-                label: size.toStringAsFixed(0),
-                onChanged: (value) =>
-                    ref.read(editorFontSize.notifier).state = value,
-              ),
-            ],
-          );
-        },
       ),
     );
   }

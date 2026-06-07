@@ -22,6 +22,10 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     // print(getConnectState(ref));
   }
 
+  void refresh() {
+    _update();
+  }
+
   void connectPort(String name) {
     bindReplOnOutputCallback();
     state = state.copyWith(

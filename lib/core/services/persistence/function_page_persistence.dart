@@ -21,13 +21,13 @@ class FunctionPagePersistedData {
   });
 
   Map<String, dynamic> toJson() => {
-        'desktopSelectedIndex': desktopSelectedIndex,
-        'mobileSelectedIndex': mobileSelectedIndex,
-        'tabletSelectedIndex': tabletSelectedIndex,
-        'functionPageShow': functionPageShow,
-        'consolePageShow': consolePageShow,
-        'expansionPageShow': expansionPageShow,
-      };
+    'desktopSelectedIndex': desktopSelectedIndex,
+    'mobileSelectedIndex': mobileSelectedIndex,
+    'tabletSelectedIndex': tabletSelectedIndex,
+    'functionPageShow': functionPageShow,
+    'consolePageShow': consolePageShow,
+    'expansionPageShow': expansionPageShow,
+  };
 
   factory FunctionPagePersistedData.fromJson(Map<String, dynamic> json) =>
       FunctionPagePersistedData(
@@ -54,7 +54,8 @@ class FunctionPagePersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return FunctionPagePersistedData.fromJson(json);
     } catch (e) {
       debugPrint('FunctionPagePersistence: Failed to load: $e');

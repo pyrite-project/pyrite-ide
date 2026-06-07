@@ -38,7 +38,7 @@ Future<File> getLocalFilePath(TreeNode<FileSystemItem> node) async {
     fileNameResult = path.join(fileNameResult, fileNameList[i]);
   }
   File file = File(path.join(supportDir.path, fileNameResult));
-  file.create(recursive: true, exclusive: false);
+  await file.create(recursive: true, exclusive: false);
   print("debug: open board file ${file.path}");
 
   return file;

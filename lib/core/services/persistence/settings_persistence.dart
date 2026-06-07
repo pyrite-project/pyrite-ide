@@ -25,20 +25,19 @@ class SettingsPersistedData {
   });
 
   Map<String, dynamic> toJson() => {
-        'editorTextFont': editorTextFont,
-        'editorFontSize': editorFontSize,
-        'editorWordWrap': editorWordWrap,
-        'editorLineNumber': editorLineNumber,
-        'useLsp': useLsp,
-        'lspWebSocketPath': lspWebSocketPath,
-        'disableWarning': disableWarning,
-        'disableError': disableError,
-      };
+    'editorTextFont': editorTextFont,
+    'editorFontSize': editorFontSize,
+    'editorWordWrap': editorWordWrap,
+    'editorLineNumber': editorLineNumber,
+    'useLsp': useLsp,
+    'lspWebSocketPath': lspWebSocketPath,
+    'disableWarning': disableWarning,
+    'disableError': disableError,
+  };
 
   factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
       SettingsPersistedData(
-        editorTextFont:
-            json['editorTextFont'] as String? ?? 'JetBrains Mono',
+        editorTextFont: json['editorTextFont'] as String? ?? 'JetBrains Mono',
         editorFontSize: (json['editorFontSize'] as num?)?.toDouble() ?? 15,
         editorWordWrap: json['editorWordWrap'] as bool? ?? false,
         editorLineNumber: json['editorLineNumber'] as bool? ?? true,
@@ -64,7 +63,8 @@ class SettingsPersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return SettingsPersistedData.fromJson(json);
     } catch (e) {
       debugPrint('SettingsPersistence: Failed to load: $e');
