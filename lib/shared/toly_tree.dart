@@ -1,7 +1,4 @@
-// ignore_for_file: implementation_imports
-
 import 'package:flutter/material.dart';
-import 'package:tolyui_tree/src/tree_line_painter.dart';
 
 /// 树节点数据模型
 class TreeNode<T> {
@@ -83,6 +80,78 @@ class TreeNode<T> {
     } else {
       return null; // 第三态（有至少一个选中）
     }
+  }
+}
+
+class TreeLinePainter extends CustomPainter {
+  TreeLinePainter({
+    required this.level,
+    required this.indent,
+    required this.color,
+    required this.strokeWidth,
+    required this.isLast,
+    required this.hasChildren,
+    required this.isExpanded,
+    required this.ancestorLines,
+  });
+
+  final int level;
+  final double indent;
+  final Color color;
+  final double strokeWidth;
+  final bool isLast;
+  final bool hasChildren;
+  final bool isExpanded;
+  final List<bool> ancestorLines;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (level == 0) return;
+
+    const lineOffset = 16.0;
+    const horizontalExtra = 6.0;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final centerY = size.height / 2;
+    final parentX = (level - 1) * indent + lineOffset;
+    final horizontalEndX = parentX + indent - lineOffset + horizontalExtra;
+
+    for (var i = 0; i < level - 1; i++) {
+      if (i < ancestorLines.length && ancestorLines[i]) {
+        final x = i * indent + lineOffset;
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      }
+    }
+
+    canvas.drawLine(Offset(parentX, 0), Offset(parentX, centerY), paint);
+    canvas.drawLine(
+      Offset(parentX, centerY),
+      Offset(horizontalEndX, centerY),
+      paint,
+    );
+
+    if (!isLast) {
+      canvas.drawLine(
+        Offset(parentX, centerY),
+        Offset(parentX, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant TreeLinePainter oldDelegate) {
+    return level != oldDelegate.level ||
+        indent != oldDelegate.indent ||
+        color != oldDelegate.color ||
+        strokeWidth != oldDelegate.strokeWidth ||
+        isLast != oldDelegate.isLast ||
+        hasChildren != oldDelegate.hasChildren ||
+        isExpanded != oldDelegate.isExpanded ||
+        ancestorLines != oldDelegate.ancestorLines;
   }
 }
 

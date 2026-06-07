@@ -146,25 +146,11 @@ flutter:
 
   assets:
     - assets/icons/app_icon.png
-    - assets/icons/app_icon_100px.png
-    - assets/icons/app_icon_100px_appbar.png
-    
-<<<<<<< Updated upstream
-    - assets/python_runtime_boot.zip
-=======
-    - assets/android/python_env.zip
+    - assets/icons/app_icon_appbar.png
 
-    - assets/android/python.zip
-    - assets/windows/python.zip
-    - assets/linux/python.zip
-    - assets/macos/python.zip
-  
-  config:
-    enable-swift-package-manager: false
->>>>>>> Stashed changes
+    - assets/python_runtime_boot.zip
 
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: true
   image_path: "assets/icons/app_icon.png"
-  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_background: "#E65100"

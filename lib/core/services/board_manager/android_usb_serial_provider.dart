@@ -19,6 +19,10 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
     state = state.copyWith(isConnected: _getConnectState());
   }
 
+  void refresh() {
+    _update();
+  }
+
   void connectPort(UsbDevice device) async {
     bindReplOnOutputCallback();
     state = state.copyWith(

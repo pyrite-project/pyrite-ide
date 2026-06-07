@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
@@ -13,6 +14,59 @@ import 'package:dynamic_color/dynamic_color.dart';
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
 
+  ColorScheme _resolveColorScheme({
+    required ColorScheme? dynamicScheme,
+    required Color? seedColor,
+    required Brightness brightness,
+  }) {
+    if (seedColor != null) {
+      return ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
+    }
+    if (dynamicScheme != null) return dynamicScheme;
+    return ColorScheme.fromSeed(seedColor: Colors.teal, brightness: brightness);
+  }
+
+  ThemeData _buildTheme({
+    required ColorScheme? dynamicScheme,
+    required Color? seedColor,
+    required Brightness brightness,
+  }) {
+    final scheme = _resolveColorScheme(
+      dynamicScheme: dynamicScheme,
+      seedColor: seedColor,
+      brightness: brightness,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      fontFamily: "HarmonyOS Sans SC",
+      brightness: brightness,
+      colorScheme: scheme,
+      appBarTheme: AppBarTheme(
+        backgroundColor: scheme.surfaceContainerLow,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: scheme.onSurface,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        showCloseIcon: true,
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: scheme.surfaceContainerLowest,
+        indicatorColor: scheme.secondaryContainer,
+        selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
+        selectedLabelTextStyle: TextStyle(color: scheme.onSurface),
+        unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
+        unselectedLabelTextStyle: TextStyle(color: scheme.onSurfaceVariant),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: scheme.surfaceContainer,
+        indicatorColor: scheme.secondaryContainer,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.read(getUsbSerialProvider().notifier).registerUpdateTask();
@@ -20,28 +74,20 @@ class PyriteIDE extends ConsumerWidget {
 
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
+        final seedColor = ref.watch(themeColor);
         final app = MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: appName,
           themeMode: ref.watch(themeMode),
-          theme: ThemeData(
-            fontFamily: "HarmonyOS Sans SC",
+          theme: _buildTheme(
+            dynamicScheme: lightDynamic,
+            seedColor: seedColor,
             brightness: Brightness.light,
-            colorScheme: (ref.watch(themeColor) == null)
-                ? lightDynamic
-                : ColorScheme.fromSeed(seedColor: ref.read(themeColor)!),
-            appBarTheme: AppBarTheme(surfaceTintColor: Colors.transparent),
           ),
-          darkTheme: ThemeData(
-            fontFamily: "HarmonyOS Sans SC",
+          darkTheme: _buildTheme(
+            dynamicScheme: darkDynamic,
+            seedColor: seedColor,
             brightness: Brightness.dark,
-            colorScheme: (ref.watch(themeColor) == null)
-                ? darkDynamic
-                : ColorScheme.fromSeed(
-                    seedColor: ref.read(themeColor)!,
-                    brightness: Brightness.dark,
-                  ),
-            appBarTheme: AppBarTheme(surfaceTintColor: Colors.transparent),
           ),
           routerConfig: routes,
           builder: (context, child) {
@@ -50,10 +96,10 @@ class PyriteIDE extends ConsumerWidget {
               child: ResponsiveBreakpoints.builder(
                 child: child!,
                 breakpoints: [
-                  const Breakpoint(start: 0, end: 600, name: MOBILE),
-                  const Breakpoint(start: 601, end: 1000, name: TABLET),
+                  const Breakpoint(start: 0, end: 599, name: MOBILE),
+                  const Breakpoint(start: 600, end: 839, name: TABLET),
                   const Breakpoint(
-                    start: 801,
+                    start: 840,
                     end: double.infinity,
                     name: DESKTOP,
                   ),
@@ -63,7 +109,10 @@ class PyriteIDE extends ConsumerWidget {
           },
         );
 
-        if (!Platform.isMacOS) return app;
+        if (!Platform.isMacOS ||
+            defaultTargetPlatform != TargetPlatform.macOS) {
+          return app;
+        }
         return MacOSMenu(app: app);
       },
     );

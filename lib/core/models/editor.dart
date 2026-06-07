@@ -8,6 +8,7 @@ class TabDataValue {
     this.file,
     this.editorController,
     this.isBoardFile,
+    this.boardFilePath,
     this.isSaved = true,
   });
   final String type;
@@ -15,5 +16,6 @@ class TabDataValue {
   final File? file;
   final CodeForgeController? editorController;
   final bool? isBoardFile;
+  final String? boardFilePath;
   bool isSaved;
 }

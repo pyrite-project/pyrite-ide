@@ -7,7 +7,7 @@ final localFileTreeViewControllerProvider = StateProvider(
   (ref) => TreeController(
     roots: ref.watch(localFileItemsProvider),
     onNodeDeleted: (node) {
-      if (node?.data is FolderItem) {
+      if (node.data is FolderItem) {
         local.deleteDir(node.id);
       } else {
         local.deleteFile(node.id);
@@ -15,7 +15,7 @@ final localFileTreeViewControllerProvider = StateProvider(
     },
     onNodeRenamed: (node, newName) {
       node.data.name = newName;
-      if (node?.data is FolderItem) {
+      if (node.data is FolderItem) {
         local.renameDir(node.id, newName);
       } else {
         local.renameFile(node.id, newName);

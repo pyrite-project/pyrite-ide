@@ -77,7 +77,7 @@ class MacOSMenu extends ConsumerWidget {
               LogicalKeyboardKey.keyZ,
               control: true,
             ),
-            onSelected: ref.read(editorControllerMapProvider.notifier).undo,
+            onSelected: null,
           ),
           PlatformMenuItem(
             label: "恢复",
@@ -86,7 +86,7 @@ class MacOSMenu extends ConsumerWidget {
               control: true,
               shift: true,
             ),
-            onSelected: ref.read(editorControllerMapProvider.notifier).redo,
+            onSelected: null,
           ),
           PlatformMenuItem(
             label: "剪切",

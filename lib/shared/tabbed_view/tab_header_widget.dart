@@ -213,9 +213,14 @@ class TabHeaderWidget extends StatelessWidget {
                         value.file!.path,
                         value.editorController!.text,
                       );
-                      container
-                          .read(tabbedViewControllerProvider.notifier)
-                          .afterFileSave();
+                      if (identical(
+                          provider.controller,
+                          container.read(tabbedViewControllerProvider),
+                        )) {
+                        container
+                            .read(tabbedViewControllerProvider.notifier)
+                            .afterFileSave();
+                      }
                       context.pop();
                       await _onClose(context, index);
                     },
@@ -270,9 +275,14 @@ class TabHeaderWidget extends StatelessWidget {
       index = provider.controller.tabs.indexOf(tabData);
       if (index != -1) {
         provider.controller.removeTab(index);
-        container
-            .read(tabbedViewControllerProvider.notifier)
-            .afterTabClose(index);
+        if (identical(
+            provider.controller,
+            container.read(tabbedViewControllerProvider),
+          )) {
+          container
+              .read(tabbedViewControllerProvider.notifier)
+              .afterTabClose(index);
+        }
       }
     }
   }

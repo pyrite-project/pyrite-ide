@@ -34,7 +34,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             bottom: 5,
           ),
           child: Image.asset(
-            "assets/icons/app_icon.png",
+            "assets/icons/app_icon_appbar.png",
+            color: Theme.of(context).colorScheme.primary,
             width: 15,
             height: 15,
           ),
@@ -47,6 +48,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     File file,
     CodeForgeController? editorController, {
     bool isBoardFile = false,
+    String? boardFilePath,
     bool isSaved = true,
   }) async {
     if (editorController == null) {
@@ -67,6 +69,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       file: file,
       editorController: editorController,
       isBoardFile: isBoardFile,
+      boardFilePath: boardFilePath,
       isSaved: isSaved,
     );
 
@@ -87,9 +90,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         if (val.isSaved) {
           val.isSaved = false;
           tab.leading = (context, status) => Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.circle, size: 8, color: Colors.orange),
-              );
+            padding: EdgeInsets.only(right: 4),
+            child: Icon(Icons.circle, size: 8, color: Colors.orange),
+          );
           final idx = state.selectedIndex;
           state = TabbedViewController(List.from(state.tabs));
           if (idx != null) state.selectedIndex = idx;
@@ -112,7 +115,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
 
       if (newTab == null) {
-        print("cannot open file");
+        debugPrint("cannot open file");
         return;
       }
 
@@ -137,6 +140,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             .read(editorControllerMapProvider.notifier)
             .createNewEditorController(file),
         isBoardFile: isBoardFile,
+        boardFilePath: boardFilePath,
       );
 
       if (newTab == null) {
@@ -144,7 +148,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       for (TabData tab in state.tabs) {
-        if ((tab.value as TabDataValue).filePath == file.path) {
+        final value = tab.value as TabDataValue;
+        final sameLocalFile = value.filePath == file.path;
+        final sameBoardFile =
+            boardFilePath != null && value.boardFilePath == boardFilePath;
+        if (sameLocalFile || sameBoardFile) {
           TabbedViewController newController = TabbedViewController(
             List.from(state.tabs),
           );
@@ -221,14 +229,15 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         file,
         controller,
         isBoardFile: persisted.isBoardFile,
+        boardFilePath: null,
         isSaved: persisted.isSaved,
       );
       if (tab != null) {
         if (!persisted.isSaved && persisted.unsavedContent != null) {
           tab.leading = (context, status) => Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.circle, size: 8, color: Colors.orange),
-              );
+            padding: EdgeInsets.only(right: 4),
+            child: Icon(Icons.circle, size: 8, color: Colors.orange),
+          );
         }
         tabs.add(tab);
       }

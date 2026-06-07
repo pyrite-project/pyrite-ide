@@ -10,9 +10,9 @@ class AppPersistedData {
   AppPersistedData({required this.themeMode, this.themeColorValue});
 
   Map<String, dynamic> toJson() => {
-        'themeMode': themeMode,
-        'themeColorValue': themeColorValue,
-      };
+    'themeMode': themeMode,
+    'themeColorValue': themeColorValue,
+  };
 
   factory AppPersistedData.fromJson(Map<String, dynamic> json) =>
       AppPersistedData(
@@ -35,7 +35,8 @@ class AppPersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return AppPersistedData.fromJson(json);
     } catch (e) {
       debugPrint('AppPersistence: Failed to load: $e');
