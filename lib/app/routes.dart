@@ -110,4 +110,4 @@ const String settings = '/settings';
 const String edit = '/editor';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [file, tools, settings, edit];
+const List<String> routesName = [file, tools, plugins, settings, edit];

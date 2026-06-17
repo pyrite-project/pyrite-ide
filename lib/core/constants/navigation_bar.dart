@@ -4,16 +4,18 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 const List<Widget> itemsIcons = [
   Icon(Icons.folder_outlined),
   Icon(Icons.developer_board_outlined),
+  Icon(Icons.apps_outlined),
   Icon(Icons.settings_outlined),
 ];
 
 const List<Widget> selectedItemsIcons = [
   Icon(Icons.folder),
   Icon(Icons.developer_board),
+  Icon(Icons.apps),
   Icon(Icons.settings),
 ];
 
-const List<String> itemsLabel = ["文件", "设备", "设置"];
+const List<String> itemsLabel = ["文件", "设备", "插件", "设置"];
 
 List<Widget> bottomItems = [
   NavigationDestination(
@@ -30,6 +32,11 @@ List<Widget> bottomItems = [
     icon: itemsIcons[2],
     selectedIcon: selectedItemsIcons[2],
     label: itemsLabel[2],
+  ),
+  NavigationDestination(
+    icon: itemsIcons[3],
+    selectedIcon: selectedItemsIcons[3],
+    label: itemsLabel[3],
   ),
   const NavigationDestination(
     icon: Icon(Icons.note_alt_outlined),
@@ -54,6 +61,11 @@ List<Widget> drawerItems = [
     selectedIcon: selectedItemsIcons[2],
     label: UseText(itemsLabel[2]),
   ),
+  NavigationDrawerDestination(
+    icon: itemsIcons[3],
+    selectedIcon: selectedItemsIcons[3],
+    label: UseText(itemsLabel[3]),
+  ),
   const NavigationDrawerDestination(
     icon: Icon(Icons.note_alt_outlined),
     selectedIcon: Icon(Icons.edit_document),
@@ -77,6 +89,11 @@ List<NavigationRailDestination> tabletRailItems = [
     selectedIcon: selectedItemsIcons[2],
     label: UseText(itemsLabel[2]),
   ),
+  NavigationRailDestination(
+    icon: itemsIcons[3],
+    selectedIcon: selectedItemsIcons[3],
+    label: UseText(itemsLabel[3]),
+  ),
   const NavigationRailDestination(
     icon: Icon(Icons.note_alt_outlined),
     selectedIcon: Icon(Icons.edit_document),
@@ -99,5 +116,10 @@ List<NavigationRailDestination> desktopRailItems = [
     icon: itemsIcons[2],
     selectedIcon: selectedItemsIcons[2],
     label: UseText(itemsLabel[2]),
+  ),
+  NavigationRailDestination(
+    icon: itemsIcons[3],
+    selectedIcon: selectedItemsIcons[3],
+    label: UseText(itemsLabel[3]),
   ),
 ];

@@ -80,7 +80,10 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
   final DynamicContent _data = DynamicContent();
 
   static const LibraryName coreName = LibraryName(<String>['core', 'widgets']);
-  static const LibraryName materialName = LibraryName(<String>['core', 'material',]);
+  static const LibraryName materialName = LibraryName(<String>[
+    'core',
+    'material',
+  ]);
   Map<String, LibraryName?> pagesLibNames = {};
 
   Map<String, String>? _lastPages;

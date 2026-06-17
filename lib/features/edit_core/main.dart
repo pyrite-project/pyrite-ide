@@ -39,6 +39,8 @@ class _EditCoreState extends ConsumerState<EditCore> {
         fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
       ),
       lineWrap: ref.watch(editorWordWrap),
+      useSpaceAsTab: true,
+      tabSize: 4,
     );
   }
 }
