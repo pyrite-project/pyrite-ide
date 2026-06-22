@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 /// 树节点数据模型
 class TreeNode<T> {
@@ -489,7 +490,7 @@ class _TreeNodeWidgetState<T> extends State<_TreeNodeWidget<T>>
 
   Widget _buildNodeContent() {
     return InkWell(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: context.effectiveRadius,
       onTap: _handleTap,
       child: Container(
         constraints: const BoxConstraints(minHeight: 0),
@@ -610,7 +611,7 @@ class _VirtualTreeNodeWidget<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = InkWell(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: context.effectiveRadius,
       onTap: _handleTap,
       child: Container(
         constraints: const BoxConstraints(minHeight: 0),

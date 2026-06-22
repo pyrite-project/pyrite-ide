@@ -219,7 +219,7 @@ class Tools extends ConsumerWidget {
         color: isConnected
             ? scheme.primaryContainer
             : scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: context.effectiveRadius,
         border: Border.all(
           color: isConnected ? scheme.primary : scheme.outlineVariant,
         ),

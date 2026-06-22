@@ -1,5 +1,15 @@
 import 'package:flutter/material.dart';
 
+extension BuildContextRadius on BuildContext {
+  BorderRadius get effectiveRadius {
+    final shape = Theme.of(this).cardTheme.shape;
+    if (shape is RoundedRectangleBorder) {
+      return shape.borderRadius.resolve(TextDirection.ltr);
+    }
+    return BorderRadius.circular(12);
+  }
+}
+
 class PaneHeader extends StatelessWidget {
   const PaneHeader({
     super.key,
@@ -19,51 +29,50 @@ class PaneHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      constraints: BoxConstraints(
-        minHeight: compact ? 44 : (subtitle == null ? 44 : 56),
-      ),
-      padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-      ),
-      child: Row(
-        children: [
-          if (leadingIcon != null) ...[
-            Icon(leadingIcon, size: 18, color: scheme.onSurfaceVariant),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                if (subtitle != null && !compact)
+    return SafeArea(
+      child: Container(
+        constraints: BoxConstraints(
+          minHeight: compact ? 44 : (subtitle == null ? 44 : 56),
+        ),
+        padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
+
+        child: Row(
+          children: [
+            if (leadingIcon != null) ...[
+              Icon(leadingIcon, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle!,
+                    title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-              ],
+                  if (subtitle != null && !compact)
+                    Text(
+                      subtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Wrap(spacing: 2, children: actions),
+            if (actions.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Wrap(spacing: 2, children: actions),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -148,7 +157,7 @@ class PillBadge extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: containerColor ?? scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: context.effectiveRadius,
       ),
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(8, 3, 8, 4),
@@ -230,7 +239,7 @@ class StatusBarButton extends StatelessWidget {
                   )
                 : EdgeInsets.zero,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: context.effectiveRadius,
             ),
           ),
           onPressed: onPressed,
@@ -306,14 +315,7 @@ class SettingsSection extends StatelessWidget {
               ],
             ),
           ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Column(children: children),
-          ),
+          Column(children: children),
         ],
       ),
     );

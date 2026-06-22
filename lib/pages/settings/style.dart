@@ -1,3 +1,4 @@
+import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -8,6 +9,7 @@ class StyleSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeColorValue = ref.watch(themeColor);
     final body = ListView(
       padding: EdgeInsets.all(12),
       children: [
@@ -44,25 +46,81 @@ class StyleSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
+          title: "主题风格",
+          description: "切换不同风格的组件样式与布局密度。",
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SegmentedButton<ThemeStyle>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeStyle.standard,
+                    icon: Icon(Icons.lan),
+                    label: Text("标准"),
+                  ),
+                  ButtonSegment(
+                    value: ThemeStyle.compact,
+                    icon: Icon(Icons.window),
+                    label: Text("紧凑"),
+                  ),
+                  ButtonSegment(
+                    value: ThemeStyle.comfortable,
+                    icon: Icon(Icons.space_dashboard),
+                    label: Text("舒适"),
+                  ),
+                ],
+                selected: {ref.watch(themeStyle)},
+                onSelectionChanged: (value) {
+                  ref.read(themeStyle.notifier).state = value.first;
+                },
+              ),
+            ),
+          ],
+        ),
+        SettingsSection(
           title: "主题颜色",
           description: "保留 MD3 动态颜色，也可以选择固定种子色。",
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ChoiceChip(
                     avatar: const Icon(Icons.auto_awesome),
                     label: const Text("跟随系统"),
-                    selected: ref.watch(themeColor) == null,
-                    onSelected: (value) =>
-                        ref.read(themeColor.notifier).state = null,
+                    selected: themeColorValue == null,
+                    onSelected: (v) {
+                      if (v) {
+                        ref.read(themeColor.notifier).state = null;
+                      } else {
+                        ref.read(themeColor.notifier).state = Colors.teal;
+                      }
+                    },
                   ),
-                  buildColorChoice(ref, label: "火焰橙", color: Colors.deepOrange),
-                  buildColorChoice(ref, label: "掌控蓝", color: Colors.blue),
-                  buildColorChoice(ref, label: "松石绿", color: Colors.teal),
+                  SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: context.effectiveRadius,
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    margin: EdgeInsets.all(0),
+                    child: ColorPicker(
+                      color:
+                          themeColorValue ??
+                          Theme.of(context).colorScheme.primary,
+                      onColorChanged: (color) =>
+                          ref.read(themeColor.notifier).state = color,
+                      pickersEnabled: const {
+                        ColorPickerType.primary: true,
+                        ColorPickerType.accent: true,
+                        ColorPickerType.wheel: true,
+                      },
+                      enableShadesSelection: false,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -74,19 +132,6 @@ class StyleSettings extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("外观与风格")),
       body: body,
-    );
-  }
-
-  Widget buildColorChoice(
-    WidgetRef ref, {
-    required String label,
-    required Color color,
-  }) {
-    return ChoiceChip(
-      avatar: CircleAvatar(backgroundColor: color, radius: 8),
-      label: Text(label),
-      selected: ref.watch(themeColor)?.toARGB32() == color.toARGB32(),
-      onSelected: (value) => ref.read(themeColor.notifier).state = color,
     );
   }
 }

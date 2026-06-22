@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,47 @@ import 'package:dynamic_color/dynamic_color.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
+
+  FlexSubThemesData _subThemes(ThemeStyle style) {
+    switch (style) {
+      case ThemeStyle.compact:
+        return const FlexSubThemesData(
+          defaultRadius: 2,
+          inputDecoratorRadius: 2,
+          cardRadius: 2,
+          chipRadius: 2,
+          textButtonRadius: 2,
+          elevatedButtonRadius: 2,
+          outlinedButtonRadius: 2,
+          filledButtonRadius: 2,
+          segmentedButtonRadius: 2,
+          toggleButtonsRadius: 2,
+          popupMenuRadius: 2,
+          menuRadius: 2,
+          menuBarRadius: 2,
+          searchBarRadius: 2,
+          searchViewRadius: 2,
+          fabRadius: 16,
+          useM2StyleDividerInM3: true,
+          blendOnLevel: 20,
+          blendOnColors: false,
+          inputDecoratorBorderType: FlexInputBorderType.outline,
+          cardBorderWidth: 1,
+          cardElevation: 0,
+        );
+      case ThemeStyle.comfortable:
+        return const FlexSubThemesData(
+          defaultRadius: 4,
+          inputDecoratorRadius: 4,
+          cardRadius: 8,
+          chipRadius: 6,
+          blendOnLevel: 10,
+          blendOnColors: true,
+        );
+      default: // standard
+        return const FlexSubThemesData();
+    }
+  }
 
   ColorScheme _resolveColorScheme({
     required ColorScheme? dynamicScheme,
@@ -30,19 +72,25 @@ class PyriteIDE extends ConsumerWidget {
     required ColorScheme? dynamicScheme,
     required Color? seedColor,
     required Brightness brightness,
+    required ThemeStyle style,
   }) {
     final scheme = _resolveColorScheme(
       dynamicScheme: dynamicScheme,
       seedColor: seedColor,
       brightness: brightness,
     );
-    return ThemeData(
+    return FlexColorScheme(
+      colorScheme: scheme,
       useMaterial3: true,
       fontFamily: "HarmonyOS Sans SC",
-      brightness: brightness,
-      colorScheme: scheme,
+      visualDensity: style == ThemeStyle.compact
+          ? VisualDensity.compact
+          : VisualDensity.standard,
+      subThemesData: _subThemes(style),
+    ).toTheme.copyWith(
+      scaffoldBackgroundColor: scheme.surface,
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surfaceContainerLow,
+        backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         foregroundColor: scheme.onSurface,
       ),
@@ -75,6 +123,7 @@ class PyriteIDE extends ConsumerWidget {
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
         final seedColor = ref.watch(themeColor);
+        final style = ref.watch(themeStyle);
         final app = MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: appName,
@@ -83,11 +132,13 @@ class PyriteIDE extends ConsumerWidget {
             dynamicScheme: lightDynamic,
             seedColor: seedColor,
             brightness: Brightness.light,
+            style: style,
           ),
           darkTheme: _buildTheme(
             dynamicScheme: darkDynamic,
             seedColor: seedColor,
             brightness: Brightness.dark,
+            style: style,
           ),
           routerConfig: routes,
           builder: (context, child) {

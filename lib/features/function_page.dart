@@ -653,7 +653,7 @@ class EditorToolsBar extends ConsumerWidget {
       icon: Icons.data_object,
       statusColor: color,
       tooltip: "语言服务器设置",
-      onPressed: () => context.push("/settings/lsp"),
+      onPressed: () => context.go("/settings/lsp"),
     );
   }
 
@@ -672,7 +672,7 @@ class EditorToolsBar extends ConsumerWidget {
           ? Theme.of(context).colorScheme.primary
           : Theme.of(context).colorScheme.outline,
       tooltip: isConnected ? "打开设备管理" : "连接 MicroPython 设备",
-      onPressed: () => context.push("/tools"),
+      onPressed: () => context.go("/tools"),
     );
   }
 

@@ -41,6 +41,8 @@ void _applyData(PersistedData data) {
   if (data.themeColorValue != null) {
     container.read(themeColor.notifier).state = Color(data.themeColorValue!);
   }
+  container.read(themeStyle.notifier).state =
+      ThemeStyle.fromValue(data.themeStyle);
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;

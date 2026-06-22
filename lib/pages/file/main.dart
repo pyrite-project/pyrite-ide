@@ -525,7 +525,7 @@ class ProjectFiles extends ConsumerWidget {
         title: "连接 MicroPython 设备",
         message: "连接后这里会显示板端文件，可以和本地项目互相同步。",
         actionLabel: "打开设备管理",
-        onAction: () => context.push("/tools"),
+        onAction: () => context.go("/tools"),
       );
     }
   }

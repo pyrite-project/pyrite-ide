@@ -31,6 +31,7 @@ class PersistedData {
   final List<PersistedTab> tabs;
   final int selectedTabIndex;
   final String themeMode;
+  final String themeStyle;
   final int? themeColorValue;
   final String editorTextFont;
   final double editorFontSize;
@@ -52,6 +53,7 @@ class PersistedData {
     this.tabs = const [],
     this.selectedTabIndex = 0,
     this.themeMode = 'system',
+    this.themeStyle = 'standard',
     this.themeColorValue,
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,

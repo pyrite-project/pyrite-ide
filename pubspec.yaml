@@ -73,6 +73,8 @@ dependencies:
   super_context_menu: ^0.9.1
   super_drag_and_drop: ^0.9.1
   super_tree: ^0.2.1
+  flex_color_scheme: ^8.4.0
+  flex_color_picker: ^3.7.0
 
 dev_dependencies:
   flutter_test:

@@ -69,12 +69,6 @@ class Editor extends ConsumerWidget {
               ),
               const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
               IconButton(
-                tooltip: "显示 REPL",
-                icon: const Icon(Icons.terminal, size: 20),
-                onPressed: () =>
-                    ref.read(consolePageShow.notifier).state = true,
-              ),
-              IconButton(
                 tooltip: isConnected ? "中断设备运行" : "连接设备后可中断运行",
                 icon: const Icon(Icons.stop_circle_outlined, size: 20),
                 onPressed: isConnected

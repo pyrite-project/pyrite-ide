@@ -29,6 +29,7 @@ class PersistenceManager {
 
     return PersistedData(
       themeMode: app?.themeMode ?? 'system',
+      themeStyle: app?.themeStyle ?? 'standard',
       themeColorValue: app?.themeColorValue,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
@@ -55,6 +56,7 @@ class PersistenceManager {
       appPersistence.save(
         AppPersistedData(
           themeMode: container.read(themeMode).name,
+          themeStyle: container.read(themeStyle).value,
           themeColorValue: (container.read(themeColor))?.toARGB32(),
         ),
       ),

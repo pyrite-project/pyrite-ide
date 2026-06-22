@@ -5,18 +5,25 @@ import 'package:path_provider/path_provider.dart';
 
 class AppPersistedData {
   final String themeMode;
+  final String themeStyle;
   final int? themeColorValue;
 
-  AppPersistedData({required this.themeMode, this.themeColorValue});
+  AppPersistedData({
+    required this.themeMode,
+    this.themeStyle = 'standard',
+    this.themeColorValue,
+  });
 
   Map<String, dynamic> toJson() => {
     'themeMode': themeMode,
+    'themeStyle': themeStyle,
     'themeColorValue': themeColorValue,
   };
 
   factory AppPersistedData.fromJson(Map<String, dynamic> json) =>
       AppPersistedData(
         themeMode: json['themeMode'] as String? ?? 'system',
+        themeStyle: json['themeStyle'] as String? ?? 'standard',
         themeColorValue: json['themeColorValue'] as int?,
       );
 }
