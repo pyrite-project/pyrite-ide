@@ -61,7 +61,8 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
   meta: any
-  flutter_libserialport: ^0.6.0
+  ffi: ^2.2.0
+  flserial: ^0.7.1
   usb_serial: ^0.5.2
   serious_python:
     path: python_runtime/src/serious_python

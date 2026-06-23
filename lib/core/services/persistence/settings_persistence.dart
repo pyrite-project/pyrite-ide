@@ -13,6 +13,7 @@ class SettingsPersistedData {
   final bool disableWarning;
   final bool disableError;
   final bool chineseToUnicodeConversion;
+  final bool enableSignalDetection;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -24,6 +25,7 @@ class SettingsPersistedData {
     required this.disableWarning,
     required this.disableError,
     this.chineseToUnicodeConversion = true,
+    this.enableSignalDetection = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +38,7 @@ class SettingsPersistedData {
     'disableWarning': disableWarning,
     'disableError': disableError,
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
+    'enableSignalDetection': enableSignalDetection,
   };
 
   factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -51,6 +54,8 @@ class SettingsPersistedData {
         disableError: json['disableError'] as bool? ?? false,
         chineseToUnicodeConversion:
             json['chineseToUnicodeConversion'] as bool? ?? true,
+        enableSignalDetection:
+            json['enableSignalDetection'] as bool? ?? true,
       );
 }
 

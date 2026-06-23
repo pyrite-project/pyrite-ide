@@ -51,3 +51,7 @@ StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
 StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
   (ref) => true,
 );
+
+StateProvider<bool> enableSignalDetection = StateProvider<bool>(
+  (ref) => true,
+);

@@ -297,14 +297,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "7.0.3"
-  dylib:
-    dependency: transitive
-    description:
-      name: dylib
-      sha256: bf609b3eb6492a3309b3d1dbe8f83a4031de5535dd7686be33487051cc760bb0
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.3.3"
   dynamic_color:
     dependency: "direct main"
     description:
@@ -354,7 +346,7 @@ packages:
     source: hosted
     version: "1.3.3"
   ffi:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: ffi
       sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
@@ -465,6 +457,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "4.0.1"
+  flserial:
+    dependency: "direct main"
+    description:
+      name: flserial
+      sha256: f1eb7eadadfbf740827fb253d87a7581e0a2f77198c467b5d7691458095f12e4
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.7.1"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -499,14 +499,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.14.4"
-  flutter_libserialport:
-    dependency: "direct main"
-    description:
-      name: flutter_libserialport
-      sha256: f24b5fe6f1821d1c1b3bf2be737ca53f6b0ae78657032a790aa00abb810c8759
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.6.0"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -812,14 +804,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.0.2"
-  libserialport:
-    dependency: transitive
-    description:
-      name: libserialport
-      sha256: "392e1592def65282429832ec66fa25e9e163d3b37716b97691482e2406720727"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.3.0+1"
   lints:
     dependency: transitive
     description:
@@ -884,6 +868,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.0.0"
+  native_toolchain_c:
+    dependency: transitive
+    description:
+      name: native_toolchain_c
+      sha256: f59351d28f49520cd3a74eb1f41c5f19ae15e53c65a3231d14af672e46510a96
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.19.1"
   objective_c:
     dependency: transitive
     description:
