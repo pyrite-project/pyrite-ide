@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/board_manager/repl_io.dart';
 import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:usb_serial/usb_serial.dart';
 
 class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
@@ -77,6 +79,14 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
     if (state.subscription != null) return true;
 
     return false;
+  }
+
+  void setBaudRate(int value) {
+    state = state.copyWith(baudRate: value);
+  }
+
+  void setAutoReconnect(bool value) {
+    state = state.copyWith(autoReconnect: value);
   }
 
   void sendBytes(Uint8List bytes) {
@@ -212,7 +222,10 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
   }
 
   void bindReplOnOutputCallback() {
-    repl.onOutput = (String data) => sendCommand(data);
+    repl.onOutput = (String data) {
+      final encode = ref.read(chineseToUnicodeConversion);
+      sendCommand(encode ? ReplInputEncoder.encode(data) : data);
+    };
   }
 }
 

@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
-class Settings extends StatelessWidget {
+class Settings extends ConsumerWidget {
   const Settings({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final body = ListView(
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "工作区",
@@ -26,9 +28,9 @@ class Settings extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.terminal),
               title: const UseText("调试与终端"),
-              subtitle: const UseText("终端字体、REPL 行为"),
-              trailing: const PillBadge(label: "即将支持"),
-              enabled: false,
+              subtitle: const UseText("波特率、自动重连、REPL"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go("/settings/terminal"),
             ),
             const SectionDivider(),
             ListTile(
@@ -50,6 +52,36 @@ class Settings extends StatelessWidget {
               subtitle: const UseText("主题模式、动态颜色和种子色"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go("/settings/style"),
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              secondary: const Icon(Icons.dashboard),
+              title: const Text("功能面板"),
+              subtitle: const Text("显示/隐藏功能导航面板"),
+              value: ref.watch(functionPageShow),
+              onChanged: (value) {
+                ref.read(functionPageShow.notifier).state = value;
+              },
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              secondary: const Icon(Icons.terminal),
+              title: const Text("控制台面板"),
+              subtitle: const Text("显示/隐藏控制台输出面板"),
+              value: ref.watch(consolePageShow),
+              onChanged: (value) {
+                ref.read(consolePageShow.notifier).state = value;
+              },
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              secondary: const Icon(Icons.expand),
+              title: const Text("扩展面板"),
+              subtitle: const Text("显示/隐藏扩展信息面板"),
+              value: ref.watch(expansionPageShow),
+              onChanged: (value) {
+                ref.read(expansionPageShow.notifier).state = value;
+              },
             ),
             const SectionDivider(),
             ListTile(

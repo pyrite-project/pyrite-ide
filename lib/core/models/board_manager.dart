@@ -10,6 +10,8 @@ class DesktopUsbSerialState {
     this.selectedPort,
     this.subscription,
     this.isConnected = false,
+    this.baudRate = 115200,
+    this.autoReconnect = false,
   });
 
   final List<String> portNames;
@@ -17,6 +19,8 @@ class DesktopUsbSerialState {
   final SerialPort? selectedPort;
   final StreamSubscription<Uint8List>? subscription;
   final bool isConnected;
+  final int baudRate;
+  final bool autoReconnect;
 
   DesktopUsbSerialState copyWith({
     List<String>? portNames,
@@ -24,6 +28,8 @@ class DesktopUsbSerialState {
     SerialPort? selectedPort,
     StreamSubscription<Uint8List>? subscription,
     bool? isConnected,
+    int? baudRate,
+    bool? autoReconnect,
   }) {
     return DesktopUsbSerialState(
       portNames: portNames ?? this.portNames,
@@ -31,6 +37,8 @@ class DesktopUsbSerialState {
       selectedPort: selectedPort ?? this.selectedPort,
       subscription: subscription ?? this.subscription,
       isConnected: isConnected ?? this.isConnected,
+      baudRate: baudRate ?? this.baudRate,
+      autoReconnect: autoReconnect ?? this.autoReconnect,
     );
   }
 }
@@ -43,6 +51,8 @@ class AndroidUsbSerialState {
     this.selectedPort,
     this.subscription,
     this.isConnected = false,
+    this.baudRate = 115200,
+    this.autoReconnect = false,
   });
 
   final List<UsbDevice> devices;
@@ -51,6 +61,8 @@ class AndroidUsbSerialState {
   final UsbPort? selectedPort;
   final StreamSubscription<Uint8List>? subscription;
   final bool isConnected;
+  final int baudRate;
+  final bool autoReconnect;
 
   AndroidUsbSerialState copyWith({
     List<UsbDevice>? devices,
@@ -59,6 +71,8 @@ class AndroidUsbSerialState {
     UsbPort? selectedPort,
     StreamSubscription<Uint8List>? subscription,
     bool? isConnected,
+    int? baudRate,
+    bool? autoReconnect,
   }) {
     return AndroidUsbSerialState(
       devices: devices ?? this.devices,
@@ -67,6 +81,8 @@ class AndroidUsbSerialState {
       selectedPort: selectedPort ?? this.selectedPort,
       subscription: subscription ?? this.subscription,
       isConnected: isConnected ?? this.isConnected,
+      baudRate: baudRate ?? this.baudRate,
+      autoReconnect: autoReconnect ?? this.autoReconnect,
     );
   }
 }

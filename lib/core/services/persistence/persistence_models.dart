@@ -47,6 +47,7 @@ class PersistedData {
   final bool functionPageShow;
   final bool consolePageShow;
   final bool expansionPageShow;
+  final bool chineseToUnicodeConversion;
 
   PersistedData({
     this.workspacePath,
@@ -69,5 +70,6 @@ class PersistedData {
     this.functionPageShow = true,
     this.consolePageShow = true,
     this.expansionPageShow = true,
+    this.chineseToUnicodeConversion = true,
   });
 }

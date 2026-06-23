@@ -48,6 +48,8 @@ class PersistenceManager {
       workspacePath: workspace?.workspacePath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
+      chineseToUnicodeConversion:
+          settings?.chineseToUnicodeConversion ?? true,
     );
   }
 
@@ -70,6 +72,8 @@ class PersistenceManager {
           lspWebSocketPath: container.read(lspWebScoketPath),
           disableWarning: container.read(disableWarning),
           disableError: container.read(disableError),
+          chineseToUnicodeConversion:
+              container.read(chineseToUnicodeConversion),
         ),
       ),
       functionPagePersistence.save(

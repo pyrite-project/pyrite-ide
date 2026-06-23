@@ -12,6 +12,7 @@ class SettingsPersistedData {
   final String lspWebSocketPath;
   final bool disableWarning;
   final bool disableError;
+  final bool chineseToUnicodeConversion;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -22,6 +23,7 @@ class SettingsPersistedData {
     required this.lspWebSocketPath,
     required this.disableWarning,
     required this.disableError,
+    this.chineseToUnicodeConversion = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -33,6 +35,7 @@ class SettingsPersistedData {
     'lspWebSocketPath': lspWebSocketPath,
     'disableWarning': disableWarning,
     'disableError': disableError,
+    'chineseToUnicodeConversion': chineseToUnicodeConversion,
   };
 
   factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -46,6 +49,8 @@ class SettingsPersistedData {
             json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
         disableWarning: json['disableWarning'] as bool? ?? false,
         disableError: json['disableError'] as bool? ?? false,
+        chineseToUnicodeConversion:
+            json['chineseToUnicodeConversion'] as bool? ?? true,
       );
 }
 

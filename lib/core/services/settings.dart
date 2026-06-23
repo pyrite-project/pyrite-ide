@@ -47,3 +47,7 @@ StateProvider<String> lspWebScoketPath = StateProvider<String>(
 );
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
+
+StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
+  (ref) => true,
+);

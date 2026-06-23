@@ -7,6 +7,7 @@ import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
+import 'package:pyrite_ide/pages/settings/terminal.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
@@ -86,6 +87,10 @@ GoRouter routes = GoRouter(
             GoRoute(
               path: "/style",
               builder: (context, state) => const StyleSettings(),
+            ),
+            GoRoute(
+              path: '/terminal',
+              builder: (context, state) => const TerminalSettings(),
             ),
             GoRoute(path: '/about', builder: (context, state) => const About()),
           ],
