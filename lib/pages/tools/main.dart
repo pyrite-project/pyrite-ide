@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
@@ -160,12 +159,11 @@ class Tools extends ConsumerWidget {
             SliverList.builder(
               itemCount: state.portNames.length,
               itemBuilder: (context, index) {
-                final portName = state.portNames[index];
-                final port = SerialPort(portName);
+                final portInfo = state.portInfos[index];
                 return ExpansionTile(
                   leading: const Icon(Icons.developer_board_outlined),
-                  title: Text(portName),
-                  subtitle: Text(port.description ?? "Serial Port"),
+                  title: Text(portInfo.path),
+                  subtitle: Text(portInfo.description),
                   childrenPadding: const EdgeInsetsDirectional.fromSTEB(
                     16,
                     0,
@@ -179,7 +177,7 @@ class Tools extends ConsumerWidget {
                         onPressed: () {
                           ref
                               .read(desktopUsbSerialProvider.notifier)
-                              .connectPort(portName);
+                              .connectPort(portInfo.path);
                         },
                         icon: const Icon(Icons.power_settings_new),
                         label: const Text("连接此串口"),
@@ -188,12 +186,7 @@ class Tools extends ConsumerWidget {
                     buildDetailListTile(
                       context,
                       'Description',
-                      port.description,
-                    ),
-                    buildDetailListTile(
-                      context,
-                      'Transport',
-                      port.transport.toString(),
+                      portInfo.description,
                     ),
                   ],
                 );

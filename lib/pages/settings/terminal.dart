@@ -56,6 +56,15 @@ class TerminalSettings extends ConsumerWidget {
             ),
             const SectionDivider(),
             SwitchListTile(
+              title: const Text("信号检测断开"),
+              subtitle: const Text("通过串口信号线检测设备是否断开，兼容常见 USB 串口芯片"),
+              value: ref.watch(enableSignalDetection),
+              onChanged: (value) {
+                ref.read(enableSignalDetection.notifier).state = value;
+              },
+            ),
+            const SectionDivider(),
+            SwitchListTile(
               title: const Text("中文转 Unicode"),
               subtitle: const Text("输入中文时自动转为 \\uXXXX 转义序列"),
               value: ref.watch(chineseToUnicodeConversion),

@@ -48,6 +48,7 @@ class PersistedData {
   final bool consolePageShow;
   final bool expansionPageShow;
   final bool chineseToUnicodeConversion;
+  final bool enableSignalDetection;
 
   PersistedData({
     this.workspacePath,
@@ -71,5 +72,6 @@ class PersistedData {
     this.consolePageShow = true,
     this.expansionPageShow = true,
     this.chineseToUnicodeConversion = true,
+    this.enableSignalDetection = true,
   });
 }

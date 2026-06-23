@@ -50,6 +50,8 @@ class PersistenceManager {
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       chineseToUnicodeConversion:
           settings?.chineseToUnicodeConversion ?? true,
+      enableSignalDetection:
+          settings?.enableSignalDetection ?? true,
     );
   }
 
@@ -74,6 +76,8 @@ class PersistenceManager {
           disableError: container.read(disableError),
           chineseToUnicodeConversion:
               container.read(chineseToUnicodeConversion),
+          enableSignalDetection:
+              container.read(enableSignalDetection),
         ),
       ),
       functionPagePersistence.save(

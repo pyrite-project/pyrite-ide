@@ -58,6 +58,7 @@ void _applyData(PersistedData data) {
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
+  container.read(enableSignalDetection.notifier).state = data.enableSignalDetection;
 }
 
 void _triggerSave() {
