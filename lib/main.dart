@@ -60,6 +60,8 @@ void _applyData(PersistedData data) {
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
   container.read(enableSignalDetection.notifier).state = data.enableSignalDetection;
   container.read(uploadConfirmStyleProvider.notifier).state = data.uploadConfirmStyle;
+  container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
+  container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
 }
 
 void _triggerSave() {

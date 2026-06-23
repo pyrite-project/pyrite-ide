@@ -50,6 +50,8 @@ class PersistedData {
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final String uploadConfirmStyle;
+  final String confirmShortcut;
+  final String cancelShortcut;
 
   PersistedData({
     this.workspacePath,
@@ -75,5 +77,7 @@ class PersistedData {
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.uploadConfirmStyle = 'toolbar',
+    this.confirmShortcut = 'Ctrl+Enter',
+    this.cancelShortcut = 'Esc',
   });
 }

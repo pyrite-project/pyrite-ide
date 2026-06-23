@@ -44,12 +44,20 @@ class MacOSMenu extends ConsumerWidget {
             members: [
               PlatformMenuItem(
                 label: '新建文件',
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyN,
+                  control: true,
+                ),
                 onSelected: () => ref
                     .read(tabbedViewControllerProvider.notifier)
                     .createFile(),
               ),
               PlatformMenuItem(
                 label: '打开文件',
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyO,
+                  control: true,
+                ),
                 onSelected: () => ref
                     .read(tabbedViewControllerProvider.notifier)
                     .openFile(context),
@@ -61,8 +69,22 @@ class MacOSMenu extends ConsumerWidget {
               ),
               PlatformMenuItem(
                 label: "保存当前文件",
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyS,
+                  control: true,
+                ),
                 onSelected: () =>
                     ref.read(localWorkspaceProvider.notifier).saveFile(),
+              ),
+              PlatformMenuItem(
+                label: "另存为",
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyS,
+                  control: true,
+                  shift: true,
+                ),
+                onSelected: () =>
+                    ref.read(localWorkspaceProvider.notifier).saveAs(),
               ),
             ],
           ),
@@ -77,7 +99,7 @@ class MacOSMenu extends ConsumerWidget {
               LogicalKeyboardKey.keyZ,
               control: true,
             ),
-            onSelected: null,
+            onSelected: ref.read(editorControllerMapProvider.notifier).undo,
           ),
           PlatformMenuItem(
             label: "恢复",
@@ -86,7 +108,7 @@ class MacOSMenu extends ConsumerWidget {
               control: true,
               shift: true,
             ),
-            onSelected: null,
+            onSelected: ref.read(editorControllerMapProvider.notifier).redo,
           ),
           PlatformMenuItem(
             label: "剪切",

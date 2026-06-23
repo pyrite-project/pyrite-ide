@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class EditorSettings extends ConsumerWidget {
@@ -55,6 +58,25 @@ class EditorSettings extends ConsumerWidget {
                 ref.read(uploadConfirmStyleProvider.notifier).state =
                     value.first;
               },
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: "快捷键",
+          description: "上传/下载确认的快捷键。",
+          children: [
+            ShortcutRecorderTile(
+              title: "确认操作",
+              value: ref.watch(confirmShortcutProvider),
+              onChanged: (v) =>
+                  ref.read(confirmShortcutProvider.notifier).state = v,
+            ),
+            const SectionDivider(),
+            ShortcutRecorderTile(
+              title: "取消操作",
+              value: ref.watch(cancelShortcutProvider),
+              onChanged: (v) =>
+                  ref.read(cancelShortcutProvider.notifier).state = v,
             ),
           ],
         ),
@@ -155,6 +177,125 @@ class EditorSettings extends ConsumerWidget {
               ),
             ],
           );
+        },
+      ),
+    );
+  }
+}
+
+class ShortcutRecorderTile extends StatefulWidget {
+  final String title;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const ShortcutRecorderTile({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<ShortcutRecorderTile> createState() => _ShortcutRecorderTileState();
+}
+
+class _ShortcutRecorderTileState extends State<ShortcutRecorderTile> {
+  bool _recording = false;
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      setState(() => _recording = false);
+    }
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!_recording || event is KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.escape) {
+        setState(() => _recording = false);
+        _focusNode.unfocus();
+        return KeyEventResult.handled;
+      }
+      final physicalKey = event.physicalKey;
+      final isModifier = physicalKey == PhysicalKeyboardKey.controlLeft ||
+          physicalKey == PhysicalKeyboardKey.controlRight ||
+          physicalKey == PhysicalKeyboardKey.shiftLeft ||
+          physicalKey == PhysicalKeyboardKey.shiftRight ||
+          physicalKey == PhysicalKeyboardKey.altLeft ||
+          physicalKey == PhysicalKeyboardKey.altRight ||
+          physicalKey == PhysicalKeyboardKey.metaLeft ||
+          physicalKey == PhysicalKeyboardKey.metaRight;
+      if (isModifier) return KeyEventResult.ignored;
+
+      final hardwareKeyboard = HardwareKeyboard.instance;
+      final control = hardwareKeyboard.isControlPressed;
+      final shift = hardwareKeyboard.isShiftPressed;
+      final alt = hardwareKeyboard.isAltPressed;
+      final meta = hardwareKeyboard.isMetaPressed;
+
+      if (!control && !shift && !alt && !meta) return KeyEventResult.ignored;
+
+      final activator = SingleActivator(
+        key,
+        control: control,
+        shift: shift,
+        alt: alt,
+        meta: meta,
+      );
+      widget.onChanged(activatorToString(activator));
+      setState(() => _recording = false);
+      _focusNode.unfocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _focusNode,
+      onKeyEvent: _onKeyEvent,
+      child: ListTile(
+        leading: Icon(
+          _recording ? Icons.keyboard : Icons.keyboard_command_key,
+        ),
+        title: Text(widget.title),
+        subtitle: Text(
+          _recording ? "按下快捷键（Esc 取消）..." : widget.value,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            color: _recording
+                ? Theme.of(context).colorScheme.primary
+                : null,
+          ),
+        ),
+        trailing: _recording
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : null,
+        onTap: () {
+          setState(() => _recording = true);
+          _focusNode.requestFocus();
         },
       ),
     );

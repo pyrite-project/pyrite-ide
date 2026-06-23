@@ -15,6 +15,8 @@ class SettingsPersistedData {
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final String uploadConfirmStyle;
+  final String confirmShortcut;
+  final String cancelShortcut;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -28,6 +30,8 @@ class SettingsPersistedData {
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.uploadConfirmStyle = 'toolbar',
+    this.confirmShortcut = 'Ctrl+Enter',
+    this.cancelShortcut = 'Esc',
   });
 
   Map<String, dynamic> toJson() => {
@@ -42,6 +46,8 @@ class SettingsPersistedData {
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
     'uploadConfirmStyle': uploadConfirmStyle,
+    'confirmShortcut': confirmShortcut,
+    'cancelShortcut': cancelShortcut,
   };
 
   factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -61,6 +67,10 @@ class SettingsPersistedData {
             json['enableSignalDetection'] as bool? ?? true,
         uploadConfirmStyle:
             json['uploadConfirmStyle'] as String? ?? 'toolbar',
+        confirmShortcut:
+            json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
+        cancelShortcut:
+            json['cancelShortcut'] as String? ?? 'Esc',
       );
 }
 

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class DiffInfo {
@@ -37,7 +36,8 @@ DiffInfo computeDiff(String oldText, String newText) {
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && a[i - 1] == b[j - 1]) {
       ops.add(_DiffOp('=', a[i - 1], oldLine: i - 1, newLine: j - 1));
-      i--; j--;
+      i--;
+      j--;
     } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
       ops.add(_DiffOp('+', b[j - 1], oldLine: -1, newLine: j - 1));
       j--;

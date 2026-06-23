@@ -193,75 +193,77 @@ class ProjectFiles extends ConsumerWidget {
                                         .read(boardWorkspaceProvider.notifier)
                                         .getFileContent(targetPath);
                                   } catch (_) {}
-                                    if (originContent != null &&
-                                        originContent != content) {
-                                      final diff = computeDiff(
-                                        originContent,
-                                        content,
-                                      );
+                                  if (originContent != null &&
+                                      originContent != content) {
+                                    final diff = computeDiff(
+                                      originContent,
+                                      content,
+                                    );
 
-                                      if (ref.read(uploadConfirmStyleProvider) ==
-                                          'dialog') {
-                                        final confirmed =
-                                            await showDiffConfirmDialog(
-                                          context,
-                                          diff: diff,
-                                          targetPath: targetPath,
-                                          isUpload: true,
-                                        );
-                                        if (!confirmed) {
-                                          if (!context.mounted) return;
-                                          showActionSnackBar(
+                                    if (ref.read(uploadConfirmStyleProvider) ==
+                                        'dialog') {
+                                      final confirmed =
+                                          await showDiffConfirmDialog(
                                             context,
-                                            "已取消上传",
+                                            diff: diff,
+                                            targetPath: targetPath,
+                                            isUpload: true,
                                           );
-                                          return;
-                                        }
-                                      } else {
-                                        ref
-                                            .read(
-                                              tabbedViewControllerProvider
-                                                  .notifier,
-                                            )
-                                            .openFile(
-                                              context,
-                                              file: File(node.id),
-                                              initialText: content,
-                                            );
-
+                                      if (!confirmed) {
                                         if (!context.mounted) return;
-
-                                        final controller = ref.read(
-                                          editorControllerMapProvider,
-                                        )[node.id];
-                                        controller?.setGitDiffDecorations(
-                                          addedRanges: diff.addedRanges,
-                                          removedRanges: diff.removedRanges,
-                                        );
-
-                                        final pending = PendingUpload(
-                                          diff: diff,
-                                          localPath: node.id,
-                                          targetPath: targetPath,
-                                          content: content,
-                                        );
-                                        ref
-                                                .read(
-                                                  pendingUploadProvider.notifier,
-                                                )
-                                                .state =
-                                            pending;
-
-                                        if (!context.mounted) return;
-                                        if (!ResponsiveBreakpoints.of(context)
-                                            .isDesktop) {
-                                          Future.microtask(
-                                            () => context.go('/editor'),
-                                          );
-                                        }
+                                        showActionSnackBar(context, "已取消上传");
                                         return;
                                       }
+                                    } else {
+                                      ref
+                                          .read(
+                                            tabbedViewControllerProvider
+                                                .notifier,
+                                          )
+                                          .openFile(
+                                            context,
+                                            file: File(node.id),
+                                            initialText: content,
+                                          );
+
+                                      if (!context.mounted) return;
+
+                                      // 得益于 openFile 的行为，此时可以保证选中的标签页已经是所需的标签页
+                                      final controller = ref
+                                          .read(
+                                            editorControllerMapProvider
+                                                .notifier,
+                                          )
+                                          .getSelectedController();
+                                      controller?.setGitDiffDecorations(
+                                        addedRanges: diff.addedRanges,
+                                        removedRanges: diff.removedRanges,
+                                      );
+
+                                      final pending = PendingUpload(
+                                        diff: diff,
+                                        localPath: node.id,
+                                        targetPath: targetPath,
+                                        content: content,
+                                      );
+                                      ref
+                                              .read(
+                                                pendingUploadProvider.notifier,
+                                              )
+                                              .state =
+                                          pending;
+
+                                      if (!context.mounted) return;
+                                      if (!ResponsiveBreakpoints.of(
+                                        context,
+                                      ).isDesktop) {
+                                        Future.microtask(
+                                          () => context.go('/editor'),
+                                        );
+                                      }
+                                      return;
                                     }
+                                  }
 
                                   await ref
                                       .read(boardWorkspaceProvider.notifier)
@@ -552,23 +554,18 @@ class ProjectFiles extends ConsumerWidget {
                                       content,
                                     );
 
-                                    if (ref.read(
-                                          uploadConfirmStyleProvider,
-                                        ) ==
+                                    if (ref.read(uploadConfirmStyleProvider) ==
                                         'dialog') {
                                       final confirmed =
                                           await showDiffConfirmDialog(
-                                        context,
-                                        diff: diff,
-                                        targetPath: targetPath,
-                                        isUpload: false,
-                                      );
+                                            context,
+                                            diff: diff,
+                                            targetPath: targetPath,
+                                            isUpload: false,
+                                          );
                                       if (!confirmed) {
                                         if (!context.mounted) return;
-                                        showActionSnackBar(
-                                          context,
-                                          "已取消下载",
-                                        );
+                                        showActionSnackBar(context, "已取消下载");
                                         return;
                                       }
                                     } else {
@@ -585,9 +582,13 @@ class ProjectFiles extends ConsumerWidget {
 
                                       if (!context.mounted) return;
 
-                                      final controller = ref.read(
-                                        editorControllerMapProvider,
-                                      )[targetPath];
+                                      // 得益于 openFile 的行为，此时可以保证选中的标签页已经是所需的标签页
+                                      final controller = ref
+                                          .read(
+                                            editorControllerMapProvider
+                                                .notifier,
+                                          )
+                                          .getSelectedController();
                                       controller?.setGitDiffDecorations(
                                         addedRanges: diff.addedRanges,
                                         removedRanges: diff.removedRanges,
@@ -829,16 +830,11 @@ class ProjectFiles extends ConsumerWidget {
         } else {
           ref
               .read(tabbedViewControllerProvider.notifier)
-              .openFile(
-                context,
-                file: File(targetPath),
-                initialText: content,
-              );
+              .openFile(context, file: File(targetPath), initialText: content);
 
           if (!context.mounted) return;
 
-          final controller =
-              ref.read(editorControllerMapProvider)[targetPath];
+          final controller = ref.read(editorControllerMapProvider)[targetPath];
           controller?.setGitDiffDecorations(
             addedRanges: diff.addedRanges,
             removedRanges: diff.removedRanges,
@@ -940,10 +936,7 @@ Future<bool> showDiffConfirmDialog(
                 scrollDirection: Axis.horizontal,
                 child: Text(
                   diff.unifiedLines.join('\n'),
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
             ),
@@ -951,10 +944,7 @@ Future<bool> showDiffConfirmDialog(
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => ctx.pop(false),
-          child: const Text("取消"),
-        ),
+        TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
         FilledButton(
           onPressed: () => ctx.pop(true),
           child: Text(isUpload ? "上传" : "下载"),

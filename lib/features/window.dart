@@ -88,6 +88,10 @@ class AppActionBar extends ConsumerWidget {
               () =>
                   ref.read(tabbedViewControllerProvider.notifier).createFile(),
               leadingIconData: Icons.add,
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyN,
+                control: true,
+              ),
             ),
             buildMenuItemButton(
               context,
@@ -96,6 +100,10 @@ class AppActionBar extends ConsumerWidget {
                   .read(tabbedViewControllerProvider.notifier)
                   .openFile(context),
               leadingIconData: Icons.open_in_browser,
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyO,
+                control: true,
+              ),
             ),
             buildMenuItemButton(
               context,
@@ -109,12 +117,21 @@ class AppActionBar extends ConsumerWidget {
               "保存当前文件",
               () => ref.read(localWorkspaceProvider.notifier).saveFile(),
               leadingIconData: Icons.save,
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyS,
+                control: true,
+              ),
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
               () => ref.read(localWorkspaceProvider.notifier).saveAs(),
               leadingIconData: Icons.save_as,
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyS,
+                control: true,
+                shift: true,
+              ),
             ),
           ],
           child: Text("文件"),
@@ -133,14 +150,14 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "撤销",
-              null,
+              ref.read(editorControllerMapProvider.notifier).undo,
               leadingIconData: Icons.undo,
               shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
             ),
             buildMenuItemButton(
               context,
               "恢复",
-              null,
+              ref.read(editorControllerMapProvider.notifier).redo,
               leadingIconData: Icons.redo,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyZ,

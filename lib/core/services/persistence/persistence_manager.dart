@@ -54,6 +54,10 @@ class PersistenceManager {
           settings?.enableSignalDetection ?? true,
       uploadConfirmStyle:
           settings?.uploadConfirmStyle ?? 'toolbar',
+      confirmShortcut:
+          settings?.confirmShortcut ?? 'Ctrl+Enter',
+      cancelShortcut:
+          settings?.cancelShortcut ?? 'Esc',
     );
   }
 
@@ -82,6 +86,10 @@ class PersistenceManager {
               container.read(enableSignalDetection),
           uploadConfirmStyle:
               container.read(uploadConfirmStyleProvider),
+          confirmShortcut:
+              container.read(confirmShortcutProvider),
+          cancelShortcut:
+              container.read(cancelShortcutProvider),
         ),
       ),
       functionPagePersistence.save(

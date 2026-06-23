@@ -53,13 +53,17 @@ class EditorControllerMapNotifier
   void redo() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {}
+            "file") {
+      // getSelectedController()?.redo();
+    }
   }
 
   void undo() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {}
+            "file") {
+      // getSelectedController()?.undo();
+    }
   }
 
   void cut() {

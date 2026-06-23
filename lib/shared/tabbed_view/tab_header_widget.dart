@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -209,14 +210,18 @@ class TabHeaderWidget extends StatelessWidget {
                 actions: [
                   TextButton(
                     onPressed: () async {
-                      local.writeFile(
-                        value.file!.path,
-                        value.editorController!.text,
-                      );
+                      await container
+                          .read(localWorkspaceProvider.notifier)
+                          .saveFile();
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+
                       if (identical(
-                          provider.controller,
-                          container.read(tabbedViewControllerProvider),
-                        )) {
+                        provider.controller,
+                        container.read(tabbedViewControllerProvider),
+                      )) {
                         container
                             .read(tabbedViewControllerProvider.notifier)
                             .afterFileSave();
@@ -276,9 +281,9 @@ class TabHeaderWidget extends StatelessWidget {
       if (index != -1) {
         provider.controller.removeTab(index);
         if (identical(
-            provider.controller,
-            container.read(tabbedViewControllerProvider),
-          )) {
+          provider.controller,
+          container.read(tabbedViewControllerProvider),
+        )) {
           container
               .read(tabbedViewControllerProvider.notifier)
               .afterTabClose(index);

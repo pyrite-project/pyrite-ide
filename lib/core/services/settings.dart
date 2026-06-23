@@ -64,3 +64,16 @@ const Map<String, String> uploadConfirmStyles = {
 StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
   (ref) => "toolbar",
 );
+
+const Map<String, String> defaultShortcuts = {
+  'confirm': 'Ctrl+Enter',
+  'cancel': 'Esc',
+};
+
+StateProvider<String> confirmShortcutProvider = StateProvider<String>(
+  (ref) => defaultShortcuts['confirm']!,
+);
+
+StateProvider<String> cancelShortcutProvider = StateProvider<String>(
+  (ref) => defaultShortcuts['cancel']!,
+);

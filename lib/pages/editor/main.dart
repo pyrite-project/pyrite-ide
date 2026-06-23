@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
@@ -16,6 +17,8 @@ import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/upload_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
@@ -207,6 +210,45 @@ class Editor extends ConsumerWidget {
   Widget body(BuildContext context, WidgetRef ref) {
     final pending = ref.watch(pendingUploadProvider);
     final pendingDownload = ref.watch(pendingDownloadProvider);
+    final confirmAct = ref.watch(confirmShortcutProvider);
+    final cancelAct = ref.watch(cancelShortcutProvider);
+
+    final hasPending = pending != null || pendingDownload != null;
+
+    final bindings = <ShortcutActivator, VoidCallback>{
+      SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+        ref.read(localWorkspaceProvider.notifier).saveFile();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("已保存当前文件")),
+          );
+        }
+      },
+      SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true):
+          () {
+        ref.read(localWorkspaceProvider.notifier).saveAs();
+      },
+      SingleActivator(LogicalKeyboardKey.keyN, control: true): () {
+        ref.read(tabbedViewControllerProvider.notifier).createFile();
+      },
+      SingleActivator(LogicalKeyboardKey.keyO, control: true): () {
+        ref.read(tabbedViewControllerProvider.notifier).openFile(context);
+      },
+      SingleActivator(LogicalKeyboardKey.keyU, control: true): () {
+        uploadCurrentFile(context, ref, quiet: false);
+      },
+      SingleActivator(LogicalKeyboardKey.keyR, control: true): () {
+        runCurrentFile(context, ref);
+      },
+    };
+
+    if (hasPending) {
+      bindings[stringToActivator(confirmAct)] = () =>
+          _handleConfirm(context, ref);
+      bindings[stringToActivator(cancelAct)] = () =>
+          _handleCancel(context, ref);
+    }
+
     return TabbedViewTheme(
       data: TabbedViewThemeData.underline(
         colorSet: MaterialColor(
@@ -224,158 +266,160 @@ class Editor extends ConsumerWidget {
           <int, Color>{},
         ),
       ),
-      child: Stack(
-        children: [
-          TabbedView(controller: ref.watch(tabbedViewControllerProvider)),
-          if (pending != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 16,
-              child: Center(
-                child: M3FloatingToolbar(
-                  actions: [
-                    M3FloatingToolbarAction(
-                      icon: Icons.close,
-                      label: '取消',
-                      onPressed: () {
-                        final controller = ref.read(
-                          editorControllerMapProvider,
-                        )[pending.localPath];
-                        controller?.clearGitDiffDecorations();
-                        ref
-                                .read(pendingUploadProvider.notifier)
-                                .state =
-                            null;
-                        if (context.mounted) context.go('/file');
-                      },
-                      semanticLabel: '',
+      child: Focus(
+        canRequestFocus: false,
+        child: CallbackShortcuts(
+          bindings: bindings,
+          child: Stack(
+            children: [
+              TabbedView(controller: ref.watch(tabbedViewControllerProvider)),
+              if (pending != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 16,
+                  child: Center(
+                    child: M3FloatingToolbar(
+                      actions: [
+                        M3FloatingToolbarAction(
+                          icon: Icons.close,
+                          label: '取消',
+                          onPressed: () =>
+                              _handleCancel(context, ref),
+                          semanticLabel: '',
+                        ),
+                        M3FloatingToolbarAction(
+                          icon: Icons.cloud_upload,
+                          label: '确认上传',
+                          onPressed: () =>
+                              _confirmUpload(ref, pending, context),
+                          semanticLabel: '',
+                        ),
+                      ],
                     ),
-                    M3FloatingToolbarAction(
-                      icon: Icons.cloud_upload,
-                      label: '确认上传',
-                      onPressed: () async {
-                        try {
-                          final currentContent = ref.read(
-                                editorControllerMapProvider,
-                              )[pending.localPath]?.text ??
-                              pending.content;
-                          await ref
-                              .read(boardWorkspaceProvider.notifier)
-                              .writeFile(
-                                pending.targetPath,
-                                currentContent,
-                              );
-                          ref
-                              .read(boardFileItemsProvider.notifier)
-                              .buildRootFileListItems();
-                          final controller = ref.read(
-                            editorControllerMapProvider,
-                          )[pending.localPath];
-                          controller?.clearGitDiffDecorations();
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                "已上传到设备：${pending.targetPath}",
-                              ),
-                            ),
-                          );
-                        } catch (_) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("上传失败"),
-                            ),
-                          );
-                        } finally {
-                          ref
-                                  .read(pendingUploadProvider.notifier)
-                                  .state =
-                              null;
-                          if (context.mounted) context.go('/file');
-                        }
-                      },
-                      semanticLabel: '',
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          if (pendingDownload != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 16,
-              child: Center(
-                child: M3FloatingToolbar(
-                  actions: [
-                    M3FloatingToolbarAction(
-                      icon: Icons.close,
-                      label: '取消',
-                      onPressed: () {
-                        final controller = ref.read(
-                          editorControllerMapProvider,
-                        )[pendingDownload.localPath];
-                        controller?.clearGitDiffDecorations();
-                        ref
-                                .read(pendingDownloadProvider.notifier)
-                                .state =
-                            null;
-                        if (context.mounted) context.go('/file');
-                      },
-                      semanticLabel: '',
+              if (pendingDownload != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 16,
+                  child: Center(
+                    child: M3FloatingToolbar(
+                      actions: [
+                        M3FloatingToolbarAction(
+                          icon: Icons.close,
+                          label: '取消',
+                          onPressed: () =>
+                              _handleCancel(context, ref),
+                          semanticLabel: '',
+                        ),
+                        M3FloatingToolbarAction(
+                          icon: Icons.cloud_download,
+                          label: '确认下载',
+                          onPressed: () =>
+                              _confirmDownload(ref, pendingDownload, context),
+                          semanticLabel: '',
+                        ),
+                      ],
                     ),
-                    M3FloatingToolbarAction(
-                      icon: Icons.cloud_download,
-                      label: '确认下载',
-                      onPressed: () async {
-                        try {
-                          final currentContent = ref.read(
-                                editorControllerMapProvider,
-                              )[pendingDownload.localPath]?.text ??
-                              pendingDownload.content;
-                          await File(pendingDownload.localPath)
-                              .writeAsString(currentContent);
-                          ref
-                              .read(localFileItemsProvider.notifier)
-                              .buildRootFileListItems();
-                          final controller = ref.read(
-                            editorControllerMapProvider,
-                          )[pendingDownload.localPath];
-                          controller?.clearGitDiffDecorations();
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                "已下载到本地：${pendingDownload.localPath}",
-                              ),
-                            ),
-                          );
-                        } catch (_) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("下载失败"),
-                            ),
-                          );
-                        } finally {
-                          ref
-                                  .read(pendingDownloadProvider.notifier)
-                                  .state =
-                              null;
-                          if (context.mounted) context.go('/file');
-                        }
-                      },
-                      semanticLabel: '',
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  void _handleConfirm(BuildContext context, WidgetRef ref) {
+    final pending = ref.read(pendingUploadProvider);
+    if (pending != null) {
+      _confirmUpload(ref, pending, context);
+      return;
+    }
+    final pendingDownload = ref.read(pendingDownloadProvider);
+    if (pendingDownload != null) {
+      _confirmDownload(ref, pendingDownload, context);
+    }
+  }
+
+  void _handleCancel(BuildContext context, WidgetRef ref) {
+    final pending = ref.read(pendingUploadProvider);
+    final pendingDownload = ref.read(pendingDownloadProvider);
+    final filePath = pending?.localPath ?? pendingDownload?.localPath;
+    if (filePath != null) {
+      ref.read(editorControllerMapProvider)[filePath]
+          ?.clearGitDiffDecorations();
+    }
+    ref.read(pendingUploadProvider.notifier).state = null;
+    ref.read(pendingDownloadProvider.notifier).state = null;
+    if (context.mounted) context.go('/file');
+  }
+
+  Future<void> _confirmUpload(
+    WidgetRef ref,
+    PendingUpload pending,
+    BuildContext context,
+  ) async {
+    try {
+      final currentContent = ref.read(
+        editorControllerMapProvider,
+      )[pending.localPath]?.text ??
+          pending.content;
+      await ref.read(boardWorkspaceProvider.notifier).writeFile(
+        pending.targetPath,
+        currentContent,
+      );
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      ref.read(editorControllerMapProvider)[pending.localPath]
+          ?.clearGitDiffDecorations();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("已上传到设备：${pending.targetPath}"),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("上传失败")),
+      );
+    } finally {
+      ref.read(pendingUploadProvider.notifier).state = null;
+      if (context.mounted) context.go('/file');
+    }
+  }
+
+  Future<void> _confirmDownload(
+    WidgetRef ref,
+    PendingDownload pending,
+    BuildContext context,
+  ) async {
+    try {
+      final currentContent = ref.read(
+        editorControllerMapProvider,
+      )[pending.localPath]?.text ??
+          pending.content;
+      await File(pending.localPath).writeAsString(currentContent);
+      ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+      ref.read(editorControllerMapProvider)[pending.localPath]
+          ?.clearGitDiffDecorations();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("已下载到本地：${pending.localPath}"),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("下载失败")),
+      );
+    } finally {
+      ref.read(pendingDownloadProvider.notifier).state = null;
+      if (context.mounted) context.go('/file');
+    }
   }
 }
 
