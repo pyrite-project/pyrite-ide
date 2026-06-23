@@ -55,3 +55,12 @@ StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
 StateProvider<bool> enableSignalDetection = StateProvider<bool>(
   (ref) => true,
 );
+
+const Map<String, String> uploadConfirmStyles = {
+  "浮动工具栏": "toolbar",
+  "确认对话框": "dialog",
+};
+
+StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
+  (ref) => "toolbar",
+);

@@ -49,6 +49,7 @@ class PersistedData {
   final bool expansionPageShow;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
+  final String uploadConfirmStyle;
 
   PersistedData({
     this.workspacePath,
@@ -73,5 +74,6 @@ class PersistedData {
     this.expansionPageShow = true,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
+    this.uploadConfirmStyle = 'toolbar',
   });
 }

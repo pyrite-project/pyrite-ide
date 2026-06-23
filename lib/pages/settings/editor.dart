@@ -34,6 +34,31 @@ class EditorSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
+          title: "上传确认",
+          description: "上传文件存在差异时的确认方式。",
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'toolbar',
+                  icon: Icon(Icons.open_in_full),
+                  label: Text("浮动工具栏"),
+                ),
+                ButtonSegment(
+                  value: 'dialog',
+                  icon: Icon(Icons.chat_bubble_outline),
+                  label: Text("确认对话框"),
+                ),
+              ],
+              selected: {ref.watch(uploadConfirmStyleProvider)},
+              onSelectionChanged: (value) {
+                ref.read(uploadConfirmStyleProvider.notifier).state =
+                    value.first;
+              },
+            ),
+          ],
+        ),
+        SettingsSection(
           title: "编辑行为",
           children: [
             SwitchListTile(

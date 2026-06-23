@@ -52,6 +52,8 @@ class PersistenceManager {
           settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection:
           settings?.enableSignalDetection ?? true,
+      uploadConfirmStyle:
+          settings?.uploadConfirmStyle ?? 'toolbar',
     );
   }
 
@@ -78,6 +80,8 @@ class PersistenceManager {
               container.read(chineseToUnicodeConversion),
           enableSignalDetection:
               container.read(enableSignalDetection),
+          uploadConfirmStyle:
+              container.read(uploadConfirmStyleProvider),
         ),
       ),
       functionPagePersistence.save(

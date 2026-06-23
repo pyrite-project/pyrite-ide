@@ -131,6 +131,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     File? file,
     bool isBoardFile = false,
     String? boardFilePath,
+    String? initialText,
   }) async {
     file ??= await local.sysGetFile();
     if (file != null) {
@@ -138,7 +139,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         file,
         await ref
             .read(editorControllerMapProvider.notifier)
-            .createNewEditorController(file),
+            .createNewEditorController(file, initialText: initialText),
         isBoardFile: isBoardFile,
         boardFilePath: boardFilePath,
       );

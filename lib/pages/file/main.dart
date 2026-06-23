@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
@@ -13,6 +15,8 @@ import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/upload_diff.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:super_context_menu/super_context_menu.dart';
@@ -182,6 +186,83 @@ class ProjectFiles extends ConsumerWidget {
                                       (boardFolderTarget?.id != null)
                                       ? "${boardFolderTarget!.id}/${path.basename(node.id)}"
                                       : "/${path.basename(node.id)}";
+
+                                  String? originContent;
+                                  try {
+                                    originContent = await ref
+                                        .read(boardWorkspaceProvider.notifier)
+                                        .getFileContent(targetPath);
+                                  } catch (_) {}
+                                    if (originContent != null &&
+                                        originContent != content) {
+                                      final diff = computeDiff(
+                                        originContent,
+                                        content,
+                                      );
+
+                                      if (ref.read(uploadConfirmStyleProvider) ==
+                                          'dialog') {
+                                        final confirmed =
+                                            await showDiffConfirmDialog(
+                                          context,
+                                          diff: diff,
+                                          targetPath: targetPath,
+                                          isUpload: true,
+                                        );
+                                        if (!confirmed) {
+                                          if (!context.mounted) return;
+                                          showActionSnackBar(
+                                            context,
+                                            "已取消上传",
+                                          );
+                                          return;
+                                        }
+                                      } else {
+                                        ref
+                                            .read(
+                                              tabbedViewControllerProvider
+                                                  .notifier,
+                                            )
+                                            .openFile(
+                                              context,
+                                              file: File(node.id),
+                                              initialText: content,
+                                            );
+
+                                        if (!context.mounted) return;
+
+                                        final controller = ref.read(
+                                          editorControllerMapProvider,
+                                        )[node.id];
+                                        controller?.setGitDiffDecorations(
+                                          addedRanges: diff.addedRanges,
+                                          removedRanges: diff.removedRanges,
+                                        );
+
+                                        final pending = PendingUpload(
+                                          diff: diff,
+                                          localPath: node.id,
+                                          targetPath: targetPath,
+                                          content: content,
+                                        );
+                                        ref
+                                                .read(
+                                                  pendingUploadProvider.notifier,
+                                                )
+                                                .state =
+                                            pending;
+
+                                        if (!context.mounted) return;
+                                        if (!ResponsiveBreakpoints.of(context)
+                                            .isDesktop) {
+                                          Future.microtask(
+                                            () => context.go('/editor'),
+                                          );
+                                        }
+                                        return;
+                                      }
+                                    }
+
                                   await ref
                                       .read(boardWorkspaceProvider.notifier)
                                       .writeFile(targetPath, content);
@@ -455,6 +536,89 @@ class ProjectFiles extends ConsumerWidget {
                                   final String content = await ref
                                       .read(boardWorkspaceProvider.notifier)
                                       .getFileContent(node.id);
+
+                                  String? originContent;
+                                  if (await File(targetPath).exists()) {
+                                    try {
+                                      originContent = await File(
+                                        targetPath,
+                                      ).readAsString();
+                                    } catch (_) {}
+                                  }
+                                  if (originContent != null &&
+                                      originContent != content) {
+                                    final diff = computeDiff(
+                                      originContent,
+                                      content,
+                                    );
+
+                                    if (ref.read(
+                                          uploadConfirmStyleProvider,
+                                        ) ==
+                                        'dialog') {
+                                      final confirmed =
+                                          await showDiffConfirmDialog(
+                                        context,
+                                        diff: diff,
+                                        targetPath: targetPath,
+                                        isUpload: false,
+                                      );
+                                      if (!confirmed) {
+                                        if (!context.mounted) return;
+                                        showActionSnackBar(
+                                          context,
+                                          "已取消下载",
+                                        );
+                                        return;
+                                      }
+                                    } else {
+                                      ref
+                                          .read(
+                                            tabbedViewControllerProvider
+                                                .notifier,
+                                          )
+                                          .openFile(
+                                            context,
+                                            file: File(targetPath),
+                                            initialText: content,
+                                          );
+
+                                      if (!context.mounted) return;
+
+                                      final controller = ref.read(
+                                        editorControllerMapProvider,
+                                      )[targetPath];
+                                      controller?.setGitDiffDecorations(
+                                        addedRanges: diff.addedRanges,
+                                        removedRanges: diff.removedRanges,
+                                      );
+
+                                      final pending = PendingDownload(
+                                        diff: diff,
+                                        boardPath: node.id,
+                                        localPath: targetPath,
+                                        content: content,
+                                      );
+                                      ref
+                                              .read(
+                                                pendingDownloadProvider
+                                                    .notifier,
+                                              )
+                                              .state =
+                                          pending;
+
+                                      if (!context.mounted) return;
+                                      if (!ResponsiveBreakpoints.of(
+                                        context,
+                                      ).isDesktop) {
+                                        Future.microtask(
+                                          () => context.go('/editor'),
+                                        );
+                                      }
+                                      return;
+                                    }
+                                  }
+
                                   local.writeFile(targetPath, content);
                                   if (!context.mounted) return;
                                   showActionSnackBar(
@@ -640,6 +804,62 @@ class ProjectFiles extends ConsumerWidget {
       final content = await ref
           .read(boardWorkspaceProvider.notifier)
           .getFileContent(selected.id);
+
+      String? originContent;
+      if (await File(targetPath).exists()) {
+        try {
+          originContent = await File(targetPath).readAsString();
+        } catch (_) {}
+      }
+      if (originContent != null && originContent != content) {
+        final diff = computeDiff(originContent, content);
+
+        if (ref.read(uploadConfirmStyleProvider) == 'dialog') {
+          final confirmed = await showDiffConfirmDialog(
+            context,
+            diff: diff,
+            targetPath: targetPath,
+            isUpload: false,
+          );
+          if (!confirmed) {
+            if (!context.mounted) return;
+            showActionSnackBar(context, "已取消下载");
+            return;
+          }
+        } else {
+          ref
+              .read(tabbedViewControllerProvider.notifier)
+              .openFile(
+                context,
+                file: File(targetPath),
+                initialText: content,
+              );
+
+          if (!context.mounted) return;
+
+          final controller =
+              ref.read(editorControllerMapProvider)[targetPath];
+          controller?.setGitDiffDecorations(
+            addedRanges: diff.addedRanges,
+            removedRanges: diff.removedRanges,
+          );
+
+          final pending = PendingDownload(
+            diff: diff,
+            boardPath: selected.id,
+            localPath: targetPath,
+            content: content,
+          );
+          ref.read(pendingDownloadProvider.notifier).state = pending;
+
+          if (!context.mounted) return;
+          if (!ResponsiveBreakpoints.of(context).isDesktop) {
+            Future.microtask(() => context.go('/editor'));
+          }
+          return;
+        }
+      }
+
       local.writeFile(targetPath, content);
       if (!context.mounted) return;
       showActionSnackBar(context, "已下载到本地：$targetPath");
@@ -686,4 +906,61 @@ class ProjectFiles extends ConsumerWidget {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+Future<bool> showDiffConfirmDialog(
+  BuildContext context, {
+  required DiffInfo diff,
+  required String targetPath,
+  required bool isUpload,
+}) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.difference),
+      title: Text(isUpload ? "确认上传" : "确认下载"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("${isUpload ? "上传" : "下载"}到：$targetPath"),
+          const SizedBox(height: 8),
+          Text("${diff.addCount} 处添加，${diff.removeCount} 处删除"),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(
+                  diff.unifiedLines.join('\n'),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => ctx.pop(false),
+          child: const Text("取消"),
+        ),
+        FilledButton(
+          onPressed: () => ctx.pop(true),
+          child: Text(isUpload ? "上传" : "下载"),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
 }

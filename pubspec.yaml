@@ -62,6 +62,7 @@ dependencies:
   path: ^1.9.1
   meta: any
   ffi: ^2.2.0
+  m3_floating_toolbar: ^0.1.0
   flserial: ^0.7.1
   usb_serial: ^0.5.2
   serious_python:

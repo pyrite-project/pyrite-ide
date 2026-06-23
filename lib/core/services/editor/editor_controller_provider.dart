@@ -66,12 +66,7 @@ class EditorControllerMapNotifier
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      CodeForgeController editorController = ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab!
-          .value
-          .editorController!;
-      editorController.cut();
+      getSelectedController()?.cut();
     }
   }
 
@@ -79,12 +74,7 @@ class EditorControllerMapNotifier
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      CodeForgeController editorController = ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab!
-          .value
-          .editorController!;
-      editorController.copy();
+      getSelectedController()?.copy();
     }
   }
 
@@ -92,13 +82,16 @@ class EditorControllerMapNotifier
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      CodeForgeController editorController = ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab!
-          .value
-          .editorController!;
-      editorController.paste();
+      getSelectedController()?.paste();
     }
+  }
+
+  CodeForgeController? getSelectedController() {
+    return ref
+        .read(tabbedViewControllerProvider)
+        .selectedTab
+        ?.value
+        .editorController;
   }
 }
 
