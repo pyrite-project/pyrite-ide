@@ -44,12 +44,20 @@ class MacOSMenu extends ConsumerWidget {
             members: [
               PlatformMenuItem(
                 label: '新建文件',
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyN,
+                  control: true,
+                ),
                 onSelected: () => ref
                     .read(tabbedViewControllerProvider.notifier)
                     .createFile(),
               ),
               PlatformMenuItem(
                 label: '打开文件',
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyO,
+                  control: true,
+                ),
                 onSelected: () => ref
                     .read(tabbedViewControllerProvider.notifier)
                     .openFile(context),
@@ -61,8 +69,22 @@ class MacOSMenu extends ConsumerWidget {
               ),
               PlatformMenuItem(
                 label: "保存当前文件",
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyS,
+                  control: true,
+                ),
                 onSelected: () =>
                     ref.read(localWorkspaceProvider.notifier).saveFile(),
+              ),
+              PlatformMenuItem(
+                label: "另存为",
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyS,
+                  control: true,
+                  shift: true,
+                ),
+                onSelected: () =>
+                    ref.read(localWorkspaceProvider.notifier).saveAs(),
               ),
             ],
           ),

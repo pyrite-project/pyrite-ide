@@ -29,6 +29,7 @@ class PersistenceManager {
 
     return PersistedData(
       themeMode: app?.themeMode ?? 'system',
+      themeStyle: app?.themeStyle ?? 'standard',
       themeColorValue: app?.themeColorValue,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
@@ -47,33 +48,60 @@ class PersistenceManager {
       workspacePath: workspace?.workspacePath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
+      chineseToUnicodeConversion:
+          settings?.chineseToUnicodeConversion ?? true,
+      enableSignalDetection:
+          settings?.enableSignalDetection ?? true,
+      uploadConfirmStyle:
+          settings?.uploadConfirmStyle ?? 'toolbar',
+      confirmShortcut:
+          settings?.confirmShortcut ?? 'Ctrl+Enter',
+      cancelShortcut:
+          settings?.cancelShortcut ?? 'Esc',
     );
   }
 
   Future<void> saveFromContainer(ProviderContainer container) async {
     await Future.wait([
-      appPersistence.save(AppPersistedData(
-        themeMode: container.read(themeMode).name,
-        themeColorValue: (container.read(themeColor))?.toARGB32(),
-      )),
-      settingsPersistence.save(SettingsPersistedData(
-        editorTextFont: container.read(editorTextFontProvider),
-        editorFontSize: container.read(editorFontSize),
-        editorWordWrap: container.read(editorWordWrap),
-        editorLineNumber: container.read(editorLineNumber),
-        useLsp: container.read(useLsp),
-        lspWebSocketPath: container.read(lspWebScoketPath),
-        disableWarning: container.read(disableWarning),
-        disableError: container.read(disableError),
-      )),
-      functionPagePersistence.save(FunctionPagePersistedData(
-        desktopSelectedIndex: container.read(desktopSelectedIndex),
-        mobileSelectedIndex: container.read(mobileSelectedIndex),
-        tabletSelectedIndex: container.read(tabletSelectedIndex),
-        functionPageShow: container.read(functionPageShow),
-        consolePageShow: container.read(consolePageShow),
-        expansionPageShow: container.read(expansionPageShow),
-      )),
+      appPersistence.save(
+        AppPersistedData(
+          themeMode: container.read(themeMode).name,
+          themeStyle: container.read(themeStyle).value,
+          themeColorValue: (container.read(themeColor))?.toARGB32(),
+        ),
+      ),
+      settingsPersistence.save(
+        SettingsPersistedData(
+          editorTextFont: container.read(editorTextFontProvider),
+          editorFontSize: container.read(editorFontSize),
+          editorWordWrap: container.read(editorWordWrap),
+          editorLineNumber: container.read(editorLineNumber),
+          useLsp: container.read(useLsp),
+          lspWebSocketPath: container.read(lspWebScoketPath),
+          disableWarning: container.read(disableWarning),
+          disableError: container.read(disableError),
+          chineseToUnicodeConversion:
+              container.read(chineseToUnicodeConversion),
+          enableSignalDetection:
+              container.read(enableSignalDetection),
+          uploadConfirmStyle:
+              container.read(uploadConfirmStyleProvider),
+          confirmShortcut:
+              container.read(confirmShortcutProvider),
+          cancelShortcut:
+              container.read(cancelShortcutProvider),
+        ),
+      ),
+      functionPagePersistence.save(
+        FunctionPagePersistedData(
+          desktopSelectedIndex: container.read(desktopSelectedIndex),
+          mobileSelectedIndex: container.read(mobileSelectedIndex),
+          tabletSelectedIndex: container.read(tabletSelectedIndex),
+          functionPageShow: container.read(functionPageShow),
+          consolePageShow: container.read(consolePageShow),
+          expansionPageShow: container.read(expansionPageShow),
+        ),
+      ),
       _saveWorkspace(container),
       _saveTabs(container),
     ]);
@@ -81,8 +109,9 @@ class PersistenceManager {
 
   Future<void> _saveWorkspace(ProviderContainer container) async {
     final dir = container.read(localWorkspaceProvider);
-    await workspacePersistence
-        .save(WorkspacePersistedData(workspacePath: dir?.path));
+    await workspacePersistence.save(
+      WorkspacePersistedData(workspacePath: dir?.path),
+    );
   }
 
   Future<void> _saveTabs(ProviderContainer container) async {
@@ -91,17 +120,23 @@ class PersistenceManager {
     for (final tab in tabController.tabs) {
       final value = tab.value;
       if (value is TabDataValue && value.type == "file") {
-        tabs.add(PersistedTab(
-          filePath: value.filePath,
-          isBoardFile: value.isBoardFile ?? false,
-          isSaved: value.isSaved,
-          unsavedContent: (!value.isSaved && value.editorController != null)
-              ? value.editorController!.text
-              : null,
-        ));
+        tabs.add(
+          PersistedTab(
+            filePath: value.filePath,
+            isBoardFile: value.isBoardFile ?? false,
+            isSaved: value.isSaved,
+            unsavedContent: (!value.isSaved && value.editorController != null)
+                ? value.editorController!.text
+                : null,
+          ),
+        );
       }
     }
-    await tabsPersistence
-        .save(TabsPersistedData(tabs: tabs, selectedTabIndex: tabController.selectedIndex ?? 0));
+    await tabsPersistence.save(
+      TabsPersistedData(
+        tabs: tabs,
+        selectedTabIndex: tabController.selectedIndex ?? 0,
+      ),
+    );
   }
 }

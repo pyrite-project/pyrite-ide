@@ -5,7 +5,6 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   file_selector_linux
-  flutter_libserialport
   irondash_engine_context
   open_file_linux
   screen_retriever_linux
@@ -16,7 +15,10 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  code_forge
+  flserial
   flutter_pty
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

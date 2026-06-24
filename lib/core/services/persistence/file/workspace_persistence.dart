@@ -8,14 +8,10 @@ class WorkspacePersistedData {
 
   WorkspacePersistedData({this.workspacePath});
 
-  Map<String, dynamic> toJson() => {
-        'workspacePath': workspacePath,
-      };
+  Map<String, dynamic> toJson() => {'workspacePath': workspacePath};
 
   factory WorkspacePersistedData.fromJson(Map<String, dynamic> json) =>
-      WorkspacePersistedData(
-        workspacePath: json['workspacePath'] as String?,
-      );
+      WorkspacePersistedData(workspacePath: json['workspacePath'] as String?);
 }
 
 class WorkspacePersistence {
@@ -32,7 +28,8 @@ class WorkspacePersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return WorkspacePersistedData.fromJson(json);
     } catch (e) {
       debugPrint('WorkspacePersistence: Failed to load: $e');

@@ -1,4 +1,3 @@
-import 'package:code_forge/LSP/lsp.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';

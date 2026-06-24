@@ -1,0 +1,145 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "pyrite_ide",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "pyrite_ide (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "pyrite_ide (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "serious_python",
+            "cwd": "python_runtime\\src\\serious_python",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "serious_python (profile mode)",
+            "cwd": "python_runtime\\src\\serious_python",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "serious_python (release mode)",
+            "cwd": "python_runtime\\src\\serious_python",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "serious_python_android",
+            "cwd": "python_runtime\\src\\serious_python_android",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "serious_python_android (profile mode)",
+            "cwd": "python_runtime\\src\\serious_python_android",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "serious_python_android (release mode)",
+            "cwd": "python_runtime\\src\\serious_python_android",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "serious_python_darwin",
+            "cwd": "python_runtime\\src\\serious_python_darwin",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "serious_python_darwin (profile mode)",
+            "cwd": "python_runtime\\src\\serious_python_darwin",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "serious_python_darwin (release mode)",
+            "cwd": "python_runtime\\src\\serious_python_darwin",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "serious_python_linux",
+            "cwd": "python_runtime\\src\\serious_python_linux",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "serious_python_linux (profile mode)",
+            "cwd": "python_runtime\\src\\serious_python_linux",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "serious_python_linux (release mode)",
+            "cwd": "python_runtime\\src\\serious_python_linux",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "serious_python_platform_interface",
+            "cwd": "python_runtime\\src\\serious_python_platform_interface",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "serious_python_platform_interface (profile mode)",
+            "cwd": "python_runtime\\src\\serious_python_platform_interface",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "serious_python_platform_interface (release mode)",
+            "cwd": "python_runtime\\src\\serious_python_platform_interface",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "serious_python_windows",
+            "cwd": "python_runtime\\src\\serious_python_windows",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "serious_python_windows (profile mode)",
+            "cwd": "python_runtime\\src\\serious_python_windows",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "serious_python_windows (release mode)",
+            "cwd": "python_runtime\\src\\serious_python_windows",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

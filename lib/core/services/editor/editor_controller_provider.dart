@@ -44,7 +44,7 @@ class EditorControllerMapNotifier
             )
           : null,
     );
-    controller.openedFile = file.path;
+    // controller.openedFile = file.path;
     controller.text = text;
     state = {...state, file.path: controller};
     return controller;
@@ -53,25 +53,24 @@ class EditorControllerMapNotifier
   void redo() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {}
+            "file") {
+      // getSelectedController()?.redo();
+    }
   }
 
   void undo() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {}
+            "file") {
+      // getSelectedController()?.undo();
+    }
   }
 
   void cut() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      CodeForgeController editorController = ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab!
-          .value
-          .editorController!;
-      editorController.cut();
+      getSelectedController()?.cut();
     }
   }
 
@@ -79,12 +78,7 @@ class EditorControllerMapNotifier
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      CodeForgeController editorController = ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab!
-          .value
-          .editorController!;
-      editorController.copy();
+      getSelectedController()?.copy();
     }
   }
 
@@ -92,13 +86,16 @@ class EditorControllerMapNotifier
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      CodeForgeController editorController = ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab!
-          .value
-          .editorController!;
-      editorController.paste();
+      getSelectedController()?.paste();
     }
+  }
+
+  CodeForgeController? getSelectedController() {
+    return ref
+        .read(tabbedViewControllerProvider)
+        .selectedTab
+        ?.value
+        .editorController;
   }
 }
 

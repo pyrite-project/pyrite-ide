@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -207,26 +208,39 @@ class TabHeaderWidget extends StatelessWidget {
                 title: Text("提示"),
                 content: Text("当前文件已经修改，是否保存更改？"),
                 actions: [
-                  TextButton(
-                    onPressed: () async {
-                      local.writeFile(
-                        value.file!.path,
-                        value.editorController!.text,
-                      );
-                      container
-                          .read(tabbedViewControllerProvider.notifier)
-                          .afterFileSave();
-                      context.pop();
-                      await _onClose(context, index);
-                    },
-                    child: Text("保存"),
-                  ),
-                  TextButton(
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                    ),
                     onPressed: () async {
                       context.pop();
                       await _onClose(context, index);
                     },
                     child: Text("不保存"),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await container
+                          .read(localWorkspaceProvider.notifier)
+                          .saveFile();
+
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+
+                      if (identical(
+                        provider.controller,
+                        container.read(tabbedViewControllerProvider),
+                      )) {
+                        container
+                            .read(tabbedViewControllerProvider.notifier)
+                            .afterFileSave();
+                      }
+                      context.pop();
+                      await _onClose(context, index);
+                    },
+                    child: Text("保存"),
                   ),
                   TextButton(onPressed: () => context.pop(), child: Text("取消")),
                 ],
@@ -270,9 +284,14 @@ class TabHeaderWidget extends StatelessWidget {
       index = provider.controller.tabs.indexOf(tabData);
       if (index != -1) {
         provider.controller.removeTab(index);
-        container
-            .read(tabbedViewControllerProvider.notifier)
-            .afterTabClose(index);
+        if (identical(
+          provider.controller,
+          container.read(tabbedViewControllerProvider),
+        )) {
+          container
+              .read(tabbedViewControllerProvider.notifier)
+              .afterTabClose(index);
+        }
       }
     }
   }

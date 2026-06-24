@@ -47,3 +47,31 @@ StateProvider<String> lspWebScoketPath = StateProvider<String>(
 );
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
+
+StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
+  (ref) => true,
+);
+
+StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
+
+const Map<String, String> uploadConfirmStyles = {
+  "浮动工具栏": "toolbar",
+  "确认对话框": "dialog",
+};
+
+StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
+  (ref) => "toolbar",
+);
+
+const Map<String, String> defaultShortcuts = {
+  'confirm': 'Ctrl+Enter',
+  'cancel': 'Esc',
+};
+
+StateProvider<String> confirmShortcutProvider = StateProvider<String>(
+  (ref) => defaultShortcuts['confirm']!,
+);
+
+StateProvider<String> cancelShortcutProvider = StateProvider<String>(
+  (ref) => defaultShortcuts['cancel']!,
+);

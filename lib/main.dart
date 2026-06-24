@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +14,7 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/features/window.dart';
-// import 'package:serious_python/serious_python.dart';
+import 'package:serious_python/serious_python.dart';
 
 String? getPythonPath() {
   if (Platform.isAndroid) return "assets/android/python.zip";
@@ -38,11 +39,11 @@ void _applyData(PersistedData data) {
   }
 
   if (data.themeColorValue != null) {
-    container.read(themeColor.notifier).state =
-        Color(data.themeColorValue!);
+    container.read(themeColor.notifier).state = Color(data.themeColorValue!);
   }
-  container.read(editorTextFontProvider.notifier).state =
-      data.editorTextFont;
+  container.read(themeStyle.notifier).state =
+      ThemeStyle.fromValue(data.themeStyle);
+  container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
   container.read(editorLineNumber.notifier).state = data.editorLineNumber;
@@ -52,13 +53,15 @@ void _applyData(PersistedData data) {
   container.read(disableError.notifier).state = data.disableError;
   container.read(desktopSelectedIndex.notifier).state =
       data.desktopSelectedIndex;
-  container.read(mobileSelectedIndex.notifier).state =
-      data.mobileSelectedIndex;
-  container.read(tabletSelectedIndex.notifier).state =
-      data.tabletSelectedIndex;
+  container.read(mobileSelectedIndex.notifier).state = data.mobileSelectedIndex;
+  container.read(tabletSelectedIndex.notifier).state = data.tabletSelectedIndex;
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
+  container.read(enableSignalDetection.notifier).state = data.enableSignalDetection;
+  container.read(uploadConfirmStyleProvider.notifier).state = data.uploadConfirmStyle;
+  container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
+  container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
 }
 
 void _triggerSave() {
@@ -97,6 +100,8 @@ void main() async {
     }
   }
 
+  await RustLib.init();
+
   if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
@@ -105,7 +110,7 @@ void main() async {
 
   UseWindow().init();
 
-  // SeriousPython.run(getPythonPath()!);
+  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
   // container.read(lspClientProvider);
 
   runApp(

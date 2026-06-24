@@ -5,7 +5,6 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   file_selector_windows
-  flutter_libserialport
   irondash_engine_context
   screen_retriever_windows
   serious_python_windows
@@ -15,7 +14,10 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  code_forge
+  flserial
   flutter_pty
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

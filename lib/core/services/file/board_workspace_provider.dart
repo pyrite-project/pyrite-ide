@@ -1,15 +1,31 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:typed_data';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:path/path.dart' as p;
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/board_manager/repl_mutex_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
+import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
+import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/ui_utils.dart';
+import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
+import 'package:tabbed_view/tabbed_view.dart';
 
 class RawReplException implements Exception {
   final String message;
@@ -31,11 +47,11 @@ class BoardWorkspaceNotifier
     final mutex = ref.read(replMutexProvider);
     final stopwatch = Stopwatch()..start();
 
-    void _log(String msg) {
-      print('[BoardWS] [${stopwatch.elapsedMilliseconds}ms] $msg');
+    void logBoard(String msg) {
+      debugPrint('[BoardWS] [${stopwatch.elapsedMilliseconds}ms] $msg');
     }
 
-    _log('Starting command execution');
+    logBoard('Starting command execution');
 
     return mutex.runExclusive(() async {
       final completer = Completer<String>();
@@ -48,14 +64,14 @@ class BoardWorkspaceNotifier
 
         final decoded = utf8.decode(data, allowMalformed: true);
         result += decoded;
-        print(
+        debugPrint(
           '[BoardWS] Callback: +${data.length} bytes, total=${result.length}',
         );
 
         if (result.contains("!@#PyriteIDEEnd#@!")) {
           completed = true;
           timeoutTimer?.cancel();
-          _log('End marker found!');
+          logBoard('End marker found!');
           if (!completer.isCompleted) {
             completer.complete(result);
           }
@@ -66,12 +82,12 @@ class BoardWorkspaceNotifier
       ref.read(serialDataCallbacksProvider.notifier).add(callback);
 
       try {
-        _log('Entering RAW REPL...');
+        logBoard('Entering RAW REPL...');
         final enterStart = Stopwatch()..start();
         final entered = await ref
             .read(getUsbSerialProvider().notifier)
             .enterRawRepl();
-        _log(
+        logBoard(
           'enterRawRepl took ${enterStart.elapsedMilliseconds}ms, success: $entered',
         );
         if (!entered) {
@@ -79,7 +95,7 @@ class BoardWorkspaceNotifier
         }
 
         await Future.delayed(Duration(milliseconds: 500));
-        _log('After enter delay, sending command...');
+        logBoard('After enter delay, sending command...');
 
         const sendChunkSize = 32;
         const sendDelayMs = 1;
@@ -92,16 +108,16 @@ class BoardWorkspaceNotifier
               .sendCommand(command.substring(i, end), chunked: false);
           await Future.delayed(Duration(milliseconds: sendDelayMs));
         }
-        _log('Command fully sent, waiting for result');
+        logBoard('Command fully sent, waiting for result');
 
         ref.read(getUsbSerialProvider().notifier).sendCommand("\x04");
-        _log('Execute command sent (\\x04)');
+        logBoard('Execute command sent (\\x04)');
 
         timeoutTimer = Timer(Duration(milliseconds: timeoutMs), () {
           if (!completed) {
             completed = true;
             final previewLen = result.length < 200 ? result.length : 200;
-            _log(
+            logBoard(
               'TIMEOUT! Result (${result.length} chars): ${result.substring(0, previewLen)}',
             );
             if (!completer.isCompleted) {
@@ -117,24 +133,24 @@ class BoardWorkspaceNotifier
 
         return await completer.future;
       } catch (e) {
-        _log('Exception: $e');
+        logBoard('Exception: $e');
         completed = true;
         rethrow;
       } finally {
         completed = true;
-        _log('Cleanup: removing callback');
+        logBoard('Cleanup: removing callback');
         ref.read(serialDataCallbacksProvider.notifier).remove(callback);
 
         try {
-          _log('Exiting RAW REPL...');
+          logBoard('Exiting RAW REPL...');
 
           await Future.delayed(Duration(milliseconds: 100));
           ref.read(getUsbSerialProvider().notifier).sendCommand("\x02");
 
           await Future.delayed(Duration(milliseconds: 500));
-          _log('exitRawRepl sent');
+          logBoard('exitRawRepl sent');
         } catch (e) {
-          _log('exitRawRepl error: $e');
+          logBoard('exitRawRepl error: $e');
         }
       }
     });
@@ -173,7 +189,7 @@ class BoardWorkspaceNotifier
     command +=
         "  print('!@#PyriteIDEStart#@!'+ubinascii.b2a_base64(content).decode().strip()+'!@#PyriteIDEEnd#@!')\n";
     command += "except Exception as e:\n";
-    command += "  print('ERROR:', str(e))\n";
+    command += "  print('!@#PyriteIDEStart#@!'+str(e)+'!@#PyriteIDEEnd#@!')\n";
 
     String b64Content = await _getCommandResult(command);
     String resultString = b64Content
@@ -190,7 +206,7 @@ class BoardWorkspaceNotifier
   Future<String> writeFile(String targetPath, String content) async {
     final bytes = utf8.encode(content);
     final b64Content = base64.encode(bytes);
-    print(
+    debugPrint(
       '[BoardWS] writeFile: path=$targetPath, content length=${content.length}, b64 length=${b64Content.length}',
     );
 
@@ -227,7 +243,9 @@ class BoardWorkspaceNotifier
       command += "  print('ERROR:', str(e))\n";
     }
 
-    print('[BoardWS] writeFile command lines: ${command.split('\n').length}');
+    debugPrint(
+      '[BoardWS] writeFile command lines: ${command.split('\n').length}',
+    );
 
     String contentString = await _getCommandResult(command);
     String resultString = contentString
@@ -384,29 +402,26 @@ class BoardWorkspaceNotifier
       final parentDir = p.dirname(remoteEntityPath).replaceAll('\\', '/');
 
       if (entity is io.Directory) {
-        print('[BoardWS] Creating remote dir: $remoteEntityPath');
+        debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
         try {
           await createFolder(remoteEntityPath);
           createdDirs.add(remoteEntityPath);
         } catch (e) {
-          print('[BoardWS] Failed to create dir: $e');
+          debugPrint('[BoardWS] Failed to create dir: $e');
         }
       } else if (entity is io.File) {
         if (!createdDirs.contains(parentDir)) {
-          print('[BoardWS] Creating parent dir: $parentDir');
+          debugPrint('[BoardWS] Creating parent dir: $parentDir');
           try {
             await createFolder(parentDir);
             createdDirs.add(parentDir);
           } catch (e) {
-            print('[BoardWS] Failed to create parent dir: $e');
+            debugPrint('[BoardWS] Failed to create parent dir: $e');
           }
         }
-        print('[BoardWS] Uploading file: $remoteEntityPath');
-        await writeFile(
-          remoteEntityPath,
-          await (entity as io.File).readAsString(),
-        );
-        print('[BoardWS] Uploaded: $remoteEntityPath');
+        debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
+        await writeFile(remoteEntityPath, await entity.readAsString());
+        debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
       }
     }
   }
@@ -428,10 +443,10 @@ class BoardWorkspaceNotifier
       if (item['type'] == 'folder') {
         await io.Directory(localItemPath).create(recursive: true);
       } else {
-        print('[BoardWS] Downloading: ${item['path']}');
+        debugPrint('[BoardWS] Downloading: ${item['path']}');
         final content = await getFileContent(item['path']!);
         await io.File(localItemPath).writeAsString(content);
-        print('[BoardWS] Downloaded: $localItemPath');
+        debugPrint('[BoardWS] Downloaded: $localItemPath');
       }
     }
   }
@@ -461,6 +476,262 @@ class BoardWorkspaceNotifier
       return ref
           .read(boardFileTreeViewControllerProvider)
           .findNodeById(path.dirname(focusNodeId));
+    }
+  }
+
+  Future<File?> openFile(BuildContext context, String id) async {
+    ref.read(boardFileTreeViewControllerProvider).setSelectedNodeId(id);
+    final node = ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
+    if (node == null || node.data is! FileItem) return null;
+    final file = await board.getLocalFile(node.id);
+    final content = await ref
+        .read(boardWorkspaceProvider.notifier)
+        .getFileContent(id);
+    await file.writeAsString(content);
+    if (context.mounted) {
+      await ref
+          .read(tabbedViewControllerProvider.notifier)
+          .openFile(context, file: file, isBoardFile: true, boardFilePath: id);
+    }
+    return file;
+  }
+
+  Future<void> saveFile() async {
+    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
+    final value = nowTab?.value;
+    if (value is TabDataValue && value.type == "file") {
+      if (value.isBoardFile == true && value.boardFilePath != null) {
+        await ref
+            .read(boardWorkspaceProvider.notifier)
+            .writeFile(value.boardFilePath!, value.editorController!.text);
+        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      } else {
+        await value.file!.writeAsString(value.editorController!.text);
+      }
+      ref.read(tabbedViewControllerProvider.notifier).afterFileSave();
+    }
+  }
+
+  Future<void> _downloadSelectedBoardItem(
+    BuildContext context, {
+    TabData? selectedTab,
+  }) async {
+    TreeNode<FileSystemItem>? selectedFile = getFocusFileNode();
+    TreeNode<FileSystemItem>? selectedFolder = getFocusFolderNode();
+    if (selectedTab == null) {
+      selectedFile = getFocusFileNode();
+      selectedFolder = getFocusFolderNode();
+    }
+    final selected = selectedFile ?? selectedFolder;
+    final localWorkspace = ref.read(localWorkspaceProvider);
+    if (selected == null && selectedTab == null) {
+      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      return;
+    }
+    if (localWorkspace == null) {
+      showEditorSnackBar(context, "先打开一个本地项目");
+      return;
+    }
+
+    final localFolderTarget = ref
+        .read(localWorkspaceProvider.notifier)
+        .getFocusFolderNode();
+    final targetPath = localFolderTarget?.id != null
+        ? path.join(
+            localFolderTarget!.id,
+            path.basename(selected?.id ?? selectedTab?.value.filePath),
+          )
+        : path.join(
+            localWorkspace.path,
+            path.basename(selected?.id ?? selectedTab?.value.filePath),
+          );
+
+    if (selected?.data is FileItem || selectedTab != null) {
+      final content = await getFileContent(
+        selected?.id ?? selectedTab?.value.filePath,
+      );
+
+      String? originContent;
+      if (await File(targetPath).exists()) {
+        try {
+          originContent = await File(targetPath).readAsString();
+        } catch (_) {}
+      }
+      if (originContent != null && originContent != content) {
+        final diff = computeDiff(originContent, content);
+
+        if (ref.read(uploadConfirmStyleProvider) == 'dialog') {
+          final confirmed = await showDiffConfirmDialog(
+            context,
+            diff: diff,
+            targetPath: targetPath,
+            isUpload: false,
+          );
+          if (!confirmed) {
+            showEditorSnackBar(context, "已取消下载");
+            return;
+          }
+        } else {
+          final correspondingFile = await openFile(
+            context,
+            selected?.id ?? selectedTab?.value.filePath,
+          );
+
+          final controller = ref
+              .read(editorControllerMapProvider.notifier)
+              .getSelectedController();
+
+          controller!.setGitDiffDecorations(
+            addedRanges: diff.addedRanges,
+            removedRanges: diff.removedRanges,
+          );
+
+          final correspondingFilePath = (await board.getLocalFile(
+            selected?.id ?? selectedTab?.value.filePath,
+          )).path;
+
+          final pendingDownload = PendingDownload(
+            diff: diff,
+            boardPath: selected?.id ?? selectedTab?.value.filePath,
+            localPath: targetPath,
+            correspondingPath: correspondingFile!.path,
+            content: content,
+          );
+          ref
+                  .read(
+                    pendingDownloadProviderMap[correspondingFilePath]!.notifier,
+                  )
+                  .state =
+              pendingDownload;
+
+          if (!ResponsiveBreakpoints.of(context).isDesktop) {
+            context.go('/editor');
+          }
+          return;
+        }
+      }
+
+      local.writeFile(targetPath, content);
+
+      showEditorSnackBar(context, "已下载到本地：$targetPath");
+    } else {
+      await ref
+          .read(boardWorkspaceProvider.notifier)
+          .downloadFolder(
+            selected?.id ?? selectedTab?.value.filePath,
+            targetPath,
+          );
+
+      showEditorSnackBar(context, "已下载文件夹到本地：$targetPath");
+    }
+
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+  }
+
+  Future<void> downloadSelectedBoardItem(
+    BuildContext context, {
+    TabData? selectedTab,
+  }) async {
+    TreeNode<FileSystemItem>? selectedFile = getFocusFileNode();
+    TreeNode<FileSystemItem>? selectedFolder = getFocusFolderNode();
+    if (selectedTab == null) {
+      selectedFile = getFocusFileNode();
+      selectedFolder = getFocusFolderNode();
+    }
+
+    final selected = selectedFile ?? selectedFolder;
+    final localWorkspace = ref.read(localWorkspaceProvider);
+    if (selected == null && selectedTab == null) {
+      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      return;
+    }
+    if (localWorkspace == null) {
+      showEditorSnackBar(context, "先打开一个本地项目");
+      return;
+    }
+
+    final localFolderTarget = ref
+        .read(localWorkspaceProvider.notifier)
+        .getFocusFolderNode();
+    final targetPath = localFolderTarget?.id != null
+        ? path.join(
+            localFolderTarget!.id,
+            path.basename(selected?.id ?? selectedTab?.value.filePath),
+          )
+        : path.join(
+            localWorkspace.path,
+            path.basename(selected?.id ?? selectedTab?.value.filePath),
+          );
+
+    if (selected?.data is FileItem || selectedTab != null) {
+      final content = await getFileContent(
+        selected?.id ?? selectedTab?.value.filePath,
+      );
+
+      String? originContent;
+      if (await File(targetPath).exists()) {
+        try {
+          originContent = await File(targetPath).readAsString();
+        } catch (_) {}
+      }
+
+      final correspondingFilePath = (await board.getLocalFile(
+        selected?.id ?? selectedTab?.value.filePath,
+      )).path;
+
+      if ((ref.read(editorControllerMapProvider)[correspondingFilePath]?.text !=
+              null) &&
+          (content !=
+              ref
+                  .read(editorControllerMapProvider)[correspondingFilePath]!
+                  .text)) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.file_download_outlined),
+            title: const Text("设备文件内容不一致或编辑器内的更改未保存"),
+            content: Text(
+              "设备文件“${selected?.id ?? selectedTab?.value.filePath}”在编辑器中的内容与实际文件内容不一致，可能你做出了更改但没有保存或被外部程序所更改\n为了确保正确展示本地文件与板载文件间的差异，必须选择其一覆盖：",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => context.pop(false),
+                child: const Text("取消上传"),
+              ),
+              TextButton(
+                onPressed: () {
+                  saveFile();
+                  _downloadSelectedBoardItem(context, selectedTab: selectedTab);
+                  context.pop();
+                },
+                child: const Text("编辑器中内容"),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError,
+                ),
+                onPressed: () {
+                  ref
+                          .read(
+                            editorControllerMapProvider,
+                          )[correspondingFilePath]
+                          ?.text =
+                      content;
+                  saveFile();
+                  _downloadSelectedBoardItem(context, selectedTab: selectedTab);
+                  context.pop();
+                },
+                child: const Text("实际内容"),
+              ),
+            ],
+          ),
+        );
+      } else {
+        _downloadSelectedBoardItem(context, selectedTab: selectedTab);
+      }
+    } else {
+      _downloadSelectedBoardItem(context, selectedTab: selectedTab);
     }
   }
 

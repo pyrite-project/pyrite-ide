@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.2.0+20260523
+version: 0.4.0+20260624
 
 environment:
   sdk: ^3.10.7
@@ -61,15 +61,22 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
   meta: any
-  flutter_libserialport: ^0.6.0
+  ffi: ^2.2.0
+  m3_floating_toolbar: ^0.1.0
+  flserial: ^0.7.1
   usb_serial: ^0.5.2
-  serious_python: 0.9.11
+  serious_python:
+    path: python_runtime/src/serious_python
   web_socket_channel: ^3.0.3
-  code_forge: ^9.4.0
+  code_forge: ^10.5.0
   extension_type_unions: ^1.0.10
+  rfw: ^1.1.3
+  freeport: ^1.0.1
   super_context_menu: ^0.9.1
   super_drag_and_drop: ^0.9.1
   super_tree: ^0.2.1
+  flex_color_scheme: ^8.4.0
+  flex_color_picker: ^3.7.0
 
 dev_dependencies:
   flutter_test:
@@ -143,18 +150,11 @@ flutter:
 
   assets:
     - assets/icons/app_icon.png
-    - assets/icons/app_icon_100px.png
-    - assets/icons/app_icon_100px_appbar.png
-    
-    - assets/android/python_env.zip
+    - assets/icons/app_icon_appbar.png
 
-    - assets/android/python.zip
-    - assets/windows/python.zip
-    - assets/linux/python.zip
-    - assets/macos/python.zip
+    - assets/python_runtime_boot.zip
 
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: true
   image_path: "assets/icons/app_icon.png"
-  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_background: "#E65100"

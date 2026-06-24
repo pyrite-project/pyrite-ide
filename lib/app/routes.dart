@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
+import 'package:pyrite_ide/pages/settings/terminal.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
@@ -28,6 +31,7 @@ CustomTransitionPage topCustomTransitionPage({
 }
 
 GoRouter routes = GoRouter(
+  observers: [routeObserver],
   redirect: (context, state) {
     if (state.matchedLocation == "/") {
       if (ResponsiveBreakpoints.of(context).isDesktop) {
@@ -54,6 +58,20 @@ GoRouter routes = GoRouter(
               topCustomTransitionPage(child: const Tools(), state: state),
         ),
         GoRoute(
+          path: '/plugins',
+          pageBuilder: (context, state) =>
+              topCustomTransitionPage(child: Plugins(), state: state),
+          routes: [
+            GoRoute(
+              path: '/body',
+              builder: (context, state) {
+                final id = state.uri.queryParameters['id'];
+                return PluginBody(pluginId: id!);
+              },
+            ),
+          ],
+        ),
+        GoRoute(
           path: '/settings',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: const Settings(), state: state),
@@ -69,6 +87,10 @@ GoRouter routes = GoRouter(
             GoRoute(
               path: "/style",
               builder: (context, state) => const StyleSettings(),
+            ),
+            GoRoute(
+              path: '/terminal',
+              builder: (context, state) => const TerminalSettings(),
             ),
             GoRoute(path: '/about', builder: (context, state) => const About()),
           ],
@@ -88,8 +110,9 @@ GoRouter routes = GoRouter(
 // 地址别名
 const String file = '/file';
 const String tools = '/tools';
+const String plugins = '/plugins';
 const String settings = '/settings';
 const String edit = '/editor';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [file, tools, settings, edit];
+const List<String> routesName = [file, tools, plugins, settings, edit];

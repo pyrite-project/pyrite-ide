@@ -1,78 +1,137 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/shortcut_utils.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class EditorSettings extends ConsumerWidget {
   const EditorSettings({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("编辑器设置"),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-      ),
-      body: Padding(
-        padding: EdgeInsetsGeometry.only(left: 5, right: 5),
-        child: ListView(
+    final body = ListView(
+      padding: EdgeInsets.all(12),
+      children: [
+        SettingsSection(
+          title: "字体",
+          description: "影响代码编辑区域的阅读和输入体验。",
           children: [
             ListTile(
-              title: Text("字体"),
+              title: const Text("字体"),
               subtitle: Text(ref.watch(editorTextFontProvider)),
+              trailing: const Icon(Icons.chevron_right),
               onTap: () => showTextFontDialog(context, ref),
             ),
+            const SectionDivider(),
             ListTile(
-              title: Text("字体大小"),
-              subtitle: Text(ref.watch(editorFontSize).toString()),
+              title: const Text("字体大小"),
+              subtitle: Text(
+                "${ref.watch(editorFontSize).toStringAsFixed(0)} px",
+              ),
+              trailing: const Icon(Icons.chevron_right),
               onTap: () => showFontSizeDialog(context),
-            ),
-            ListTile(
-              title: Text("自动折行"),
-              trailing: Switch(
-                value: ref.watch(editorWordWrap),
-                onChanged: (value) {
-                  ref.read(editorWordWrap.notifier).state = value;
-                },
-              ),
-            ),
-            ListTile(
-              title: Text("显示行号"),
-              trailing: Switch(
-                value: ref.watch(editorLineNumber),
-                onChanged: (value) {
-                  ref.read(editorLineNumber.notifier).state = value;
-                },
-              ),
             ),
           ],
         ),
-      ),
+        SettingsSection(
+          title: "上传确认",
+          description: "上传文件存在差异时的确认方式。",
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'toolbar',
+                  icon: Icon(Icons.open_in_full),
+                  label: Text("浮动工具栏"),
+                ),
+                ButtonSegment(
+                  value: 'dialog',
+                  icon: Icon(Icons.chat_bubble_outline),
+                  label: Text("确认对话框"),
+                ),
+              ],
+              selected: {ref.watch(uploadConfirmStyleProvider)},
+              onSelectionChanged: (value) {
+                ref.read(uploadConfirmStyleProvider.notifier).state =
+                    value.first;
+              },
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: "快捷键",
+          description: "上传/下载确认的快捷键。",
+          children: [
+            ShortcutRecorderTile(
+              title: "确认操作",
+              value: ref.watch(confirmShortcutProvider),
+              onChanged: (v) =>
+                  ref.read(confirmShortcutProvider.notifier).state = v,
+            ),
+            const SectionDivider(),
+            ShortcutRecorderTile(
+              title: "取消操作",
+              value: ref.watch(cancelShortcutProvider),
+              onChanged: (v) =>
+                  ref.read(cancelShortcutProvider.notifier).state = v,
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: "编辑行为",
+          children: [
+            SwitchListTile(
+              title: const Text("自动折行"),
+              subtitle: const Text("长行在可视区域内换行显示"),
+              value: ref.watch(editorWordWrap),
+              onChanged: (value) {
+                ref.read(editorWordWrap.notifier).state = value;
+              },
+            ),
+            const SectionDivider(),
+            const ListTile(
+              leading: Icon(Icons.format_list_numbered),
+              title: Text("显示行号"),
+              subtitle: Text("当前编辑器内核默认显示，暂未开放独立开关"),
+              trailing: PillBadge(label: "内核默认"),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("编辑器设置")),
+      body: body,
     );
   }
 
   void showTextFontDialog(BuildContext context, WidgetRef ref) async {
     final List<SimpleDialogOption> children = [];
     editorTextFonts.forEach((name, value) {
+      final selected = ref.read(editorTextFontProvider) == name;
       children.add(
         SimpleDialogOption(
-          child: Column(
-            children: [
-              ListTile(
-                title: Text(name),
-                minTileHeight: 0,
-                onTap: (name == "自定义")
-                    ? () {
-                        customizationEditorTextFont();
-                        context.pop(name);
-                      }
-                    : () {
-                        ref.read(editorTextFontProvider.notifier).state = name;
-                        context.pop(name);
-                      },
-              ),
-              Divider(),
-            ],
+          child: ListTile(
+            title: Text(name),
+            subtitle: Text(
+              "print('Pyrite IDE')",
+              style: TextStyle(fontFamily: value.isEmpty ? null : value),
+            ),
+            trailing: selected ? const Icon(Icons.check) : null,
+            minTileHeight: 0,
+            onTap: (name == "自定义")
+                ? () {
+                    customizationEditorTextFont();
+                    context.pop(name);
+                  }
+                : () {
+                    ref.read(editorTextFontProvider.notifier).state = name;
+                    context.pop(name);
+                  },
           ),
         ),
       );
@@ -80,7 +139,7 @@ class EditorSettings extends ConsumerWidget {
     await showDialog(
       context: context,
       builder: (context) =>
-          SimpleDialog(title: Text("选择编辑器字体"), children: children),
+          SimpleDialog(title: const Text("选择编辑器字体"), children: children),
     );
   }
 
@@ -91,19 +150,152 @@ class EditorSettings extends ConsumerWidget {
         builder: (context, ref, _) {
           final size = ref.watch(editorFontSize);
           return SimpleDialog(
-            title: Text("字体大小"),
+            title: const Text("字体大小"),
             children: [
-              Slider(
-                min: 5,
-                max: 50,
-                divisions: 45,
-                value: size,
-                label: size.toStringAsFixed(0),
-                onChanged: (value) =>
-                    ref.read(editorFontSize.notifier).state = value,
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, 12),
+                child: Text(
+                  "print('Pyrite IDE')",
+                  style: TextStyle(
+                    fontFamily:
+                        editorTextFonts[ref.watch(editorTextFontProvider)],
+                    fontSize: size,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Slider(
+                  min: 10,
+                  max: 28,
+                  divisions: 18,
+                  value: size,
+                  label: size.toStringAsFixed(0),
+                  onChanged: (value) =>
+                      ref.read(editorFontSize.notifier).state = value,
+                ),
               ),
             ],
           );
+        },
+      ),
+    );
+  }
+}
+
+class ShortcutRecorderTile extends StatefulWidget {
+  final String title;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const ShortcutRecorderTile({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<ShortcutRecorderTile> createState() => _ShortcutRecorderTileState();
+}
+
+class _ShortcutRecorderTileState extends State<ShortcutRecorderTile> {
+  bool _recording = false;
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      setState(() => _recording = false);
+    }
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!_recording || event is KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.escape) {
+        setState(() => _recording = false);
+        _focusNode.unfocus();
+        return KeyEventResult.handled;
+      }
+      final physicalKey = event.physicalKey;
+      final isModifier = physicalKey == PhysicalKeyboardKey.controlLeft ||
+          physicalKey == PhysicalKeyboardKey.controlRight ||
+          physicalKey == PhysicalKeyboardKey.shiftLeft ||
+          physicalKey == PhysicalKeyboardKey.shiftRight ||
+          physicalKey == PhysicalKeyboardKey.altLeft ||
+          physicalKey == PhysicalKeyboardKey.altRight ||
+          physicalKey == PhysicalKeyboardKey.metaLeft ||
+          physicalKey == PhysicalKeyboardKey.metaRight;
+      if (isModifier) return KeyEventResult.ignored;
+
+      final hardwareKeyboard = HardwareKeyboard.instance;
+      final control = hardwareKeyboard.isControlPressed;
+      final shift = hardwareKeyboard.isShiftPressed;
+      final alt = hardwareKeyboard.isAltPressed;
+      final meta = hardwareKeyboard.isMetaPressed;
+
+      if (!control && !shift && !alt && !meta) return KeyEventResult.ignored;
+
+      final activator = SingleActivator(
+        key,
+        control: control,
+        shift: shift,
+        alt: alt,
+        meta: meta,
+      );
+      widget.onChanged(activatorToString(activator));
+      setState(() => _recording = false);
+      _focusNode.unfocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _focusNode,
+      onKeyEvent: _onKeyEvent,
+      child: ListTile(
+        leading: Icon(
+          _recording ? Icons.keyboard : Icons.keyboard_command_key,
+        ),
+        title: Text(widget.title),
+        subtitle: Text(
+          _recording ? "按下快捷键（Esc 取消）..." : widget.value,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            color: _recording
+                ? Theme.of(context).colorScheme.primary
+                : null,
+          ),
+        ),
+        trailing: _recording
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : null,
+        onTap: () {
+          setState(() => _recording = true);
+          _focusNode.requestFocus();
         },
       ),
     );

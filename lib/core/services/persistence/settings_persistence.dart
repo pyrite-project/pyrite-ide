@@ -12,6 +12,11 @@ class SettingsPersistedData {
   final String lspWebSocketPath;
   final bool disableWarning;
   final bool disableError;
+  final bool chineseToUnicodeConversion;
+  final bool enableSignalDetection;
+  final String uploadConfirmStyle;
+  final String confirmShortcut;
+  final String cancelShortcut;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -22,23 +27,32 @@ class SettingsPersistedData {
     required this.lspWebSocketPath,
     required this.disableWarning,
     required this.disableError,
+    this.chineseToUnicodeConversion = true,
+    this.enableSignalDetection = true,
+    this.uploadConfirmStyle = 'toolbar',
+    this.confirmShortcut = 'Ctrl+Enter',
+    this.cancelShortcut = 'Esc',
   });
 
   Map<String, dynamic> toJson() => {
-        'editorTextFont': editorTextFont,
-        'editorFontSize': editorFontSize,
-        'editorWordWrap': editorWordWrap,
-        'editorLineNumber': editorLineNumber,
-        'useLsp': useLsp,
-        'lspWebSocketPath': lspWebSocketPath,
-        'disableWarning': disableWarning,
-        'disableError': disableError,
-      };
+    'editorTextFont': editorTextFont,
+    'editorFontSize': editorFontSize,
+    'editorWordWrap': editorWordWrap,
+    'editorLineNumber': editorLineNumber,
+    'useLsp': useLsp,
+    'lspWebSocketPath': lspWebSocketPath,
+    'disableWarning': disableWarning,
+    'disableError': disableError,
+    'chineseToUnicodeConversion': chineseToUnicodeConversion,
+    'enableSignalDetection': enableSignalDetection,
+    'uploadConfirmStyle': uploadConfirmStyle,
+    'confirmShortcut': confirmShortcut,
+    'cancelShortcut': cancelShortcut,
+  };
 
   factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
       SettingsPersistedData(
-        editorTextFont:
-            json['editorTextFont'] as String? ?? 'JetBrains Mono',
+        editorTextFont: json['editorTextFont'] as String? ?? 'JetBrains Mono',
         editorFontSize: (json['editorFontSize'] as num?)?.toDouble() ?? 15,
         editorWordWrap: json['editorWordWrap'] as bool? ?? false,
         editorLineNumber: json['editorLineNumber'] as bool? ?? true,
@@ -47,6 +61,16 @@ class SettingsPersistedData {
             json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
         disableWarning: json['disableWarning'] as bool? ?? false,
         disableError: json['disableError'] as bool? ?? false,
+        chineseToUnicodeConversion:
+            json['chineseToUnicodeConversion'] as bool? ?? true,
+        enableSignalDetection:
+            json['enableSignalDetection'] as bool? ?? true,
+        uploadConfirmStyle:
+            json['uploadConfirmStyle'] as String? ?? 'toolbar',
+        confirmShortcut:
+            json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
+        cancelShortcut:
+            json['cancelShortcut'] as String? ?? 'Esc',
       );
 }
 
@@ -64,7 +88,8 @@ class SettingsPersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return SettingsPersistedData.fromJson(json);
     } catch (e) {
       debugPrint('SettingsPersistence: Failed to load: $e');

@@ -12,18 +12,18 @@ class PersistedTab {
   });
 
   Map<String, dynamic> toJson() => {
-        'filePath': filePath,
-        'isBoardFile': isBoardFile,
-        'isSaved': isSaved,
-        'unsavedContent': unsavedContent,
-      };
+    'filePath': filePath,
+    'isBoardFile': isBoardFile,
+    'isSaved': isSaved,
+    'unsavedContent': unsavedContent,
+  };
 
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
-        filePath: json['filePath'] as String,
-        isBoardFile: json['isBoardFile'] as bool? ?? false,
-        isSaved: json['isSaved'] as bool? ?? true,
-        unsavedContent: json['unsavedContent'] as String?,
-      );
+    filePath: json['filePath'] as String,
+    isBoardFile: json['isBoardFile'] as bool? ?? false,
+    isSaved: json['isSaved'] as bool? ?? true,
+    unsavedContent: json['unsavedContent'] as String?,
+  );
 }
 
 class PersistedData {
@@ -31,6 +31,7 @@ class PersistedData {
   final List<PersistedTab> tabs;
   final int selectedTabIndex;
   final String themeMode;
+  final String themeStyle;
   final int? themeColorValue;
   final String editorTextFont;
   final double editorFontSize;
@@ -46,12 +47,18 @@ class PersistedData {
   final bool functionPageShow;
   final bool consolePageShow;
   final bool expansionPageShow;
+  final bool chineseToUnicodeConversion;
+  final bool enableSignalDetection;
+  final String uploadConfirmStyle;
+  final String confirmShortcut;
+  final String cancelShortcut;
 
   PersistedData({
     this.workspacePath,
     this.tabs = const [],
     this.selectedTabIndex = 0,
     this.themeMode = 'system',
+    this.themeStyle = 'standard',
     this.themeColorValue,
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,
@@ -67,5 +74,10 @@ class PersistedData {
     this.functionPageShow = true,
     this.consolePageShow = true,
     this.expansionPageShow = true,
+    this.chineseToUnicodeConversion = true,
+    this.enableSignalDetection = true,
+    this.uploadConfirmStyle = 'toolbar',
+    this.confirmShortcut = 'Ctrl+Enter',
+    this.cancelShortcut = 'Esc',
   });
 }

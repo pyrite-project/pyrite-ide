@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
@@ -24,13 +25,13 @@ class BoardFileItemsNotifier
     command += "except OSError:\n";
     command += "  print([])\n";
 
-    print('[BoardWS] getFilesList command: $command');
+    debugPrint('[BoardWS] getFilesList command: $command');
 
     var originalData = await ref
         .read(boardWorkspaceProvider.notifier)
         .getCommandResult(command);
 
-    print('[BoardWS] getFilesList result: $originalData');
+    debugPrint('[BoardWS] getFilesList result: $originalData');
 
     return (jsonDecode(originalData) as List)
         .cast<Map<String, dynamic>>()
