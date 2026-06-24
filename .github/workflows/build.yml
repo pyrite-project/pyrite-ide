@@ -73,6 +73,12 @@ jobs:
         if: matrix.target == 'macos'
         run: brew install automake libtool
 
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+
       - name: Get dependencies
         run: flutter pub get
 
