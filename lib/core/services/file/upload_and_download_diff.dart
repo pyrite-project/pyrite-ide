@@ -133,20 +133,21 @@ class PendingUpload {
   });
 }
 
-final pendingUploadProvider = StateProvider<PendingUpload?>((ref) => null);
-
 class PendingDownload {
   final DiffInfo diff;
   final String boardPath;
   final String localPath;
+  final String correspondingPath;
   final String content;
 
   PendingDownload({
     required this.diff,
     required this.boardPath,
     required this.localPath,
+    required this.correspondingPath,
     required this.content,
   });
 }
 
-final pendingDownloadProvider = StateProvider<PendingDownload?>((ref) => null);
+Map<String, StateProvider<PendingUpload?>> pendingUploadProviderMap = {};
+Map<String, StateProvider<PendingDownload?>> pendingDownloadProviderMap = {};

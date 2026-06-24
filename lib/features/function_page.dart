@@ -620,7 +620,7 @@ class EditorToolsBar extends ConsumerWidget {
       tooltip: saved ? "再次保存当前文件" : "保存当前文件",
       onPressed: () async {
         await ref.read(localWorkspaceProvider.notifier).saveFile();
-        if (!context.mounted) return;
+
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));

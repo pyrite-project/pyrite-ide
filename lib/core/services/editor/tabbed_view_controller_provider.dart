@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
+import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -126,7 +127,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
   }
 
-  void openFile(
+  Future openFile(
     BuildContext context, {
     File? file,
     bool isBoardFile = false,
@@ -164,6 +165,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
+
+      pendingUploadProviderMap[file.path] = StateProvider((ref) => null);
+      pendingDownloadProviderMap[file.path] = StateProvider((ref) => null);
+
       TabbedViewController newController = TabbedViewController(
         List.from(state.tabs),
       );
@@ -193,6 +198,27 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       List.from(state.tabs),
     );
     state = newController;
+
+    ref
+            .read(
+              pendingUploadProviderMap[state
+                      .getTabByIndex(index)
+                      .value
+                      .filePath]!
+                  .notifier,
+            )
+            .state =
+        null;
+    ref
+            .read(
+              pendingDownloadProviderMap[state
+                      .getTabByIndex(index)
+                      .value
+                      .filePath]!
+                  .notifier,
+            )
+            .state =
+        null;
   }
 
   void afterFileSave() {

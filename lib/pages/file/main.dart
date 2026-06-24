@@ -1,22 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as path;
-import 'package:responsive_framework/responsive_framework.dart';
+import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
-import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
 import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
-import 'package:pyrite_ide/core/services/file/upload_diff.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:super_context_menu/super_context_menu.dart';
@@ -102,17 +95,9 @@ class ProjectFiles extends ConsumerWidget {
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(localEnableDragAndDrop),
-                onNodeTap: (id) {
-                  ref
-                      .read(localFileTreeViewControllerProvider)
-                      .setSelectedNodeId(id);
-                  File file = File(id);
-                  if (context.mounted) {
-                    ref
-                        .read(tabbedViewControllerProvider.notifier)
-                        .openFile(context, file: file);
-                  }
-                },
+                onNodeTap: (id) => ref
+                    .read(localWorkspaceProvider.notifier)
+                    .openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
               style: SuperTreeThemes.material().treeStyle,
@@ -164,11 +149,10 @@ class ProjectFiles extends ConsumerWidget {
                                   context,
                                   node.data.name,
                                 )) {
-                                  if (!context.mounted) return;
                                   ref
                                       .read(localFileTreeViewControllerProvider)
                                       .removeNode(node);
-                                  showActionSnackBar(
+                                  showEditorSnackBar(
                                     context,
                                     "已删除 ${node.data.name}",
                                   );
@@ -178,122 +162,9 @@ class ProjectFiles extends ConsumerWidget {
                             MenuSeparator(),
                             MenuAction(
                               title: "上传到设备文件夹 ${boardFolderTarget?.id ?? "/"}",
-                              callback: () async {
-                                if (node.data is FileItem) {
-                                  final String content = await local
-                                      .getFileContent(node.id);
-                                  final targetPath =
-                                      (boardFolderTarget?.id != null)
-                                      ? "${boardFolderTarget!.id}/${path.basename(node.id)}"
-                                      : "/${path.basename(node.id)}";
-
-                                  String? originContent;
-                                  try {
-                                    originContent = await ref
-                                        .read(boardWorkspaceProvider.notifier)
-                                        .getFileContent(targetPath);
-                                  } catch (_) {}
-                                  if (originContent != null &&
-                                      originContent != content) {
-                                    final diff = computeDiff(
-                                      originContent,
-                                      content,
-                                    );
-
-                                    if (ref.read(uploadConfirmStyleProvider) ==
-                                        'dialog') {
-                                      final confirmed =
-                                          await showDiffConfirmDialog(
-                                            context,
-                                            diff: diff,
-                                            targetPath: targetPath,
-                                            isUpload: true,
-                                          );
-                                      if (!confirmed) {
-                                        if (!context.mounted) return;
-                                        showActionSnackBar(context, "已取消上传");
-                                        return;
-                                      }
-                                    } else {
-                                      ref
-                                          .read(
-                                            tabbedViewControllerProvider
-                                                .notifier,
-                                          )
-                                          .openFile(
-                                            context,
-                                            file: File(node.id),
-                                            initialText: content,
-                                          );
-
-                                      if (!context.mounted) return;
-
-                                      // 得益于 openFile 的行为，此时可以保证选中的标签页已经是所需的标签页
-                                      final controller = ref
-                                          .read(
-                                            editorControllerMapProvider
-                                                .notifier,
-                                          )
-                                          .getSelectedController();
-                                      controller?.setGitDiffDecorations(
-                                        addedRanges: diff.addedRanges,
-                                        removedRanges: diff.removedRanges,
-                                      );
-
-                                      final pending = PendingUpload(
-                                        diff: diff,
-                                        localPath: node.id,
-                                        targetPath: targetPath,
-                                        content: content,
-                                      );
-                                      ref
-                                              .read(
-                                                pendingUploadProvider.notifier,
-                                              )
-                                              .state =
-                                          pending;
-
-                                      if (!context.mounted) return;
-                                      if (!ResponsiveBreakpoints.of(
-                                        context,
-                                      ).isDesktop) {
-                                        Future.microtask(
-                                          () => context.go('/editor'),
-                                        );
-                                      }
-                                      return;
-                                    }
-                                  }
-
-                                  await ref
-                                      .read(boardWorkspaceProvider.notifier)
-                                      .writeFile(targetPath, content);
-                                  ref
-                                      .read(boardFileItemsProvider.notifier)
-                                      .buildRootFileListItems();
-                                  if (!context.mounted) return;
-                                  showActionSnackBar(
-                                    context,
-                                    "已上传到设备：$targetPath",
-                                  );
-                                } else if (node.data is FolderItem) {
-                                  final targetPath =
-                                      (boardFolderTarget?.id != null)
-                                      ? "${boardFolderTarget!.id}/${path.basename(node.id)}"
-                                      : "/${path.basename(node.id)}";
-                                  await ref
-                                      .read(boardWorkspaceProvider.notifier)
-                                      .uploadFolder(node.id, targetPath);
-                                  ref
-                                      .read(boardFileItemsProvider.notifier)
-                                      .buildRootFileListItems();
-                                  if (!context.mounted) return;
-                                  showActionSnackBar(
-                                    context,
-                                    "已上传文件夹到设备：$targetPath",
-                                  );
-                                }
-                              },
+                              callback: () => ref
+                                  .read(localWorkspaceProvider.notifier)
+                                  .uploadSelectedLocalItem(context),
                               attributes: MenuActionAttributes(
                                 disabled: !(ref
                                     .watch(getUsbSerialProvider())
@@ -312,8 +183,8 @@ class ProjectFiles extends ConsumerWidget {
                                 ref
                                     .read(boardFileItemsProvider.notifier)
                                     .buildRootFileListItems();
-                                if (!context.mounted) return;
-                                showActionSnackBar(
+
+                                showEditorSnackBar(
                                   context,
                                   "已覆盖设备文件：${boardFileTarget.id}",
                                 );
@@ -385,7 +256,9 @@ class ProjectFiles extends ConsumerWidget {
           children: [
             FilledButton.tonalIcon(
               onPressed: isConnected
-                  ? () => uploadSelectedLocalItem(context, ref)
+                  ? () => ref
+                        .read(localWorkspaceProvider.notifier)
+                        .uploadSelectedLocalItem(context)
                   : null,
               icon: const Icon(Icons.upload_outlined, size: 18),
               label: Text("上传选中项"),
@@ -432,30 +305,9 @@ class ProjectFiles extends ConsumerWidget {
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
-                onNodeTap: (id) async {
-                  ref
-                      .read(boardFileTreeViewControllerProvider)
-                      .setSelectedNodeId(id);
-                  final node = ref
-                      .read(boardFileTreeViewControllerProvider)
-                      .findNodeById(id);
-                  if (node == null || node.data is! FileItem) return;
-                  final file = await board.getLocalFilePath(node);
-                  final content = await ref
-                      .read(boardWorkspaceProvider.notifier)
-                      .getFileContent(id);
-                  await file.writeAsString(content);
-                  if (context.mounted) {
-                    ref
-                        .read(tabbedViewControllerProvider.notifier)
-                        .openFile(
-                          context,
-                          file: file,
-                          isBoardFile: true,
-                          boardFilePath: id,
-                        );
-                  }
-                },
+                onNodeTap: (id) => ref
+                    .read(boardWorkspaceProvider.notifier)
+                    .openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
               style: SuperTreeThemes.material().treeStyle,
@@ -504,11 +356,10 @@ class ProjectFiles extends ConsumerWidget {
                                   context,
                                   node.data.name,
                                 )) {
-                                  if (!context.mounted) return;
                                   ref
                                       .read(boardFileTreeViewControllerProvider)
                                       .removeNode(node);
-                                  showActionSnackBar(
+                                  showEditorSnackBar(
                                     context,
                                     "已从设备删除 ${node.data.name}",
                                   );
@@ -519,128 +370,9 @@ class ProjectFiles extends ConsumerWidget {
                             MenuAction(
                               title:
                                   "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(localWorkspaceProvider)?.path ?? "（未打开本地项目）"}",
-                              callback: () async {
-                                final localWorkspace = ref.read(
-                                  localWorkspaceProvider,
-                                );
-                                if (localWorkspace == null) return;
-                                final targetPath =
-                                    (localFolderTarget?.id != null)
-                                    ? path.join(
-                                        localFolderTarget!.id,
-                                        path.basename(node.id),
-                                      )
-                                    : path.join(
-                                        localWorkspace.path,
-                                        path.basename(node.id),
-                                      );
-                                if (node.data is FileItem) {
-                                  final String content = await ref
-                                      .read(boardWorkspaceProvider.notifier)
-                                      .getFileContent(node.id);
-
-                                  String? originContent;
-                                  if (await File(targetPath).exists()) {
-                                    try {
-                                      originContent = await File(
-                                        targetPath,
-                                      ).readAsString();
-                                    } catch (_) {}
-                                  }
-                                  if (originContent != null &&
-                                      originContent != content) {
-                                    final diff = computeDiff(
-                                      originContent,
-                                      content,
-                                    );
-
-                                    if (ref.read(uploadConfirmStyleProvider) ==
-                                        'dialog') {
-                                      final confirmed =
-                                          await showDiffConfirmDialog(
-                                            context,
-                                            diff: diff,
-                                            targetPath: targetPath,
-                                            isUpload: false,
-                                          );
-                                      if (!confirmed) {
-                                        if (!context.mounted) return;
-                                        showActionSnackBar(context, "已取消下载");
-                                        return;
-                                      }
-                                    } else {
-                                      ref
-                                          .read(
-                                            tabbedViewControllerProvider
-                                                .notifier,
-                                          )
-                                          .openFile(
-                                            context,
-                                            file: File(targetPath),
-                                            initialText: content,
-                                          );
-
-                                      if (!context.mounted) return;
-
-                                      // 得益于 openFile 的行为，此时可以保证选中的标签页已经是所需的标签页
-                                      final controller = ref
-                                          .read(
-                                            editorControllerMapProvider
-                                                .notifier,
-                                          )
-                                          .getSelectedController();
-                                      controller?.setGitDiffDecorations(
-                                        addedRanges: diff.addedRanges,
-                                        removedRanges: diff.removedRanges,
-                                      );
-
-                                      final pending = PendingDownload(
-                                        diff: diff,
-                                        boardPath: node.id,
-                                        localPath: targetPath,
-                                        content: content,
-                                      );
-                                      ref
-                                              .read(
-                                                pendingDownloadProvider
-                                                    .notifier,
-                                              )
-                                              .state =
-                                          pending;
-
-                                      if (!context.mounted) return;
-                                      if (!ResponsiveBreakpoints.of(
-                                        context,
-                                      ).isDesktop) {
-                                        Future.microtask(
-                                          () => context.go('/editor'),
-                                        );
-                                      }
-                                      return;
-                                    }
-                                  }
-
-                                  local.writeFile(targetPath, content);
-                                  if (!context.mounted) return;
-                                  showActionSnackBar(
-                                    context,
-                                    "已下载到本地：$targetPath",
-                                  );
-                                } else if (node.data is FolderItem) {
-                                  await ref
-                                      .read(boardWorkspaceProvider.notifier)
-                                      .downloadFolder(node.id, targetPath);
-                                  if (!context.mounted) return;
-                                  showActionSnackBar(
-                                    context,
-                                    "已下载文件夹到本地：$targetPath",
-                                  );
-                                }
-
-                                ref
-                                    .read(localFileItemsProvider.notifier)
-                                    .buildRootFileListItems();
-                              },
+                              callback: () => ref
+                                  .read(boardWorkspaceProvider.notifier)
+                                  .downloadSelectedBoardItem(context),
                               attributes: MenuActionAttributes(
                                 disabled:
                                     !(ref
@@ -661,8 +393,8 @@ class ProjectFiles extends ConsumerWidget {
                                 ref
                                     .read(localFileItemsProvider.notifier)
                                     .buildRootFileListItems();
-                                if (!context.mounted) return;
-                                showActionSnackBar(
+
+                                showEditorSnackBar(
                                   context,
                                   "已覆盖本地文件：${localFileTarget.id}",
                                 );
@@ -694,263 +426,4 @@ class ProjectFiles extends ConsumerWidget {
       );
     }
   }
-
-  Widget buildBoardActionStrip(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final hasLocalWorkspace = ref.watch(localWorkspaceProvider) != null;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            FilledButton.tonalIcon(
-              onPressed: hasLocalWorkspace
-                  ? () => downloadSelectedBoardItem(context, ref)
-                  : null,
-              icon: const Icon(Icons.download_outlined, size: 18),
-              label: Text("下载选中项"),
-            ),
-            const SizedBox(width: 6),
-            TextButton.icon(
-              onPressed: () {
-                ref.read(boardWorkspaceProvider.notifier).clear();
-                ref
-                    .read(boardFileItemsProvider.notifier)
-                    .buildRootFileListItems();
-              },
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text("刷新"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> uploadSelectedLocalItem(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final selectedFile = ref
-        .read(localWorkspaceProvider.notifier)
-        .getFocusFileNode();
-    final selectedFolder = ref
-        .read(localWorkspaceProvider.notifier)
-        .getFocusFolderNode();
-    final selected = selectedFile ?? selectedFolder;
-    if (selected == null) {
-      showActionSnackBar(context, "先选择一个本地文件或文件夹");
-      return;
-    }
-
-    final boardFolderTarget = ref
-        .read(boardWorkspaceProvider.notifier)
-        .getFocusFolderNode();
-    final targetPath = boardFolderTarget?.id != null
-        ? "${boardFolderTarget!.id}/${path.basename(selected.id)}"
-        : "/${path.basename(selected.id)}";
-
-    if (selected.data is FileItem) {
-      final content = await local.getFileContent(selected.id);
-      await ref
-          .read(boardWorkspaceProvider.notifier)
-          .writeFile(targetPath, content);
-      if (!context.mounted) return;
-      showActionSnackBar(context, "已上传到设备：$targetPath");
-    } else {
-      await ref
-          .read(boardWorkspaceProvider.notifier)
-          .uploadFolder(selected.id, targetPath);
-      if (!context.mounted) return;
-      showActionSnackBar(context, "已上传文件夹到设备：$targetPath");
-    }
-    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
-  }
-
-  Future<void> downloadSelectedBoardItem(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final selectedFile = ref
-        .read(boardWorkspaceProvider.notifier)
-        .getFocusFileNode();
-    final selectedFolder = ref
-        .read(boardWorkspaceProvider.notifier)
-        .getFocusFolderNode();
-    final selected = selectedFile ?? selectedFolder;
-    final localWorkspace = ref.read(localWorkspaceProvider);
-    if (selected == null) {
-      showActionSnackBar(context, "先选择一个设备文件或文件夹");
-      return;
-    }
-    if (localWorkspace == null) {
-      showActionSnackBar(context, "先打开一个本地项目");
-      return;
-    }
-
-    final localFolderTarget = ref
-        .read(localWorkspaceProvider.notifier)
-        .getFocusFolderNode();
-    final targetPath = localFolderTarget?.id != null
-        ? path.join(localFolderTarget!.id, path.basename(selected.id))
-        : path.join(localWorkspace.path, path.basename(selected.id));
-
-    if (selected.data is FileItem) {
-      final content = await ref
-          .read(boardWorkspaceProvider.notifier)
-          .getFileContent(selected.id);
-
-      String? originContent;
-      if (await File(targetPath).exists()) {
-        try {
-          originContent = await File(targetPath).readAsString();
-        } catch (_) {}
-      }
-      if (originContent != null && originContent != content) {
-        final diff = computeDiff(originContent, content);
-
-        if (ref.read(uploadConfirmStyleProvider) == 'dialog') {
-          final confirmed = await showDiffConfirmDialog(
-            context,
-            diff: diff,
-            targetPath: targetPath,
-            isUpload: false,
-          );
-          if (!confirmed) {
-            if (!context.mounted) return;
-            showActionSnackBar(context, "已取消下载");
-            return;
-          }
-        } else {
-          ref
-              .read(tabbedViewControllerProvider.notifier)
-              .openFile(context, file: File(targetPath), initialText: content);
-
-          if (!context.mounted) return;
-
-          final controller = ref.read(editorControllerMapProvider)[targetPath];
-          controller?.setGitDiffDecorations(
-            addedRanges: diff.addedRanges,
-            removedRanges: diff.removedRanges,
-          );
-
-          final pending = PendingDownload(
-            diff: diff,
-            boardPath: selected.id,
-            localPath: targetPath,
-            content: content,
-          );
-          ref.read(pendingDownloadProvider.notifier).state = pending;
-
-          if (!context.mounted) return;
-          if (!ResponsiveBreakpoints.of(context).isDesktop) {
-            Future.microtask(() => context.go('/editor'));
-          }
-          return;
-        }
-      }
-
-      local.writeFile(targetPath, content);
-      if (!context.mounted) return;
-      showActionSnackBar(context, "已下载到本地：$targetPath");
-    } else {
-      await ref
-          .read(boardWorkspaceProvider.notifier)
-          .downloadFolder(selected.id, targetPath);
-      if (!context.mounted) return;
-      showActionSnackBar(context, "已下载文件夹到本地：$targetPath");
-    }
-
-    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-  }
-
-  Future<bool> confirmDelete(BuildContext context, String name) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.delete_outline),
-        title: const Text("删除项目"),
-        content: Text("确定要删除“$name”吗？此操作无法直接撤销。"),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(false),
-            child: const Text("取消"),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => context.pop(true),
-            child: const Text("删除"),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
-  }
-
-  void showActionSnackBar(BuildContext context, String message) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-Future<bool> showDiffConfirmDialog(
-  BuildContext context, {
-  required DiffInfo diff,
-  required String targetPath,
-  required bool isUpload,
-}) async {
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      icon: const Icon(Icons.difference),
-      title: Text(isUpload ? "确认上传" : "确认下载"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("${isUpload ? "上传" : "下载"}到：$targetPath"),
-          const SizedBox(height: 8),
-          Text("${diff.addCount} 处添加，${diff.removeCount} 处删除"),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Text(
-                  diff.unifiedLines.join('\n'),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
-        FilledButton(
-          onPressed: () => ctx.pop(true),
-          child: Text(isUpload ? "上传" : "下载"),
-        ),
-      ],
-    ),
-  );
-  return result ?? false;
 }

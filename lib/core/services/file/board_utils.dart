@@ -28,10 +28,10 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
   return items;
 }
 
-Future<File> getLocalFilePath(TreeNode<FileSystemItem> node) async {
+Future<File> getLocalFile(String boardFilePath) async {
   final supportDir = await getApplicationSupportDirectory();
   debugPrint("debug: appSupportDir ${supportDir.path}");
-  List<String> fileNameList = node.id.split("/");
+  List<String> fileNameList = boardFilePath.split("/");
   String fileNameResult = "";
   for (int i = 1; i < fileNameList.length; i++) {
     fileNameResult = path.join(fileNameResult, fileNameList[i]);

@@ -208,12 +208,23 @@ class TabHeaderWidget extends StatelessWidget {
                 title: Text("提示"),
                 content: Text("当前文件已经修改，是否保存更改？"),
                 actions: [
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                    ),
+                    onPressed: () async {
+                      context.pop();
+                      await _onClose(context, index);
+                    },
+                    child: Text("不保存"),
+                  ),
                   TextButton(
                     onPressed: () async {
                       await container
                           .read(localWorkspaceProvider.notifier)
                           .saveFile();
-                      if (!context.mounted) return;
+
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
@@ -230,13 +241,6 @@ class TabHeaderWidget extends StatelessWidget {
                       await _onClose(context, index);
                     },
                     child: Text("保存"),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      context.pop();
-                      await _onClose(context, index);
-                    },
-                    child: Text("不保存"),
                   ),
                   TextButton(onPressed: () => context.pop(), child: Text("取消")),
                 ],
