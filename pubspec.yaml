@@ -99,6 +99,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  # Keep Darwin plugins on CocoaPods while code_forge's shipped Package.swift
+  # is rejected by Xcode's SwiftPM resolver.
+  config:
+    enable-swift-package-manager: false
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
