@@ -75,6 +75,16 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     );
 
     final tab = TabData(
+      leading: (context, status) => Padding(
+        padding: EdgeInsetsGeometry.only(right: 4),
+        child: Icon(
+          (isBoardFile)
+              ? Icons.developer_board_outlined
+              : Icons.description_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
       value: value,
       text: file.path.split(pattern).last,
       content: EditCore(file: file, editorController: editorController),
@@ -92,7 +102,22 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           val.isSaved = false;
           tab.leading = (context, status) => Padding(
             padding: EdgeInsets.only(right: 4),
-            child: Icon(Icons.circle, size: 8, color: Colors.orange),
+            child: Row(
+              children: [
+                Icon(Icons.circle, size: 8, color: Colors.orange),
+                SizedBox(width: 4),
+                Padding(
+                  padding: EdgeInsetsGeometry.only(right: 4),
+                  child: Icon(
+                    (isBoardFile)
+                        ? Icons.developer_board_outlined
+                        : Icons.description_outlined,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
           );
           final idx = state.selectedIndex;
           state = TabbedViewController(List.from(state.tabs));
