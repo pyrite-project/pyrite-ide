@@ -13,4 +13,13 @@ void main() {
     expect(expression.runes.every((rune) => rune < 0x80), isTrue);
     expect(expression, startsWith('_decode_text('));
   });
+
+  test('encodes arbitrary file bytes without UTF-8 decoding', () {
+    final bytes = [0x89, 0x50, 0x4e, 0x47, 0x00, 0xff];
+
+    final encoded = encodeBoardFileBytes(bytes);
+
+    expect(decodeBoardFileBytes(encoded), bytes);
+    expect(encoded.runes.every((rune) => rune < 0x80), isTrue);
+  });
 }

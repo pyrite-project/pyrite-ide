@@ -83,6 +83,11 @@ _emit_ok(walk(base))
 
   @override
   Future<String> readTextFile(String path) async {
+    return utf8.decode(await readFileBytes(path));
+  }
+
+  @override
+  Future<Uint8List> readFileBytes(String path) async {
     final value = await _runJsonValue(
       _wrapPython('''
 target = ${_pythonTextExpression(path)}
@@ -96,12 +101,17 @@ _emit_ok(encoded)
     if (value is! String) {
       throw const BoardFileProtocolException('Read response is not a string');
     }
-    return decodeBoardFileText(value);
+    return decodeBoardFileBytes(value);
   }
 
   @override
   Future<void> writeTextFile(String path, String content) async {
-    final encoded = encodeBoardFileText(content);
+    await writeFileBytes(path, utf8.encode(content));
+  }
+
+  @override
+  Future<void> writeFileBytes(String path, List<int> bytes) async {
+    final encoded = encodeBoardFileBytes(bytes);
     final chunks = <String>[];
     for (int i = 0; i < encoded.length; i += _writeChunkSize) {
       final end = math.min(i + _writeChunkSize, encoded.length);

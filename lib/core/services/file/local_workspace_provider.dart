@@ -220,12 +220,20 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     final TreeNode<FileSystemItem>? boardFolderTarget = getFocusFolderNode();
 
     if (selected?.data is FileItem || selectedTab != null) {
-      final String content = await local.getFileContent(
-        selected?.id ?? selectedTab?.value.filePath,
-      );
+      final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
       final targetPath = (boardFolderTarget?.id != null)
           ? "${boardFolderTarget!.id}/${path.basename(selected?.id ?? selectedTab?.value.filePath)}"
           : "/${path.basename(selected?.id ?? selectedTab?.value.filePath)}";
+
+      String content;
+      try {
+        content = await local.getFileContent(sourcePath);
+      } on FileSystemException {
+        await _uploadLocalFileBytes(sourcePath, targetPath);
+        if (!context.mounted) return;
+        showEditorSnackBar(context, "已上传到设备：$targetPath");
+        return;
+      }
 
       String? originContent;
       try {
@@ -293,7 +301,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
           : "/${path.basename(selected!.id)}";
       await ref
           .read(boardWorkspaceProvider.notifier)
-          .uploadFolder(selected!.id, targetPath);
+          .uploadFolder(selected.id, targetPath);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
       showEditorSnackBar(context, "已上传文件夹到设备：$targetPath");
@@ -317,21 +325,15 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
       return;
     }
 
-    final TreeNode<FileSystemItem>? boardFolderTarget = getFocusFolderNode();
     if (selected?.data is FileItem || selectedTab != null) {
-      final String content = await local.getFileContent(
-        selected?.id ?? selectedTab?.value.filePath,
-      );
-      final targetPath = (boardFolderTarget?.id != null)
-          ? "${boardFolderTarget!.id}/${path.basename(selected?.id ?? selectedTab?.value)}"
-          : "/${path.basename(selected?.id ?? selectedTab?.value.filePath)}";
-
-      String? originContent;
+      final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
+      String content;
       try {
-        originContent = await ref
-            .read(boardWorkspaceProvider.notifier)
-            .getFileContent(targetPath);
-      } catch (_) {}
+        content = await local.getFileContent(sourcePath);
+      } on FileSystemException {
+        await _uploadSelectedLocalItem(context, selectedTab: selectedTab);
+        return;
+      }
       // 检查 Local 文件在编辑器中显示的内容是否与实际内容一致
       if ((ref
                   .read(editorControllerMapProvider)[selected?.id ??
@@ -390,6 +392,17 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     } else {
       _uploadSelectedLocalItem(context, selectedTab: selectedTab);
     }
+  }
+
+  Future<void> _uploadLocalFileBytes(
+    String sourcePath,
+    String targetPath,
+  ) async {
+    final bytes = await File(sourcePath).readAsBytes();
+    await ref
+        .read(boardWorkspaceProvider.notifier)
+        .writeFileBytes(targetPath, bytes);
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
   }
 }
 

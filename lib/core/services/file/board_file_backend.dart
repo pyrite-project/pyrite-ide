@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum BoardFileEntryType { file, folder }
 
 class BoardFileEntry {
@@ -32,8 +34,14 @@ abstract class BoardFileBackend {
   /// Reads a UTF-8 text file from the board.
   Future<String> readTextFile(String path);
 
+  /// Reads raw file bytes from the board.
+  Future<Uint8List> readFileBytes(String path);
+
   /// Writes a UTF-8 text file through a temporary board-side file.
   Future<void> writeTextFile(String path, String content);
+
+  /// Writes raw file bytes through a temporary board-side file.
+  Future<void> writeFileBytes(String path, List<int> bytes);
 
   Future<void> deleteFile(String path);
 

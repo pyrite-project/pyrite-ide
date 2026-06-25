@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,7 +10,6 @@ import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
-import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
@@ -175,15 +176,15 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "覆盖设备文件 ${boardFileTarget?.id ?? "（未选择设备文件）"}",
                               callback: () async {
-                                final String content = await local
-                                    .getFileContent(node.id);
+                                final bytes = await File(node.id).readAsBytes();
                                 await ref
                                     .read(boardWorkspaceProvider.notifier)
-                                    .writeFile(boardFileTarget!.id, content);
+                                    .writeFileBytes(boardFileTarget!.id, bytes);
                                 ref
                                     .read(boardFileItemsProvider.notifier)
                                     .buildRootFileListItems();
 
+                                if (!context.mounted) return;
                                 showEditorSnackBar(
                                   context,
                                   "已覆盖设备文件：${boardFileTarget.id}",
@@ -386,14 +387,17 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "覆盖本地文件 ${localFileTarget?.id ?? "（未选择本地文件）"}",
                               callback: () async {
-                                final String content = await ref
+                                final bytes = await ref
                                     .read(boardWorkspaceProvider.notifier)
-                                    .getFileContent(node.id);
-                                local.writeFile(localFileTarget!.id, content);
+                                    .getFileBytes(node.id);
+                                await File(
+                                  localFileTarget!.id,
+                                ).writeAsBytes(bytes);
                                 ref
                                     .read(localFileItemsProvider.notifier)
                                     .buildRootFileListItems();
 
+                                if (!context.mounted) return;
                                 showEditorSnackBar(
                                   context,
                                   "已覆盖本地文件：${localFileTarget.id}",

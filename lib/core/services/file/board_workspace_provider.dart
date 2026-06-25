@@ -1,5 +1,6 @@
 import 'dart:io' as io;
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -33,8 +34,17 @@ class BoardWorkspaceNotifier
     return ref.read(boardFileBackendProvider).readTextFile(path);
   }
 
+  Future<Uint8List> getFileBytes(String path) async {
+    return ref.read(boardFileBackendProvider).readFileBytes(path);
+  }
+
   Future<String> writeFile(String targetPath, String content) async {
     await ref.read(boardFileBackendProvider).writeTextFile(targetPath, content);
+    return 'SaveFileSuccessfully';
+  }
+
+  Future<String> writeFileBytes(String targetPath, List<int> bytes) async {
+    await ref.read(boardFileBackendProvider).writeFileBytes(targetPath, bytes);
     return 'SaveFileSuccessfully';
   }
 
@@ -97,7 +107,7 @@ class BoardWorkspaceNotifier
           }
         }
         debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
-        await writeFile(remoteEntityPath, await entity.readAsString());
+        await writeFileBytes(remoteEntityPath, await entity.readAsBytes());
         debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
       }
     }
@@ -121,8 +131,10 @@ class BoardWorkspaceNotifier
         await io.Directory(localItemPath).create(recursive: true);
       } else {
         debugPrint('[BoardWS] Downloading: ${item['path']}');
-        final content = await getFileContent(item['path']!);
-        await io.File(localItemPath).writeAsString(content);
+        final bytes = await getFileBytes(item['path']!);
+        final file = io.File(localItemPath);
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes);
         debugPrint('[BoardWS] Downloaded: $localItemPath');
       }
     }
