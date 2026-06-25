@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:code_forge/code_forge/styling.dart';
+import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -172,6 +173,10 @@ class _EditCoreState extends ConsumerState<EditCore> {
       lineWrap: ref.watch(editorWordWrap),
       useSpaceAsTab: true,
       tabSize: 4,
+      gutterBuilder: GutterBuilder(
+        builder: (lineNumber, lineText) => '$lineNumber',
+        includeReplacedIndex: false,
+      ),
     );
   }
 
