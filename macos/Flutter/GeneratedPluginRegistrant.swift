@@ -8,6 +8,7 @@ import Foundation
 import device_info_plus
 import dynamic_color
 import file_selector_macos
+import git2dart_binaries
 import irondash_engine_context
 import open_file_mac
 import screen_retriever_macos
@@ -20,6 +21,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   DeviceInfoPlusMacosPlugin.register(with: registry.registrar(forPlugin: "DeviceInfoPlusMacosPlugin"))
   DynamicColorPlugin.register(with: registry.registrar(forPlugin: "DynamicColorPlugin"))
   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))
+  Git2dartBinariesPlugin.register(with: registry.registrar(forPlugin: "Git2dartBinariesPlugin"))
   IrondashEngineContextPlugin.register(with: registry.registrar(forPlugin: "IrondashEngineContextPlugin"))
   OpenFilePlugin.register(with: registry.registrar(forPlugin: "OpenFilePlugin"))
   ScreenRetrieverMacosPlugin.register(with: registry.registrar(forPlugin: "ScreenRetrieverMacosPlugin"))

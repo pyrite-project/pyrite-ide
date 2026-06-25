@@ -599,6 +599,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.0.1"
+  git2dart:
+    dependency: "direct main"
+    description:
+      name: git2dart
+      sha256: "316795845fe516c81cceb1bad3ca9c5fa3006af92c0be3d13c6df7016d88f5ff"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.5.0"
+  git2dart_binaries:
+    dependency: transitive
+    description:
+      name: git2dart_binaries
+      sha256: "4a9691c269403ba5570aae0d9768bce0a0a50c90bf26be13977e1685e56c1043"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.11.2"
   glob:
     dependency: transitive
     description:

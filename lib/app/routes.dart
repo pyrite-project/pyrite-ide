@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/git/main.dart';
 import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
@@ -58,6 +59,11 @@ GoRouter routes = GoRouter(
               topCustomTransitionPage(child: const Tools(), state: state),
         ),
         GoRoute(
+          path: '/git',
+          pageBuilder: (context, state) =>
+              topCustomTransitionPage(child: const GitPage(), state: state),
+        ),
+        GoRoute(
           path: '/plugins',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: Plugins(), state: state),
@@ -110,9 +116,10 @@ GoRouter routes = GoRouter(
 // 地址别名
 const String file = '/file';
 const String tools = '/tools';
+const String git = '/git';
 const String plugins = '/plugins';
 const String settings = '/settings';
 const String edit = '/editor';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [file, tools, plugins, settings, edit];
+const List<String> routesName = [file, tools, git, plugins, settings, edit];

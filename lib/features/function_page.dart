@@ -13,15 +13,9 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
-import 'package:pyrite_ide/pages/file/main.dart';
-import 'package:pyrite_ide/pages/settings/about.dart';
-import 'package:pyrite_ide/pages/settings/editor.dart';
-import 'package:pyrite_ide/pages/settings/lsp.dart';
-import 'package:pyrite_ide/pages/settings/main.dart';
-import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/tools/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -448,10 +442,15 @@ class DesktopView extends ConsumerWidget {
     final width = MediaQuery.sizeOf(context).width;
     final showFunctionPanel = ref.watch(functionPageShow);
     final showExpansionPanel = ref.watch(expansionPageShow) && width >= 1280;
+    final isGitRoute = state.matchedLocation.startsWith('/git');
 
     if (showFunctionPanel) {
       children.add(
-        shadcn.ResizablePane.flex(initialFlex: 2, minSize: 220, child: child),
+        shadcn.ResizablePane.flex(
+          initialFlex: isGitRoute ? 3 : 2,
+          minSize: isGitRoute ? 340 : 220,
+          child: child,
+        ),
       );
     }
     children.add(
@@ -546,7 +545,7 @@ class ReplView extends ConsumerWidget {
       repl,
       controller: replController,
       theme: terminalTheme,
-      key: ValueKey('repl_${surface.value}'),
+      key: ValueKey('repl_${surface.toARGB32()}'),
     );
   }
 }
@@ -612,7 +611,11 @@ class EditorToolsBar extends ConsumerWidget {
           ],
           Flexible(flex: isMobile ? 1 : 2, child: buildFileState(context, ref)),
           const SizedBox(width: 4),
-          Flexible(child: buildBoardConnectState(context, ref)),
+          if (!isMobile) ...[
+            Flexible(child: buildBoardConnectState(context, ref)),
+            const SizedBox(width: 4),
+          ],
+          Flexible(child: buildGitState(context, ref)),
           const Spacer(),
           buildConsoleState(context, ref),
         ],
@@ -648,11 +651,9 @@ class EditorToolsBar extends ConsumerWidget {
       compact: isMobile,
       tooltip: saved ? "再次保存当前文件" : "保存当前文件",
       onPressed: () async {
+        final messenger = ScaffoldMessenger.of(context);
         await ref.read(localWorkspaceProvider.notifier).saveFile();
-
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+        messenger.showSnackBar(const SnackBar(content: Text("已保存当前文件")));
       },
     );
   }
@@ -702,6 +703,40 @@ class EditorToolsBar extends ConsumerWidget {
           : Theme.of(context).colorScheme.outline,
       tooltip: isConnected ? "打开设备管理" : "连接 MicroPython 设备",
       onPressed: () => context.go("/tools"),
+    );
+  }
+
+  Widget buildGitState(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final snapshot = ref.watch(gitProvider).snapshot;
+    if (snapshot == null) {
+      return StatusBarButton(
+        label: 'Git',
+        icon: Icons.account_tree_outlined,
+        compact: isMobile,
+        statusColor: scheme.outline,
+        tooltip: '打开源代码管理',
+        onPressed: () => context.go('/git'),
+      );
+    }
+
+    final changes = snapshot.statusEntries.length;
+    final label = isMobile
+        ? snapshot.branchLabel
+        : '${snapshot.branchLabel} · $changes 项更改';
+    final color = snapshot.hasConflicts
+        ? scheme.error
+        : snapshot.hasChanges
+        ? scheme.tertiary
+        : scheme.primary;
+    return StatusBarButton(
+      label: label,
+      icon: Icons.account_tree_outlined,
+      compact: isMobile,
+      statusColor: color,
+      tooltip: snapshot.hasConflicts ? '存在 Git 冲突' : '打开源代码管理',
+      onPressed: () => context.go('/git'),
     );
   }
 
