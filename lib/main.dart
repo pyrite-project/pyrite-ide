@@ -43,6 +43,7 @@ void _applyData(PersistedData data) {
   }
   container.read(themeStyle.notifier).state =
       ThemeStyle.fromValue(data.themeStyle);
+  container.read(editorThemeKey.notifier).state = data.editorThemeKey;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;

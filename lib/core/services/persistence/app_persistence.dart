@@ -7,17 +7,20 @@ class AppPersistedData {
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
+  final String editorThemeKey;
 
   AppPersistedData({
     required this.themeMode,
     this.themeStyle = 'standard',
     this.themeColorValue,
+    this.editorThemeKey = 'atom-one',
   });
 
   Map<String, dynamic> toJson() => {
     'themeMode': themeMode,
     'themeStyle': themeStyle,
     'themeColorValue': themeColorValue,
+    'editorThemeKey': editorThemeKey,
   };
 
   factory AppPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -25,6 +28,7 @@ class AppPersistedData {
         themeMode: json['themeMode'] as String? ?? 'system',
         themeStyle: json['themeStyle'] as String? ?? 'standard',
         themeColorValue: json['themeColorValue'] as int?,
+        editorThemeKey: json['editorThemeKey'] as String? ?? 'atom-one',
       );
 }
 

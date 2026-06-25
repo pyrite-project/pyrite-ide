@@ -514,10 +514,39 @@ class ReplView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      children: [
-        Expanded(child: TerminalView(repl, controller: replController)),
-      ],
+    final surface = Theme.of(context).colorScheme.surface;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final defaultTheme = TerminalThemes.defaultTheme;
+    final terminalTheme = TerminalTheme(
+      cursor: defaultTheme.cursor,
+      selection: defaultTheme.selection,
+      foreground: onSurface,
+      background: surface,
+      black: defaultTheme.black,
+      white: defaultTheme.white,
+      red: defaultTheme.red,
+      green: defaultTheme.green,
+      yellow: defaultTheme.yellow,
+      blue: defaultTheme.blue,
+      magenta: defaultTheme.magenta,
+      cyan: defaultTheme.cyan,
+      brightBlack: defaultTheme.brightBlack,
+      brightRed: defaultTheme.brightRed,
+      brightGreen: defaultTheme.brightGreen,
+      brightYellow: defaultTheme.brightYellow,
+      brightBlue: defaultTheme.brightBlue,
+      brightMagenta: defaultTheme.brightMagenta,
+      brightCyan: defaultTheme.brightCyan,
+      brightWhite: defaultTheme.brightWhite,
+      searchHitBackground: defaultTheme.searchHitBackground,
+      searchHitBackgroundCurrent: defaultTheme.searchHitBackgroundCurrent,
+      searchHitForeground: defaultTheme.searchHitForeground,
+    );
+    return TerminalView(
+      repl,
+      controller: replController,
+      theme: terminalTheme,
+      key: ValueKey('repl_${surface.value}'),
     );
   }
 }

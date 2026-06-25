@@ -1,8 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/constants/editor_themes.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -33,6 +34,20 @@ class EditorSettings extends ConsumerWidget {
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => showFontSizeDialog(context),
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: "编辑器主题",
+          description: "选择代码高亮配色方案，亮色/暗色随应用主题自动切换。",
+          children: [
+            ListTile(
+              title: const Text("配色方案"),
+              subtitle: Text(
+                findEditorThemeByKey(ref.watch(editorThemeKey))?.label ?? "Atom One",
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showThemePickerDialog(context, ref),
             ),
           ],
         ),
@@ -178,6 +193,65 @@ class EditorSettings extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+
+  void showThemePickerDialog(BuildContext context, WidgetRef ref) async {
+    final currentKey = ref.read(editorThemeKey);
+    final brightness = Theme.of(context).brightness;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("选择编辑器主题"),
+        content: SizedBox(
+          width: 360,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: editorThemes.length,
+            itemBuilder: (context, index) {
+              final entry = editorThemes[index];
+              final selected = entry.key == currentKey;
+              final previewTheme = resolveEditorTheme(entry, brightness);
+              final bgColor = previewTheme['root']?.backgroundColor ??
+                  Colors.grey[900];
+              final sampleStyle = previewTheme['keyword'] ??
+                  previewTheme['title'] ??
+                  const TextStyle(color: Colors.blue);
+              return ListTile(
+                leading: Container(
+                  width: 48,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      "fn",
+                      style: sampleStyle.copyWith(fontSize: 13),
+                    ),
+                  ),
+                ),
+                title: Text(entry.label),
+                trailing: selected ? const Icon(Icons.check) : null,
+                onTap: () {
+                  ref.read(editorThemeKey.notifier).state = entry.key;
+                  context.pop();
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(),
+            child: const Text("取消"),
+          ),
+        ],
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
+import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
@@ -146,10 +147,18 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 
   Widget body(BuildContext context, WidgetRef ref) {
-    final theme = Map.of(ref.watch(editorThemeMode));
+    final themeKey = ref.watch(editorThemeKey);
+    final entry = findEditorThemeByKey(themeKey) ?? editorThemes.first;
+    final brightness = Theme.of(context).brightness;
+    final surface = Theme.of(context).scaffoldBackgroundColor;
+    final resolvedTheme = applySurfaceBackground(
+      resolveEditorTheme(entry, brightness),
+      surface,
+    );
     return CodeForge(
+      key: ValueKey('${themeKey}_${brightness.name}_${surface.value}'),
       filePath: widget.file.path,
-      editorTheme: theme,
+      editorTheme: resolvedTheme,
       language: langPython,
       controller: widget.editorController,
       matchHighlightStyle: const MatchHighlightStyle(
