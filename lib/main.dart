@@ -41,8 +41,9 @@ void _applyData(PersistedData data) {
   if (data.themeColorValue != null) {
     container.read(themeColor.notifier).state = Color(data.themeColorValue!);
   }
-  container.read(themeStyle.notifier).state =
-      ThemeStyle.fromValue(data.themeStyle);
+  container.read(themeStyle.notifier).state = ThemeStyle.fromValue(
+    data.themeStyle,
+  );
   container.read(editorThemeKey.notifier).state = data.editorThemeKey;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
@@ -59,8 +60,10 @@ void _applyData(PersistedData data) {
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
-  container.read(enableSignalDetection.notifier).state = data.enableSignalDetection;
-  container.read(uploadConfirmStyleProvider.notifier).state = data.uploadConfirmStyle;
+  container.read(enableSignalDetection.notifier).state =
+      data.enableSignalDetection;
+  container.read(uploadConfirmStyleProvider.notifier).state =
+      data.uploadConfirmStyle;
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
   container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
 }
@@ -80,6 +83,24 @@ void _startAutoSave() {
   container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
     _triggerSave();
   };
+}
+
+Future<void> _bootstrapPythonRuntime() async {
+  try {
+    await SeriousPython.run(
+      "assets/python_runtime_boot.zip",
+      appFileName: "boot.py",
+    );
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: "pyrite_ide",
+        context: ErrorDescription("while bootstrapping the Python runtime"),
+      ),
+    );
+  }
 }
 
 // PyriteIDE: Hello World.
@@ -109,9 +130,9 @@ void main() async {
         .restoreTabs(data.tabs, data.selectedTabIndex);
   }
 
-  UseWindow().init();
+  await UseWindow().init();
 
-  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
+  await _bootstrapPythonRuntime();
   // container.read(lspClientProvider);
 
   runApp(

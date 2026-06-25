@@ -11,7 +11,7 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:window_manager/window_manager.dart';
 
 class UseWindow {
-  void init() async {
+  Future<void> init() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       WidgetsFlutterBinding.ensureInitialized();
       await windowManager.ensureInitialized();
