@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
-import 'package:pyrite_ide/pages/git/main.dart';
+import 'package:pyrite_ide/pages/git/main.dart' deferred as git_page;
 import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
@@ -60,8 +60,10 @@ GoRouter routes = GoRouter(
         ),
         GoRoute(
           path: '/git',
-          pageBuilder: (context, state) =>
-              topCustomTransitionPage(child: const GitPage(), state: state),
+          pageBuilder: (context, state) => topCustomTransitionPage(
+            child: const _DeferredGitPage(),
+            state: state,
+          ),
         ),
         GoRoute(
           path: '/plugins',
@@ -112,6 +114,41 @@ GoRouter routes = GoRouter(
     ),
   ],
 );
+
+class _DeferredGitPage extends StatefulWidget {
+  const _DeferredGitPage();
+
+  @override
+  State<_DeferredGitPage> createState() => _DeferredGitPageState();
+}
+
+class _DeferredGitPageState extends State<_DeferredGitPage> {
+  // The Git page pulls in git2dart/libgit2. Defer it so Windows debug startup
+  // does not load native Git DLLs before the user opens source control.
+  late final Future<void> _loadGitPage = git_page.loadLibrary();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _loadGitPage,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('无法加载 Git 页面：${snapshot.error}'),
+            ),
+          );
+        }
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return git_page.GitPage();
+      },
+    );
+  }
+}
 
 // 地址别名
 const String file = '/file';

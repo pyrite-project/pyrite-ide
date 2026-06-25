@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
@@ -232,9 +231,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
-  Future<void> acceptConflictSide(String path, GitMergeFileFavor favor) async {
+  Future<void> acceptConflictSide(String path, GitConflictSide side) async {
     await _runRoot(
-      (root) async => _service.acceptConflictSide(root, path, favor),
+      (root) async => _service.acceptConflictSide(root, path, side),
       success: '已应用冲突解决结果',
     );
   }

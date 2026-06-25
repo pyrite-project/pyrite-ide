@@ -315,13 +315,17 @@ class GitRepositoryService {
   void acceptConflictSide(
     String rootPath,
     String filePath,
-    GitMergeFileFavor favor,
+    GitConflictSide side,
   ) {
     _withRepo(rootPath, (repo) {
       final conflict = repo.index.conflicts[filePath];
       if (conflict == null || conflict.our == null || conflict.their == null) {
         throw StateError('没有找到 $filePath 的三方冲突。');
       }
+      final favor = switch (side) {
+        GitConflictSide.ours => GitMergeFileFavor.ours,
+        GitConflictSide.theirs => GitMergeFileFavor.theirs,
+      };
       final merged = Merge.fileFromIndex(
         repo: repo,
         ancestor: conflict.ancestor,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
@@ -372,7 +371,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                     .read(gitProvider.notifier)
                                     .acceptConflictSide(
                                       conflict.path,
-                                      GitMergeFileFavor.ours,
+                                      GitConflictSide.ours,
                                     ),
                           icon: const Icon(Icons.looks_one_outlined),
                           label: const Text('采用 ours'),
@@ -384,7 +383,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                     .read(gitProvider.notifier)
                                     .acceptConflictSide(
                                       conflict.path,
-                                      GitMergeFileFavor.theirs,
+                                      GitConflictSide.theirs,
                                     ),
                           icon: const Icon(Icons.looks_two_outlined),
                           label: const Text('采用 theirs'),

@@ -1,5 +1,7 @@
 enum GitCredentialMode { none, httpsToken, sshAgent, sshKey }
 
+enum GitConflictSide { ours, theirs }
+
 class GitCredentialDraft {
   const GitCredentialDraft({
     this.mode = GitCredentialMode.none,

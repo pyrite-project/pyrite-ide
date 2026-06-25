@@ -13,7 +13,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/git/git_provider.dart';
+import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -709,8 +709,8 @@ class EditorToolsBar extends ConsumerWidget {
   Widget buildGitState(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
-    final snapshot = ref.watch(gitProvider).snapshot;
-    if (snapshot == null) {
+    final summary = ref.watch(gitStatusSummaryProvider);
+    if (summary == null) {
       return StatusBarButton(
         label: 'Git',
         icon: Icons.account_tree_outlined,
@@ -721,21 +721,15 @@ class EditorToolsBar extends ConsumerWidget {
       );
     }
 
-    final changes = snapshot.statusEntries.length;
     final label = isMobile
-        ? snapshot.branchLabel
-        : '${snapshot.branchLabel} · $changes 项更改';
-    final color = snapshot.hasConflicts
-        ? scheme.error
-        : snapshot.hasChanges
-        ? scheme.tertiary
-        : scheme.primary;
+        ? summary.branchLabel
+        : '${summary.branchLabel} · Git';
     return StatusBarButton(
       label: label,
       icon: Icons.account_tree_outlined,
       compact: isMobile,
-      statusColor: color,
-      tooltip: snapshot.hasConflicts ? '存在 Git 冲突' : '打开源代码管理',
+      statusColor: scheme.primary,
+      tooltip: '打开源代码管理',
       onPressed: () => context.go('/git'),
     );
   }
