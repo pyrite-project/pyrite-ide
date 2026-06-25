@@ -10,7 +10,7 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: PyriteIDE()));
     await tester.pumpAndSettle();
 
-    expect(find.text('一个更轻量、清晰的 MicroPython 工作台'), findsOneWidget);
+    expect(find.text('1. 打开保存脚本的项目文件夹'), findsOneWidget);
     expect(find.text('打开项目文件夹'), findsOneWidget);
     expect(find.text('连接设备'), findsOneWidget);
   });

@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/board_manager/repl_io.dart';
+import 'package:pyrite_ide/core/services/board_manager/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
@@ -46,7 +47,10 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
         }
       }
 
-      state = state.copyWith(devices: devices, isConnected: isOpen && portName != null);
+      state = state.copyWith(
+        devices: devices,
+        isConnected: isOpen && portName != null,
+      );
     } catch (_) {
       if (_port == null && state.isConnected) {
         state = state.copyWith(isConnected: false);
@@ -91,9 +95,11 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
   }
 
   void _onData(Uint8List data) {
-    try {
-      repl.write(utf8.decode(data));
-    } catch (_) {}
+    if (!ref.read(serialReplIoPausedProvider)) {
+      try {
+        repl.write(utf8.decode(data));
+      } catch (_) {}
+    }
     for (final cb in ref.read(serialDataCallbacksProvider)) {
       try {
         cb(data);
@@ -111,10 +117,7 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
       _port = null;
     }
     _device = null;
-    state = state.copyWith(
-      selectedPortName: null,
-      isConnected: false,
-    );
+    state = state.copyWith(selectedPortName: null, isConnected: false);
     UsbSerial.listDevices().then((devices) {
       if (_port == null) {
         state = state.copyWith(devices: devices);
@@ -135,10 +138,7 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
       _port = null;
     }
     _device = null;
-    state = state.copyWith(
-      selectedPortName: null,
-      isConnected: false,
-    );
+    state = state.copyWith(selectedPortName: null, isConnected: false);
   }
 
   void _scheduleReconnect(UsbDevice device) {
@@ -210,81 +210,10 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
 
   void bindReplOnOutputCallback() {
     repl.onOutput = (String data) {
+      if (ref.read(serialReplIoPausedProvider)) return;
       final encode = ref.read(chineseToUnicodeConversion);
       sendCommand(encode ? ReplInputEncoder.encode(data) : data);
     };
-  }
-
-  Future<bool> enterRawRepl() async {
-    final completer = Completer<bool>();
-    Timer? timeoutTimer;
-    bool completed = false;
-
-    void callback(Uint8List data) {
-      if (completed) return;
-      if (utf8.decode(data).contains("raw REPL; CTRL-B to exit")) {
-        completed = true;
-        timeoutTimer?.cancel();
-        if (!completer.isCompleted) {
-          completer.complete(true);
-        }
-      }
-    }
-
-    ref.read(serialDataCallbacksProvider.notifier).add(callback);
-
-    timeoutTimer = Timer(const Duration(seconds: 10), () {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-      if (!completer.isCompleted) {
-        completer.complete(false);
-      }
-    });
-
-    sendCommand("\x01");
-
-    try {
-      return await completer.future;
-    } finally {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-    }
-  }
-
-  Future<bool> exitRawRepl() async {
-    final completer = Completer<bool>();
-    Timer? timeoutTimer;
-    bool completed = false;
-
-    void callback(Uint8List data) {
-      if (completed) return;
-      if (utf8.decode(data).contains("\r\n>>>")) {
-        completed = true;
-        timeoutTimer?.cancel();
-        if (!completer.isCompleted) {
-          completer.complete(true);
-        }
-      }
-    }
-
-    ref.read(serialDataCallbacksProvider.notifier).add(callback);
-
-    timeoutTimer = Timer(const Duration(seconds: 10), () {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-      if (!completer.isCompleted) {
-        completer.complete(false);
-      }
-    });
-
-    sendCommand("\x02");
-
-    try {
-      return await completer.future;
-    } finally {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-    }
   }
 }
 

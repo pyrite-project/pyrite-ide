@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/board_manager/repl_io.dart';
+import 'package:pyrite_ide/core/services/board_manager/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
@@ -19,25 +20,31 @@ final DynamicLibrary? _kernel32 = Platform.isWindows
     ? DynamicLibrary.open('kernel32.dll')
     : null;
 
-final _createFileW = _kernel32?.lookupFunction<
-    IntPtr Function(Pointer<Utf16>, Uint32, Uint32, Pointer, Uint32, Uint32, IntPtr),
-    int Function(Pointer<Utf16>, int, int, Pointer, int, int, int)>('CreateFileW');
+final _createFileW = _kernel32
+    ?.lookupFunction<
+      IntPtr Function(
+        Pointer<Utf16>,
+        Uint32,
+        Uint32,
+        Pointer,
+        Uint32,
+        Uint32,
+        IntPtr,
+      ),
+      int Function(Pointer<Utf16>, int, int, Pointer, int, int, int)
+    >('CreateFileW');
 
-final _closeHandle = _kernel32?.lookupFunction<
-    Int32 Function(IntPtr),
-    int Function(int)>('CloseHandle');
+final _closeHandle = _kernel32
+    ?.lookupFunction<Int32 Function(IntPtr), int Function(int)>('CloseHandle');
 
-final _getLastError = _kernel32?.lookupFunction<
-    Uint32 Function(),
-    int Function()>('GetLastError');
+final _getLastError = _kernel32
+    ?.lookupFunction<Uint32 Function(), int Function()>('GetLastError');
 
 class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
   final Ref ref;
   FlSerial? _serial;
   StreamSubscription<SerialEvent>? _eventSub;
   Timer? _reconnectTimer;
-
-  int _checkCounter = 0;
 
   DesktopUsbSerialNotifier(this.ref) : super(const DesktopUsbSerialState());
 
@@ -71,7 +78,10 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
         }
       }
 
-      state = state.copyWith(portInfos: ports, isConnected: isOpen && portName != null);
+      state = state.copyWith(
+        portInfos: ports,
+        isConnected: isOpen && portName != null,
+      );
     } catch (_) {
       if (_serial == null && state.isConnected) {
         state = state.copyWith(isConnected: false);
@@ -84,15 +94,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     try {
       final path = '\\\\.\\$portName';
       final wide = path.toNativeUtf16(allocator: malloc);
-      final handle = _createFileW!(
-        wide,
-        0,
-        3,
-        nullptr,
-        3,
-        0x80,
-        0,
-      );
+      final handle = _createFileW!(wide, 0, 3, nullptr, 3, 0x80, 0);
       malloc.free(wide);
 
       const int invalidHandleValue = -1;
@@ -130,10 +132,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     final ok = await serial.open(path, config);
     if (ok) {
       _serial = serial;
-      state = state.copyWith(
-        selectedPortName: path,
-        isConnected: true,
-      );
+      state = state.copyWith(selectedPortName: path, isConnected: true);
     } else {
       await _eventSub?.cancel();
       _eventSub = null;
@@ -149,9 +148,11 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
         _autoDisconnect();
       case SerialEventType.data:
         final data = event.data as Uint8List;
-        try {
-          repl.write(utf8.decode(data));
-        } catch (_) {}
+        if (!ref.read(serialReplIoPausedProvider)) {
+          try {
+            repl.write(utf8.decode(data));
+          } catch (_) {}
+        }
         for (final cb in ref.read(serialDataCallbacksProvider)) {
           try {
             cb(data);
@@ -172,10 +173,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
       _serial!.dispose();
       _serial = null;
     }
-    state = state.copyWith(
-      selectedPortName: null,
-      isConnected: false,
-    );
+    state = state.copyWith(selectedPortName: null, isConnected: false);
     FlSerial.availablePorts().then((ports) {
       if (_serial == null) {
         state = state.copyWith(portInfos: ports);
@@ -196,10 +194,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
       await _serial!.dispose();
       _serial = null;
     }
-    state = state.copyWith(
-      selectedPortName: null,
-      isConnected: false,
-    );
+    state = state.copyWith(selectedPortName: null, isConnected: false);
   }
 
   void _scheduleReconnect(String path) {
@@ -247,81 +242,10 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
 
   void bindReplOnOutputCallback() {
     repl.onOutput = (String data) {
+      if (ref.read(serialReplIoPausedProvider)) return;
       final encode = ref.read(chineseToUnicodeConversion);
       sendCommand(encode ? ReplInputEncoder.encode(data) : data);
     };
-  }
-
-  Future<bool> enterRawRepl() async {
-    final completer = Completer<bool>();
-    Timer? timeoutTimer;
-    bool completed = false;
-
-    void callback(Uint8List data) {
-      if (completed) return;
-      if (utf8.decode(data).contains("raw REPL; CTRL-B to exit")) {
-        completed = true;
-        timeoutTimer?.cancel();
-        if (!completer.isCompleted) {
-          completer.complete(true);
-        }
-      }
-    }
-
-    ref.read(serialDataCallbacksProvider.notifier).add(callback);
-
-    timeoutTimer = Timer(const Duration(seconds: 10), () {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-      if (!completer.isCompleted) {
-        completer.complete(false);
-      }
-    });
-
-    sendCommand("\x01");
-
-    try {
-      return await completer.future;
-    } finally {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-    }
-  }
-
-  Future<bool> exitRawRepl() async {
-    final completer = Completer<bool>();
-    Timer? timeoutTimer;
-    bool completed = false;
-
-    void callback(Uint8List data) {
-      if (completed) return;
-      if (utf8.decode(data).contains("\r\n>>>")) {
-        completed = true;
-        timeoutTimer?.cancel();
-        if (!completer.isCompleted) {
-          completer.complete(true);
-        }
-      }
-    }
-
-    ref.read(serialDataCallbacksProvider.notifier).add(callback);
-
-    timeoutTimer = Timer(const Duration(seconds: 10), () {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-      if (!completer.isCompleted) {
-        completer.complete(false);
-      }
-    });
-
-    sendCommand("\x02");
-
-    try {
-      return await completer.future;
-    } finally {
-      completed = true;
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-    }
   }
 }
 

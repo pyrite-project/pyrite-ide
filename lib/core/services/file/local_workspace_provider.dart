@@ -19,6 +19,29 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
+final _boardUploadPath = path.Context(style: path.Style.posix);
+final _windowsUploadSourcePath = path.Context(style: path.Style.windows);
+final _windowsAbsoluteSourcePath = RegExp(r'^(?:[A-Za-z]:[\\/]|\\\\)');
+
+@visibleForTesting
+String buildBoardUploadTargetPath({
+  required String sourcePath,
+  required String? boardFolderPath,
+}) {
+  final folder = boardFolderPath == null || boardFolderPath.isEmpty
+      ? "/"
+      : boardFolderPath;
+  return _boardUploadPath.join(folder, _localSourceBasename(sourcePath));
+}
+
+String _localSourceBasename(String sourcePath) {
+  if (_windowsAbsoluteSourcePath.hasMatch(sourcePath)) {
+    return _windowsUploadSourcePath.basename(sourcePath);
+  }
+
+  return path.basename(sourcePath);
+}
+
 class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   LocalWorkspaceNotifier(this.ref) : super(null);
@@ -217,15 +240,26 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
       return;
     }
 
-    final TreeNode<FileSystemItem>? boardFolderTarget = getFocusFolderNode();
+    final TreeNode<FileSystemItem>? boardFolderTarget = ref
+        .read(boardWorkspaceProvider.notifier)
+        .getFocusFolderNode();
 
     if (selected?.data is FileItem || selectedTab != null) {
-      final String content = await local.getFileContent(
-        selected?.id ?? selectedTab?.value.filePath,
+      final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
+      final targetPath = buildBoardUploadTargetPath(
+        sourcePath: sourcePath,
+        boardFolderPath: boardFolderTarget?.id,
       );
-      final targetPath = (boardFolderTarget?.id != null)
-          ? "${boardFolderTarget!.id}/${path.basename(selected?.id ?? selectedTab?.value.filePath)}"
-          : "/${path.basename(selected?.id ?? selectedTab?.value.filePath)}";
+
+      String content;
+      try {
+        content = await local.getFileContent(sourcePath);
+      } on FileSystemException {
+        await _uploadLocalFileBytes(sourcePath, targetPath);
+        if (!context.mounted) return;
+        showEditorSnackBar(context, "已上传到设备：$targetPath");
+        return;
+      }
 
       String? originContent;
       try {
@@ -288,12 +322,13 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
 
       showEditorSnackBar(context, "已上传到设备：$targetPath");
     } else if (selected?.data is FolderItem) {
-      final targetPath = (boardFolderTarget?.id != null)
-          ? "${boardFolderTarget!.id}/${path.basename(selected!.id)}"
-          : "/${path.basename(selected!.id)}";
+      final targetPath = buildBoardUploadTargetPath(
+        sourcePath: selected!.id,
+        boardFolderPath: boardFolderTarget?.id,
+      );
       await ref
           .read(boardWorkspaceProvider.notifier)
-          .uploadFolder(selected!.id, targetPath);
+          .uploadFolder(selected.id, targetPath);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
       showEditorSnackBar(context, "已上传文件夹到设备：$targetPath");
@@ -317,21 +352,15 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
       return;
     }
 
-    final TreeNode<FileSystemItem>? boardFolderTarget = getFocusFolderNode();
     if (selected?.data is FileItem || selectedTab != null) {
-      final String content = await local.getFileContent(
-        selected?.id ?? selectedTab?.value.filePath,
-      );
-      final targetPath = (boardFolderTarget?.id != null)
-          ? "${boardFolderTarget!.id}/${path.basename(selected?.id ?? selectedTab?.value)}"
-          : "/${path.basename(selected?.id ?? selectedTab?.value.filePath)}";
-
-      String? originContent;
+      final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
+      String content;
       try {
-        originContent = await ref
-            .read(boardWorkspaceProvider.notifier)
-            .getFileContent(targetPath);
-      } catch (_) {}
+        content = await local.getFileContent(sourcePath);
+      } on FileSystemException {
+        await _uploadSelectedLocalItem(context, selectedTab: selectedTab);
+        return;
+      }
       // 检查 Local 文件在编辑器中显示的内容是否与实际内容一致
       if ((ref
                   .read(editorControllerMapProvider)[selected?.id ??
@@ -390,6 +419,17 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     } else {
       _uploadSelectedLocalItem(context, selectedTab: selectedTab);
     }
+  }
+
+  Future<void> _uploadLocalFileBytes(
+    String sourcePath,
+    String targetPath,
+  ) async {
+    final bytes = await File(sourcePath).readAsBytes();
+    await ref
+        .read(boardWorkspaceProvider.notifier)
+        .writeFileBytes(targetPath, bytes);
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
   }
 }
 
