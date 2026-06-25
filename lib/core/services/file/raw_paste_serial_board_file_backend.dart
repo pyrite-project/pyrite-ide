@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_pro
 import 'package:pyrite_ide/core/services/board_manager/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
+import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
 
 /// Board file backend that talks to every supported platform through the
 /// existing serial provider and MicroPython raw-paste protocol.
@@ -29,7 +30,7 @@ class RawPasteSerialBoardFileBackend implements BoardFileBackend {
   Future<List<BoardFileEntry>> listDirectory({String path = '/'}) async {
     final value = await _runJsonValue(
       _wrapPython('''
-base = ${_pythonStringLiteral(path)}
+base = ${_pythonTextExpression(path)}
 if base != '/' and base.endswith('/'):
   base = base[:-1]
 items = []
@@ -39,8 +40,8 @@ for entry in os.ilistdir(base):
   item_path = '/' + name if base == '/' else base + '/' + name
   is_dir = _is_dir(item_path, mode)
   items.append({
-    'path': item_path,
-    'name': name,
+    'path_b64': _encode_text(item_path),
+    'name_b64': _encode_text(name),
     'type': 'folder' if is_dir else 'file',
   })
 _emit_ok(items)
@@ -53,7 +54,7 @@ _emit_ok(items)
   Future<List<BoardFileEntry>> listTree({String path = '/'}) async {
     final value = await _runJsonValue(
       _wrapPython('''
-base = ${_pythonStringLiteral(path)}
+base = ${_pythonTextExpression(path)}
 if base != '/' and base.endswith('/'):
   base = base[:-1]
 
@@ -65,8 +66,8 @@ def walk(base_path):
     item_path = '/' + name if base_path == '/' else base_path + '/' + name
     is_dir = _is_dir(item_path, mode)
     result.append({
-      'path': item_path,
-      'name': name,
+      'path_b64': _encode_text(item_path),
+      'name_b64': _encode_text(name),
       'type': 'folder' if is_dir else 'file',
     })
     if is_dir:
@@ -84,7 +85,7 @@ _emit_ok(walk(base))
   Future<String> readTextFile(String path) async {
     final value = await _runJsonValue(
       _wrapPython('''
-target = ${_pythonStringLiteral(path)}
+target = ${_pythonTextExpression(path)}
 with open(target, 'rb') as f:
   data = f.read()
 encoded = ubinascii.b2a_base64(data).decode().strip()
@@ -95,22 +96,21 @@ _emit_ok(encoded)
     if (value is! String) {
       throw const BoardFileProtocolException('Read response is not a string');
     }
-    return utf8.decode(base64.decode(value));
+    return decodeBoardFileText(value);
   }
 
   @override
   Future<void> writeTextFile(String path, String content) async {
-    final bytes = utf8.encode(content);
-    final encoded = base64.encode(bytes);
+    final encoded = encodeBoardFileText(content);
     final chunks = <String>[];
     for (int i = 0; i < encoded.length; i += _writeChunkSize) {
       final end = math.min(i + _writeChunkSize, encoded.length);
       chunks.add(encoded.substring(i, end));
     }
 
-    final target = _pythonStringLiteral(path);
+    final target = _pythonTextExpression(path);
     final tempPath = _temporaryPathFor(path);
-    final temp = _pythonStringLiteral(tempPath);
+    final temp = _pythonTextExpression(tempPath);
     final chunkList = chunks.map(_pythonStringLiteral).join(', ');
 
     await _runJsonValue(
@@ -150,7 +150,7 @@ _emit_ok('SaveFileSuccessfully')
   Future<void> deleteFile(String path) async {
     await _runJsonValue(
       _wrapPython('''
-os.remove(${_pythonStringLiteral(path)})
+os.remove(${_pythonTextExpression(path)})
 _emit_ok('DeleteFileSuccessfully')
 '''),
     );
@@ -160,7 +160,7 @@ _emit_ok('DeleteFileSuccessfully')
   Future<void> deleteFolder(String path) async {
     await _runJsonValue(
       _wrapPython('''
-target = ${_pythonStringLiteral(path)}
+target = ${_pythonTextExpression(path)}
 
 def delete_recursive(folder):
   for entry in os.ilistdir(folder):
@@ -188,7 +188,7 @@ _emit_ok('DeleteDirSuccessfully')
         : _boardPath.join(parent, newName);
     await _runJsonValue(
       _wrapPython('''
-os.rename(${_pythonStringLiteral(path)}, ${_pythonStringLiteral(target)})
+os.rename(${_pythonTextExpression(path)}, ${_pythonTextExpression(target)})
 _emit_ok('RenameSuccessfully')
 '''),
     );
@@ -199,7 +199,7 @@ _emit_ok('RenameSuccessfully')
     await _runJsonValue(
       _wrapPython('''
 try:
-  os.mkdir(${_pythonStringLiteral(path)})
+  os.mkdir(${_pythonTextExpression(path)})
   _emit_ok('MkdirSuccessfully')
 except OSError as exc:
   if len(exc.args) > 0 and exc.args[0] == 17:
@@ -232,7 +232,7 @@ except OSError as exc:
       throw const BoardFileProtocolException('Board response is not a map');
     }
     if (decoded['ok'] != true) {
-      final error = decoded['error']?.toString() ?? 'Unknown board error';
+      final error = _decodeError(decoded);
       throw BoardFileBackendException(error);
     }
     return decoded['value'];
@@ -292,6 +292,16 @@ import ubinascii
 
 _PYRITE_MARKER = ${_pythonStringLiteral(_resultMarker)}
 
+def _decode_text(value):
+  return ubinascii.a2b_base64(value).decode()
+
+def _encode_text(value):
+  if isinstance(value, bytes):
+    data = value
+  else:
+    data = value.encode()
+  return ubinascii.b2a_base64(data).decode().strip()
+
 def _emit_ok(value):
   print(_PYRITE_MARKER + json.dumps({'ok': True, 'value': value}))
 
@@ -302,7 +312,7 @@ def _emit_error(exc):
     name = 'Exception'
   print(_PYRITE_MARKER + json.dumps({
     'ok': False,
-    'error': name + ': ' + str(exc),
+    'error_b64': _encode_text(name + ': ' + str(exc)),
   }))
 
 def _is_dir(item_path, mode):
@@ -336,11 +346,42 @@ except Exception as _pyrite_exc:
           ? BoardFileEntryType.folder
           : BoardFileEntryType.file;
       return BoardFileEntry(
-        path: entry['path'].toString(),
-        name: entry['name'].toString(),
+        path: _entryText(entry, 'path'),
+        name: _entryText(entry, 'name'),
         type: type,
       );
     }).toList();
+  }
+
+  String _entryText(Map<dynamic, dynamic> entry, String key) {
+    final encoded = entry['${key}_b64'];
+    if (encoded != null) {
+      try {
+        return decodeBoardFileText(encoded.toString());
+      } on FormatException catch (error) {
+        throw BoardFileProtocolException(
+          'Invalid encoded $key in board file list: $error',
+        );
+      }
+    }
+
+    final value = entry[key];
+    if (value == null) {
+      throw BoardFileProtocolException('Missing $key in board file list item');
+    }
+    return value.toString();
+  }
+
+  String _decodeError(Map<String, dynamic> decoded) {
+    final encoded = decoded['error_b64'];
+    if (encoded is String) {
+      try {
+        return decodeBoardFileText(encoded);
+      } on FormatException {
+        return 'Invalid board error payload';
+      }
+    }
+    return decoded['error']?.toString() ?? 'Unknown board error';
   }
 
   String _temporaryPathFor(String targetPath) {
@@ -351,6 +392,8 @@ except Exception as _pyrite_exc:
   }
 
   String _pythonStringLiteral(String value) => jsonEncode(value);
+
+  String _pythonTextExpression(String value) => boardFileTextExpression(value);
 
   String _preview(String value) {
     if (value.length <= 240) return value;
