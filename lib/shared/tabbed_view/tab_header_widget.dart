@@ -290,7 +290,7 @@ class TabHeaderWidget extends StatelessWidget {
         )) {
           container
               .read(tabbedViewControllerProvider.notifier)
-              .afterTabClose(index);
+              .afterTabClose(index, tabData);
         }
       }
     }

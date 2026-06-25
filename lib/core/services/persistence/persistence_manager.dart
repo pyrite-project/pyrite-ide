@@ -126,6 +126,7 @@ class PersistenceManager {
           PersistedTab(
             filePath: value.filePath,
             isBoardFile: value.isBoardFile ?? false,
+            boardFilePath: value.boardFilePath,
             isSaved: value.isSaved,
             unsavedContent: (!value.isSaved && value.editorController != null)
                 ? value.editorController!.text

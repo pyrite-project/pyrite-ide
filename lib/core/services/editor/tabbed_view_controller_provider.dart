@@ -218,7 +218,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     state = newController;
   }
 
-  void afterTabClose(int index) async {
+  void afterTabClose(int index, TabData tabData) async {
+    final value = tabData.value;
+    final filePath = value.filePath;
     TabbedViewController newController = TabbedViewController(
       List.from(state.tabs),
     );
@@ -226,24 +228,23 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
     ref
             .read(
-              pendingUploadProviderMap[state
-                      .getTabByIndex(index)
-                      .value
-                      .filePath]!
-                  .notifier,
+              pendingUploadProviderMap[filePath]!.notifier,
             )
             .state =
         null;
     ref
             .read(
-              pendingDownloadProviderMap[state
-                      .getTabByIndex(index)
-                      .value
-                      .filePath]!
-                  .notifier,
+              pendingDownloadProviderMap[filePath]!.notifier,
             )
             .state =
         null;
+
+    if (value != null && value is TabDataValue && value.isBoardFile == true) {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
   }
 
   void afterFileSave() {
@@ -265,30 +266,50 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     tabs.addAll(_buildTabbedViewController().tabs);
 
     for (final persisted in persistedTabs) {
-      if (persisted.isBoardFile) continue;
       final file = File(persisted.filePath);
-      if (!await file.exists()) {
-        if (persisted.unsavedContent == null) continue;
+      final exists = await file.exists();
+      if (!exists && persisted.unsavedContent == null) continue;
+
+      if (!exists && persisted.unsavedContent != null) {
+        await file.create(recursive: true);
+        await file.writeAsString(persisted.unsavedContent!);
+      } else if (exists &&
+          !persisted.isSaved &&
+          persisted.unsavedContent != null) {
+        await file.writeAsString(persisted.unsavedContent!);
       }
+
       final controller = await ref
           .read(editorControllerMapProvider.notifier)
           .createNewEditorController(
             file,
-            initialText: persisted.unsavedContent,
           );
       if (controller == null) continue;
       final tab = await _createNewFileTab(
         file,
         controller,
         isBoardFile: persisted.isBoardFile,
-        boardFilePath: null,
+        boardFilePath: persisted.boardFilePath,
         isSaved: persisted.isSaved,
       );
       if (tab != null) {
         if (!persisted.isSaved && persisted.unsavedContent != null) {
           tab.leading = (context, status) => Padding(
             padding: EdgeInsets.only(right: 4),
-            child: Icon(Icons.circle, size: 8, color: Colors.orange),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.circle, size: 8, color: Colors.orange),
+                SizedBox(width: 4),
+                Icon(
+                  persisted.isBoardFile
+                      ? Icons.developer_board_outlined
+                      : Icons.description_outlined,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ],
+            ),
           );
         }
         tabs.add(tab);

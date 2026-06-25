@@ -1,12 +1,14 @@
 class PersistedTab {
   final String filePath;
   final bool isBoardFile;
+  final String? boardFilePath;
   final bool isSaved;
   final String? unsavedContent;
 
   PersistedTab({
     required this.filePath,
     this.isBoardFile = false,
+    this.boardFilePath,
     this.isSaved = true,
     this.unsavedContent,
   });
@@ -14,6 +16,7 @@ class PersistedTab {
   Map<String, dynamic> toJson() => {
     'filePath': filePath,
     'isBoardFile': isBoardFile,
+    'boardFilePath': boardFilePath,
     'isSaved': isSaved,
     'unsavedContent': unsavedContent,
   };
@@ -21,6 +24,7 @@ class PersistedTab {
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
     filePath: json['filePath'] as String,
     isBoardFile: json['isBoardFile'] as bool? ?? false,
+    boardFilePath: json['boardFilePath'] as String?,
     isSaved: json['isSaved'] as bool? ?? true,
     unsavedContent: json['unsavedContent'] as String?,
   );
