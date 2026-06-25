@@ -88,10 +88,7 @@ class AppActionBar extends ConsumerWidget {
               () =>
                   ref.read(tabbedViewControllerProvider.notifier).createFile(),
               leadingIconData: Icons.add,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyN,
-                control: true,
-              ),
+              shortcut: SingleActivator(LogicalKeyboardKey.keyN, control: true),
             ),
             buildMenuItemButton(
               context,
@@ -100,10 +97,7 @@ class AppActionBar extends ConsumerWidget {
                   .read(tabbedViewControllerProvider.notifier)
                   .openFile(context),
               leadingIconData: Icons.open_in_browser,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyO,
-                control: true,
-              ),
+              shortcut: SingleActivator(LogicalKeyboardKey.keyO, control: true),
             ),
             buildMenuItemButton(
               context,
@@ -117,10 +111,7 @@ class AppActionBar extends ConsumerWidget {
               "保存当前文件",
               () => ref.read(localWorkspaceProvider.notifier).saveFile(),
               leadingIconData: Icons.save,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyS,
-                control: true,
-              ),
+              shortcut: SingleActivator(LogicalKeyboardKey.keyS, control: true),
             ),
             buildMenuItemButton(
               context,
@@ -147,25 +138,6 @@ class AppActionBar extends ConsumerWidget {
           ),
           alignmentOffset: Offset(0, 5),
           menuChildren: [
-            buildMenuItemButton(
-              context,
-              "撤销",
-              ref.read(editorControllerMapProvider.notifier).undo,
-              leadingIconData: Icons.undo,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
-            ),
-            buildMenuItemButton(
-              context,
-              "恢复",
-              ref.read(editorControllerMapProvider.notifier).redo,
-              leadingIconData: Icons.redo,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyZ,
-                control: true,
-                shift: true,
-              ),
-            ),
-            PopupMenuDivider(),
             buildMenuItemButton(
               context,
               "剪切",

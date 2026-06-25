@@ -94,23 +94,6 @@ class MacOSMenu extends ConsumerWidget {
         label: '编辑',
         menus: [
           PlatformMenuItem(
-            label: "撤销",
-            shortcut: const SingleActivator(
-              LogicalKeyboardKey.keyZ,
-              control: true,
-            ),
-            onSelected: ref.read(editorControllerMapProvider.notifier).undo,
-          ),
-          PlatformMenuItem(
-            label: "恢复",
-            shortcut: const SingleActivator(
-              LogicalKeyboardKey.keyZ,
-              control: true,
-              shift: true,
-            ),
-            onSelected: ref.read(editorControllerMapProvider.notifier).redo,
-          ),
-          PlatformMenuItem(
             label: "剪切",
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyX,

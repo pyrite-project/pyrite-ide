@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/controller.dart';
@@ -157,7 +158,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       surface,
     );
     return CodeForge(
-      key: ValueKey('${themeKey}_${brightness.name}_${surface.value}'),
+      key: ValueKey('${themeKey}_${brightness.name}_${surface.toARGB32()}'),
       filePath: widget.file.path,
       editorTheme: resolvedTheme,
       language: langPython,
@@ -277,9 +278,10 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
   await Future.delayed(const Duration(milliseconds: 160));
 
+  final b64 = base64.encode(utf8.encode(controller!.text));
   ref
       .read(getUsbSerialProvider().notifier)
-      .sendCommand("exec('${controller!.text}')\r");
+      .sendCommand("exec(__import__('ubinascii').a2b_base64('$b64').decode())\r");
   showEditorSnackBar(context, "正在运行：${controller.openedFile}");
 }
 
