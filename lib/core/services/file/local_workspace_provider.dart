@@ -19,6 +19,29 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
+final _boardUploadPath = path.Context(style: path.Style.posix);
+final _windowsUploadSourcePath = path.Context(style: path.Style.windows);
+final _windowsAbsoluteSourcePath = RegExp(r'^(?:[A-Za-z]:[\\/]|\\\\)');
+
+@visibleForTesting
+String buildBoardUploadTargetPath({
+  required String sourcePath,
+  required String? boardFolderPath,
+}) {
+  final folder = boardFolderPath == null || boardFolderPath.isEmpty
+      ? "/"
+      : boardFolderPath;
+  return _boardUploadPath.join(folder, _localSourceBasename(sourcePath));
+}
+
+String _localSourceBasename(String sourcePath) {
+  if (_windowsAbsoluteSourcePath.hasMatch(sourcePath)) {
+    return _windowsUploadSourcePath.basename(sourcePath);
+  }
+
+  return path.basename(sourcePath);
+}
+
 class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   LocalWorkspaceNotifier(this.ref) : super(null);
@@ -217,13 +240,16 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
       return;
     }
 
-    final TreeNode<FileSystemItem>? boardFolderTarget = getFocusFolderNode();
+    final TreeNode<FileSystemItem>? boardFolderTarget = ref
+        .read(boardWorkspaceProvider.notifier)
+        .getFocusFolderNode();
 
     if (selected?.data is FileItem || selectedTab != null) {
       final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
-      final targetPath = (boardFolderTarget?.id != null)
-          ? "${boardFolderTarget!.id}/${path.basename(selected?.id ?? selectedTab?.value.filePath)}"
-          : "/${path.basename(selected?.id ?? selectedTab?.value.filePath)}";
+      final targetPath = buildBoardUploadTargetPath(
+        sourcePath: sourcePath,
+        boardFolderPath: boardFolderTarget?.id,
+      );
 
       String content;
       try {
@@ -296,9 +322,10 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
 
       showEditorSnackBar(context, "已上传到设备：$targetPath");
     } else if (selected?.data is FolderItem) {
-      final targetPath = (boardFolderTarget?.id != null)
-          ? "${boardFolderTarget!.id}/${path.basename(selected!.id)}"
-          : "/${path.basename(selected!.id)}";
+      final targetPath = buildBoardUploadTargetPath(
+        sourcePath: selected!.id,
+        boardFolderPath: boardFolderTarget?.id,
+      );
       await ref
           .read(boardWorkspaceProvider.notifier)
           .uploadFolder(selected.id, targetPath);
