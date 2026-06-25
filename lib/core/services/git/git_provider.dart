@@ -31,7 +31,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
     final path = workspacePath ?? ref.read(localWorkspaceProvider)?.path;
     await _run(
       () async {
-        final snapshot = _service.loadSnapshot(path);
+        final snapshot = await _service.loadSnapshot(path);
         state = state.copyWith(
           snapshot: snapshot,
           workspacePath: path,
@@ -50,12 +50,16 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }
 
   Future<void> selectPath(String path, {bool staged = false}) async {
-    final rootPath = _rootPath;
+    final rootPath = await _rootPath();
     if (rootPath == null) return;
     await _run(
       () async {
-        final patch = _service.diffForPath(rootPath, path, staged: staged);
-        final history = _service.fileHistory(rootPath, path);
+        final patch = await _service.diffForPath(
+          rootPath,
+          path,
+          staged: staged,
+        );
+        final history = await _service.fileHistory(rootPath, path);
         state = state.copyWith(
           selectedPath: path,
           selectedPatch: patch,
@@ -72,12 +76,12 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }
 
   Future<void> blameSelected() async {
-    final rootPath = _rootPath;
+    final rootPath = await _rootPath();
     final selectedPath = state.selectedPath;
     if (rootPath == null || selectedPath == null) return;
     await _run(
       () async {
-        final blame = _service.blame(rootPath, selectedPath);
+        final blame = await _service.blame(rootPath, selectedPath);
         state = state.copyWith(
           blame: blame,
           lastMessage: '已读取 $selectedPath 的 blame',
@@ -273,16 +277,16 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
-  String? get _rootPath {
+  Future<String?> _rootPath() async {
     return state.snapshot?.rootPath ??
-        _service.discoverRoot(state.workspacePath);
+        await _service.discoverRoot(state.workspacePath);
   }
 
   Future<void> _runRoot(
     FutureOr<Object?> Function(String rootPath) action, {
     String? success,
   }) async {
-    final rootPath = _rootPath;
+    final rootPath = await _rootPath();
     if (rootPath == null) {
       state = state.copyWith(error: '当前工作区不是 Git 仓库。');
       return;
@@ -312,7 +316,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
         state = state.copyWith(lastMessage: success, clearError: true);
       }
       if (refreshAfter) {
-        final snapshot = _service.loadSnapshot(
+        final snapshot = await _service.loadSnapshot(
           state.workspacePath ?? ref.read(localWorkspaceProvider)?.path,
         );
         state = state.copyWith(

@@ -123,8 +123,7 @@ class _DeferredGitPage extends StatefulWidget {
 }
 
 class _DeferredGitPageState extends State<_DeferredGitPage> {
-  // The Git page pulls in git2dart/libgit2. Defer it so Windows debug startup
-  // does not load native Git DLLs before the user opens source control.
+  // Keep source-control UI out of the app shell startup path.
   late final Future<void> _loadGitPage = git_page.loadLibrary();
 
   @override

@@ -8,7 +8,6 @@
 
 #include <dynamic_color/dynamic_color_plugin_c_api.h>
 #include <file_selector_windows/file_selector_windows.h>
-#include <git2dart_binaries/git2dart_binaries_plugin_c_api.h>
 #include <irondash_engine_context/irondash_engine_context_plugin_c_api.h>
 #include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
 #include <serious_python_windows/serious_python_windows_plugin_c_api.h>
@@ -21,8 +20,6 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("DynamicColorPluginCApi"));
   FileSelectorWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
-  Git2dartBinariesPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("Git2dartBinariesPluginCApi"));
   IrondashEngineContextPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("IrondashEngineContextPluginCApi"));
   ScreenRetrieverWindowsPluginCApiRegisterWithRegistrar(

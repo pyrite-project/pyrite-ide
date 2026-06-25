@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 
@@ -17,825 +17,935 @@ class GitCommitInput {
 }
 
 class GitRepositoryService {
-  GitRepositorySnapshot? loadSnapshot(String? workspacePath) {
-    final rootPath = discoverRoot(workspacePath);
+  GitRepositoryService({this.commandTimeout = const Duration(seconds: 20)});
+
+  final Duration commandTimeout;
+
+  Future<GitRepositorySnapshot?> loadSnapshot(String? workspacePath) async {
+    final rootPath = await discoverRoot(workspacePath);
     if (rootPath == null) return null;
 
-    return _withRepo(rootPath, (repo) {
-      final head = _safe(() => repo.head);
-      final headCommit = _safe(() => repo.headCommit);
-      final branchName = _currentBranchName(repo, head);
-      final aheadBehind = _aheadBehind(repo, branchName);
-      final defaultSignature = _safe(() => repo.defaultSignature);
-      final index = repo.index;
-      final headTree = headCommit?.tree;
-      final stagedPatch = _safe(
-        () => Diff.treeToIndex(repo: repo, tree: headTree, index: index).patch,
-      );
-      final unstagedPatch = _safe(
-        () => Diff.indexToWorkdir(repo: repo, index: index).patch,
-      );
+    final gitDir = await _gitOutput(rootPath, [
+      'rev-parse',
+      '--git-dir',
+    ], allowFailure: true);
+    final branchLabel = await _branchLabel(rootPath);
+    final statusEntries = await _statusEntries(rootPath);
+    final conflicts = await _conflicts(rootPath, statusEntries);
+    final defaultAuthor = await _configValue(rootPath, 'user.name');
+    final defaultEmail = await _configValue(rootPath, 'user.email');
+    final aheadBehind = await _aheadBehind(rootPath);
 
-      return GitRepositorySnapshot(
-        rootPath: _normalizeWorkdir(repo),
-        gitDir: repo.path,
-        branchLabel: branchName ?? _detachedLabel(repo),
-        stateLabel: _repositoryStateLabel(repo.state),
-        isDetached: _safe(() => repo.isHeadDetached) ?? false,
-        isEmpty: _safe(() => repo.isEmpty) ?? false,
-        authorName: defaultSignature?.name ?? 'Pyrite User',
-        authorEmail: defaultSignature?.email ?? 'pyrite@example.local',
-        ahead: aheadBehind.$1,
-        behind: aheadBehind.$2,
-        statusEntries: _statusEntries(_statusMap(repo)),
-        branches: _branches(repo),
-        remotes: _remotes(repo),
-        stashes: _stashes(repo),
-        tags: _tags(repo),
-        submodules: _submodules(repo),
-        worktrees: _worktrees(repo),
-        commits: _commits(repo),
-        conflicts: _conflicts(repo),
-        stagedPatch: stagedPatch ?? '',
-        unstagedPatch: unstagedPatch ?? '',
-      );
-    });
+    return GitRepositorySnapshot(
+      rootPath: rootPath,
+      gitDir: _normalizeGitDir(rootPath, gitDir),
+      branchLabel: branchLabel,
+      stateLabel: await _repositoryStateLabel(rootPath),
+      isDetached: await _isDetached(rootPath),
+      isEmpty: await _isEmpty(rootPath),
+      authorName: defaultAuthor ?? 'Pyrite User',
+      authorEmail: defaultEmail ?? 'pyrite@example.local',
+      ahead: aheadBehind.$1,
+      behind: aheadBehind.$2,
+      statusEntries: statusEntries,
+      branches: await _branches(rootPath),
+      remotes: await _remotes(rootPath),
+      stashes: await _stashes(rootPath),
+      tags: await _tags(rootPath),
+      submodules: await _submodules(rootPath),
+      worktrees: await _worktrees(rootPath),
+      commits: await _commits(rootPath),
+      conflicts: conflicts,
+      stagedPatch: await _gitOutput(rootPath, [
+        'diff',
+        '--cached',
+        '--no-ext-diff',
+      ], allowFailure: true),
+      unstagedPatch: await _gitOutput(rootPath, [
+        'diff',
+        '--no-ext-diff',
+      ], allowFailure: true),
+    );
   }
 
-  String? discoverRoot(String? workspacePath) {
+  Future<String?> discoverRoot(String? workspacePath) async {
     if (workspacePath == null || workspacePath.isEmpty) return null;
 
-    try {
-      final discovered = Repository.discover(startPath: workspacePath);
-      return _withRepo(discovered, _normalizeWorkdir);
-    } catch (_) {
-      return null;
-    }
+    final startPath = Directory(workspacePath).existsSync()
+        ? workspacePath
+        : p.dirname(workspacePath);
+    final result = await _runGit(
+      null,
+      ['-C', startPath, 'rev-parse', '--show-toplevel'],
+      allowFailure: true,
+      timeout: const Duration(seconds: 5),
+    );
+    if (result.exitCode != 0) return null;
+
+    final root = result.stdout.trim();
+    return root.isEmpty ? null : p.normalize(root);
   }
 
-  String diffForPath(String rootPath, String filePath, {bool staged = false}) {
-    return _withRepo(rootPath, (repo) {
-      final diff = staged
-          ? Diff.treeToIndex(
-              repo: repo,
-              tree: _safe(() => repo.headCommit.tree),
-              index: repo.index,
-            )
-          : Diff.indexToWorkdir(repo: repo, index: repo.index);
-      final patches = diff.patches.where((patch) {
-        final delta = patch.delta;
-        return delta.oldFile.path == filePath || delta.newFile.path == filePath;
-      });
-      return patches.map((patch) => patch.text).join('\n');
-    });
+  Future<String> diffForPath(
+    String rootPath,
+    String filePath, {
+    bool staged = false,
+  }) {
+    return _gitOutput(rootPath, [
+      'diff',
+      if (staged) '--cached',
+      '--no-ext-diff',
+      '--',
+      filePath,
+    ], allowFailure: true);
   }
 
-  List<GitCommitInfo> fileHistory(String rootPath, String filePath) {
-    return _withRepo(rootPath, (repo) {
-      final commits = _commits(repo, limit: 200);
-      final filtered = <GitCommitInfo>[];
-      for (final info in commits) {
-        final commit = _safe(
-          () => Commit.lookup(repo: repo, oid: repo[info.sha]),
-        );
-        if (commit == null) continue;
-        if (_commitTouchesPath(repo, commit, filePath)) {
-          filtered.add(info);
-        }
-      }
-      return filtered;
-    });
+  Future<List<GitCommitInfo>> fileHistory(
+    String rootPath,
+    String filePath,
+  ) async {
+    return _commits(rootPath, limit: 200, pathspec: filePath, follow: true);
   }
 
-  List<GitBlameLine> blame(String rootPath, String filePath) {
-    return _withRepo(rootPath, (repo) {
-      final blame = Blame.file(repo: repo, path: filePath);
-      return [
-        for (final hunk in blame)
+  Future<List<GitBlameLine>> blame(String rootPath, String filePath) async {
+    final output = await _gitOutput(rootPath, [
+      'blame',
+      '--line-porcelain',
+      '--',
+      filePath,
+    ], allowFailure: true);
+    final lines = output.split('\n');
+    final blameLines = <GitBlameLine>[];
+    var lineStart = 0;
+    var lineCount = 1;
+    var sha = '';
+    var author = '';
+    var email = '';
+    DateTime? time;
+
+    for (final line in lines) {
+      final headerMatch = RegExp(
+        r'^([0-9a-f]{40}) \d+ (\d+)(?: (\d+))?$',
+      ).firstMatch(line);
+      if (headerMatch != null) {
+        sha = headerMatch.group(1)!;
+        lineStart = int.parse(headerMatch.group(2)!);
+        lineCount = int.tryParse(headerMatch.group(3) ?? '') ?? 1;
+      } else if (line.startsWith('author ')) {
+        author = line.substring('author '.length);
+      } else if (line.startsWith('author-mail ')) {
+        email = line.substring('author-mail '.length).replaceAll('<', '');
+        email = email.replaceAll('>', '');
+      } else if (line.startsWith('author-time ')) {
+        final seconds = int.tryParse(line.substring('author-time '.length));
+        time = seconds == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(
+                seconds * 1000,
+                isUtc: true,
+              ).toLocal();
+      } else if (line.startsWith('\t')) {
+        blameLines.add(
           GitBlameLine(
-            lineStart: hunk.finalStartLineNumber,
-            lineCount: hunk.linesCount,
-            commitSha: hunk.finalCommitOid.sha,
-            author: hunk.finalCommitter?.name ?? '',
-            email: hunk.finalCommitter?.email ?? '',
-            time: _signatureTime(hunk.finalCommitter),
+            lineStart: lineStart,
+            lineCount: lineCount,
+            commitSha: sha,
+            author: author,
+            email: email,
+            time: time,
           ),
-      ];
-    });
-  }
-
-  void stage(String rootPath, Iterable<String> paths) {
-    _withRepo(rootPath, (repo) {
-      final index = repo.index;
-      final status = _statusMap(repo);
-      for (final filePath in paths) {
-        final flags = status[filePath] ?? {};
-        if (flags.contains(GitStatus.wtDeleted)) {
-          index.remove(filePath);
-        } else {
-          index.add(filePath);
-        }
+        );
       }
-      index.write();
-    });
+    }
+    return blameLines;
   }
 
-  void unstage(String rootPath, Iterable<String> paths) {
-    _withRepo(rootPath, (repo) {
-      repo.resetDefault(
-        oid: _safe(() => repo.head.target),
-        pathspec: paths.toList(),
-      );
-    });
+  Future<void> stage(String rootPath, Iterable<String> paths) {
+    return _gitVoid(rootPath, ['add', '--', ...paths]);
   }
 
-  void commit(String rootPath, GitCommitInput input) {
-    _withRepo(rootPath, (repo) {
-      if (repo.index.hasConflicts) {
-        throw StateError('仍有冲突未解决，不能提交。');
-      }
-      final message = input.message.trim();
-      if (message.isEmpty) {
-        throw ArgumentError('提交信息不能为空。');
-      }
-      final signature = _signature(input);
-      final tree = Tree.lookup(repo: repo, oid: repo.index.writeTree());
-      Commit.create(
-        repo: repo,
-        updateRef: 'HEAD',
-        message: '$message\n',
-        author: signature,
-        committer: signature,
-        tree: tree,
-        parents: _commitParents(repo),
-      );
-      _cleanupPreparedMessage(repo);
-      _safe(() => repo.stateCleanup());
-    });
+  Future<void> unstage(String rootPath, Iterable<String> paths) {
+    return _gitVoid(rootPath, ['restore', '--staged', '--', ...paths]);
   }
 
-  void createBranch(String rootPath, String name) {
-    _withRepo(rootPath, (repo) {
-      final branchName = name.trim();
-      if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
-      Branch.create(repo: repo, name: branchName, target: repo.headCommit);
-    });
+  Future<void> commit(String rootPath, GitCommitInput input) async {
+    if ((await _conflictedPaths(rootPath)).isNotEmpty) {
+      throw StateError('仍有冲突未解决，不能提交。');
+    }
+    final message = input.message.trim();
+    if (message.isEmpty) {
+      throw ArgumentError('提交信息不能为空。');
+    }
+
+    await _gitVoid(rootPath, [
+      '-c',
+      'user.name=${_authorName(input)}',
+      '-c',
+      'user.email=${_authorEmail(input)}',
+      'commit',
+      '-m',
+      message,
+    ]);
   }
 
-  void checkoutBranch(String rootPath, String name) {
-    _withRepo(rootPath, (repo) {
-      Checkout.reference(repo: repo, name: 'refs/heads/$name');
-      repo.setHead('refs/heads/$name');
-    });
+  Future<void> createBranch(String rootPath, String name) async {
+    final branchName = name.trim();
+    if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+    await _gitVoid(rootPath, ['branch', branchName]);
   }
 
-  void stash(
+  Future<void> checkoutBranch(String rootPath, String name) {
+    return _gitVoid(rootPath, ['checkout', name]);
+  }
+
+  Future<void> stash(
     String rootPath,
     GitCommitInput input, {
     bool includeUntracked = true,
   }) {
-    _withRepo(rootPath, (repo) {
-      Stash.create(
-        repo: repo,
-        stasher: _signature(input),
-        message: input.message.trim().isEmpty ? null : input.message.trim(),
-        flags: includeUntracked ? {GitStash.includeUntracked} : {},
-      );
-    });
+    final message = input.message.trim().isEmpty ? 'WIP' : input.message.trim();
+    return _gitVoid(rootPath, [
+      'stash',
+      'push',
+      if (includeUntracked) '--include-untracked',
+      '-m',
+      message,
+    ]);
   }
 
-  void applyStash(String rootPath, int index, {bool pop = false}) {
-    _withRepo(rootPath, (repo) {
-      if (pop) {
-        Stash.pop(repo: repo, index: index, reinstateIndex: true);
-      } else {
-        Stash.apply(repo: repo, index: index, reinstateIndex: true);
-      }
-    });
+  Future<void> applyStash(String rootPath, int index, {bool pop = false}) {
+    return _gitVoid(rootPath, [
+      'stash',
+      pop ? 'pop' : 'apply',
+      'stash@{$index}',
+    ]);
   }
 
-  void dropStash(String rootPath, int index) {
-    _withRepo(rootPath, (repo) => Stash.drop(repo: repo, index: index));
+  Future<void> dropStash(String rootPath, int index) {
+    return _gitVoid(rootPath, ['stash', 'drop', 'stash@{$index}']);
   }
 
-  String fetch(String rootPath, String remoteName, GitCredentialDraft draft) {
-    return _withRepo(rootPath, (repo) {
-      final remote = Remote.lookup(repo: repo, name: remoteName);
-      final stats = remote.fetch(callbacks: _callbacks(draft));
-      return '收到 ${stats.receivedObjects}/${stats.totalObjects} 个对象';
-    });
+  Future<String> fetch(
+    String rootPath,
+    String remoteName,
+    GitCredentialDraft draft,
+  ) async {
+    await _gitVoid(
+      rootPath,
+      ['fetch', remoteName],
+      environment: _credentialEnvironment(draft),
+      timeout: const Duration(minutes: 2),
+    );
+    return '已从 $remoteName 获取更新';
   }
 
-  String push(String rootPath, String remoteName, GitCredentialDraft draft) {
-    return _withRepo(rootPath, (repo) {
-      final branch = _currentBranchName(repo, _safe(() => repo.head));
-      if (branch == null || branch.startsWith('HEAD@')) {
-        throw StateError('当前不是可推送的本地分支。');
-      }
-      final remote = Remote.lookup(repo: repo, name: remoteName);
-      remote.push(
-        refspecs: ['refs/heads/$branch:refs/heads/$branch'],
-        callbacks: _callbacks(draft),
-      );
-      return '已推送 $branch 到 $remoteName';
-    });
+  Future<String> push(
+    String rootPath,
+    String remoteName,
+    GitCredentialDraft draft,
+  ) async {
+    final branch = await _currentBranch(rootPath);
+    if (branch == null) {
+      throw StateError('当前不是可推送的本地分支。');
+    }
+    await _gitVoid(
+      rootPath,
+      ['push', remoteName, branch],
+      environment: _credentialEnvironment(draft),
+      timeout: const Duration(minutes: 2),
+    );
+    return '已推送 $branch 到 $remoteName';
   }
 
-  String pull(String rootPath, String remoteName, GitCredentialDraft draft) {
-    return _withRepo(rootPath, (repo) {
-      final remote = Remote.lookup(repo: repo, name: remoteName);
-      final stats = remote.fetch(callbacks: _callbacks(draft));
-      final branchName = _currentBranchName(repo, _safe(() => repo.head));
-      if (branchName == null) {
-        throw StateError('当前 HEAD 分离，不能自动 pull。');
-      }
-      final branch = Branch.lookup(repo: repo, name: branchName);
-      final upstream = branch.upstream;
-      Merge.commit(
-        repo: repo,
-        commit: AnnotatedCommit.lookup(repo: repo, oid: upstream.target),
-      );
-      return '收到 ${stats.receivedObjects}/${stats.totalObjects} 个对象；'
-          '已将 ${upstream.shorthand} 合并到 $branchName';
-    });
+  Future<String> pull(
+    String rootPath,
+    String remoteName,
+    GitCredentialDraft draft,
+  ) async {
+    final branch = await _currentBranch(rootPath);
+    if (branch == null) {
+      throw StateError('当前 HEAD 分离，不能自动 pull。');
+    }
+    await _gitVoid(
+      rootPath,
+      ['pull', remoteName, branch],
+      environment: _credentialEnvironment(draft),
+      timeout: const Duration(minutes: 2),
+    );
+    return '已从 $remoteName 拉取并合并到 $branch';
   }
 
-  void merge(String rootPath, String targetSpec) {
-    _withRepo(rootPath, (repo) {
-      final commit = _commitFromSpec(repo, targetSpec);
-      Merge.commit(
-        repo: repo,
-        commit: AnnotatedCommit.lookup(repo: repo, oid: commit.oid),
-      );
-    });
+  Future<void> merge(String rootPath, String targetSpec) {
+    return _runConflictAware(rootPath, ['merge', targetSpec]);
   }
 
-  void rebase(String rootPath, String targetSpec, GitCommitInput input) {
-    _withRepo(rootPath, (repo) {
-      final signature = _signature(input);
-      final target = _commitFromSpec(repo, targetSpec);
-      final rebase = Rebase.init(
-        repo: repo,
-        onto: AnnotatedCommit.lookup(repo: repo, oid: target.oid),
-      );
-      _runRebaseUntilConflict(repo, rebase, signature);
-    });
+  Future<void> rebase(
+    String rootPath,
+    String targetSpec,
+    GitCommitInput input,
+  ) {
+    return _runConflictAware(rootPath, [
+      '-c',
+      'user.name=${_authorName(input)}',
+      '-c',
+      'user.email=${_authorEmail(input)}',
+      'rebase',
+      targetSpec,
+    ]);
   }
 
-  void continueRebase(String rootPath, GitCommitInput input) {
-    _withRepo(rootPath, (repo) {
-      if (repo.index.hasConflicts) {
-        throw StateError('仍有冲突未解决，不能继续 rebase。');
-      }
-      final rebase = Rebase.open(repo);
-      final signature = _signature(input);
-      rebase.commit(committer: signature, author: signature);
-      _runRebaseUntilConflict(repo, rebase, signature);
-    });
+  Future<void> continueRebase(String rootPath, GitCommitInput input) {
+    return _gitVoid(
+      rootPath,
+      [
+        '-c',
+        'user.name=${_authorName(input)}',
+        '-c',
+        'user.email=${_authorEmail(input)}',
+        'rebase',
+        '--continue',
+      ],
+      environment: {'GIT_EDITOR': 'true'},
+    );
   }
 
-  void abortRebase(String rootPath) {
-    _withRepo(rootPath, (repo) => Rebase.open(repo).abort());
+  Future<void> abortRebase(String rootPath) {
+    return _gitVoid(rootPath, ['rebase', '--abort']);
   }
 
-  void cherryPick(String rootPath, String targetSpec) {
-    _withRepo(rootPath, (repo) {
-      Merge.cherryPick(repo: repo, commit: _commitFromSpec(repo, targetSpec));
-    });
+  Future<void> cherryPick(String rootPath, String targetSpec) {
+    return _runConflictAware(rootPath, ['cherry-pick', targetSpec]);
   }
 
-  void markResolved(String rootPath, String filePath) {
-    _withRepo(rootPath, (repo) {
-      final index = repo.index;
-      index.add(filePath);
-      index.write();
-    });
+  Future<void> markResolved(String rootPath, String filePath) {
+    return stage(rootPath, [filePath]);
   }
 
-  void acceptConflictSide(
+  Future<void> acceptConflictSide(
     String rootPath,
     String filePath,
     GitConflictSide side,
+  ) async {
+    await _gitVoid(rootPath, [
+      'checkout',
+      side == GitConflictSide.ours ? '--ours' : '--theirs',
+      filePath,
+    ]);
+    await markResolved(rootPath, filePath);
+  }
+
+  Future<void> createTag(String rootPath, String name, {String? targetSpec}) {
+    final tagName = name.trim();
+    if (tagName.isEmpty) throw ArgumentError('标签名称不能为空。');
+    return _gitVoid(rootPath, [
+      'tag',
+      tagName,
+      if (targetSpec?.trim().isNotEmpty == true) targetSpec!,
+    ]);
+  }
+
+  Future<void> createWorktree(String rootPath, String name, String path) {
+    return _gitVoid(rootPath, ['worktree', 'add', path.trim(), name.trim()]);
+  }
+
+  Future<void> pruneWorktree(String rootPath, String name) async {
+    final result = await _git(rootPath, [
+      'worktree',
+      'remove',
+      '--force',
+      name,
+    ], allowFailure: true);
+    if (result.exitCode != 0) {
+      await _gitVoid(rootPath, ['worktree', 'prune']);
+    }
+  }
+
+  Future<void> updateSubmodule(
+    String rootPath,
+    String name,
+    GitCredentialDraft draft,
   ) {
-    _withRepo(rootPath, (repo) {
-      final conflict = repo.index.conflicts[filePath];
-      if (conflict == null || conflict.our == null || conflict.their == null) {
-        throw StateError('没有找到 $filePath 的三方冲突。');
+    return _gitVoid(
+      rootPath,
+      ['submodule', 'update', '--init', '--recursive', name],
+      environment: _credentialEnvironment(draft),
+      timeout: const Duration(minutes: 2),
+    );
+  }
+
+  Future<void> writeCommitGraph(String rootPath) {
+    return _gitVoid(rootPath, ['commit-graph', 'write', '--reachable']);
+  }
+
+  Future<String> _branchLabel(String rootPath) async {
+    final branch = await _currentBranch(rootPath);
+    if (branch != null) return branch;
+
+    final sha = await _gitOutput(rootPath, [
+      'rev-parse',
+      '--short',
+      'HEAD',
+    ], allowFailure: true);
+    return sha.isEmpty ? '未提交仓库' : 'HEAD@$sha';
+  }
+
+  Future<String?> _currentBranch(String rootPath) async {
+    final branch = await _gitOutput(rootPath, [
+      'symbolic-ref',
+      '--quiet',
+      '--short',
+      'HEAD',
+    ], allowFailure: true);
+    return branch.isEmpty ? null : branch;
+  }
+
+  Future<bool> _isDetached(String rootPath) async {
+    return await _currentBranch(rootPath) == null && !await _isEmpty(rootPath);
+  }
+
+  Future<bool> _isEmpty(String rootPath) async {
+    final result = await _git(rootPath, [
+      'rev-parse',
+      '--verify',
+      'HEAD',
+    ], allowFailure: true);
+    return result.exitCode != 0;
+  }
+
+  Future<(int, int)> _aheadBehind(String rootPath) async {
+    final output = await _gitOutput(rootPath, [
+      'rev-list',
+      '--left-right',
+      '--count',
+      '@{upstream}...HEAD',
+    ], allowFailure: true);
+    final values = output.split(RegExp(r'\s+'));
+    if (values.length < 2) return (0, 0);
+    final behind = int.tryParse(values[0]) ?? 0;
+    final ahead = int.tryParse(values[1]) ?? 0;
+    return (ahead, behind);
+  }
+
+  Future<List<GitStatusEntry>> _statusEntries(String rootPath) async {
+    final output = await _gitOutput(rootPath, [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+    ], allowFailure: true);
+    if (output.isEmpty) return const [];
+
+    final entries = <GitStatusEntry>[];
+    final records = output.split('\u0000');
+    for (var index = 0; index < records.length; index += 1) {
+      final record = records[index];
+      if (record.length < 4) continue;
+
+      final indexStatus = record[0];
+      final worktreeStatus = record[1];
+      var filePath = record.substring(3);
+      if ((indexStatus == 'R' || indexStatus == 'C') &&
+          index + 1 < records.length) {
+        index += 1;
+        filePath = records[index];
       }
-      final favor = switch (side) {
-        GitConflictSide.ours => GitMergeFileFavor.ours,
-        GitConflictSide.theirs => GitMergeFileFavor.theirs,
-      };
-      final merged = Merge.fileFromIndex(
-        repo: repo,
-        ancestor: conflict.ancestor,
-        ancestorLabel: 'base',
-        ours: conflict.our!,
-        oursLabel: 'ours',
-        theirs: conflict.their!,
-        theirsLabel: 'theirs',
-        favor: favor,
-        flags: {GitMergeFileFlag.styleDiff3},
-      );
-      final target = File(p.join(_normalizeWorkdir(repo), filePath));
-      target.parent.createSync(recursive: true);
-      target.writeAsStringSync(merged);
-      markResolved(rootPath, filePath);
-    });
-  }
 
-  void createTag(String rootPath, String name, {String? targetSpec}) {
-    _withRepo(rootPath, (repo) {
-      final tagName = name.trim();
-      if (tagName.isEmpty) throw ArgumentError('标签名称不能为空。');
-      final target = targetSpec == null || targetSpec.trim().isEmpty
-          ? repo.head.target
-          : _commitFromSpec(repo, targetSpec).oid;
-      Tag.createLightweight(
-        repo: repo,
-        tagName: tagName,
-        target: target,
-        targetType: GitObject.commit,
-      );
-    });
-  }
-
-  void createWorktree(String rootPath, String name, String path) {
-    _withRepo(rootPath, (repo) {
-      Worktree.create(repo: repo, name: name.trim(), path: path.trim());
-    });
-  }
-
-  void pruneWorktree(String rootPath, String name) {
-    _withRepo(rootPath, (repo) {
-      Worktree.lookup(repo: repo, name: name).prune({GitWorktree.pruneValid});
-    });
-  }
-
-  void updateSubmodule(String rootPath, String name, GitCredentialDraft draft) {
-    _withRepo(rootPath, (repo) {
-      Submodule.update(
-        repo: repo,
-        name: name,
-        init: true,
-        callbacks: _callbacks(draft),
-      );
-    });
-  }
-
-  void writeCommitGraph(String rootPath) {
-    _withRepo(rootPath, (repo) {
-      final writer = CommitGraphWriter(p.join(repo.path, 'objects', 'info'));
-      final walk = RevWalk(repo)..pushHead();
-      writer.addRevWalk(walk);
-      writer.commit();
-      writer.free();
-      walk.free();
-    });
-  }
-
-  T _withRepo<T>(String rootPath, T Function(Repository repo) action) {
-    final repo = Repository.open(rootPath);
-    try {
-      return action(repo);
-    } finally {
-      repo.free();
-    }
-  }
-
-  String _normalizeWorkdir(Repository repo) {
-    final workdir = repo.workdir.isEmpty ? p.dirname(repo.path) : repo.workdir;
-    return p.normalize(workdir);
-  }
-
-  String _relativePath(String rootPath, String filePath) {
-    return p.relative(filePath, from: rootPath).split(p.separator).join('/');
-  }
-
-  bool _isInsideGitDir(String relativePath) {
-    return relativePath.split('/').contains('.git');
-  }
-
-  String? _currentBranchName(Repository repo, Reference? head) {
-    if (head == null || (_safe(() => repo.isHeadDetached) ?? false)) {
-      return null;
-    }
-    return _safe(() => head.shorthand);
-  }
-
-  String _detachedLabel(Repository repo) {
-    final sha = _safe(() => repo.head.target.sha);
-    if (sha == null) return '未提交仓库';
-    return 'HEAD@${_shortSha(sha)}';
-  }
-
-  (int, int) _aheadBehind(Repository repo, String? branchName) {
-    if (branchName == null) return (0, 0);
-    return _safe(() {
-          final branch = Branch.lookup(repo: repo, name: branchName);
-          final upstream = branch.upstream;
-          final values = repo.aheadBehind(
-            local: branch.target,
-            upstream: upstream.target,
-          );
-          return (values[0], values[1]);
-        }) ??
-        (0, 0);
-  }
-
-  List<GitStatusEntry> _statusEntries(Map<String, Set<GitStatus>> status) {
-    final entries = [
-      for (final item in status.entries)
+      final labels = _statusLabels(indexStatus, worktreeStatus);
+      entries.add(
         GitStatusEntry(
-          path: item.key,
-          labels: _statusLabels(item.value),
-          isStaged: item.value.any(_isIndexStatus),
-          isUnstaged: item.value.any(_isWorktreeStatus),
-          isConflicted: item.value.contains(GitStatus.conflicted),
+          path: filePath,
+          labels: labels,
+          isStaged: _isIndexStatus(indexStatus),
+          isUnstaged: _isWorktreeStatus(worktreeStatus),
+          isConflicted: _isConflictStatus(indexStatus, worktreeStatus),
         ),
-    ];
+      );
+    }
     entries.sort((a, b) => a.path.compareTo(b.path));
     return entries;
   }
 
-  Map<String, Set<GitStatus>> _statusMap(Repository repo) {
-    final result = {
-      for (final item in repo.status.entries) item.key: {...item.value},
-    };
-    final workdir = _normalizeWorkdir(repo);
-    final root = Directory(workdir);
-    if (!root.existsSync()) return result;
+  List<String> _statusLabels(String indexStatus, String worktreeStatus) {
+    if (_isConflictStatus(indexStatus, worktreeStatus)) return const ['冲突'];
 
-    // git2dart 0.5.0 builds full status lists with libgit2 defaults, which
-    // omit untracked files. Ask libgit2 for per-file status so the SCM view
-    // still reflects newly-created files without bypassing git2dart.
-    for (final entity in root.listSync(recursive: true, followLinks: false)) {
-      if (entity is! File) continue;
-      final relative = _relativePath(workdir, entity.path);
-      if (_isInsideGitDir(relative) || result.containsKey(relative)) continue;
-      final statuses = _safe(() => repo.statusFile(relative));
-      if (statuses == null || !statuses.contains(GitStatus.wtNew)) continue;
-      result[relative] = statuses;
-    }
-    return result;
+    return [
+      if (_indexStatusLabel(indexStatus) != null)
+        _indexStatusLabel(indexStatus)!,
+      if (_worktreeStatusLabel(worktreeStatus) != null)
+        _worktreeStatusLabel(worktreeStatus)!,
+    ];
   }
 
-  List<String> _statusLabels(Set<GitStatus> statuses) {
-    return [for (final status in statuses) _statusLabel(status)];
-  }
-
-  String _statusLabel(GitStatus status) {
+  String? _indexStatusLabel(String status) {
     return switch (status) {
-      GitStatus.indexNew => '已暂存新增',
-      GitStatus.indexModified => '已暂存修改',
-      GitStatus.indexDeleted => '已暂存删除',
-      GitStatus.indexRenamed => '已暂存重命名',
-      GitStatus.indexTypeChange => '已暂存类型变化',
-      GitStatus.wtNew => '未跟踪',
-      GitStatus.wtModified => '工作区修改',
-      GitStatus.wtDeleted => '工作区删除',
-      GitStatus.wtTypeChange => '工作区类型变化',
-      GitStatus.wtRenamed => '工作区重命名',
-      GitStatus.wtUnreadable => '不可读',
-      GitStatus.ignored => '已忽略',
-      GitStatus.conflicted => '冲突',
-      GitStatus.current => '干净',
+      'A' => '已暂存新增',
+      'M' => '已暂存修改',
+      'D' => '已暂存删除',
+      'R' => '已暂存重命名',
+      'C' => '已暂存复制',
+      _ => null,
     };
   }
 
-  bool _isIndexStatus(GitStatus status) {
-    return status == GitStatus.indexNew ||
-        status == GitStatus.indexModified ||
-        status == GitStatus.indexDeleted ||
-        status == GitStatus.indexRenamed ||
-        status == GitStatus.indexTypeChange;
+  String? _worktreeStatusLabel(String status) {
+    return switch (status) {
+      '?' => '未跟踪',
+      'M' => '工作区修改',
+      'D' => '工作区删除',
+      'R' => '工作区重命名',
+      'C' => '工作区复制',
+      '!' => '已忽略',
+      _ => null,
+    };
   }
 
-  bool _isWorktreeStatus(GitStatus status) {
-    return status == GitStatus.wtNew ||
-        status == GitStatus.wtModified ||
-        status == GitStatus.wtDeleted ||
-        status == GitStatus.wtTypeChange ||
-        status == GitStatus.wtRenamed ||
-        status == GitStatus.wtUnreadable;
+  bool _isIndexStatus(String status) {
+    return const {'A', 'M', 'D', 'R', 'C'}.contains(status);
   }
 
-  List<GitBranchInfo> _branches(Repository repo) {
+  bool _isWorktreeStatus(String status) {
+    return const {'?', 'M', 'D', 'R', 'C'}.contains(status);
+  }
+
+  bool _isConflictStatus(String indexStatus, String worktreeStatus) {
+    return const {
+      'DD',
+      'AU',
+      'UD',
+      'UA',
+      'DU',
+      'AA',
+      'UU',
+    }.contains('$indexStatus$worktreeStatus');
+  }
+
+  Future<List<GitBranchInfo>> _branches(String rootPath) async {
+    final local = await _branchInfos(rootPath, remote: false);
+    final remote = await _branchInfos(rootPath, remote: true);
+    return [...local, ...remote];
+  }
+
+  Future<List<GitBranchInfo>> _branchInfos(
+    String rootPath, {
+    required bool remote,
+  }) async {
+    final output = await _gitOutput(rootPath, [
+      'branch',
+      remote ? '--remotes' : '--list',
+      '--format=%(HEAD)%00%(refname:short)%00%(objectname)%00%(upstream:short)',
+    ], allowFailure: true);
     return [
-      for (final branch in repo.branchesLocal) _branchInfo(branch, false),
-      for (final branch in repo.branchesRemote) _branchInfo(branch, true),
+      for (final line in _lines(output))
+        if (_branchInfo(line, remote) != null) _branchInfo(line, remote)!,
     ];
   }
 
-  GitBranchInfo _branchInfo(Branch branch, bool isRemote) {
+  GitBranchInfo? _branchInfo(String line, bool isRemote) {
+    final parts = line.split('\u0000');
+    if (parts.length < 3 || parts[1].isEmpty) return null;
     return GitBranchInfo(
-      name: branch.name,
-      targetSha: branch.target.sha,
-      isCurrent: _safe(() => branch.isHead) ?? false,
+      name: parts[1],
+      targetSha: parts[2],
+      isCurrent: parts[0] == '*',
       isRemote: isRemote,
-      upstream: isRemote ? '' : _safe(() => branch.upstreamName) ?? '',
+      upstream: parts.length > 3 ? parts[3] : '',
     );
   }
 
-  List<GitRemoteInfo> _remotes(Repository repo) {
+  Future<List<GitRemoteInfo>> _remotes(String rootPath) async {
     return [
-      for (final name in repo.remotes)
-        _remoteInfo(Remote.lookup(repo: repo, name: name)),
-    ];
-  }
-
-  GitRemoteInfo _remoteInfo(Remote remote) {
-    return GitRemoteInfo(
-      name: remote.name,
-      url: remote.url,
-      pushUrl: remote.pushUrl,
-      fetchRefspecs: remote.fetchRefspecs,
-      pushRefspecs: remote.pushRefspecs,
-    );
-  }
-
-  List<GitStashInfo> _stashes(Repository repo) {
-    return [
-      for (final stash in repo.stashes)
-        GitStashInfo(
-          index: stash.index,
-          sha: stash.oid.sha,
-          message: stash.message,
+      for (final name in _lines(
+        await _gitOutput(rootPath, ['remote'], allowFailure: true),
+      ))
+        GitRemoteInfo(
+          name: name,
+          url: await _gitOutput(rootPath, [
+            'remote',
+            'get-url',
+            name,
+          ], allowFailure: true),
+          pushUrl: await _gitOutput(rootPath, [
+            'remote',
+            'get-url',
+            '--push',
+            name,
+          ], allowFailure: true),
+          fetchRefspecs: _lines(
+            await _gitOutput(rootPath, [
+              'config',
+              '--get-all',
+              'remote.$name.fetch',
+            ], allowFailure: true),
+          ),
+          pushRefspecs: _lines(
+            await _gitOutput(rootPath, [
+              'config',
+              '--get-all',
+              'remote.$name.push',
+            ], allowFailure: true),
+          ),
         ),
     ];
   }
 
-  List<GitTagInfo> _tags(Repository repo) {
+  Future<List<GitStashInfo>> _stashes(String rootPath) async {
+    final output = await _gitOutput(rootPath, [
+      'stash',
+      'list',
+      '--format=%gd%x00%H%x00%s',
+    ], allowFailure: true);
     return [
-      for (final tag in repo.tags)
-        GitTagInfo(
-          name: tag,
-          targetSha:
-              _safe(() {
-                final ref = Reference.lookup(
-                  repo: repo,
-                  name: 'refs/tags/$tag',
-                );
-                return ref.target.sha;
-              }) ??
-              '',
+      for (final line in _lines(output))
+        if (_stashInfo(line) != null) _stashInfo(line)!,
+    ];
+  }
+
+  GitStashInfo? _stashInfo(String line) {
+    final parts = line.split('\u0000');
+    if (parts.length < 3) return null;
+    final match = RegExp(r'stash@\{(\d+)\}').firstMatch(parts[0]);
+    return GitStashInfo(
+      index: int.tryParse(match?.group(1) ?? '') ?? 0,
+      sha: parts[1],
+      message: parts[2],
+    );
+  }
+
+  Future<List<GitTagInfo>> _tags(String rootPath) async {
+    final output = await _gitOutput(rootPath, [
+      'tag',
+      '--format=%(refname:short)%00%(objectname)',
+    ], allowFailure: true);
+    return [
+      for (final line in _lines(output))
+        if (_tagInfo(line) != null) _tagInfo(line)!,
+    ];
+  }
+
+  GitTagInfo? _tagInfo(String line) {
+    final parts = line.split('\u0000');
+    if (parts.length < 2) return null;
+    return GitTagInfo(name: parts[0], targetSha: parts[1]);
+  }
+
+  Future<List<GitSubmoduleInfo>> _submodules(String rootPath) async {
+    final output = await _gitOutput(rootPath, [
+      'config',
+      '--file',
+      '.gitmodules',
+      '--get-regexp',
+      r'^submodule\..*\.path$',
+    ], allowFailure: true);
+    final submodules = <GitSubmoduleInfo>[];
+    for (final line in _lines(output)) {
+      final parts = line.split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      final name = parts.first
+          .replaceFirst('submodule.', '')
+          .replaceFirst('.path', '');
+      final path = parts.sublist(1).join(' ');
+      submodules.add(
+        GitSubmoduleInfo(
+          name: name,
+          path: path,
+          url: await _gitOutput(rootPath, [
+            'config',
+            '--file',
+            '.gitmodules',
+            'submodule.$name.url',
+          ], allowFailure: true),
+          branch: await _gitOutput(rootPath, [
+            'config',
+            '--file',
+            '.gitmodules',
+            'submodule.$name.branch',
+          ], allowFailure: true),
+          statusLabels: _lines(
+            await _gitOutput(rootPath, [
+              'submodule',
+              'status',
+              '--',
+              path,
+            ], allowFailure: true),
+          ),
         ),
-    ];
+      );
+    }
+    return submodules;
   }
 
-  List<GitSubmoduleInfo> _submodules(Repository repo) {
+  Future<List<GitWorktreeInfo>> _worktrees(String rootPath) async {
+    final output = await _gitOutput(rootPath, [
+      'worktree',
+      'list',
+      '--porcelain',
+    ], allowFailure: true);
+    final worktrees = <GitWorktreeInfo>[];
+    var current = <String, String>{};
+    for (final line in [..._lines(output), '']) {
+      if (line.isEmpty) {
+        if (current['worktree'] != null) {
+          final path = current['worktree']!;
+          if (p.normalize(path) != p.normalize(rootPath)) {
+            worktrees.add(
+              GitWorktreeInfo(
+                name: path,
+                path: path,
+                isLocked: current.containsKey('locked'),
+                isPrunable: current.containsKey('prunable'),
+                isValid: true,
+              ),
+            );
+          }
+        }
+        current = {};
+        continue;
+      }
+      final separator = line.indexOf(' ');
+      if (separator == -1) {
+        current[line] = '';
+      } else {
+        current[line.substring(0, separator)] = line.substring(separator + 1);
+      }
+    }
+    return worktrees;
+  }
+
+  Future<List<GitCommitInfo>> _commits(
+    String rootPath, {
+    int limit = 80,
+    String? pathspec,
+    bool follow = false,
+  }) async {
+    final output = await _gitOutput(rootPath, [
+      'log',
+      '-n',
+      '$limit',
+      '--date=iso-strict',
+      '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P',
+      if (follow) '--follow',
+      if (pathspec != null) ...['--', pathspec],
+    ], allowFailure: true);
     return [
-      for (final name in repo.submodules)
-        _submoduleInfo(repo, Submodule.lookup(repo: repo, name: name)),
+      for (final line in _lines(output))
+        if (_commitInfo(line) != null) _commitInfo(line)!,
     ];
   }
 
-  GitSubmoduleInfo _submoduleInfo(Repository repo, Submodule submodule) {
-    return GitSubmoduleInfo(
-      name: submodule.name,
-      path: submodule.path,
-      url: submodule.url,
-      branch: submodule.branch,
-      statusLabels: [
-        for (final status in _safe(() => submodule.status()) ?? {})
-          _enumTail(status),
-      ],
-    );
-  }
-
-  List<GitWorktreeInfo> _worktrees(Repository repo) {
-    return [
-      for (final name in repo.worktrees)
-        _worktreeInfo(Worktree.lookup(repo: repo, name: name)),
-    ];
-  }
-
-  GitWorktreeInfo _worktreeInfo(Worktree worktree) {
-    return GitWorktreeInfo(
-      name: worktree.name,
-      path: worktree.path,
-      isLocked: worktree.isLocked,
-      isPrunable: worktree.isPrunable,
-      isValid: worktree.isValid,
-    );
-  }
-
-  List<GitCommitInfo> _commits(Repository repo, {int limit = 80}) {
-    final head = _safe(() => repo.head.target);
-    if (head == null) return const [];
-    final walker = RevWalk(repo)
-      ..sorting({GitSort.time, GitSort.topological})
-      ..push(head);
-    final commits = walker.walk(limit: limit);
-    walker.free();
-    return commits.map(_commitInfo).toList();
-  }
-
-  GitCommitInfo _commitInfo(Commit commit) {
+  GitCommitInfo? _commitInfo(String line) {
+    final parts = line.split('\u0000');
+    if (parts.length < 7) return null;
     return GitCommitInfo(
-      sha: commit.oid.sha,
-      shortSha: _shortSha(commit.oid.sha),
-      summary: commit.summary,
-      author: commit.author.name,
-      email: commit.author.email,
-      time: DateTime.fromMillisecondsSinceEpoch(
-        commit.time * 1000,
-        isUtc: true,
-      ).toLocal(),
-      parentShas: [for (final parent in commit.parents) parent.sha],
+      sha: parts[0],
+      shortSha: parts[1],
+      summary: parts[2],
+      author: parts[3],
+      email: parts[4],
+      time: DateTime.tryParse(parts[5])?.toLocal() ?? DateTime.now(),
+      parentShas: parts[6].isEmpty ? const [] : parts[6].split(' '),
     );
   }
 
-  List<GitConflictInfo> _conflicts(Repository repo) {
-    final index = repo.index;
-    if (!index.hasConflicts) return const [];
+  Future<List<GitConflictInfo>> _conflicts(
+    String rootPath,
+    List<GitStatusEntry> entries,
+  ) async {
     return [
-      for (final item in index.conflicts.entries)
-        if (item.value.our != null && item.value.their != null)
+      for (final entry in entries)
+        if (entry.isConflicted)
           GitConflictInfo(
-            path: item.key,
-            ancestorPath: item.value.ancestor?.path ?? '',
-            oursPath: item.value.our?.path ?? '',
-            theirsPath: item.value.their?.path ?? '',
-            basePreview: _blobContent(repo, item.value.ancestor),
-            oursPreview: _blobContent(repo, item.value.our),
-            theirsPreview: _blobContent(repo, item.value.their),
-            mergedPreview:
-                _safe(
-                  () => Merge.fileFromIndex(
-                    repo: repo,
-                    ancestor: item.value.ancestor,
-                    ancestorLabel: 'base',
-                    ours: item.value.our!,
-                    oursLabel: 'ours',
-                    theirs: item.value.their!,
-                    theirsLabel: 'theirs',
-                    flags: {GitMergeFileFlag.styleDiff3},
-                  ),
-                ) ??
-                '',
+            path: entry.path,
+            ancestorPath: entry.path,
+            oursPath: entry.path,
+            theirsPath: entry.path,
+            basePreview: await _showStage(rootPath, 1, entry.path),
+            oursPreview: await _showStage(rootPath, 2, entry.path),
+            theirsPreview: await _showStage(rootPath, 3, entry.path),
+            mergedPreview: await _filePreview(rootPath, entry.path),
           ),
     ];
   }
 
-  String _blobContent(Repository repo, IndexEntry? entry) {
-    if (entry == null) return '';
-    return _safe(() {
-          final blob = Blob.lookup(repo: repo, oid: entry.oid);
-          if (blob.isBinary) return '[Binary file]';
-          return blob.content;
-        }) ??
-        '';
+  Future<String> _showStage(String rootPath, int stage, String filePath) {
+    return _gitOutput(rootPath, [
+      'show',
+      ':$stage:$filePath',
+    ], allowFailure: true);
   }
 
-  bool _commitTouchesPath(Repository repo, Commit commit, String filePath) {
-    final parents = commit.parents;
-    if (parents.isEmpty) {
-      return _safe(
-            () => RevParse.single(
-              repo: repo,
-              spec: '${commit.oid.sha}:$filePath',
-            ),
-          ) !=
-          null;
+  Future<String> _filePreview(String rootPath, String filePath) async {
+    final file = File(p.join(rootPath, filePath));
+    if (!file.existsSync()) return '';
+    try {
+      return await file.readAsString();
+    } on FormatException {
+      return '[Binary file]';
     }
-    final parent = Commit.lookup(repo: repo, oid: parents.first);
-    final diff = Diff.treeToTree(
-      repo: repo,
-      oldTree: parent.tree,
-      newTree: commit.tree,
+  }
+
+  Future<List<String>> _conflictedPaths(String rootPath) async {
+    return _lines(
+      await _gitOutput(rootPath, [
+        'diff',
+        '--name-only',
+        '--diff-filter=U',
+      ], allowFailure: true),
     );
-    return diff.deltas.any((delta) {
-      return delta.oldFile.path == filePath || delta.newFile.path == filePath;
-    });
   }
 
-  Commit _commitFromSpec(Repository repo, String spec) {
-    final target = spec.trim();
-    if (target.isEmpty) throw ArgumentError('目标不能为空。');
-    final object = RevParse.single(repo: repo, spec: target);
-    if (object is Commit) return object;
-    if (object is Tag) return object.target as Commit;
-    throw ArgumentError('目标必须解析为 commit。');
-  }
-
-  List<Commit> _commitParents(Repository repo) {
-    final head = _safe(() => repo.headCommit);
-    final parents = <Commit>[];
-    if (head != null) {
-      parents.add(head);
+  Future<String> _repositoryStateLabel(String rootPath) async {
+    final gitDir = _normalizeGitDir(
+      rootPath,
+      await _gitOutput(rootPath, [
+        'rev-parse',
+        '--git-dir',
+      ], allowFailure: true),
+    );
+    if (File(p.join(gitDir, 'MERGE_HEAD')).existsSync()) return '合并中';
+    if (File(p.join(gitDir, 'CHERRY_PICK_HEAD')).existsSync()) {
+      return 'Cherry-pick 中';
     }
-    for (final oid in _mergeHeadOids(repo)) {
-      if (head == null || oid.sha != head.oid.sha) {
-        parents.add(Commit.lookup(repo: repo, oid: oid));
-      }
+    if (Directory(p.join(gitDir, 'rebase-merge')).existsSync() ||
+        Directory(p.join(gitDir, 'rebase-apply')).existsSync()) {
+      return 'Rebase 中';
     }
-    return parents;
+    return '空闲';
   }
 
-  List<Oid> _mergeHeadOids(Repository repo) {
-    final mergeHead = File(p.join(repo.path, 'MERGE_HEAD'));
-    if (!mergeHead.existsSync()) return const [];
-    return [
-      for (final line in mergeHead.readAsLinesSync())
-        if (line.trim().isNotEmpty) repo[line.trim()],
-    ];
+  Future<String?> _configValue(String rootPath, String key) async {
+    final value = await _gitOutput(rootPath, [
+      'config',
+      '--get',
+      key,
+    ], allowFailure: true);
+    return value.isEmpty ? null : value;
   }
 
-  void _runRebaseUntilConflict(
-    Repository repo,
-    Rebase rebase,
-    Signature signature,
-  ) {
-    while (true) {
-      try {
-        rebase.next();
-      } catch (_) {
-        rebase.finish();
-        return;
-      }
-      if (repo.index.hasConflicts) return;
-      rebase.commit(committer: signature, author: signature);
-    }
+  String _normalizeGitDir(String rootPath, String gitDir) {
+    if (gitDir.isEmpty) return p.join(rootPath, '.git');
+    return p.normalize(
+      p.isAbsolute(gitDir) ? gitDir : p.join(rootPath, gitDir),
+    );
   }
 
-  Signature _signature(GitCommitInput input) {
-    final name = input.authorName.trim().isEmpty
+  String _authorName(GitCommitInput input) {
+    return input.authorName.trim().isEmpty
         ? 'Pyrite User'
         : input.authorName.trim();
-    final email = input.authorEmail.trim().isEmpty
+  }
+
+  String _authorEmail(GitCommitInput input) {
+    return input.authorEmail.trim().isEmpty
         ? 'pyrite@example.local'
         : input.authorEmail.trim();
-    return Signature.create(name: name, email: email);
   }
 
-  Callbacks _callbacks(GitCredentialDraft draft) {
-    return Callbacks(credentials: _credentials(draft));
-  }
-
-  Credentials? _credentials(GitCredentialDraft draft) {
-    return switch (draft.mode) {
-      GitCredentialMode.none => null,
-      GitCredentialMode.httpsToken => UserPass(
-        username: draft.username.trim().isEmpty
-            ? 'x-access-token'
-            : draft.username.trim(),
-        password: draft.token,
-      ),
-      GitCredentialMode.sshAgent => KeypairFromAgent(
-        draft.username.trim().isEmpty ? 'git' : draft.username.trim(),
-      ),
-      GitCredentialMode.sshKey => Keypair(
-        username: draft.username.trim().isEmpty ? 'git' : draft.username.trim(),
-        pubKey: draft.publicKeyPath,
-        privateKey: draft.privateKeyPath,
-        passPhrase: draft.passphrase,
-      ),
-    };
-  }
-
-  void _cleanupPreparedMessage(Repository repo) {
-    _safe(() => repo.removeMessage());
-  }
-
-  DateTime? _signatureTime(Signature? signature) {
-    if (signature == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch(
-      signature.time * 1000,
-      isUtc: true,
-    ).toLocal();
-  }
-
-  String _repositoryStateLabel(GitRepositoryState state) {
-    return switch (state) {
-      GitRepositoryState.none => '空闲',
-      GitRepositoryState.merge => '合并中',
-      GitRepositoryState.revert => '回滚中',
-      GitRepositoryState.revertSequence => '连续回滚中',
-      GitRepositoryState.cherrypick => 'Cherry-pick 中',
-      GitRepositoryState.cherrypickSequence => '连续 Cherry-pick 中',
-      GitRepositoryState.bisect => 'Bisect 中',
-      GitRepositoryState.rebase => 'Rebase 中',
-      GitRepositoryState.rebaseInteractive => '交互式 Rebase 中',
-      GitRepositoryState.rebaseMerge => 'Rebase 合并中',
-      GitRepositoryState.applyMailbox => '应用邮箱补丁中',
-      GitRepositoryState.applyMailboxOrRebase => '应用补丁或 Rebase 中',
-    };
-  }
-
-  String _enumTail(Object value) {
-    return value.toString().split('.').last;
-  }
-
-  String _shortSha(String sha) {
-    return sha.length <= 7 ? sha : sha.substring(0, 7);
-  }
-
-  T? _safe<T>(T Function() action) {
-    try {
-      return action();
-    } catch (_) {
-      return null;
+  Map<String, String> _credentialEnvironment(GitCredentialDraft draft) {
+    final environment = <String, String>{};
+    if (draft.mode == GitCredentialMode.sshKey &&
+        draft.privateKeyPath.trim().isNotEmpty) {
+      environment['GIT_SSH_COMMAND'] =
+          'ssh -i "${draft.privateKeyPath.trim()}" -o IdentitiesOnly=yes';
     }
+    return environment;
+  }
+
+  Future<void> _runConflictAware(String rootPath, List<String> args) async {
+    final result = await _git(rootPath, args, allowFailure: true);
+    if (result.exitCode == 0) return;
+    if ((await _conflictedPaths(rootPath)).isNotEmpty) return;
+    throw StateError(result.message);
+  }
+
+  Future<void> _gitVoid(
+    String rootPath,
+    List<String> args, {
+    Map<String, String>? environment,
+    Duration? timeout,
+  }) async {
+    await _git(rootPath, args, environment: environment, timeout: timeout);
+  }
+
+  Future<String> _gitOutput(
+    String rootPath,
+    List<String> args, {
+    bool allowFailure = false,
+  }) async {
+    final result = await _git(rootPath, args, allowFailure: allowFailure);
+    if (allowFailure && result.exitCode != 0) return '';
+    return result.stdout.trim();
+  }
+
+  Future<_GitCommandResult> _git(
+    String rootPath,
+    List<String> args, {
+    bool allowFailure = false,
+    Map<String, String>? environment,
+    Duration? timeout,
+  }) {
+    return _runGit(
+      rootPath,
+      ['-C', rootPath, ...args],
+      allowFailure: allowFailure,
+      environment: environment,
+      timeout: timeout,
+    );
+  }
+
+  Future<_GitCommandResult> _runGit(
+    String? rootPath,
+    List<String> args, {
+    bool allowFailure = false,
+    Map<String, String>? environment,
+    Duration? timeout,
+  }) async {
+    final mergedEnvironment = {'GIT_TERMINAL_PROMPT': '0', ...?environment};
+    try {
+      final result = await Process.run(
+        'git',
+        args,
+        workingDirectory: rootPath,
+        environment: mergedEnvironment,
+        runInShell: Platform.isWindows,
+      ).timeout(timeout ?? commandTimeout);
+      final commandResult = _GitCommandResult(
+        exitCode: result.exitCode,
+        stdout: result.stdout.toString(),
+        stderr: result.stderr.toString(),
+      );
+      if (!allowFailure && commandResult.exitCode != 0) {
+        throw StateError(commandResult.message);
+      }
+      return commandResult;
+    } on ProcessException catch (error) {
+      throw StateError('未找到 Git 可执行文件：${error.message}');
+    } on TimeoutException {
+      throw TimeoutException('Git 命令执行超时。');
+    }
+  }
+
+  List<String> _lines(String output) {
+    return output
+        .split('\n')
+        .map((line) => line.trimRight())
+        .where((line) => line.isNotEmpty)
+        .toList();
+  }
+}
+
+class _GitCommandResult {
+  const _GitCommandResult({
+    required this.exitCode,
+    required this.stdout,
+    required this.stderr,
+  });
+
+  final int exitCode;
+  final String stdout;
+  final String stderr;
+
+  String get message {
+    final text = stderr.trim().isEmpty ? stdout.trim() : stderr.trim();
+    return text.isEmpty ? 'Git 命令失败，退出码 $exitCode。' : text;
   }
 }
