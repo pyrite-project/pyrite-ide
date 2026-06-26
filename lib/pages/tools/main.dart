@@ -3,24 +3,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/pages/tools/device_status_panel.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
-class Tools extends ConsumerWidget {
+class Tools extends ConsumerStatefulWidget {
   const Tools({super.key, this.compact = false});
 
   final bool compact;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final body = buildBoardManager(context, ref);
-    if (compact) return body;
+  ConsumerState<Tools> createState() => _ToolsState();
+}
+
+class _ToolsState extends ConsumerState<Tools> {
+  bool _showDeviceStatus = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = buildBoardManager(context);
+    if (widget.compact) return body;
     return Scaffold(
       appBar: AppBar(title: const Text("设备管理")),
       body: body,
     );
   }
 
-  Widget buildBoardManager(BuildContext context, WidgetRef ref) {
+  Widget buildBoardManager(BuildContext context) {
     if (Platform.isAndroid) {
       final state = ref.watch(androidUsbSerialProvider);
       return CustomScrollView(
@@ -30,20 +38,31 @@ class Tools extends ConsumerWidget {
               context,
               state.isConnected,
               state.selectedPortName,
-              compact: compact,
+              compact: widget.compact,
               onDisconnect: state.isConnected
                   ? () => ref
                         .read(androidUsbSerialProvider.notifier)
                         .dicconnectPort()
                   : null,
+              onDeviceStatus: state.isConnected
+                  ? () => setState(() => _showDeviceStatus = !_showDeviceStatus)
+                  : null,
+              showDeviceStatus: _showDeviceStatus,
             ),
           ),
+          if (_showDeviceStatus && state.isConnected)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 260,
+                child: const DeviceStatusPanel(),
+              ),
+            ),
           SliverToBoxAdapter(
             child: PaneHeader(
               title: "可用设备",
               subtitle: "选择一个 USB 串口设备连接到 REPL",
               leadingIcon: Icons.usb,
-              compact: compact,
+              compact: widget.compact,
             ),
           ),
           if (state.devices.isEmpty)
@@ -127,20 +146,31 @@ class Tools extends ConsumerWidget {
               context,
               state.isConnected,
               state.selectedPortName,
-              compact: compact,
+              compact: widget.compact,
               onDisconnect: state.isConnected
                   ? () => ref
                         .read(desktopUsbSerialProvider.notifier)
                         .dicconnectPort()
                   : null,
+              onDeviceStatus: state.isConnected
+                  ? () => setState(() => _showDeviceStatus = !_showDeviceStatus)
+                  : null,
+              showDeviceStatus: _showDeviceStatus,
             ),
           ),
+          if (_showDeviceStatus && state.isConnected)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 260,
+                child: const DeviceStatusPanel(),
+              ),
+            ),
           SliverToBoxAdapter(
             child: PaneHeader(
               title: "可用串口",
               subtitle: "选择开发板对应的串口连接到 REPL",
               leadingIcon: Icons.usb,
-              compact: compact,
+              compact: widget.compact,
             ),
           ),
           if (state.portNames.isEmpty)
@@ -202,6 +232,8 @@ class Tools extends ConsumerWidget {
     bool isConnected,
     String? selectedPortName, {
     VoidCallback? onDisconnect,
+    VoidCallback? onDeviceStatus,
+    bool showDeviceStatus = false,
     bool compact = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
@@ -217,42 +249,66 @@ class Tools extends ConsumerWidget {
           color: isConnected ? scheme.primary : scheme.outlineVariant,
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            isConnected ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: isConnected
-                ? scheme.onPrimaryContainer
-                : scheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isConnected ? "设备已连接" : "暂未连接设备",
-                  style: Theme.of(context).textTheme.titleSmall,
+          Row(
+            children: [
+              Icon(
+                isConnected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isConnected
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isConnected ? "设备已连接" : "暂未连接设备",
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    Text(
+                      isConnected
+                          ? selectedPortName ?? "已建立串口连接"
+                          : "选择下方串口后，REPL 与文件同步会使用该设备。",
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: isConnected
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  isConnected
-                      ? selectedPortName ?? "已建立串口连接"
-                      : "选择下方串口后，REPL 与文件同步会使用该设备。",
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: isConnected
-                        ? scheme.onPrimaryContainer
-                        : scheme.onSurfaceVariant,
+              ),
+              if (onDeviceStatus != null)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 4),
+                  child: Tooltip(
+                    message: showDeviceStatus ? "收起设备状态" : "查看设备状态",
+                    child: IconButton(
+                      onPressed: onDeviceStatus,
+                      icon: Icon(
+                        showDeviceStatus ? Icons.keyboard_arrow_up : Icons.memory,
+                        size: 20,
+                      ),
+                      style: IconButton.styleFrom(
+                        foregroundColor: isConnected
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ),
-              ],
-            ),
+              if (onDisconnect != null)
+                TextButton.icon(
+                  onPressed: onDisconnect,
+                  icon: const Icon(Icons.link_off, size: 18),
+                  label: const Text("断开"),
+                ),
+            ],
           ),
-          if (onDisconnect != null)
-            TextButton.icon(
-              onPressed: onDisconnect,
-              icon: const Icon(Icons.link_off, size: 18),
-              label: const Text("断开"),
-            ),
         ],
       ),
     );

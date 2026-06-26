@@ -1,14 +1,10 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
-import 'package:pyrite_ide/core/services/board_manager/repl_mutex_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/serial_repl_gate_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/board_manager/device_executor.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
 
@@ -16,7 +12,6 @@ import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
 /// existing serial provider and MicroPython raw-paste protocol.
 class RawPasteSerialBoardFileBackend implements BoardFileBackend {
   static const _resultMarker = '__PYRITE_BOARD_FILE_RESULT__';
-  static const _defaultTimeout = Duration(seconds: 20);
   static const _longTimeout = Duration(seconds: 60);
   static const _writeChunkSize = 768;
 
@@ -222,9 +217,9 @@ except OSError as exc:
 
   Future<dynamic> _runJsonValue(
     String python, {
-    Duration timeout = _defaultTimeout,
+    Duration timeout = const Duration(seconds: 20),
   }) async {
-    final output = await _runPython(python, timeout: timeout);
+    final output = await runPythonOnDevice(ref, python, timeout: timeout);
     String? line;
     for (final candidate in output.split('\n').map((line) => line.trim())) {
       if (candidate.startsWith(_resultMarker)) {
@@ -246,40 +241,6 @@ except OSError as exc:
       throw BoardFileBackendException(error);
     }
     return decoded['value'];
-  }
-
-  Future<String> _runPython(String python, {required Duration timeout}) async {
-    final mutex = ref.read(replMutexProvider);
-    return mutex.runExclusive(() async {
-      _ensureConnected();
-
-      final queue = _SerialByteQueue();
-      void callback(Uint8List data) => queue.add(data);
-
-      ref.read(serialReplIoPausedProvider.notifier).state = true;
-      ref.read(serialDataCallbacksProvider.notifier).add(callback);
-
-      final session = _RawPasteSession(ref, queue);
-      try {
-        await session.enterRawRepl(timeout: timeout);
-        return await session.execute(python, timeout: timeout);
-      } finally {
-        try {
-          await session.exitRawRepl();
-        } finally {
-          ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-          ref.read(serialReplIoPausedProvider.notifier).state = false;
-        }
-      }
-    });
-  }
-
-  void _ensureConnected() {
-    final serialProvider = getUsbSerialProvider();
-    final serialState = ref.read(serialProvider);
-    if (serialState.isConnected != true) {
-      throw const BoardFileBackendException('No serial device is connected');
-    }
   }
 
   String _wrapPython(String body) {
@@ -408,234 +369,5 @@ except Exception as _pyrite_exc:
   String _preview(String value) {
     if (value.length <= 240) return value;
     return '${value.substring(0, 240)}...';
-  }
-}
-
-class _RawPasteSession {
-  static final _rawReplBanner = utf8.encode('raw REPL; CTRL-B to exit');
-  static final _prompt = Uint8List.fromList([0x3e]);
-  static final _eot = Uint8List.fromList([0x04]);
-  static final _rawPasteRequest = Uint8List.fromList([0x05, 0x41, 0x01]);
-  static final _ok = utf8.encode('OK');
-
-  final Ref ref;
-  final _SerialByteQueue queue;
-
-  _RawPasteSession(this.ref, this.queue);
-
-  Future<void> enterRawRepl({required Duration timeout}) async {
-    _write(const [0x03, 0x03]);
-    await Future<void>.delayed(const Duration(milliseconds: 120));
-    queue.clear();
-
-    _write(const [0x01]);
-    await queue.readUntil(_rawReplBanner, timeout);
-    await queue.readUntil(_prompt, timeout);
-  }
-
-  Future<void> exitRawRepl() async {
-    try {
-      _write(const [0x02]);
-      await queue.readUntil(utf8.encode('>>>'), const Duration(seconds: 2));
-    } catch (_) {
-      // A failed exit prompt read should not mask the actual file operation
-      // result. The next transaction will re-enter raw REPL from a known state.
-    }
-  }
-
-  Future<String> execute(String python, {required Duration timeout}) async {
-    final code = Uint8List.fromList(utf8.encode(python));
-    final windowIncrement = await _tryEnterRawPaste(timeout);
-    final result = windowIncrement == null
-        ? await _executeStandardRaw(code, timeout)
-        : await _executeRawPaste(code, windowIncrement, timeout);
-
-    if (result.stderr.isNotEmpty) {
-      throw BoardFileProtocolException(
-        utf8.decode(result.stderr, allowMalformed: true).trim(),
-      );
-    }
-    return utf8.decode(result.stdout, allowMalformed: true);
-  }
-
-  Future<int?> _tryEnterRawPaste(Duration timeout) async {
-    _write(_rawPasteRequest);
-    final response = await queue.readBytes(2, timeout);
-    if (response[0] == 0x52 && response[1] == 0x01) {
-      final window = await queue.readBytes(2, timeout);
-      return window[0] | (window[1] << 8);
-    }
-    if (response[0] == 0x52 && response[1] == 0x00) {
-      return null;
-    }
-    if (response[0] == 0x72 && response[1] == 0x61) {
-      await queue.readUntil(_prompt, timeout);
-      return null;
-    }
-    throw BoardFileProtocolException(
-      'Unexpected raw-paste handshake: ${response.toList()}',
-    );
-  }
-
-  Future<_RawExecutionResult> _executeRawPaste(
-    Uint8List code,
-    int windowIncrement,
-    Duration timeout,
-  ) async {
-    var remainingWindow = windowIncrement;
-    var offset = 0;
-    var sentEndOfData = false;
-
-    while (offset < code.length) {
-      while (queue.hasData) {
-        final signal = (await queue.readBytes(1, timeout))[0];
-        if (signal == 0x01) {
-          remainingWindow += windowIncrement;
-        } else if (signal == 0x04) {
-          _write(_eot);
-          sentEndOfData = true;
-          offset = code.length;
-          break;
-        }
-      }
-      if (offset >= code.length) break;
-
-      if (remainingWindow <= 0) {
-        final signal = (await queue.readBytes(1, timeout))[0];
-        if (signal == 0x01) {
-          remainingWindow += windowIncrement;
-          continue;
-        }
-        if (signal == 0x04) {
-          _write(_eot);
-          sentEndOfData = true;
-          break;
-        }
-        continue;
-      }
-
-      final count = math.min(remainingWindow, code.length - offset);
-      _write(code.sublist(offset, offset + count));
-      offset += count;
-      remainingWindow -= count;
-    }
-
-    if (!sentEndOfData) {
-      _write(_eot);
-    }
-    await queue.readUntil(_eot, timeout);
-    final stdout = await _readPayloadUntilEot(timeout);
-    final stderr = await _readPayloadUntilEot(timeout);
-    await queue.readUntil(_prompt, timeout);
-    return _RawExecutionResult(stdout: stdout, stderr: stderr);
-  }
-
-  Future<_RawExecutionResult> _executeStandardRaw(
-    Uint8List code,
-    Duration timeout,
-  ) async {
-    await _writeChunksWithoutFlowControl(code);
-    _write(_eot);
-    await queue.readUntil(_ok, timeout);
-    final stdout = await _readPayloadUntilEot(timeout);
-    final stderr = await _readPayloadUntilEot(timeout);
-    await queue.readUntil(_prompt, timeout);
-    return _RawExecutionResult(stdout: stdout, stderr: stderr);
-  }
-
-  Future<void> _writeChunksWithoutFlowControl(Uint8List code) async {
-    const chunkSize = 64;
-    for (int i = 0; i < code.length; i += chunkSize) {
-      final end = math.min(i + chunkSize, code.length);
-      _write(code.sublist(i, end));
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
-  }
-
-  Future<Uint8List> _readPayloadUntilEot(Duration timeout) async {
-    final data = await queue.readUntil(_eot, timeout);
-    return Uint8List.fromList(data.sublist(0, data.length - 1));
-  }
-
-  void _write(List<int> bytes) {
-    final serialProvider = getUsbSerialProvider();
-    ref.read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
-  }
-}
-
-class _RawExecutionResult {
-  final Uint8List stdout;
-  final Uint8List stderr;
-
-  const _RawExecutionResult({required this.stdout, required this.stderr});
-}
-
-class _SerialByteQueue {
-  final List<int> _buffer = [];
-  Completer<void>? _dataCompleter;
-
-  bool get hasData => _buffer.isNotEmpty;
-
-  void add(Uint8List data) {
-    if (data.isEmpty) return;
-    _buffer.addAll(data);
-    _dataCompleter?.complete();
-    _dataCompleter = null;
-  }
-
-  void clear() {
-    _buffer.clear();
-  }
-
-  Future<Uint8List> readBytes(int count, Duration timeout) async {
-    final stopwatch = Stopwatch()..start();
-    while (_buffer.length < count) {
-      await _waitForData(_remaining(timeout, stopwatch));
-    }
-    final result = _buffer.sublist(0, count);
-    _buffer.removeRange(0, count);
-    return Uint8List.fromList(result);
-  }
-
-  Future<Uint8List> readUntil(List<int> pattern, Duration timeout) async {
-    final stopwatch = Stopwatch()..start();
-    while (true) {
-      final index = _indexOf(pattern);
-      if (index >= 0) {
-        final end = index + pattern.length;
-        final result = _buffer.sublist(0, end);
-        _buffer.removeRange(0, end);
-        return Uint8List.fromList(result);
-      }
-      await _waitForData(_remaining(timeout, stopwatch));
-    }
-  }
-
-  Future<void> _waitForData(Duration timeout) async {
-    _dataCompleter ??= Completer<void>();
-    await _dataCompleter!.future.timeout(timeout);
-  }
-
-  Duration _remaining(Duration timeout, Stopwatch stopwatch) {
-    final remainingMs = timeout.inMilliseconds - stopwatch.elapsedMilliseconds;
-    if (remainingMs <= 0) {
-      throw TimeoutException('Timed out waiting for serial data', timeout);
-    }
-    return Duration(milliseconds: remainingMs);
-  }
-
-  int _indexOf(List<int> pattern) {
-    if (pattern.isEmpty || _buffer.length < pattern.length) return -1;
-    for (int i = 0; i <= _buffer.length - pattern.length; i++) {
-      var matched = true;
-      for (int j = 0; j < pattern.length; j++) {
-        if (_buffer[i + j] != pattern[j]) {
-          matched = false;
-          break;
-        }
-      }
-      if (matched) return i;
-    }
-    return -1;
   }
 }
