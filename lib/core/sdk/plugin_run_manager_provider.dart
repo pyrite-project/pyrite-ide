@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/app/routes.dart';
@@ -12,23 +13,12 @@ import 'package:freeport/freeport.dart';
 class PluginRunManagerNotifier
     extends StateNotifier<Map<Plugin, PluginRunManager>> {
   final Ref ref;
+  bool _routerListenerRegistered = false;
+
   PluginRunManagerNotifier(this.ref) : super({});
 
   Future<void> start(Plugin plugin) async {
-    for (var entery in state.entries) {
-      if (entery.key.id == plugin.id) {
-        return;
-      }
-    }
-    /*
-    state.forEach((key, value) {
-      if (key.id == plugin.id) {
-        // state[plugin]!.sendLifecycleHooks(LifecycleHooks.onResume);
-        return;
-      }
-    });
-    */
-    print("RUN START");
+    if (state.containsKey(plugin)) return;
 
     final Directory root = await getApplicationSupportDirectory();
     final Directory target = await Directory(
@@ -41,6 +31,7 @@ class PluginRunManagerNotifier
       path.join(target.path, "__pypackages__"),
       path.join(target.path, "site-packages"),
     ].map(escapeForPythonString).join("::");
+
     await SeriousPython.run(
       "assets/python_runtime_boot.zip",
       appFileName: "setup_sys_path.py",
@@ -49,70 +40,74 @@ class PluginRunManagerNotifier
         "RUNTIME_REPLACE_MODULE_PATHS": "1",
       },
     );
-    SeriousPython.runProgram(
+
+    await SeriousPython.runProgram(
       path.join(target.path, "__main__.py"),
       script: Platform.isWindows ? "" : null,
       environmentVariables: {"PYRITE_IDE_PLUGIN_PORT": "$port"},
     );
 
-    final PluginRunManager runManager = PluginRunManager(port: port, assetsPath: target.path);
-    runManager.onRefresh = () {
-      state = {...state};
-    };
-    runManager.onSetVar = () {
+    final PluginRunManager runManager = PluginRunManager(
+      port: port,
+      assetsPath: target.path,
+    );
+    runManager.onDataChanged = () {
       state = {...state};
     };
     state = {...state, plugin: runManager};
-    await runManager.sendLifecycleHooks(LifecycleHooks.onStart);
-    print("STATE $state");
+    await runManager.sendLifecycleHooks(LifecycleHooks.onStart.value);
   }
 
-  void update() {}
-
-  void destory() {}
-
   void setupRouterListener() {
+    if (_routerListenerRegistered) return;
+    _routerListenerRegistered = true;
+
     String? previousLocation;
-    Uri? previousUri;
+    String? previousPluginId;
+
     routes.routerDelegate.addListener(() {
       final currentLocation = routes.state.fullPath;
-      final currentUri = routes.state.uri;
-      if (previousLocation != currentLocation) {
-        print('路由从 $previousLocation 变为 $currentLocation');
-        if (currentLocation == "/plugins/body") {
-          final String pluginId = currentUri.queryParameters['id']!;
-          if (state.isEmpty) {
-            // sendLifecycleHooks(LifecycleHooks.onStart);
-            print(LifecycleHooks.onStart);
-          }
-          state.forEach((key, value) {
-            if (key.id == pluginId) {
-              value.sendLifecycleHooks(LifecycleHooks.onResume);
-              print(LifecycleHooks.onResume.toString());
-            } else {
-              // 调用 sendLifecycleHooks 需要拿到对应的 value，此时插件尚未初始化，不存在这个对应的 value。故将发送生命周期的逻辑交给 value.start()。value.start() 由 _loadRemoteWidgets 调用。_loadRemoteWidgets 由 _PluginBodyState 的 initState 调用。
-              // sendLifecycleHooks(LifecycleHooks.onStart);
-              print(LifecycleHooks.onStart);
-            }
-          });
-        } else if (previousLocation == "/plugins/body") {
-          final String pluginId = previousUri!.queryParameters['id']!;
-          state.forEach((key, value) {
-            if (key.id == pluginId) {
-              if (key.keepAlive) {
-                value.sendLifecycleHooks(LifecycleHooks.onPause);
-                print(LifecycleHooks.onPause.toString());
-              } else {
-                value.sendLifecycleHooks(LifecycleHooks.onDispose);
-                print(LifecycleHooks.onDispose.toString());
-              }
-            }
-          });
-        }
-        previousLocation = currentLocation;
-        previousUri = currentUri;
+      if (previousLocation == currentLocation) return;
+
+      String? currentPluginId;
+      if (currentLocation == "/plugins/body") {
+        currentPluginId = routes.state.uri.queryParameters['id'];
       }
+
+      if (currentPluginId != null) {
+        for (final entry in state.entries) {
+          if (entry.key.id == currentPluginId) {
+            entry.value.sendLifecycleHooks(LifecycleHooks.onResume.value);
+          } else if (previousPluginId != null &&
+              entry.key.id != previousPluginId) {
+            entry.value.sendLifecycleHooks(LifecycleHooks.onPause.value);
+          }
+        }
+      }
+
+      if (previousPluginId != null && previousPluginId != currentPluginId) {
+        for (final entry in state.entries) {
+          if (entry.key.id == previousPluginId) {
+            if (entry.key.keepAlive) {
+              entry.value.sendLifecycleHooks(LifecycleHooks.onPause.value);
+            } else {
+              entry.value.sendLifecycleHooks(LifecycleHooks.onDispose.value);
+            }
+          }
+        }
+      }
+
+      previousLocation = currentLocation;
+      previousPluginId = currentPluginId;
     });
+  }
+
+  @override
+  void dispose() {
+    for (final runManager in state.values) {
+      runManager.dispose();
+    }
+    super.dispose();
   }
 }
 
@@ -123,4 +118,3 @@ final StateNotifierProvider<
 pluginRunManagerProvider = StateNotifierProvider(
   (ref) => PluginRunManagerNotifier(ref),
 );
-

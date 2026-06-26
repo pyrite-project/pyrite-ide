@@ -12,11 +12,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   PluginManagerNotifier(this.ref) : super({});
 
   void register(Plugin plugin) {
-    for (Plugin p in state.values) {
-      if (p.id == plugin.id) return;
-    }
-    print("object");
-
+    if (state.containsKey(plugin.id)) return;
     state = {...state, plugin.id: plugin};
   }
 
@@ -33,17 +29,21 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   Future<void> install(Plugin plugin, String packagePath) async {
     register(plugin);
 
-    Directory root = await getApplicationSupportDirectory();
-    print(root);
-    Directory target = await Directory(
-      path.join(root.path, "plugin", plugin.id),
-    ).create(recursive: true);
+    try {
+      final Directory root = await getApplicationSupportDirectory();
+      final Directory target = await Directory(
+        path.join(root.path, "plugin", plugin.id),
+      ).create(recursive: true);
 
-    final InputFileStream stream = InputFileStream(packagePath);
-    final Archive archive = ZipDecoder().decodeStream(stream);
+      final InputFileStream stream = InputFileStream(packagePath);
+      final Archive archive = ZipDecoder().decodeStream(stream);
 
-    await extractArchiveToDisk(archive, target.path);
-    changeStatus(plugin.id, PluginStatus.usable);
+      await extractArchiveToDisk(archive, target.path);
+      changeStatus(plugin.id, PluginStatus.usable);
+    } catch (e) {
+      changeStatus(plugin.id, PluginStatus.disabled);
+      rethrow;
+    }
   }
 }
 

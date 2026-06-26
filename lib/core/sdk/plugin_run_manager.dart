@@ -1,115 +1,183 @@
 import 'dart:async';
-import 'dart:io';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+abstract class SdkCommands {
+  static const String eventCallback = 'Commands.EventCallback';
+  static const String response = 'Commands.Response';
+  static const String errorResponse = 'Commands.ErrorResponse';
+  static const String send = 'Commands.Send';
+  static const String lifecycleHooks = 'Commands.LifecycleHooks';
+}
+
+typedef CommandHandler = void Function(
+  Map<String, dynamic> data,
+  void Function(Map<String, dynamic>) respond,
+);
 
 class PluginRunManager {
   PluginRunManager({required this.port, required this.assetsPath});
+
   final int port;
   final String assetsPath;
   WebSocketChannel? _channel;
-  Map<String, String> pages = {};
-  void Function()? onRefresh;
-  Map<String, dynamic> vars = {};
-  void Function()? onSetVar;
+  bool _connecting = false;
+  final Map<String, String> pages = {};
+  final Map<String, dynamic> vars = {};
+  void Function()? onDataChanged;
 
-  // 用于按顺序存储 Completer (解决请求与响应的匹配)
-  final List<Completer<String>> _responseQueue = [];
+  int _nextRequestId = 0;
+  final Map<String, Completer<String>> _pendingRequests = {};
+
+  final Map<String, CommandHandler> _handlers = {};
+
+  void registerHandler(String cmd, CommandHandler handler) {
+    _handlers[cmd] = handler;
+  }
+
+  void _initBuiltinHandlers() {
+    registerHandler(SdkCommands.send, _handleSend);
+    registerHandler(SdkCommands.response, _handleResponse);
+    registerHandler(SdkCommands.errorResponse, _handleErrorResponse);
+  }
+
+  void _handleSend(
+    Map<String, dynamic> data,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final pagesData = data['data']?['pages'];
+    if (pagesData != null) {
+      pages.clear();
+      pages.addAll(Map<String, String>.from(pagesData));
+    }
+
+    final varName = data['data']?['varName'];
+    if (varName != null) {
+      vars[varName] = data['data']!['varValue'];
+    }
+
+    onDataChanged?.call();
+  }
+
+  void _handleResponse(
+    Map<String, dynamic> data,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final pagesData = data['data']?['pages'];
+    if (pagesData != null) {
+      pages.clear();
+      pages.addAll(Map<String, String>.from(pagesData));
+    }
+
+    onDataChanged?.call();
+  }
+
+  void _handleErrorResponse(
+    Map<String, dynamic> data,
+    void Function(Map<String, dynamic>) respond,
+  ) {}
 
   Future<void> connect() async {
     if (_channel != null && _channel!.closeCode == null) return;
+    if (_connecting) {
+      await Future.doWhile(() async {
+        await Future.delayed(const Duration(milliseconds: 50));
+        return _connecting;
+      });
+      if (_channel != null && _channel!.closeCode == null) return;
+    }
 
+    _connecting = true;
     const maxRetries = 20;
     const retryDelay = Duration(milliseconds: 500);
 
-    for (var attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        print("try to connect to ws://localhost:$port (attempt $attempt)");
-        _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:$port'));
-        await _channel!.ready;
-        print("WebSocket Connected.");
-        break;
-      } on SocketException catch (e) {
-        print("SocketException in PluginRunManager: $e");
-        if (attempt < maxRetries) {
-          await Future.delayed(retryDelay);
-        } else {
-          rethrow;
-        }
-      } on WebSocketChannelException catch (e) {
-        print("WebSocketChannelException in PluginRunManager: $e");
-        if (attempt < maxRetries) {
-          await Future.delayed(retryDelay);
-        } else {
-          rethrow;
+    try {
+      for (var attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          _channel = WebSocketChannel.connect(
+            Uri.parse('ws://localhost:$port'),
+          );
+          await _channel!.ready;
+          _initBuiltinHandlers();
+          _setupListener();
+          break;
+        } on SocketException {
+          if (attempt < maxRetries) {
+            await Future.delayed(retryDelay);
+          } else {
+            rethrow;
+          }
+        } on WebSocketChannelException {
+          if (attempt < maxRetries) {
+            await Future.delayed(retryDelay);
+          } else {
+            rethrow;
+          }
         }
       }
+    } finally {
+      _connecting = false;
     }
+  }
 
+  void _setupListener() {
     _channel!.stream.listen(
       (message) {
         final Map<String, dynamic> data = jsonDecode(message as String);
-
         final cmdStr = data['cmd']?.toString() ?? '';
-        final hasPagesData =
-            data['data'] != null && data['data']['pages'] != null;
-        final hasPathTypeData =
-            data['data'] != null && data['data']['pathType'] != null;
-        final hasVarData =
-            data['data'] != null && data['data']['varName'] != null && data['data']['varValue'] != null;
 
-        if (cmdStr.contains('Commands.SDK.Request.GetPath') && hasPathTypeData) {
-          final String request = jsonEncode({
-            'cmd': 'Commands.IDE.Response.GetPath',
-            'data': {
-              'pathType': data['data']['pathType'],
-              'path': {
-                "PathType.Assets": assetsPath
-              }[data['data']['pathType']],
-            },
-          });
-          send(request);
-        } else if (cmdStr.contains('Commands.SDK.Request.Refresh') && hasPagesData) {
-          _handleRefresh(data);
-        } else if (cmdStr.contains('Commands.SDK.Request.SetVar') && hasVarData) {
-          _handleSetVar(data);
-        } else {
-          print("Received push notification from server: $data");
+        final requestId = data['requestId']?.toString();
+        if (requestId != null && _pendingRequests.containsKey(requestId)) {
+          _pendingRequests.remove(requestId)!.complete(jsonEncode(data));
+          return;
+        }
+
+        final handler = _handlers[cmdStr];
+        if (handler != null) {
+          handler(data, (response) => send(jsonEncode(response)));
+          return;
         }
       },
       onError: (error) {
-        print("WebSocket Error: $error");
-        _failAllCompleters(error);
+        _failAllPendingRequests(error);
         _channel = null;
       },
       onDone: () {
-        print("WebSocket connection closed by server.");
-        _failAllCompleters('WebSocket channel closed');
+        _failAllPendingRequests('WebSocket channel closed');
         _channel = null;
       },
     );
   }
 
-  void _failAllCompleters(dynamic error) {
-    for (var completer in _responseQueue) {
+  void _failAllPendingRequests(dynamic error) {
+    for (final completer in _pendingRequests.values) {
       if (!completer.isCompleted) completer.completeError(error);
     }
-    _responseQueue.clear();
+    _pendingRequests.clear();
   }
 
   void send(String message) {
-    print("send message $message");
-    if (_channel != null) {
-      _channel!.sink.add(message);
+    if (_channel == null) {
+      throw StateError('WebSocket is not connected');
     }
+    _channel!.sink.add(message);
+  }
+
+  void sendJson(Map<String, dynamic> data) {
+    send(jsonEncode(data));
   }
 
   Future<String> requestWithResponse(String requestJson) async {
     await connect();
+    final requestId = 'req_${_nextRequestId++}';
+    final data = jsonDecode(requestJson) as Map<String, dynamic>;
+    data['requestId'] = requestId;
     final completer = Completer<String>();
-    _responseQueue.add(completer);
-    send(requestJson);
+    _pendingRequests[requestId] = completer;
+    send(jsonEncode(data));
     return completer.future;
   }
 
@@ -129,40 +197,27 @@ class PluginRunManager {
   Future<void> sendCallback(String name, DynamicMap args, String page) async {
     await connect();
 
-    final String request = jsonEncode({
-      'cmd': 'Commands.IDE.Request.EventCallback',
+    sendJson({
+      'cmd': SdkCommands.eventCallback,
       'data': {
         'page': page,
         'callback': {'event': name, 'args': _convertToSerializable(args)},
       },
     });
-
-    send(request);
   }
 
   Future<void> sendLifecycleHooks(String lifecycle) async {
     await connect();
 
-    final String request = jsonEncode({
-      'cmd': 'Commands.IDE.Request.LifecycleHooks',
-      'data': {"lifecycleHook": lifecycle},
+    sendJson({
+      'cmd': SdkCommands.lifecycleHooks,
+      'data': {'lifecycleHook': lifecycle},
     });
-
-    send(request);
   }
 
-  void _handleRefresh(Map<String, dynamic> data) {
-    final rawPages = data['data']!['pages'];
-    print("Refresh received, pages data: $rawPages");
-    pages = Map<String, String>.from(rawPages ?? {});
-    onRefresh?.call();
-  }
-
-  void _handleSetVar(Map<String, dynamic> data) {
-    final varName = data['data']!['varName'];
-    final varValue = data['data']!['varValue'];
-    print("SetVar received, varName: $varName, varValue: $varValue");
-    vars = {...vars, varName: varValue};
-    onSetVar?.call();
+  void dispose() {
+    _failAllPendingRequests('PluginRunManager disposed');
+    _channel?.sink.close();
+    _channel = null;
   }
 }
