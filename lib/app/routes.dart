@@ -92,7 +92,32 @@ GoRouter routes = GoRouter(
               path: '/terminal',
               builder: (context, state) => const TerminalSettings(),
             ),
-            GoRoute(path: '/about', builder: (context, state) => const About()),
+            GoRoute(
+              path: '/about',
+              builder: (context, state) => const About(),
+              routes: [
+                GoRoute(
+                  path: '/app_details',
+                  builder: (context, state) => const AppDetails(),
+                ),
+                GoRoute(
+                  path: "/feature/modern",
+                  builder: (context, state) => const FeatureModern(),
+                ),
+                GoRoute(
+                  path: "/feature/powerful",
+                  builder: (context, state) => const FeaturePowerful(),
+                ),
+                GoRoute(
+                  path: "/feature/cross_platform",
+                  builder: (context, state) => const FeatureCrossPlatform(),
+                ),
+                GoRoute(
+                  path: "/project",
+                  builder: (context, state) => const AboutProject(),
+                ),
+              ],
+            ),
           ],
         ),
         GoRoute(

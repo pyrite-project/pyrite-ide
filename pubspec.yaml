@@ -77,6 +77,8 @@ dependencies:
   super_tree: ^0.2.1
   flex_color_scheme: ^8.4.0
   flex_color_picker: ^3.7.0
+  vertical_card_pager: ^1.6.3
+  palette_generator_master: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -149,9 +151,8 @@ flutter:
         - asset: assets/fonts/HarmonyOS_Sans_SC_Black.ttf
 
   assets:
-    - assets/icons/app_icon.png
-    - assets/icons/app_icon_appbar.png
-
+    - assets/icons/
+    - assets/about/
     - assets/python_runtime_boot.zip
 
 flutter_launcher_icons:
