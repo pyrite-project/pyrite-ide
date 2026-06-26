@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
-import 'package:pyrite_ide/pages/tools/device_status_panel.dart';
+import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class Tools extends ConsumerStatefulWidget {
@@ -52,10 +52,7 @@ class _ToolsState extends ConsumerState<Tools> {
           ),
           if (_showDeviceStatus && state.isConnected)
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 260,
-                child: const DeviceStatusPanel(),
-              ),
+              child: SizedBox(height: 260, child: const DeviceStatusPanel()),
             ),
           SliverToBoxAdapter(
             child: PaneHeader(
@@ -160,10 +157,7 @@ class _ToolsState extends ConsumerState<Tools> {
           ),
           if (_showDeviceStatus && state.isConnected)
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 260,
-                child: const DeviceStatusPanel(),
-              ),
+              child: SizedBox(height: 260, child: const DeviceStatusPanel()),
             ),
           SliverToBoxAdapter(
             child: PaneHeader(
@@ -290,7 +284,9 @@ class _ToolsState extends ConsumerState<Tools> {
                     child: IconButton(
                       onPressed: onDeviceStatus,
                       icon: Icon(
-                        showDeviceStatus ? Icons.keyboard_arrow_up : Icons.memory,
+                        showDeviceStatus
+                            ? Icons.keyboard_arrow_up
+                            : Icons.memory,
                         size: 20,
                       ),
                       style: IconButton.styleFrom(

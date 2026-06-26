@@ -11,7 +11,7 @@ import 'package:pyrite_ide/pages/settings/terminal.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/tools/main.dart';
+import 'package:pyrite_ide/pages/device_tools/main.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 CustomTransitionPage topCustomTransitionPage({

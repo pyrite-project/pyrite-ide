@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
-import 'package:pyrite_ide/core/services/device_status_provider.dart';
+import 'package:pyrite_ide/core/services/board_manager/device_status_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class DeviceStatusPanel extends ConsumerWidget {
@@ -47,12 +47,13 @@ class DeviceStatusPanel extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.error_outline, size: 36, color: Theme.of(context).colorScheme.error),
-                    const SizedBox(height: 8),
-                    Text(
-                      "查询失败",
-                      style: Theme.of(context).textTheme.titleSmall,
+                    Icon(
+                      Icons.error_outline,
+                      size: 36,
+                      color: Theme.of(context).colorScheme.error,
                     ),
+                    const SizedBox(height: 8),
+                    Text("查询失败", style: Theme.of(context).textTheme.titleSmall),
                     const SizedBox(height: 4),
                     Text(
                       err.toString(),
@@ -83,7 +84,11 @@ class DeviceStatusPanel extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isConnected) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    WidgetRef ref,
+    bool isConnected,
+  ) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -175,8 +180,8 @@ class DeviceStatusPanel extends ConsumerWidget {
     final color = clamped > 0.85
         ? scheme.error
         : clamped > 0.6
-            ? scheme.tertiary
-            : scheme.primary;
+        ? scheme.tertiary
+        : scheme.primary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,16 +192,16 @@ class DeviceStatusPanel extends ConsumerWidget {
             const SizedBox(width: 6),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             const Spacer(),
             Text(
               "$used / $total",
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -215,9 +220,9 @@ class DeviceStatusPanel extends ConsumerWidget {
           alignment: AlignmentDirectional.centerEnd,
           child: Text(
             "${(clamped * 100).toStringAsFixed(1)}%",
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
           ),
         ),
       ],
@@ -237,9 +242,9 @@ class DeviceStatusPanel extends ConsumerWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
         ),
         const Spacer(),
         Flexible(
@@ -248,9 +253,9 @@ class DeviceStatusPanel extends ConsumerWidget {
             textAlign: TextAlign.end,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
           ),
         ),
       ],

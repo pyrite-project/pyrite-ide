@@ -13,6 +13,11 @@ class DeviceStatusNotifier extends StateNotifier<AsyncValue<DeviceStatus?>> {
 
   DeviceStatusNotifier(this.ref) : super(const AsyncValue.data(null));
 
+  void clear() {
+    _busy = false;
+    state = const AsyncValue.data(null);
+  }
+
   Future<void> refresh() async {
     if (_busy) return;
     _busy = true;

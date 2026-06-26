@@ -9,10 +9,12 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/board_manager/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/repl_io.dart';
 import 'package:pyrite_ide/core/services/board_manager/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
@@ -119,6 +121,9 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
 
   Future<void> connectPort(String path) async {
     await dicconnectPort();
+    ref.read(boardFileItemsProvider.notifier).clear();
+    ref.read(deviceStatusProvider.notifier).clear();
+
     bindReplOnOutputCallback();
     final serial = FlSerial();
     _eventSub = serial.events.listen(_onEvent);

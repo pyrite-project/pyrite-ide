@@ -21,7 +21,7 @@ import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
 import 'package:pyrite_ide/pages/settings/main.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/tools/main.dart';
+import 'package:pyrite_ide/pages/device_tools/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';

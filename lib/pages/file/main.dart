@@ -279,7 +279,8 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(getUsbSerialProvider()).isConnected) {
+    if (ref.watch(getUsbSerialProvider()).isConnected &&
+        ref.watch(boardFileItemsProvider).isNotEmpty) {
       final usb = ref.watch(getUsbSerialProvider());
       return Column(
         children: [
@@ -292,7 +293,7 @@ class ProjectFiles extends ConsumerWidget {
               IconButton(
                 tooltip: "刷新设备文件",
                 onPressed: () {
-                  ref.read(boardWorkspaceProvider.notifier).clear();
+                  // ref.read(boardWorkspaceProvider.notifier).clear();
                   ref
                       .watch(boardFileItemsProvider.notifier)
                       .buildRootFileListItems();
@@ -419,6 +420,15 @@ class ProjectFiles extends ConsumerWidget {
             ),
           ),
         ],
+      );
+    } else if (ref.watch(getUsbSerialProvider()).isConnected) {
+      return WorkspaceEmptyState(
+        icon: Icons.developer_board_outlined,
+        title: "点击刷新按钮以获取设备文件列表",
+        message: "这里会显示板端文件，可以和本地项目互相同步。",
+        actionLabel: "刷新",
+        onAction: () =>
+            ref.watch(boardFileItemsProvider.notifier).buildRootFileListItems(),
       );
     } else {
       return WorkspaceEmptyState(
