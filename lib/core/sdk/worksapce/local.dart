@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
@@ -110,10 +111,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
       SdkLocalWorkspaceCommands.moveFile,
       _handleMoveFile,
     );
-    runManager.registerHandler(
-      SdkLocalWorkspaceCommands.exists,
-      _handleExists,
-    );
+    runManager.registerHandler(SdkLocalWorkspaceCommands.exists, _handleExists);
     runManager.registerHandler(
       SdkLocalWorkspaceCommands.uploadFile,
       _handleUploadFile,
@@ -330,6 +328,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
       final dir = Directory(folderPath);
       if (dir.existsSync()) {
         ref.read(localWorkspaceProvider.notifier).setDirectory(dir);
+        ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       }
     }
     _respondOk(envelope, respond);
