@@ -6,6 +6,8 @@ import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/utils.dart';
+import 'package:pyrite_ide/core/sdk/worksapce/local.dart';
+import 'package:pyrite_ide/core/sdk/worksapce/board.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -41,12 +43,6 @@ class PluginRunManagerNotifier
       },
     );
 
-    await SeriousPython.runProgram(
-      path.join(target.path, "__main__.py"),
-      script: Platform.isWindows ? "" : null,
-      environmentVariables: {"PYRITE_IDE_PLUGIN_PORT": "$port"},
-    );
-
     final PluginRunManager runManager = PluginRunManager(
       port: port,
       assetsPath: target.path,
@@ -54,8 +50,24 @@ class PluginRunManagerNotifier
     runManager.onDataChanged = () {
       state = {...state};
     };
+    ref.read(sdkLocalWorkspaceProvider.notifier).bind(runManager);
+    ref.read(sdkBoardWorkspaceProvider.notifier).bind(runManager);
     state = {...state, plugin: runManager};
-    await runManager.sendLifecycleHooks(LifecycleHooks.onStart.value);
+
+    // Fire-and-forget: Python script blocks forever with asyncio.run().
+    // On Android sync=false so runProgram returns quickly; on desktop it
+    // blocks but the WS server is the important part.
+    // ignore: unawaited_futures
+    SeriousPython.runProgram(
+      path.join(target.path, "__main__.py"),
+      script: Platform.isWindows ? "" : null,
+      environmentVariables: {
+        "PYRITE_IDE_PLUGIN_PORT": "$port",
+        "PYTHONUNBUFFERED": "1",
+      },
+    );
+
+    await runManager.sendLifecycleHook(LifecycleHook.start.value);
   }
 
   void setupRouterListener() {
@@ -77,10 +89,11 @@ class PluginRunManagerNotifier
       if (currentPluginId != null) {
         for (final entry in state.entries) {
           if (entry.key.id == currentPluginId) {
-            entry.value.sendLifecycleHooks(LifecycleHooks.onResume.value);
+            entry.value.sendLifecycleHook(LifecycleHook.resume.value);
+            entry.value.sendPageRefresh();
           } else if (previousPluginId != null &&
               entry.key.id != previousPluginId) {
-            entry.value.sendLifecycleHooks(LifecycleHooks.onPause.value);
+            entry.value.sendLifecycleHook(LifecycleHook.pause.value);
           }
         }
       }
@@ -89,9 +102,9 @@ class PluginRunManagerNotifier
         for (final entry in state.entries) {
           if (entry.key.id == previousPluginId) {
             if (entry.key.keepAlive) {
-              entry.value.sendLifecycleHooks(LifecycleHooks.onPause.value);
+              entry.value.sendLifecycleHook(LifecycleHook.pause.value);
             } else {
-              entry.value.sendLifecycleHooks(LifecycleHooks.onDispose.value);
+              entry.value.sendLifecycleHook(LifecycleHook.dispose.value);
             }
           }
         }

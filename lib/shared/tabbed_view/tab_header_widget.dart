@@ -223,7 +223,7 @@ class TabHeaderWidget extends StatelessWidget {
                     onPressed: () async {
                       await container
                           .read(localWorkspaceProvider.notifier)
-                          .saveFile();
+                          .saveCurrentFile();
 
                       ScaffoldMessenger.of(
                         context,

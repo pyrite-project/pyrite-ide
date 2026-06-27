@@ -25,9 +25,7 @@ final localFileTreeViewControllerProvider = StateProvider(
     loadChildren: (node) async {
       // print(node.isExpanded);
       if (node.canLoadChildren == true) {
-        return await local.buildFileListItems(
-          await local.getFilesList(node.id),
-        );
+        return await local.buildFileListItems(await local.getFileList(node.id));
       } else {
         return [];
       }

@@ -28,8 +28,8 @@ final boardFileTreeViewControllerProvider = StateProvider(
       if (node.canLoadChildren == true) {
         return await board.buildFileListItems(
           await ref
-              .read(boardFileItemsProvider.notifier)
-              .getFilesList(path: node.id),
+              .read(boardWorkspaceProvider.notifier)
+              .getFileList(path: node.id),
         );
       } else {
         return [];

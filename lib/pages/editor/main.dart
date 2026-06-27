@@ -59,7 +59,7 @@ class Editor extends ConsumerWidget {
                       onPressed: canSave && isConnected
                           ? () => ref
                                 .read(localWorkspaceProvider.notifier)
-                                .uploadSelectedLocalItem(
+                                .uploadSelectedLocalFileItem(
                                   context,
                                   selectedTab: ref
                                       .read(tabbedViewControllerProvider)
@@ -106,7 +106,9 @@ class Editor extends ConsumerWidget {
                 onSelected: (value) {
                   switch (value) {
                     case "saveAs":
-                      ref.read(localWorkspaceProvider.notifier).saveAs();
+                      ref
+                          .read(localWorkspaceProvider.notifier)
+                          .saveCurrentFileAs();
                       break;
                     case "cut":
                       ref.read(editorControllerMapProvider.notifier).cut();
@@ -199,7 +201,9 @@ class ExpansionPage extends ConsumerWidget {
                 onSelected: (value) {
                   switch (value) {
                     case "saveAs":
-                      ref.read(localWorkspaceProvider.notifier).saveAs();
+                      ref
+                          .read(localWorkspaceProvider.notifier)
+                          .saveCurrentFileAs();
                       break;
                     case "cut":
                       ref.read(editorControllerMapProvider.notifier).cut();

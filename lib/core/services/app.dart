@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+BuildContext? get appContext => _appContext;
+BuildContext? _appContext;
+
+void setAppContext(BuildContext context) {
+  _appContext = context;
+}
+
 enum ThemeStyle {
   standard('标准', 'standard'),
   compact('紧凑', 'compact'),

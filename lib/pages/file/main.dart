@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
@@ -11,6 +12,7 @@ import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:super_context_menu/super_context_menu.dart';
@@ -67,18 +69,26 @@ class ProjectFiles extends ConsumerWidget {
               IconButton(
                 tooltip: "新建文件",
                 onPressed: () async {
+                  final parentPath = ref.read(localWorkspaceProvider)?.path ?? '';
+                  final uniquePath = await local.getUniqueFilePath(
+                    path.join(parentPath, "new_file"),
+                  );
                   await ref
                       .read(localWorkspaceProvider.notifier)
-                      .createFile("new_file", null);
+                      .createFile(uniquePath);
                 },
                 icon: const Icon(Icons.note_add_outlined),
               ),
               IconButton(
                 tooltip: "新建文件夹",
                 onPressed: () async {
+                  final parentPath = ref.read(localWorkspaceProvider)?.path ?? '';
+                  final uniquePath = await local.getUniqueFolderPath(
+                    path.join(parentPath, "new_folder"),
+                  );
                   await ref
                       .read(localWorkspaceProvider.notifier)
-                      .createFolder("new_folder", null);
+                      .createFolder(uniquePath);
                 },
                 icon: const Icon(Icons.create_new_folder_outlined),
               ),
@@ -165,7 +175,7 @@ class ProjectFiles extends ConsumerWidget {
                               title: "上传到设备文件夹 ${boardFolderTarget?.id ?? "/"}",
                               callback: () => ref
                                   .read(localWorkspaceProvider.notifier)
-                                  .uploadSelectedLocalItem(context),
+                                  .uploadSelectedLocalFileItem(context),
                               attributes: MenuActionAttributes(
                                 disabled: !(ref
                                     .watch(getUsbSerialProvider())
@@ -204,21 +214,26 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件",
                               callback: () async {
+                                final parentDir = localFolderTarget?.id ?? localWorkspace.path;
+                                final uniquePath = await local.getUniqueFilePath(
+                                  path.join(parentDir, "new_file"),
+                                );
                                 await ref
                                     .read(localWorkspaceProvider.notifier)
-                                    .createFile("new_file", localFolderTarget);
+                                    .createFile(uniquePath);
                               },
                             ),
                             MenuAction(
                               title:
                                   "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件夹",
                               callback: () async {
+                                final parentDir = localFolderTarget?.id ?? localWorkspace.path;
+                                final uniquePath = await local.getUniqueFolderPath(
+                                  path.join(parentDir, "new_folder"),
+                                );
                                 await ref
                                     .read(localWorkspaceProvider.notifier)
-                                    .createFolder(
-                                      "new_folder",
-                                      localFolderTarget,
-                                    );
+                                    .createFolder(uniquePath);
                               },
                             ),
                           ],
@@ -259,7 +274,7 @@ class ProjectFiles extends ConsumerWidget {
               onPressed: isConnected
                   ? () => ref
                         .read(localWorkspaceProvider.notifier)
-                        .uploadSelectedLocalItem(context)
+                        .uploadSelectedLocalFileItem(context)
                   : null,
               icon: const Icon(Icons.upload_outlined, size: 18),
               label: Text("上传选中项"),

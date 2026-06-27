@@ -61,7 +61,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
         saveFile(context, ref);
       },
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () {
-        ref.read(localWorkspaceProvider.notifier).saveAs();
+        ref.read(localWorkspaceProvider.notifier).saveCurrentFileAs();
       },
       SingleActivator(LogicalKeyboardKey.keyN, control: true): () {
         ref.read(tabbedViewControllerProvider.notifier).createFile();
@@ -72,7 +72,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       SingleActivator(LogicalKeyboardKey.keyU, control: true): () {
         ref
             .read(localWorkspaceProvider.notifier)
-            .uploadSelectedLocalItem(context);
+            .uploadSelectedLocalFileItem(context);
       },
       SingleActivator(LogicalKeyboardKey.keyR, control: true): () {
         runCurrentFile(context, ref);
@@ -281,7 +281,9 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   final b64 = base64.encode(utf8.encode(controller!.text));
   ref
       .read(getUsbSerialProvider().notifier)
-      .sendCommand("exec(__import__('ubinascii').a2b_base64('$b64').decode())\r");
+      .sendCommand(
+        "exec(__import__('ubinascii').a2b_base64('$b64').decode())\r",
+      );
   showEditorSnackBar(context, "正在运行：${controller.openedFile}");
 }
 
@@ -290,7 +292,7 @@ void showEditorSnackBar(BuildContext context, String message) {
 }
 
 Future saveFile(BuildContext context, WidgetRef ref, {quiet = false}) async {
-  await ref.read(localWorkspaceProvider.notifier).saveFile();
+  await ref.read(localWorkspaceProvider.notifier).saveCurrentFile();
 
   if (!quiet) {
     ScaffoldMessenger.of(

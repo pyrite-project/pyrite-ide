@@ -11,7 +11,7 @@ class LocalFileItemsNotifier
 
   Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
     List<TreeNode<FileSystemItem>> items = await local.buildFileListItems(
-      await ref.read(localWorkspaceProvider.notifier).getFilesList(),
+      await ref.read(localWorkspaceProvider.notifier).getFileList(),
     );
     state = items;
 

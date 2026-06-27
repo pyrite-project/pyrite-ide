@@ -30,6 +30,13 @@ class BoardWorkspaceNotifier
 
   BoardWorkspaceNotifier(this.ref) : super(const []);
 
+  Future<List<Map<String, String>>> getFileList({String path = "/"}) async {
+    final entries = await ref
+        .read(boardFileBackendProvider)
+        .listDirectory(path: path);
+    return entries.map((entry) => entry.toLegacyMap()).toList();
+  }
+
   Future<String> getFileContent(String path) async {
     return ref.read(boardFileBackendProvider).readTextFile(path);
   }

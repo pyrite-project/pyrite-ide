@@ -74,7 +74,7 @@ class MacOSMenu extends ConsumerWidget {
                   control: true,
                 ),
                 onSelected: () =>
-                    ref.read(localWorkspaceProvider.notifier).saveFile(),
+                    ref.read(localWorkspaceProvider.notifier).saveCurrentFile(),
               ),
               PlatformMenuItem(
                 label: "另存为",
@@ -83,8 +83,9 @@ class MacOSMenu extends ConsumerWidget {
                   control: true,
                   shift: true,
                 ),
-                onSelected: () =>
-                    ref.read(localWorkspaceProvider.notifier).saveAs(),
+                onSelected: () => ref
+                    .read(localWorkspaceProvider.notifier)
+                    .saveCurrentFileAs(),
               ),
             ],
           ),

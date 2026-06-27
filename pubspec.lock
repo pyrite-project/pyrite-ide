@@ -361,6 +361,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "7.0.1"
+  file_picker:
+    dependency: "direct main"
+    description:
+      name: file_picker
+      sha256: ab13ae8ef5580a411c458d6207b6774a6c237d77ac37011b13994879f68a8810
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "8.3.7"
   file_selector:
     dependency: "direct main"
     description:
@@ -512,6 +520,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_plugin_android_lifecycle:
+    dependency: transitive
+    description:
+      name: flutter_plugin_android_lifecycle
+      sha256: "3854fe5e3bff0b113c658f260b90c95dea17c92db0f2addeac2e343dd9969785"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.0.35"
   flutter_pty:
     dependency: "direct main"
     description:

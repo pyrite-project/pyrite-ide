@@ -62,7 +62,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     }
   }
 
-  Future<Stream<FileSystemEntity>> getFilesList({String? path}) async {
+  Future<Stream<FileSystemEntity>> getFileList({String? path}) async {
     Stream<FileSystemEntity> datas;
     if (state != null && (path == null || path == state!.path)) {
       datas = state!.list();
@@ -76,7 +76,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     return datas;
   }
 
-  Future<void> saveFile() async {
+  Future<void> saveCurrentFile() async {
     final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
@@ -92,7 +92,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     }
   }
 
-  void saveAs() async {
+  void saveCurrentFileAs() async {
     final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
     if (nowTab != null && nowTab.value.type == "file") {
       final bool state = await utils.sysSaveAs(
@@ -104,82 +104,62 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     }
   }
 
-  Future<String> createFile(
-    String name,
-    TreeNode<FileSystemItem>? parentPath,
-  ) async {
-    final String actualPath;
-    if (parentPath != null) {
-      actualPath = await local.createFileWithUniqueName(
-        path.join(parentPath.id, "new_file"),
-      );
-    } else {
-      actualPath = await local.createFileWithUniqueName(
-        path.join(state!.path, "new_file"),
-      );
-    }
+  Future<String> createFile(String filePath) async {
+    final file = File(filePath);
+    await file.create();
 
-    if (parentPath != null) {
-      ref
-          .read(localFileTreeViewControllerProvider)
-          .addChild(
-            parentPath,
+    final parentDir = path.dirname(filePath);
+    final parentNode = ref
+        .read(localFileTreeViewControllerProvider)
+        .findNodeById(parentDir);
+
+    if (parentNode != null) {
+      ref.read(localFileTreeViewControllerProvider).addChild(
+            parentNode,
             TreeNode(
-              id: actualPath,
-              data: FileItem(actualPath.split(local.getPattern()).last),
+              id: filePath,
+              data: FileItem(path.basename(filePath)),
             ),
           );
     } else {
-      ref
-          .read(localFileTreeViewControllerProvider)
-          .addRoot(
+      ref.read(localFileTreeViewControllerProvider).addRoot(
             TreeNode(
-              id: actualPath,
-              data: FileItem(actualPath.split(local.getPattern()).last),
+              id: filePath,
+              data: FileItem(path.basename(filePath)),
             ),
           );
     }
-    return actualPath;
+    return filePath;
   }
 
-  Future<String> createFolder(
-    String name,
-    TreeNode<FileSystemItem>? parentPath,
-  ) async {
-    final String actualPath;
-    if (parentPath != null) {
-      actualPath = await local.createFolderWithUniqueName(
-        path.join(parentPath.id, "new_folder"),
-      );
-    } else {
-      actualPath = await local.createFolderWithUniqueName(
-        path.join(state!.path, "new_folder"),
-      );
-    }
+  Future<String> createFolder(String folderPath) async {
+    final dir = Directory(folderPath);
+    await dir.create();
 
-    if (parentPath != null) {
-      ref
-          .read(localFileTreeViewControllerProvider)
-          .addChild(
-            parentPath,
+    final parentDir = path.dirname(folderPath);
+    final parentNode = ref
+        .read(localFileTreeViewControllerProvider)
+        .findNodeById(parentDir);
+
+    if (parentNode != null) {
+      ref.read(localFileTreeViewControllerProvider).addChild(
+            parentNode,
             TreeNode(
-              id: actualPath,
+              id: folderPath,
               canLoadChildren: true,
-              data: FolderItem(path.basename(actualPath)),
+              data: FolderItem(path.basename(folderPath)),
             ),
           );
     } else {
-      ref
-          .read(localFileTreeViewControllerProvider)
-          .addRoot(
+      ref.read(localFileTreeViewControllerProvider).addRoot(
             TreeNode(
-              id: actualPath,
+              id: folderPath,
               canLoadChildren: true,
-              data: FolderItem(path.basename(actualPath)),
+              data: FolderItem(path.basename(folderPath)),
             ),
           );
     }
-    return actualPath;
+    return folderPath;
   }
 
   TreeNode<FileSystemItem>? getFocusFileNode() {
@@ -335,7 +315,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     }
   }
 
-  Future<void> uploadSelectedLocalItem(
+  Future<void> uploadSelectedLocalFileItem(
     BuildContext context, {
     TabData? selectedTab,
   }) async {
@@ -387,7 +367,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
               ),
               TextButton(
                 onPressed: () {
-                  saveFile();
+                  saveCurrentFile();
                   _uploadSelectedLocalItem(context, selectedTab: selectedTab);
                   context.pop();
                 },
@@ -404,7 +384,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
                               selectedTab?.value.filePath]
                           ?.text =
                       content;
-                  saveFile();
+                  saveCurrentFile();
                   _uploadSelectedLocalItem(context, selectedTab: selectedTab);
                   context.pop();
                 },

@@ -1,12 +1,12 @@
-enum LifecycleHooks {
-  onInstall("LifecycleHooks.OnInstall"),
-  onStart("LifecycleHooks.OnStart"),
-  onPause("LifecycleHooks.OnPause"),
-  onResume("LifecycleHooks.OnResume"),
-  onDispose("LifecycleHooks.OnDispose"),
-  onUninstall("LifecycleHooks.OnUninstall");
+enum LifecycleHook {
+  install("install"),
+  start("start"),
+  pause("pause"),
+  resume("resume"),
+  dispose("dispose"),
+  uninstall("uninstall");
 
-  const LifecycleHooks(this.value);
+  const LifecycleHook(this.value);
   final String value;
 
   @override

@@ -1,4 +1,4 @@
-import 'package:file_selector/file_selector.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,16 +26,30 @@ class Plugins extends ConsumerWidget {
         children: [
           FilledButton(
             onPressed: () async {
-              await ref
-                  .read(pluginManagerProvider.notifier)
-                  .install(
-                    Plugin(
-                      id: "old",
-                      name: "old",
-                      permissions: [PluginPermission.ui],
-                    ),
-                    (await openFile())!.path,
+              try {
+                final result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['zip'],
+                );
+                if (result == null || result.files.isEmpty) return;
+
+                await ref
+                    .read(pluginManagerProvider.notifier)
+                    .install(
+                      Plugin(
+                        id: "old",
+                        name: "old",
+                        permissions: [PluginPermission.ui],
+                      ),
+                      result.files.single.path!,
+                    );
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('安装失败: $e')),
                   );
+                }
+              }
             },
             child: Text("注册并安装"),
           ),
@@ -85,9 +99,7 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     'material',
   ]);
   Map<String, LibraryName?> pagesLibNames = {};
-
-  Map<String, String>? _lastPages;
-  Map<String, dynamic>? _lastVars;
+  int _pageVersion = 0;
 
   @override
   void initState() {
@@ -105,18 +117,18 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
 
   void _loadPages(Map<String, String> pages) {
     for (var entry in pages.entries) {
-      String rfwCode = entry.value;
       try {
-        RemoteWidgetLibrary remoteWidgets = parseLibraryFile(rfwCode);
-        if (!pagesLibNames.containsKey(entry.key)) {
-          LibraryName pageLibName = LibraryName(<String>[entry.key]);
-          pagesLibNames[entry.key] = pageLibName;
-        }
+        final remoteWidgets = parseLibraryFile(entry.value);
+        pagesLibNames.putIfAbsent(
+          entry.key,
+          () => LibraryName(<String>[entry.key]),
+        );
         _runtime.update(pagesLibNames[entry.key]!, remoteWidgets);
       } catch (e) {
         print("Failed to parse RFW for page[${entry.key}]: $e");
       }
     }
+    _pageVersion++;
     setState(() {});
   }
 
@@ -132,17 +144,14 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     ref.listen(pluginRunManagerProvider, (_, next) {
       final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
       if (plugin == null) return;
+      final runManager = next[plugin];
+      if (runManager == null) return;
 
-      final pages = next[plugin]?.pages;
-      if (pages != null && pages.isNotEmpty && pages != _lastPages) {
-        _lastPages = pages;
-        _loadPages(pages);
+      if (runManager.pages.isNotEmpty) {
+        _loadPages(runManager.pages);
       }
-
-      final vars = next[plugin]?.vars;
-      if (vars != null && vars != _lastVars) {
-        _lastVars = vars;
-        _applyVars(vars);
+      if (runManager.vars.isNotEmpty) {
+        _applyVars(runManager.vars);
       }
     });
 
@@ -151,6 +160,7 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     }
     return Scaffold(
       body: RemoteWidget(
+        key: ValueKey(_pageVersion),
         runtime: _runtime,
         widget: FullyQualifiedWidgetName(
           pagesLibNames[ref.watch(page)]!,

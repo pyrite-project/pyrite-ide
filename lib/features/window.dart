@@ -109,14 +109,15 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "保存当前文件",
-              () => ref.read(localWorkspaceProvider.notifier).saveFile(),
+              () => ref.read(localWorkspaceProvider.notifier).saveCurrentFile(),
               leadingIconData: Icons.save,
               shortcut: SingleActivator(LogicalKeyboardKey.keyS, control: true),
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
-              () => ref.read(localWorkspaceProvider.notifier).saveAs(),
+              () =>
+                  ref.read(localWorkspaceProvider.notifier).saveCurrentFileAs(),
               leadingIconData: Icons.save_as,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyS,

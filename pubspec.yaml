@@ -47,6 +47,7 @@ dependencies:
   shadcn_flutter: ^0.0.50
   dynamic_color: ^1.8.1
   window_manager: ^0.5.1
+  file_picker: ^8.0.0
   file_selector: ^1.1.0
   tolyui: ^0.0.5
   open_file: ^3.5.11

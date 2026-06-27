@@ -648,7 +648,7 @@ class EditorToolsBar extends ConsumerWidget {
       compact: isMobile,
       tooltip: saved ? "再次保存当前文件" : "保存当前文件",
       onPressed: () async {
-        await ref.read(localWorkspaceProvider.notifier).saveFile();
+        await ref.read(localWorkspaceProvider.notifier).saveCurrentFile();
 
         ScaffoldMessenger.of(
           context,

@@ -90,7 +90,7 @@ Future<bool> sysSaveAs(String content) async {
   }
 }
 
-Future<Stream<FileSystemEntity>> getFilesList(String path) async {
+Future<Stream<FileSystemEntity>> getFileList(String path) async {
   return Directory(path).list();
 }
 
