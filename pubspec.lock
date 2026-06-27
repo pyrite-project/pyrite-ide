@@ -468,11 +468,10 @@ packages:
   flserial:
     dependency: "direct main"
     description:
-      name: flserial
-      sha256: f1eb7eadadfbf740827fb253d87a7581e0a2f77198c467b5d7691458095f12e4
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.7.1"
+      path: flserial
+      relative: true
+    source: path
+    version: "0.7.2"
   flutter:
     dependency: "direct main"
     description: flutter
