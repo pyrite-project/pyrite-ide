@@ -1,6 +1,5 @@
 import 'dart:io';
-import 'package:code_forge/LSP/lsp.dart';
-import 'package:code_forge/code_forge/controller.dart';
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -50,11 +49,15 @@ class EditorControllerMapNotifier
     return controller;
   }
 
+  UndoRedoController createNewUndoRedoController() {
+    return UndoRedoController();
+  }
+
   void redo() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      // getSelectedController()?.redo();
+      getSelectedUndoRedoController()?.redo();
     }
   }
 
@@ -62,7 +65,7 @@ class EditorControllerMapNotifier
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
             "file") {
-      // getSelectedController()?.undo();
+      getSelectedUndoRedoController()?.undo();
     }
   }
 
@@ -96,6 +99,21 @@ class EditorControllerMapNotifier
         .selectedTab
         ?.value
         .editorController;
+  }
+
+  UndoRedoController? getSelectedUndoRedoController() {
+    print(
+      ref
+          .read(tabbedViewControllerProvider)
+          .selectedTab
+          ?.value
+          .undoRedoController,
+    );
+    return ref
+        .read(tabbedViewControllerProvider)
+        .selectedTab
+        ?.value
+        .undoRedoController;
   }
 }
 

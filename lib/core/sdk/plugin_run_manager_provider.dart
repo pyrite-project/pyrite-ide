@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/utils.dart';
 import 'package:pyrite_ide/core/sdk/worksapce/local.dart';
 import 'package:pyrite_ide/core/sdk/worksapce/board.dart';
+import 'package:pyrite_ide/core/sdk/editor.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -52,6 +53,7 @@ class PluginRunManagerNotifier
     };
     ref.read(sdkLocalWorkspaceProvider.notifier).bind(runManager);
     ref.read(sdkBoardWorkspaceProvider.notifier).bind(runManager);
+    ref.read(sdkEditorProvider.notifier).bind(runManager);
     state = {...state, plugin: runManager};
 
     // Fire-and-forget: Python script blocks forever with asyncio.run().

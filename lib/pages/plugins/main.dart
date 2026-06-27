@@ -99,7 +99,6 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     'material',
   ]);
   Map<String, LibraryName?> pagesLibNames = {};
-  int _pageVersion = 0;
 
   @override
   void initState() {
@@ -128,7 +127,6 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
         print("Failed to parse RFW for page[${entry.key}]: $e");
       }
     }
-    _pageVersion++;
     setState(() {});
   }
 
@@ -160,7 +158,6 @@ class _PluginBodyState extends ConsumerState<PluginBody> {
     }
     return Scaffold(
       body: RemoteWidget(
-        key: ValueKey(_pageVersion),
         runtime: _runtime,
         widget: FullyQualifiedWidgetName(
           pagesLibNames[ref.watch(page)]!,

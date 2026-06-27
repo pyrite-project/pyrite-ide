@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:code_forge/code_forge.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,7 +48,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   Future<TabData?> _createNewFileTab(
     File file,
-    CodeForgeController? editorController, {
+    CodeForgeController? editorController,
+    UndoRedoController? undoRedoCntroller, {
     bool isBoardFile = false,
     String? boardFilePath,
     bool isSaved = true,
@@ -64,11 +66,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       pattern = "/";
     }
 
+    editorController.setUndoController(undoRedoCntroller);
+
     TabDataValue value = TabDataValue(
       type: "file",
       filePath: file.path,
       file: file,
       editorController: editorController,
+      undoRedoController: undoRedoCntroller,
       isBoardFile: isBoardFile,
       boardFilePath: boardFilePath,
       isSaved: isSaved,
@@ -87,7 +92,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       ),
       value: value,
       text: file.path.split(pattern).last,
-      content: EditCore(file: file, editorController: editorController),
+      content: EditCore(file: file, editorController: editorController, undoController: undoRedoCntroller),
       keepAlive: true,
     );
 
@@ -138,6 +143,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         await ref
             .read(editorControllerMapProvider.notifier)
             .createNewEditorController(file),
+        ref
+            .read(editorControllerMapProvider.notifier)
+            .createNewUndoRedoController(),
       );
 
       if (newTab == null) {
@@ -166,6 +174,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         await ref
             .read(editorControllerMapProvider.notifier)
             .createNewEditorController(file, initialText: initialText),
+        ref
+            .read(editorControllerMapProvider.notifier)
+            .createNewUndoRedoController(),
         isBoardFile: isBoardFile,
         boardFilePath: boardFilePath,
       );
@@ -226,18 +237,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     );
     state = newController;
 
-    ref
-            .read(
-              pendingUploadProviderMap[filePath]!.notifier,
-            )
-            .state =
-        null;
-    ref
-            .read(
-              pendingDownloadProviderMap[filePath]!.notifier,
-            )
-            .state =
-        null;
+    ref.read(pendingUploadProviderMap[filePath]!.notifier).state = null;
+    ref.read(pendingDownloadProviderMap[filePath]!.notifier).state = null;
 
     if (value != null && value is TabDataValue && value.isBoardFile == true) {
       final file = File(filePath);
@@ -281,13 +282,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
       final controller = await ref
           .read(editorControllerMapProvider.notifier)
-          .createNewEditorController(
-            file,
-          );
+          .createNewEditorController(file);
       if (controller == null) continue;
       final tab = await _createNewFileTab(
         file,
         controller,
+        ref
+            .read(editorControllerMapProvider.notifier)
+            .createNewUndoRedoController(),
         isBoardFile: persisted.isBoardFile,
         boardFilePath: persisted.boardFilePath,
         isSaved: persisted.isSaved,
