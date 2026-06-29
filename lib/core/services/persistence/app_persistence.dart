@@ -8,12 +8,14 @@ class AppPersistedData {
   final String themeStyle;
   final int? themeColorValue;
   final String editorThemeKey;
+  final String? activePluginThemeId;
 
   AppPersistedData({
     required this.themeMode,
     this.themeStyle = 'standard',
     this.themeColorValue,
     this.editorThemeKey = 'atom-one',
+    this.activePluginThemeId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -21,6 +23,7 @@ class AppPersistedData {
     'themeStyle': themeStyle,
     'themeColorValue': themeColorValue,
     'editorThemeKey': editorThemeKey,
+    'activePluginThemeId': activePluginThemeId,
   };
 
   factory AppPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -29,6 +32,7 @@ class AppPersistedData {
         themeStyle: json['themeStyle'] as String? ?? 'standard',
         themeColorValue: json['themeColorValue'] as int?,
         editorThemeKey: json['editorThemeKey'] as String? ?? 'atom-one',
+        activePluginThemeId: json['activePluginThemeId'] as String?,
       );
 }
 

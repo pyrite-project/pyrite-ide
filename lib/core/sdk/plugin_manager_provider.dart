@@ -100,13 +100,20 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           permissions: Map<String, List<String>>.from(parsed.permissions),
           platforms: parsed.platforms,
           autoStart: parsed.autoStart,
-          background: parsed.background,
         );
         state = {...state, plugin.id: merged};
       }
 
       changeStatus(plugin.id, PluginStatus.usable);
       await _persistence.save(state.values.toList());
+
+      // Auto-start after install if auto_start is set
+      final installed = state[plugin.id];
+      if (installed != null &&
+          installed.autoStart &&
+          installed.status == PluginStatus.usable) {
+        await ref.read(pluginRunManagerProvider.notifier).start(installed);
+      }
     } catch (e) {
       changeStatus(plugin.id, PluginStatus.disabled);
       rethrow;

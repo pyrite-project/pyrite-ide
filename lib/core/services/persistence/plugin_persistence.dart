@@ -18,7 +18,6 @@ class PluginPersistedData {
   final List<String> platforms;
   final String status;
   final bool autoStart;
-  final bool background;
 
   PluginPersistedData({
     required this.id,
@@ -32,7 +31,6 @@ class PluginPersistedData {
     this.platforms = const [],
     this.status = 'usable',
     this.autoStart = false,
-    this.background = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -47,7 +45,6 @@ class PluginPersistedData {
         'platforms': platforms,
         'status': status,
         'autoStart': autoStart,
-        'background': background,
       };
 
   factory PluginPersistedData.fromJson(Map<String, dynamic> json) {
@@ -78,7 +75,6 @@ class PluginPersistedData {
           [],
       status: json['status'] as String? ?? 'usable',
       autoStart: json['autoStart'] as bool? ?? false,
-      background: json['background'] as bool? ?? false,
     );
   }
 
@@ -103,7 +99,6 @@ class PluginPersistedData {
       permissions: permissions,
       platforms: platforms,
       autoStart: autoStart,
-      background: background,
     );
   }
 
@@ -119,7 +114,6 @@ class PluginPersistedData {
         platforms: plugin.platforms,
         status: plugin.status.name,
         autoStart: plugin.autoStart,
-        background: plugin.background,
       );
 }
 
@@ -257,7 +251,6 @@ class PluginTomlParser {
             .map((e) => e.key)
             .toList(),
         autoStart: general['auto_start'] as bool? ?? false,
-        background: general['background'] as bool? ?? false,
       );
     } catch (e) {
       debugPrint('PluginTomlParser: Failed to parse TOML: $e');

@@ -37,3 +37,6 @@ final StateProvider<Color?> themeColor = StateProvider((ref) => null);
 final StateProvider<ThemeStyle> themeStyle = StateProvider(
   (ref) => ThemeStyle.standard,
 );
+final StateProvider<String?> activePluginThemeId = StateProvider(
+  (ref) => null,
+);

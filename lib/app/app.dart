@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:dynamic_color/dynamic_color.dart';
@@ -73,7 +75,12 @@ class PyriteIDE extends ConsumerWidget {
     required Color? seedColor,
     required Brightness brightness,
     required ThemeStyle style,
+    PluginThemeData? pluginTheme,
   }) {
+    if (pluginTheme != null) {
+      return pluginTheme.toThemeData(brightness: brightness);
+    }
+
     final scheme = _resolveColorScheme(
       dynamicScheme: dynamicScheme,
       seedColor: seedColor,
@@ -124,26 +131,44 @@ class PyriteIDE extends ConsumerWidget {
       builder: (lightDynamic, darkDynamic) {
         final seedColor = ref.watch(themeColor);
         final style = ref.watch(themeStyle);
+        final activePluginThemeIdValue = ref.watch(activePluginThemeId);
+        final dataRegistry = ref.watch(dataRegistryProvider);
+
+        // Resolve active plugin theme
+        PluginThemeData? pluginTheme;
+        if (activePluginThemeIdValue != null) {
+          pluginTheme = dataRegistry.getThemeById(activePluginThemeIdValue);
+        }
+
+        // Determine effective theme mode (plugin may force it)
+        ThemeMode effectiveThemeMode = ref.watch(themeMode);
+        if (pluginTheme?.mode == 'dark') {
+          effectiveThemeMode = ThemeMode.dark;
+        } else if (pluginTheme?.mode == 'light') {
+          effectiveThemeMode = ThemeMode.light;
+        }
+
         final app = MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: appName,
-          themeMode: ref.watch(themeMode),
+          themeMode: effectiveThemeMode,
           theme: _buildTheme(
             dynamicScheme: lightDynamic,
             seedColor: seedColor,
             brightness: Brightness.light,
             style: style,
+            pluginTheme: pluginTheme,
           ),
           darkTheme: _buildTheme(
             dynamicScheme: darkDynamic,
             seedColor: seedColor,
             brightness: Brightness.dark,
             style: style,
+            pluginTheme: pluginTheme,
           ),
           routerConfig: routes,
           builder: (context, child) {
             setAppContext(context);
-            // ref.read(lspClientProvider);
             return Material(
               child: ResponsiveBreakpoints.builder(
                 child: child!,

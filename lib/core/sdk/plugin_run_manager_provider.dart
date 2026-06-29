@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/sdk/tab.dart';
 import 'package:pyrite_ide/core/sdk/settings_api.dart';
 import 'package:pyrite_ide/core/sdk/data_api.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -91,6 +92,8 @@ class PluginRunManagerNotifier
     if (runManager == null) return;
     runManager.sendLifecycleHook(LifecycleHook.dispose.value);
     runManager.stop();
+    // Clean up DataRegistry entries for this plugin
+    ref.read(dataRegistryProvider).removePlugin(plugin.id);
     state = {...state}..remove(plugin);
   }
 

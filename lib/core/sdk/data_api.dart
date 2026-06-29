@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 
 abstract class SdkThemeCommands {
   static const String register = 'sdk.theme.register';
@@ -72,7 +73,18 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
       return;
     }
 
+    // Store in vars (for SDK protocol compat)
     state?.vars['theme.$name'] = data;
+
+    // Register in DataRegistry (for IDE consumption)
+    if (data is Map<String, dynamic>) {
+      ref.read(dataRegistryProvider).registerTheme(
+            state?.pluginId ?? '',
+            name,
+            data,
+          );
+    }
+
     state?.onDataChanged?.call();
     _respondOk(envelope, respond, data: true);
   }
@@ -125,7 +137,18 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
       return;
     }
 
+    // Store in vars
     state?.vars['i18n.$locale'] = messages;
+
+    // Register in DataRegistry
+    if (messages is Map<String, dynamic>) {
+      ref.read(dataRegistryProvider).registerLocale(
+            state?.pluginId ?? '',
+            locale,
+            messages,
+          );
+    }
+
     state?.onDataChanged?.call();
     _respondOk(envelope, respond, data: true);
   }

@@ -18,7 +18,7 @@ class Plugins extends ConsumerWidget {
     final showPlugins = ref
         .watch(pluginManagerProvider)
         .values
-        .where((p) => !p.background)
+        .where((p) => p.status != PluginStatus.uninstalled)
         .toList();
     return Scaffold(
       appBar: AppBar(
@@ -100,6 +100,8 @@ class Plugins extends ConsumerWidget {
                 };
 
                 final isUi = plugin.type == PluginType.ui;
+                final isRunning =
+                    ref.watch(pluginRunManagerProvider)[plugin] != null;
 
                 return ListTile(
                   title: Text(plugin.name),
@@ -135,7 +137,7 @@ class Plugins extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      if (isUsable)
+                      if (isUsable && isUi)
                         PopupMenuItem(
                           value: 'restart',
                           child: Row(
@@ -143,6 +145,28 @@ class Plugins extends ConsumerWidget {
                               Icon(Icons.refresh, size: 20),
                               SizedBox(width: 8),
                               Text('停止运行'),
+                            ],
+                          ),
+                        ),
+                      if (isUsable && !isUi && !isRunning)
+                        PopupMenuItem(
+                          value: 'start',
+                          child: Row(
+                            children: [
+                              Icon(Icons.play_arrow, size: 20, color: Colors.green),
+                              SizedBox(width: 8),
+                              Text('启动', style: TextStyle(color: Colors.green)),
+                            ],
+                          ),
+                        ),
+                      if (isUsable && !isUi && isRunning)
+                        PopupMenuItem(
+                          value: 'stop',
+                          child: Row(
+                            children: [
+                              Icon(Icons.stop, size: 20, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Text('停止', style: TextStyle(color: Colors.orange)),
                             ],
                           ),
                         ),
@@ -208,6 +232,12 @@ class Plugins extends ConsumerWidget {
         break;
       case 'restart':
         ref.read(pluginManagerProvider.notifier).restart(plugin);
+        break;
+      case 'start':
+        ref.read(pluginRunManagerProvider.notifier).start(plugin);
+        break;
+      case 'stop':
+        ref.read(pluginRunManagerProvider.notifier).stop(plugin);
         break;
       case 'disable':
         ref

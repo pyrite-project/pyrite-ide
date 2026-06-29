@@ -38,6 +38,7 @@ class PersistedData {
   final String themeStyle;
   final int? themeColorValue;
   final String editorThemeKey;
+  final String? activePluginThemeId;
   final String editorTextFont;
   final double editorFontSize;
   final bool editorWordWrap;
@@ -66,6 +67,7 @@ class PersistedData {
     this.themeStyle = 'standard',
     this.themeColorValue,
     this.editorThemeKey = 'atom-one',
+    this.activePluginThemeId,
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,
     this.editorWordWrap = false,

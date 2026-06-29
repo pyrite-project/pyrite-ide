@@ -31,7 +31,6 @@ class Plugin {
     this.platforms = const [],
     this.keepAlive = true,
     this.autoStart = false,
-    this.background = false,
   });
 
   final String id;
@@ -46,7 +45,6 @@ class Plugin {
   final List<String> platforms;
   final bool keepAlive;
   final bool autoStart;
-  final bool background;
 
   Plugin copyWith({
     String? id,
@@ -61,7 +59,6 @@ class Plugin {
     List<String>? platforms,
     bool? keepAlive,
     bool? autoStart,
-    bool? background,
   }) {
     return Plugin(
       id: id ?? this.id,
@@ -76,7 +73,6 @@ class Plugin {
       platforms: platforms ?? this.platforms,
       keepAlive: keepAlive ?? this.keepAlive,
       autoStart: autoStart ?? this.autoStart,
-      background: background ?? this.background,
     );
   }
 
