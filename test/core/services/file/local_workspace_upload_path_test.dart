@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 
 void main() {
   test('builds board upload target from Windows local folder path', () {

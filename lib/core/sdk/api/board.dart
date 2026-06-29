@@ -3,97 +3,74 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
-import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
 
-abstract class SdkBoardWorkspaceCommands {
-  static const String getDirList = 'sdk.board_workspace.get_dir_list';
-  static const String getRootDir = 'sdk.board_workspace.get_root_dir';
-  static const String getFocusFileNode =
-      'sdk.board_workspace.get_focus_file_node';
-  static const String getFocusFolderNode =
-      'sdk.board_workspace.get_focus_folder_node';
-  static const String openFile = 'sdk.board_workspace.open_file';
+abstract class SdkBoardCommands {
+  static const String getDirList = 'sdk.board.get_dir_list';
+  static const String getRootDir = 'sdk.board.get_root_dir';
+  static const String getFocusFileNode = 'sdk.board.get_focus_file_node';
+  static const String getFocusFolderNode = 'sdk.board.get_focus_folder_node';
+  static const String openFile = 'sdk.board.open_file';
   static const String downloadSelectedBoardItem =
-      'sdk.board_workspace.download_selected_board_item';
-  static const String rename = 'sdk.board_workspace.rename';
-  static const String deleteFile = 'sdk.board_workspace.delete_file';
-  static const String deleteFolder = 'sdk.board_workspace.delete_folder';
-  static const String isFile = 'sdk.board_workspace.is_file';
-  static const String isDirectory = 'sdk.board_workspace.is_directory';
+      'sdk.board.download_selected_board_item';
+  static const String rename = 'sdk.board.rename';
+  static const String deleteFile = 'sdk.board.delete_file';
+  static const String deleteFolder = 'sdk.board.delete_folder';
+  static const String isFile = 'sdk.board.is_file';
+  static const String isDirectory = 'sdk.board.is_directory';
   static const String getCorrespondingFilePath =
-      'sdk.board_workspace.get_corresponding_file_path';
-  static const String readFile = 'sdk.board_workspace.read_file';
-  static const String writeFile = 'sdk.board_workspace.write_file';
-  static const String exists = 'sdk.board_workspace.exists';
-  static const String downloadFile = 'sdk.board_workspace.download_file';
+      'sdk.board.get_corresponding_file_path';
+  static const String readFile = 'sdk.board.read_file';
+  static const String writeFile = 'sdk.board.write_file';
+  static const String exists = 'sdk.board.exists';
+  static const String downloadFile = 'sdk.board.download_file';
 }
 
-class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
+class SdkBoard extends StateNotifier<PluginRunManager?> {
   final Ref ref;
-  SdkBoardWorkspace(this.ref) : super(null);
+  SdkBoard(this.ref) : super(null);
 
   void bind(PluginRunManager runManager) {
     state = runManager;
+    runManager.registerHandler(SdkBoardCommands.getDirList, _handleGetDirList);
+    runManager.registerHandler(SdkBoardCommands.getRootDir, _handleGetRootDir);
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.getDirList,
-      _handleGetDirList,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.getRootDir,
-      _handleGetRootDir,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.getFocusFileNode,
+      SdkBoardCommands.getFocusFileNode,
       _handleGetFocusFileNode,
     );
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.getFocusFolderNode,
+      SdkBoardCommands.getFocusFolderNode,
       _handleGetFocusFolderNode,
     );
+    runManager.registerHandler(SdkBoardCommands.openFile, _handleOpenFile);
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.openFile,
-      _handleOpenFile,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.downloadSelectedBoardItem,
+      SdkBoardCommands.downloadSelectedBoardItem,
       _handleDownloadSelectedBoardItem,
     );
-    runManager.registerHandler(SdkBoardWorkspaceCommands.rename, _handleRename);
+    runManager.registerHandler(SdkBoardCommands.rename, _handleRename);
+    runManager.registerHandler(SdkBoardCommands.deleteFile, _handleDeleteFile);
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.deleteFile,
-      _handleDeleteFile,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.deleteFolder,
+      SdkBoardCommands.deleteFolder,
       _handleDeleteFolder,
     );
-    runManager.registerHandler(SdkBoardWorkspaceCommands.isFile, _handleIsFile);
+    runManager.registerHandler(SdkBoardCommands.isFile, _handleIsFile);
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.isDirectory,
+      SdkBoardCommands.isDirectory,
       _handleIsDirectory,
     );
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.getCorrespondingFilePath,
+      SdkBoardCommands.getCorrespondingFilePath,
       _handleGetCorrespondingFilePath,
     );
+    runManager.registerHandler(SdkBoardCommands.readFile, _handleReadFile);
+    runManager.registerHandler(SdkBoardCommands.writeFile, _handleWriteFile);
+    runManager.registerHandler(SdkBoardCommands.exists, _handleExists);
     runManager.registerHandler(
-      SdkBoardWorkspaceCommands.readFile,
-      _handleReadFile,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.writeFile,
-      _handleWriteFile,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.exists,
-      _handleExists,
-    );
-    runManager.registerHandler(
-      SdkBoardWorkspaceCommands.downloadFile,
+      SdkBoardCommands.downloadFile,
       _handleDownloadFile,
     );
   }
@@ -167,7 +144,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final node = ref.read(boardWorkspaceProvider.notifier).getFocusFileNode();
+    final node = ref.read(boardProvider.notifier).getFocusFileNode();
     _respondOk(
       envelope,
       respond,
@@ -179,7 +156,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final node = ref.read(boardWorkspaceProvider.notifier).getFocusFolderNode();
+    final node = ref.read(boardProvider.notifier).getFocusFolderNode();
     _respondOk(
       envelope,
       respond,
@@ -204,9 +181,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
 
     final context = appContext;
     if (context != null && context.mounted) {
-      await ref
-          .read(boardWorkspaceProvider.notifier)
-          .openFile(context, filePath);
+      await ref.read(boardProvider.notifier).openFile(context, filePath);
     }
 
     _respondOk(envelope, respond);
@@ -222,9 +197,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
     }
     final context = appContext;
     if (context != null && context.mounted) {
-      await ref
-          .read(boardWorkspaceProvider.notifier)
-          .downloadSelectedBoardItem(context);
+      await ref.read(boardProvider.notifier).downloadSelectedBoardItem(context);
     }
     _respondOk(envelope, respond);
   }
@@ -242,7 +215,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
     final newName = payload['new_name']?.toString();
 
     if (filePath != null && newName != null) {
-      await ref.read(boardWorkspaceProvider.notifier).rename(filePath, newName);
+      await ref.read(boardProvider.notifier).rename(filePath, newName);
     }
     _respondOk(envelope, respond);
   }
@@ -259,7 +232,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
     final filePath = payload['path']?.toString();
 
     if (filePath != null) {
-      await ref.read(boardWorkspaceProvider.notifier).deleteFile(filePath);
+      await ref.read(boardProvider.notifier).deleteFile(filePath);
     }
     _respondOk(envelope, respond);
   }
@@ -276,7 +249,7 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
     final filePath = payload['path']?.toString();
 
     if (filePath != null) {
-      await ref.read(boardWorkspaceProvider.notifier).deleteFolder(filePath);
+      await ref.read(boardProvider.notifier).deleteFolder(filePath);
     }
     _respondOk(envelope, respond);
   }
@@ -363,8 +336,9 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
 
     if (filePath != null) {
       try {
-        final content =
-            await ref.read(boardFileBackendProvider).readTextFile(filePath);
+        final content = await ref
+            .read(boardFileBackendProvider)
+            .readTextFile(filePath);
         _respondOk(envelope, respond, data: content);
       } catch (e) {
         _respondOk(envelope, respond, data: null);
@@ -445,8 +419,9 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
 
     if (boardPath != null && localPath != null) {
       try {
-        final bytes =
-            await ref.read(boardFileBackendProvider).readFileBytes(boardPath);
+        final bytes = await ref
+            .read(boardFileBackendProvider)
+            .readFileBytes(boardPath);
         await File(localPath).writeAsBytes(bytes);
         _respondOk(envelope, respond, data: true);
       } catch (e) {
@@ -459,31 +434,25 @@ class SdkBoardWorkspace extends StateNotifier<PluginRunManager?> {
 
   @override
   void dispose() {
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.getDirList);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.getRootDir);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.getFocusFileNode);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.getFocusFolderNode);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.openFile);
-    state?.unregisterHandler(
-      SdkBoardWorkspaceCommands.downloadSelectedBoardItem,
-    );
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.rename);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.deleteFile);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.deleteFolder);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.isFile);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.isDirectory);
-    state?.unregisterHandler(
-      SdkBoardWorkspaceCommands.getCorrespondingFilePath,
-    );
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.readFile);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.writeFile);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.exists);
-    state?.unregisterHandler(SdkBoardWorkspaceCommands.downloadFile);
+    state?.unregisterHandler(SdkBoardCommands.getDirList);
+    state?.unregisterHandler(SdkBoardCommands.getRootDir);
+    state?.unregisterHandler(SdkBoardCommands.getFocusFileNode);
+    state?.unregisterHandler(SdkBoardCommands.getFocusFolderNode);
+    state?.unregisterHandler(SdkBoardCommands.openFile);
+    state?.unregisterHandler(SdkBoardCommands.downloadSelectedBoardItem);
+    state?.unregisterHandler(SdkBoardCommands.rename);
+    state?.unregisterHandler(SdkBoardCommands.deleteFile);
+    state?.unregisterHandler(SdkBoardCommands.deleteFolder);
+    state?.unregisterHandler(SdkBoardCommands.isFile);
+    state?.unregisterHandler(SdkBoardCommands.isDirectory);
+    state?.unregisterHandler(SdkBoardCommands.getCorrespondingFilePath);
+    state?.unregisterHandler(SdkBoardCommands.readFile);
+    state?.unregisterHandler(SdkBoardCommands.writeFile);
+    state?.unregisterHandler(SdkBoardCommands.exists);
+    state?.unregisterHandler(SdkBoardCommands.downloadFile);
     super.dispose();
   }
 }
 
-final StateNotifierProvider<SdkBoardWorkspace, PluginRunManager?>
-sdkBoardWorkspaceProvider = StateNotifierProvider(
-  (ref) => SdkBoardWorkspace(ref),
-);
+final StateNotifierProvider<SdkBoard, PluginRunManager?> sdkBoardProvider =
+    StateNotifierProvider((ref) => SdkBoard(ref));

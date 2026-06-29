@@ -6,118 +6,118 @@ import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
 
-abstract class SdkLocalWorkspaceCommands {
-  static const String getDirList = 'sdk.local_workspace.get_dir_list';
-  static const String getRootDir = 'sdk.local_workspace.get_root_dir';
-  static const String saveCurrentFile = 'sdk.local_workspace.save_current_file';
+abstract class SdkFileCommands {
+  static const String getDirList = 'sdk.file.get_dir_list';
+  static const String getRootDir = 'sdk.file.get_root_dir';
+  static const String saveCurrentFile = 'sdk.file.save_current_file';
   static const String saveCurrentFileAs =
-      'sdk.local_workspace.save_current_file_as';
-  static const String createFile = 'sdk.local_workspace.create_file';
-  static const String createFolder = 'sdk.local_workspace.create_folder';
+      'sdk.file.save_current_file_as';
+  static const String createFile = 'sdk.file.create_file';
+  static const String createFolder = 'sdk.file.create_folder';
   static const String getFocusFileNode =
-      'sdk.local_workspace.get_focus_file_node';
+      'sdk.file.get_focus_file_node';
   static const String getFocusFolderNode =
-      'sdk.local_workspace.get_focus_folder_node';
-  static const String openFile = 'sdk.local_workspace.open_file';
+      'sdk.file.get_focus_folder_node';
+  static const String openFile = 'sdk.file.open_file';
   static const String uploadSelectedLocalFileItem =
-      'sdk.local_workspace.upload_selected_local_file_item';
-  static const String rename = 'sdk.local_workspace.rename';
-  static const String delete = 'sdk.local_workspace.delete';
-  static const String openFolder = 'sdk.local_workspace.open_folder';
-  static const String isFile = 'sdk.local_workspace.is_file';
-  static const String isDirectory = 'sdk.local_workspace.is_directory';
-  static const String readFile = 'sdk.local_workspace.read_file';
-  static const String writeFile = 'sdk.local_workspace.write_file';
-  static const String copyFile = 'sdk.local_workspace.copy_file';
-  static const String moveFile = 'sdk.local_workspace.move_file';
-  static const String exists = 'sdk.local_workspace.exists';
-  static const String uploadFile = 'sdk.local_workspace.upload_file';
-  static const String getUniqueName = 'sdk.local_workspace.get_unique_name';
+      'sdk.file.upload_selected_local_file_item';
+  static const String rename = 'sdk.file.rename';
+  static const String delete = 'sdk.file.delete';
+  static const String openFolder = 'sdk.file.open_folder';
+  static const String isFile = 'sdk.file.is_file';
+  static const String isDirectory = 'sdk.file.is_directory';
+  static const String readFile = 'sdk.file.read_file';
+  static const String writeFile = 'sdk.file.write_file';
+  static const String copyFile = 'sdk.file.copy_file';
+  static const String moveFile = 'sdk.file.move_file';
+  static const String exists = 'sdk.file.exists';
+  static const String uploadFile = 'sdk.file.upload_file';
+  static const String getUniqueName = 'sdk.file.get_unique_name';
 }
 
-class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
+class SdkFile extends StateNotifier<PluginRunManager?> {
   final Ref ref;
-  SdkLocalWorkspace(this.ref) : super(null);
+  SdkFile(this.ref) : super(null);
 
   void bind(PluginRunManager runManager) {
     state = runManager;
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.getDirList,
+      SdkFileCommands.getDirList,
       _handleGetDirList,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.getRootDir,
+      SdkFileCommands.getRootDir,
       _handleGetRootDir,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.saveCurrentFile,
+      SdkFileCommands.saveCurrentFile,
       _handleSaveCurrentFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.saveCurrentFileAs,
+      SdkFileCommands.saveCurrentFileAs,
       _handleSaveCurrentFileAs,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.createFile,
+      SdkFileCommands.createFile,
       _handleCreateFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.createFolder,
+      SdkFileCommands.createFolder,
       _handleCreateFolder,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.getFocusFileNode,
+      SdkFileCommands.getFocusFileNode,
       _handleGetFocusFileNode,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.getFocusFolderNode,
+      SdkFileCommands.getFocusFolderNode,
       _handleGetFocusFolderNode,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.openFile,
+      SdkFileCommands.openFile,
       _handleOpenFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.uploadSelectedLocalFileItem,
+      SdkFileCommands.uploadSelectedLocalFileItem,
       _handleUploadSelectedLocalFileItem,
     );
-    runManager.registerHandler(SdkLocalWorkspaceCommands.rename, _handleRename);
-    runManager.registerHandler(SdkLocalWorkspaceCommands.delete, _handleDelete);
+    runManager.registerHandler(SdkFileCommands.rename, _handleRename);
+    runManager.registerHandler(SdkFileCommands.delete, _handleDelete);
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.openFolder,
+      SdkFileCommands.openFolder,
       _handleOpenFolder,
     );
-    runManager.registerHandler(SdkLocalWorkspaceCommands.isFile, _handleIsFile);
+    runManager.registerHandler(SdkFileCommands.isFile, _handleIsFile);
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.isDirectory,
+      SdkFileCommands.isDirectory,
       _handleIsDirectory,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.readFile,
+      SdkFileCommands.readFile,
       _handleReadFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.writeFile,
+      SdkFileCommands.writeFile,
       _handleWriteFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.copyFile,
+      SdkFileCommands.copyFile,
       _handleCopyFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.moveFile,
+      SdkFileCommands.moveFile,
       _handleMoveFile,
     );
-    runManager.registerHandler(SdkLocalWorkspaceCommands.exists, _handleExists);
+    runManager.registerHandler(SdkFileCommands.exists, _handleExists);
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.uploadFile,
+      SdkFileCommands.uploadFile,
       _handleUploadFile,
     );
     runManager.registerHandler(
-      SdkLocalWorkspaceCommands.getUniqueName,
+      SdkFileCommands.getUniqueName,
       _handleGetUniqueName,
     );
   }
@@ -161,14 +161,14 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    _respondOk(envelope, respond, data: ref.read(localWorkspaceProvider)?.path);
+    _respondOk(envelope, respond, data: ref.read(fileProvider)?.path);
   }
 
   void _handleSaveCurrentFile(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    ref.read(localWorkspaceProvider.notifier).saveCurrentFile();
+    ref.read(fileProvider.notifier).saveCurrentFile();
     _respondOk(envelope, respond);
   }
 
@@ -176,7 +176,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    ref.read(localWorkspaceProvider.notifier).saveCurrentFileAs();
+    ref.read(fileProvider.notifier).saveCurrentFileAs();
     _respondOk(envelope, respond);
   }
 
@@ -193,7 +193,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     }
 
     final createdPath = await ref
-        .read(localWorkspaceProvider.notifier)
+        .read(fileProvider.notifier)
         .createFile(filePath);
     _respondOk(envelope, respond, data: {'path': createdPath});
   }
@@ -211,7 +211,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     }
 
     final createdPath = await ref
-        .read(localWorkspaceProvider.notifier)
+        .read(fileProvider.notifier)
         .createFolder(folderPath);
     _respondOk(envelope, respond, data: {'path': createdPath});
   }
@@ -220,7 +220,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final node = ref.read(localWorkspaceProvider.notifier).getFocusFileNode();
+    final node = ref.read(fileProvider.notifier).getFocusFileNode();
     _respondOk(
       envelope,
       respond,
@@ -232,7 +232,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final node = ref.read(localWorkspaceProvider.notifier).getFocusFolderNode();
+    final node = ref.read(fileProvider.notifier).getFocusFolderNode();
     _respondOk(
       envelope,
       respond,
@@ -254,7 +254,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     final file = File(filePath);
     if (file.existsSync()) {
       ref
-          .read(localWorkspaceProvider.notifier)
+          .read(fileProvider.notifier)
           .setDirectory(Directory(p.dirname(filePath)));
 
       final context = appContext;
@@ -274,7 +274,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     final context = appContext;
     if (context != null && context.mounted) {
       await ref
-          .read(localWorkspaceProvider.notifier)
+          .read(fileProvider.notifier)
           .uploadSelectedLocalFileItem(context);
     }
     _respondOk(envelope, respond);
@@ -327,7 +327,7 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
     if (folderPath != null) {
       final dir = Directory(folderPath);
       if (dir.existsSync()) {
-        ref.read(localWorkspaceProvider.notifier).setDirectory(dir);
+        ref.read(fileProvider.notifier).setDirectory(dir);
         ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       }
     }
@@ -509,35 +509,35 @@ class SdkLocalWorkspace extends StateNotifier<PluginRunManager?> {
 
   @override
   void dispose() {
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.getDirList);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.getRootDir);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.saveCurrentFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.saveCurrentFileAs);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.createFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.createFolder);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.getFocusFileNode);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.getFocusFolderNode);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.openFile);
+    state?.unregisterHandler(SdkFileCommands.getDirList);
+    state?.unregisterHandler(SdkFileCommands.getRootDir);
+    state?.unregisterHandler(SdkFileCommands.saveCurrentFile);
+    state?.unregisterHandler(SdkFileCommands.saveCurrentFileAs);
+    state?.unregisterHandler(SdkFileCommands.createFile);
+    state?.unregisterHandler(SdkFileCommands.createFolder);
+    state?.unregisterHandler(SdkFileCommands.getFocusFileNode);
+    state?.unregisterHandler(SdkFileCommands.getFocusFolderNode);
+    state?.unregisterHandler(SdkFileCommands.openFile);
     state?.unregisterHandler(
-      SdkLocalWorkspaceCommands.uploadSelectedLocalFileItem,
+      SdkFileCommands.uploadSelectedLocalFileItem,
     );
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.rename);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.delete);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.openFolder);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.isFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.isDirectory);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.readFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.writeFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.copyFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.moveFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.exists);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.uploadFile);
-    state?.unregisterHandler(SdkLocalWorkspaceCommands.getUniqueName);
+    state?.unregisterHandler(SdkFileCommands.rename);
+    state?.unregisterHandler(SdkFileCommands.delete);
+    state?.unregisterHandler(SdkFileCommands.openFolder);
+    state?.unregisterHandler(SdkFileCommands.isFile);
+    state?.unregisterHandler(SdkFileCommands.isDirectory);
+    state?.unregisterHandler(SdkFileCommands.readFile);
+    state?.unregisterHandler(SdkFileCommands.writeFile);
+    state?.unregisterHandler(SdkFileCommands.copyFile);
+    state?.unregisterHandler(SdkFileCommands.moveFile);
+    state?.unregisterHandler(SdkFileCommands.exists);
+    state?.unregisterHandler(SdkFileCommands.uploadFile);
+    state?.unregisterHandler(SdkFileCommands.getUniqueName);
     super.dispose();
   }
 }
 
-final StateNotifierProvider<SdkLocalWorkspace, PluginRunManager?>
-sdkLocalWorkspaceProvider = StateNotifierProvider(
-  (ref) => SdkLocalWorkspace(ref),
+final StateNotifierProvider<SdkFile, PluginRunManager?>
+sdkFileProvider = StateNotifierProvider(
+  (ref) => SdkFile(ref),
 );

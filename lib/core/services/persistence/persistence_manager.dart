@@ -3,11 +3,11 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/settings_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/function_page_persistence.dart';
-import 'package:pyrite_ide/core/services/persistence/file/workspace_persistence.dart';
+import 'package:pyrite_ide/core/services/persistence/file/project_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/editor/tabs_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -17,14 +17,14 @@ class PersistenceManager {
   final SettingsPersistence settingsPersistence = SettingsPersistence();
   final FunctionPagePersistence functionPagePersistence =
       FunctionPagePersistence();
-  final WorkspacePersistence workspacePersistence = WorkspacePersistence();
+  final ProjectPersistence projectPersistence = ProjectPersistence();
   final TabsPersistence tabsPersistence = TabsPersistence();
 
   Future<PersistedData> loadAll() async {
     final app = await appPersistence.load();
     final settings = await settingsPersistence.load();
     final functionPage = await functionPagePersistence.load();
-    final workspace = await workspacePersistence.load();
+    final project = await projectPersistence.load();
     final tabsData = await tabsPersistence.load();
 
     return PersistedData(
@@ -47,7 +47,7 @@ class PersistenceManager {
       functionPageShow: functionPage?.functionPageShow ?? true,
       consolePageShow: functionPage?.consolePageShow ?? true,
       expansionPageShow: functionPage?.expansionPageShow ?? true,
-      workspacePath: workspace?.workspacePath,
+      projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       chineseToUnicodeConversion:
@@ -106,15 +106,15 @@ class PersistenceManager {
           expansionPageShow: container.read(expansionPageShow),
         ),
       ),
-      _saveWorkspace(container),
+      _saveProject(container),
       _saveTabs(container),
     ]);
   }
 
-  Future<void> _saveWorkspace(ProviderContainer container) async {
-    final dir = container.read(localWorkspaceProvider);
-    await workspacePersistence.save(
-      WorkspacePersistedData(workspacePath: dir?.path),
+  Future<void> _saveProject(ProviderContainer container) async {
+    final dir = container.read(fileProvider);
+    await projectPersistence.save(
+      ProjectPersistedData(projectPath: dir?.path),
     );
   }
 

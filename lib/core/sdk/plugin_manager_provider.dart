@@ -50,7 +50,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
 
   void changeStatus(String id, PluginStatus status) {
     if (state[id] != null) {
-      if (status == PluginStatus.disabled || status == PluginStatus.uninstalled) {
+      if (status == PluginStatus.disabled ||
+          status == PluginStatus.uninstalled) {
         ref.read(pluginRunManagerProvider.notifier).stop(state[id]!);
       }
       state = {...state, id: state[id]!.copyWith(status: status)};
@@ -84,6 +85,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       final Archive archive = ZipDecoder().decodeStream(stream);
 
       await extractArchiveToDisk(archive, target.path);
+
+      stream.close();
 
       final parsed = PluginTomlParser.parseFromDirectory(target);
       if (parsed != null && parsed.id.isNotEmpty) {

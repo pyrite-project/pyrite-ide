@@ -3,19 +3,19 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
-class WorkspacePersistedData {
-  final String? workspacePath;
+class ProjectPersistedData {
+  final String? projectPath;
 
-  WorkspacePersistedData({this.workspacePath});
+  ProjectPersistedData({this.projectPath});
 
-  Map<String, dynamic> toJson() => {'workspacePath': workspacePath};
+  Map<String, dynamic> toJson() => {'projectPath': projectPath};
 
-  factory WorkspacePersistedData.fromJson(Map<String, dynamic> json) =>
-      WorkspacePersistedData(workspacePath: json['workspacePath'] as String?);
+  factory ProjectPersistedData.fromJson(Map<String, dynamic> json) =>
+      ProjectPersistedData(projectPath: json['projectPath'] as String?);
 }
 
-class WorkspacePersistence {
-  static const _fileName = 'workspace.json';
+class ProjectPersistence {
+  static const _fileName = 'project.json';
 
   Future<File> get _file async {
     final dir = await getApplicationSupportDirectory();
@@ -24,25 +24,25 @@ class WorkspacePersistence {
     return File('${subDir.path}/$_fileName');
   }
 
-  Future<WorkspacePersistedData?> load() async {
+  Future<ProjectPersistedData?> load() async {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
       final json =
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      return WorkspacePersistedData.fromJson(json);
+      return ProjectPersistedData.fromJson(json);
     } catch (e) {
-      debugPrint('WorkspacePersistence: Failed to load: $e');
+      debugPrint('ProjectPersistence: Failed to load: $e');
       return null;
     }
   }
 
-  Future<void> save(WorkspacePersistedData data) async {
+  Future<void> save(ProjectPersistedData data) async {
     try {
       final file = await _file;
       await file.writeAsString(jsonEncode(data.toJson()));
     } catch (e) {
-      debugPrint('WorkspacePersistence: Failed to save: $e');
+      debugPrint('ProjectPersistence: Failed to save: $e');
     }
   }
 }

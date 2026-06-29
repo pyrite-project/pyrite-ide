@@ -8,7 +8,7 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';

@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 

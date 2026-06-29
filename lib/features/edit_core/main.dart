@@ -13,13 +13,13 @@ import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -64,7 +64,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
         saveFile(context, ref);
       },
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () {
-        ref.read(localWorkspaceProvider.notifier).saveCurrentFileAs();
+        ref.read(fileProvider.notifier).saveCurrentFileAs();
       },
       SingleActivator(LogicalKeyboardKey.keyN, control: true): () {
         ref.read(tabbedViewControllerProvider.notifier).createFile();
@@ -73,9 +73,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
         ref.read(tabbedViewControllerProvider.notifier).openFile(context);
       },
       SingleActivator(LogicalKeyboardKey.keyU, control: true): () {
-        ref
-            .read(localWorkspaceProvider.notifier)
-            .uploadSelectedLocalFileItem(context);
+        ref.read(fileProvider.notifier).uploadSelectedLocalFileItem(context);
       },
       SingleActivator(LogicalKeyboardKey.keyR, control: true): () {
         runCurrentFile(context, ref);
@@ -224,7 +222,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
           ?.clearGitDiffDecorations();
       final currentContent = pending.content;
       await ref
-          .read(boardWorkspaceProvider.notifier)
+          .read(boardProvider.notifier)
           .writeFile(pending.targetPath, currentContent);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
@@ -296,7 +294,7 @@ void showEditorSnackBar(BuildContext context, String message) {
 }
 
 Future saveFile(BuildContext context, WidgetRef ref, {quiet = false}) async {
-  await ref.read(localWorkspaceProvider.notifier).saveCurrentFile();
+  await ref.read(fileProvider.notifier).saveCurrentFile();
 
   if (!quiet) {
     ScaffoldMessenger.of(

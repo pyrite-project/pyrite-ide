@@ -5,13 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
@@ -56,8 +56,8 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget buildLocalFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(localWorkspaceProvider) != null) {
-      final localWorkspace = ref.watch(localWorkspaceProvider)!;
+    if (ref.watch(fileProvider) != null) {
+      final localWorkspace = ref.watch(fileProvider)!;
       return Column(
         children: [
           PaneHeader(
@@ -69,25 +69,23 @@ class ProjectFiles extends ConsumerWidget {
               IconButton(
                 tooltip: "新建文件",
                 onPressed: () async {
-                  final parentPath = ref.read(localWorkspaceProvider)?.path ?? '';
+                  final parentPath = ref.read(fileProvider)?.path ?? '';
                   final uniquePath = await local.getUniqueFilePath(
                     path.join(parentPath, "new_file"),
                   );
-                  await ref
-                      .read(localWorkspaceProvider.notifier)
-                      .createFile(uniquePath);
+                  await ref.read(fileProvider.notifier).createFile(uniquePath);
                 },
                 icon: const Icon(Icons.note_add_outlined),
               ),
               IconButton(
                 tooltip: "新建文件夹",
                 onPressed: () async {
-                  final parentPath = ref.read(localWorkspaceProvider)?.path ?? '';
+                  final parentPath = ref.read(fileProvider)?.path ?? '';
                   final uniquePath = await local.getUniqueFolderPath(
                     path.join(parentPath, "new_folder"),
                   );
                   await ref
-                      .read(localWorkspaceProvider.notifier)
+                      .read(fileProvider.notifier)
                       .createFolder(uniquePath);
                 },
                 icon: const Icon(Icons.create_new_folder_outlined),
@@ -106,9 +104,8 @@ class ProjectFiles extends ConsumerWidget {
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(localEnableDragAndDrop),
-                onNodeTap: (id) => ref
-                    .read(localWorkspaceProvider.notifier)
-                    .openFile(context, id),
+                onNodeTap: (id) =>
+                    ref.read(fileProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
               style: SuperTreeThemes.material().treeStyle,
@@ -135,14 +132,14 @@ class ProjectFiles extends ConsumerWidget {
                             .setSelectedNodeId(node.id);
 
                         final TreeNode<FileSystemItem>? boardFileTarget = ref
-                            .read(boardWorkspaceProvider.notifier)
+                            .read(boardProvider.notifier)
                             .getFocusFileNode();
 
                         final TreeNode<FileSystemItem>? boardFolderTarget = ref
-                            .read(boardWorkspaceProvider.notifier)
+                            .read(boardProvider.notifier)
                             .getFocusFolderNode();
                         final TreeNode<FileSystemItem>? localFolderTarget = ref
-                            .read(localWorkspaceProvider.notifier)
+                            .read(fileProvider.notifier)
                             .getFocusFolderNode();
 
                         return Menu(
@@ -174,7 +171,7 @@ class ProjectFiles extends ConsumerWidget {
                             MenuAction(
                               title: "上传到设备文件夹 ${boardFolderTarget?.id ?? "/"}",
                               callback: () => ref
-                                  .read(localWorkspaceProvider.notifier)
+                                  .read(fileProvider.notifier)
                                   .uploadSelectedLocalFileItem(context),
                               attributes: MenuActionAttributes(
                                 disabled: !(ref
@@ -188,7 +185,7 @@ class ProjectFiles extends ConsumerWidget {
                               callback: () async {
                                 final bytes = await File(node.id).readAsBytes();
                                 await ref
-                                    .read(boardWorkspaceProvider.notifier)
+                                    .read(boardProvider.notifier)
                                     .writeFileBytes(boardFileTarget!.id, bytes);
                                 ref
                                     .read(boardFileItemsProvider.notifier)
@@ -214,12 +211,15 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件",
                               callback: () async {
-                                final parentDir = localFolderTarget?.id ?? localWorkspace.path;
-                                final uniquePath = await local.getUniqueFilePath(
-                                  path.join(parentDir, "new_file"),
-                                );
+                                final parentDir =
+                                    localFolderTarget?.id ??
+                                    localWorkspace.path;
+                                final uniquePath = await local
+                                    .getUniqueFilePath(
+                                      path.join(parentDir, "new_file"),
+                                    );
                                 await ref
-                                    .read(localWorkspaceProvider.notifier)
+                                    .read(fileProvider.notifier)
                                     .createFile(uniquePath);
                               },
                             ),
@@ -227,12 +227,15 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件夹",
                               callback: () async {
-                                final parentDir = localFolderTarget?.id ?? localWorkspace.path;
-                                final uniquePath = await local.getUniqueFolderPath(
-                                  path.join(parentDir, "new_folder"),
-                                );
+                                final parentDir =
+                                    localFolderTarget?.id ??
+                                    localWorkspace.path;
+                                final uniquePath = await local
+                                    .getUniqueFolderPath(
+                                      path.join(parentDir, "new_folder"),
+                                    );
                                 await ref
-                                    .read(localWorkspaceProvider.notifier)
+                                    .read(fileProvider.notifier)
                                     .createFolder(uniquePath);
                               },
                             ),
@@ -273,7 +276,7 @@ class ProjectFiles extends ConsumerWidget {
             FilledButton.tonalIcon(
               onPressed: isConnected
                   ? () => ref
-                        .read(localWorkspaceProvider.notifier)
+                        .read(fileProvider.notifier)
                         .uploadSelectedLocalFileItem(context)
                   : null,
               icon: const Icon(Icons.upload_outlined, size: 18),
@@ -308,7 +311,7 @@ class ProjectFiles extends ConsumerWidget {
               IconButton(
                 tooltip: "刷新设备文件",
                 onPressed: () {
-                  // ref.read(boardWorkspaceProvider.notifier).clear();
+                  // ref.read(boardProvider.notifier).clear();
                   ref
                       .watch(boardFileItemsProvider.notifier)
                       .buildRootFileListItems();
@@ -322,9 +325,8 @@ class ProjectFiles extends ConsumerWidget {
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
-                onNodeTap: (id) => ref
-                    .read(boardWorkspaceProvider.notifier)
-                    .openFile(context, id),
+                onNodeTap: (id) =>
+                    ref.read(boardProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
               style: SuperTreeThemes.material().treeStyle,
@@ -351,11 +353,11 @@ class ProjectFiles extends ConsumerWidget {
                             .setSelectedNodeId(node.id);
 
                         final TreeNode<FileSystemItem>? localFileTarget = ref
-                            .read(localWorkspaceProvider.notifier)
+                            .read(fileProvider.notifier)
                             .getFocusFileNode();
 
                         final TreeNode<FileSystemItem>? localFolderTarget = ref
-                            .read(localWorkspaceProvider.notifier)
+                            .read(fileProvider.notifier)
                             .getFocusFolderNode();
 
                         return Menu(
@@ -386,17 +388,16 @@ class ProjectFiles extends ConsumerWidget {
                             MenuSeparator(),
                             MenuAction(
                               title:
-                                  "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(localWorkspaceProvider)?.path ?? "（未打开本地项目）"}",
+                                  "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}",
                               callback: () => ref
-                                  .read(boardWorkspaceProvider.notifier)
+                                  .read(boardProvider.notifier)
                                   .downloadSelectedBoardItem(context),
                               attributes: MenuActionAttributes(
                                 disabled:
                                     !(ref
                                         .watch(getUsbSerialProvider())
                                         .isConnected) ||
-                                    (ref.watch(localWorkspaceProvider)?.path ==
-                                        null),
+                                    (ref.watch(fileProvider)?.path == null),
                               ),
                             ),
                             MenuAction(
@@ -404,7 +405,7 @@ class ProjectFiles extends ConsumerWidget {
                                   "覆盖本地文件 ${localFileTarget?.id ?? "（未选择本地文件）"}",
                               callback: () async {
                                 final bytes = await ref
-                                    .read(boardWorkspaceProvider.notifier)
+                                    .read(boardProvider.notifier)
                                     .getFileBytes(node.id);
                                 await File(
                                   localFileTarget!.id,
@@ -422,8 +423,7 @@ class ProjectFiles extends ConsumerWidget {
                               attributes: MenuActionAttributes(
                                 disabled:
                                     (localFileTarget == null) ||
-                                    ((ref.watch(localWorkspaceProvider)?.path ==
-                                            null) ||
+                                    ((ref.watch(fileProvider)?.path == null) ||
                                         (node.data is FolderItem)),
                               ),
                             ),

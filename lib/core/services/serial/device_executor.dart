@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/board_manager/raw_paste_session.dart';
-import 'package:pyrite_ide/core/services/board_manager/repl_mutex_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/serial_data_callbacks_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/serial_repl_gate_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/raw_paste_session.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mutex_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_repl_gate_provider.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 
 const _defaultTimeout = Duration(seconds: 20);
 

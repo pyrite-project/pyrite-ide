@@ -6,7 +6,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -222,7 +222,7 @@ class TabHeaderWidget extends StatelessWidget {
                   TextButton(
                     onPressed: () async {
                       await container
-                          .read(localWorkspaceProvider.notifier)
+                          .read(fileProvider.notifier)
                           .saveCurrentFile();
 
                       ScaffoldMessenger.of(

@@ -9,7 +9,7 @@ import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart'
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
@@ -42,9 +42,9 @@ String _localSourceBasename(String sourcePath) {
   return path.basename(sourcePath);
 }
 
-class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
+class FileNotifier extends StateNotifier<Directory?> {
   final Ref ref;
-  LocalWorkspaceNotifier(this.ref) : super(null);
+  FileNotifier(this.ref) : super(null);
 
   void setDirectory(Directory dir) {
     state = dir;
@@ -82,7 +82,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     if (value is TabDataValue && value.type == "file") {
       if (value.isBoardFile == true && value.boardFilePath != null) {
         await ref
-            .read(boardWorkspaceProvider.notifier)
+            .read(boardProvider.notifier)
             .writeFile(value.boardFilePath!, value.editorController!.text);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } else {
@@ -221,7 +221,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
     }
 
     final TreeNode<FileSystemItem>? boardFolderTarget = ref
-        .read(boardWorkspaceProvider.notifier)
+        .read(boardProvider.notifier)
         .getFocusFolderNode();
 
     if (selected?.data is FileItem || selectedTab != null) {
@@ -244,7 +244,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
       String? originContent;
       try {
         originContent = await ref
-            .read(boardWorkspaceProvider.notifier)
+            .read(boardProvider.notifier)
             .getFileContent(targetPath);
       } catch (_) {}
       if (originContent != null && originContent != content) {
@@ -296,7 +296,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
       }
 
       await ref
-          .read(boardWorkspaceProvider.notifier)
+          .read(boardProvider.notifier)
           .writeFile(targetPath, content);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
@@ -307,7 +307,7 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
         boardFolderPath: boardFolderTarget?.id,
       );
       await ref
-          .read(boardWorkspaceProvider.notifier)
+          .read(boardProvider.notifier)
           .uploadFolder(selected.id, targetPath);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
@@ -407,13 +407,13 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
   ) async {
     final bytes = await File(sourcePath).readAsBytes();
     await ref
-        .read(boardWorkspaceProvider.notifier)
+        .read(boardProvider.notifier)
         .writeFileBytes(targetPath, bytes);
     ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
   }
 }
 
-final StateNotifierProvider<LocalWorkspaceNotifier, Directory?>
-localWorkspaceProvider = StateNotifierProvider(
-  (ref) => LocalWorkspaceNotifier(ref),
+final StateNotifierProvider<FileNotifier, Directory?>
+fileProvider = StateNotifierProvider(
+  (ref) => FileNotifier(ref),
 );

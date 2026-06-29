@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/board_manager/android_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/board_manager/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
@@ -23,8 +23,9 @@ class TerminalSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final serialProvider =
-        Platform.isAndroid ? androidUsbSerialProvider : desktopUsbSerialProvider;
+    final serialProvider = Platform.isAndroid
+        ? androidUsbSerialProvider
+        : desktopUsbSerialProvider;
     final serialState = ref.watch(serialProvider) as dynamic;
 
     final body = ListView(
@@ -39,7 +40,11 @@ class TerminalSettings extends ConsumerWidget {
               title: const Text("波特率"),
               subtitle: Text("${serialState.baudRate} baud"),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showBaudRateDialog(context, ref, serialState.baudRate as int),
+              onTap: () => _showBaudRateDialog(
+                context,
+                ref,
+                serialState.baudRate as int,
+              ),
             ),
             const SectionDivider(),
             SwitchListTile(
@@ -48,9 +53,13 @@ class TerminalSettings extends ConsumerWidget {
               value: serialState.autoReconnect as bool,
               onChanged: (value) {
                 if (Platform.isAndroid) {
-                  ref.read(androidUsbSerialProvider.notifier).setAutoReconnect(value);
+                  ref
+                      .read(androidUsbSerialProvider.notifier)
+                      .setAutoReconnect(value);
                 } else {
-                  ref.read(desktopUsbSerialProvider.notifier).setAutoReconnect(value);
+                  ref
+                      .read(desktopUsbSerialProvider.notifier)
+                      .setAutoReconnect(value);
                 }
               },
             ),

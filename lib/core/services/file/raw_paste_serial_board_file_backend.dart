@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
-import 'package:pyrite_ide/core/services/board_manager/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
 

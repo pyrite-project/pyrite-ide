@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:super_tree/super_tree.dart';
 
@@ -11,7 +11,7 @@ class LocalFileItemsNotifier
 
   Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
     List<TreeNode<FileSystemItem>> items = await local.buildFileListItems(
-      await ref.read(localWorkspaceProvider.notifier).getFileList(),
+      await ref.read(fileProvider.notifier).getFileList(),
     );
     state = items;
 
@@ -19,7 +19,7 @@ class LocalFileItemsNotifier
   }
 
   void openFolder() async {
-    await ref.read(localWorkspaceProvider.notifier).getDirectory();
+    await ref.read(fileProvider.notifier).getDirectory();
     buildRootFileListItems();
   }
 }

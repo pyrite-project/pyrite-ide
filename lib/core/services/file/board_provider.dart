@@ -14,7 +14,7 @@ import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -22,13 +22,13 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
-class BoardWorkspaceNotifier
+class BoardNotifier
     extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   static final _boardPath = path.Context(style: path.Style.posix);
 
   final Ref ref;
 
-  BoardWorkspaceNotifier(this.ref) : super(const []);
+  BoardNotifier(this.ref) : super(const []);
 
   Future<List<Map<String, String>>> getFileList({String path = "/"}) async {
     final entries = await ref
@@ -181,7 +181,7 @@ class BoardWorkspaceNotifier
     if (node == null || node.data is! FileItem) return null;
     final file = await board.getLocalFile(node.id);
     final content = await ref
-        .read(boardWorkspaceProvider.notifier)
+        .read(boardProvider.notifier)
         .getFileContent(id);
     await file.writeAsString(content);
     if (context.mounted) {
@@ -198,7 +198,7 @@ class BoardWorkspaceNotifier
     if (value is TabDataValue && value.type == "file") {
       if (value.isBoardFile == true && value.boardFilePath != null) {
         await ref
-            .read(boardWorkspaceProvider.notifier)
+            .read(boardProvider.notifier)
             .writeFile(value.boardFilePath!, value.editorController!.text);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } else {
@@ -219,7 +219,7 @@ class BoardWorkspaceNotifier
       selectedFolder = getFocusFolderNode();
     }
     final selected = selectedFile ?? selectedFolder;
-    final localWorkspace = ref.read(localWorkspaceProvider);
+    final localWorkspace = ref.read(fileProvider);
     if (selected == null && selectedTab == null) {
       showEditorSnackBar(context, "先选择一个设备文件或文件夹");
       return;
@@ -230,7 +230,7 @@ class BoardWorkspaceNotifier
     }
 
     final localFolderTarget = ref
-        .read(localWorkspaceProvider.notifier)
+        .read(fileProvider.notifier)
         .getFocusFolderNode();
     final targetPath = localFolderTarget?.id != null
         ? path.join(
@@ -316,7 +316,7 @@ class BoardWorkspaceNotifier
       showEditorSnackBar(context, "已下载到本地：$targetPath");
     } else {
       await ref
-          .read(boardWorkspaceProvider.notifier)
+          .read(boardProvider.notifier)
           .downloadFolder(
             selected?.id ?? selectedTab?.value.filePath,
             targetPath,
@@ -340,7 +340,7 @@ class BoardWorkspaceNotifier
     }
 
     final selected = selectedFile ?? selectedFolder;
-    final localWorkspace = ref.read(localWorkspaceProvider);
+    final localWorkspace = ref.read(fileProvider);
     if (selected == null && selectedTab == null) {
       showEditorSnackBar(context, "先选择一个设备文件或文件夹");
       return;
@@ -421,9 +421,9 @@ class BoardWorkspaceNotifier
 }
 
 final StateNotifierProvider<
-  BoardWorkspaceNotifier,
+  BoardNotifier,
   List<TreeNode<FileSystemItem>>
 >
-boardWorkspaceProvider = StateNotifierProvider(
-  (ref) => BoardWorkspaceNotifier(ref),
+boardProvider = StateNotifierProvider(
+  (ref) => BoardNotifier(ref),
 );

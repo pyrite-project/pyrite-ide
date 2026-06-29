@@ -6,7 +6,7 @@ import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -109,7 +109,7 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "保存当前文件",
-              () => ref.read(localWorkspaceProvider.notifier).saveCurrentFile(),
+              () => ref.read(fileProvider.notifier).saveCurrentFile(),
               leadingIconData: Icons.save,
               shortcut: SingleActivator(LogicalKeyboardKey.keyS, control: true),
             ),
@@ -117,7 +117,7 @@ class AppActionBar extends ConsumerWidget {
               context,
               "将当前文件另存为",
               () =>
-                  ref.read(localWorkspaceProvider.notifier).saveCurrentFileAs(),
+                  ref.read(fileProvider.notifier).saveCurrentFileAs(),
               leadingIconData: Icons.save_as,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyS,

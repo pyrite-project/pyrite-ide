@@ -7,11 +7,11 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
@@ -648,7 +648,7 @@ class EditorToolsBar extends ConsumerWidget {
       compact: isMobile,
       tooltip: saved ? "再次保存当前文件" : "保存当前文件",
       onPressed: () async {
-        await ref.read(localWorkspaceProvider.notifier).saveCurrentFile();
+        await ref.read(fileProvider.notifier).saveCurrentFile();
 
         ScaffoldMessenger.of(
           context,

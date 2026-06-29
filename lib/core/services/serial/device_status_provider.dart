@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
-import 'package:pyrite_ide/core/services/board_manager/device_executor.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 
 const _statusMarker = '__PYRITE_DEVICE_STATUS__';
 
@@ -112,8 +112,7 @@ print('$_statusMarker' + json.dumps(result))
           ramTotal: decoded['ram_total'] as int? ?? 0,
           flashUsed: decoded['flash_used'] as int? ?? 0,
           flashTotal: decoded['flash_total'] as int? ?? 0,
-          firmwareVersion:
-              decoded['firmware_version']?.toString() ?? 'unknown',
+          firmwareVersion: decoded['firmware_version']?.toString() ?? 'unknown',
           platformModel: decoded['platform_model']?.toString() ?? 'unknown',
         );
       }
@@ -124,5 +123,5 @@ print('$_statusMarker' + json.dumps(result))
 
 final deviceStatusProvider =
     StateNotifierProvider<DeviceStatusNotifier, AsyncValue<DeviceStatus?>>(
-  (ref) => DeviceStatusNotifier(ref),
-);
+      (ref) => DeviceStatusNotifier(ref),
+    );

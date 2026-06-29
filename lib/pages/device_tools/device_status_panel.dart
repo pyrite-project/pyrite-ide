@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
-import 'package:pyrite_ide/core/services/board_manager/device_status_provider.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class DeviceStatusPanel extends ConsumerWidget {

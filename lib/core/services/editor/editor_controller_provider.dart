@@ -31,11 +31,11 @@ class EditorControllerMapNotifier
     final uri = Uri.file(file.path).toString().split(pattern);
     // final fileName = uri.removeLast();
     uri.removeLast();
-    final workspacePath = uri.join(pattern);
+    final projectPath = uri.join(pattern);
     CodeForgeController controller = CodeForgeController(
       lspConfig: (ref.read(useLsp))
           ? LspSocketConfig(
-              workspacePath: workspacePath,
+              workspacePath: projectPath,
               languageId: "python",
               serverUrl: "ws://${ref.read(lspWebScoketPath)}",
               disableWarning: ref.read(disableWarning),

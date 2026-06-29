@@ -218,15 +218,10 @@ class PluginTomlParser {
           map['permissions'] as Map<String, dynamic>? ?? {};
       final platform = map['platform'] as Map<String, dynamic>? ?? {};
 
-      const Map<String, String> permissionNameMap = {
-        'workspace': 'file',
-        'board_manager': 'board',
-      };
-
       final parsedPermissions = <String, List<String>>{};
       for (final entry in permissions.entries) {
         final value = entry.value;
-        final resourceName = permissionNameMap[entry.key] ?? entry.key;
+        final resourceName = entry.key;
         if (value == true) {
           parsedPermissions[resourceName] =
               List.from(_resourceActions[resourceName] ?? _allActions);

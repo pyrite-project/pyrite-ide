@@ -31,7 +31,7 @@ class PersistedTab {
 }
 
 class PersistedData {
-  final String? workspacePath;
+  final String? projectPath;
   final List<PersistedTab> tabs;
   final int selectedTabIndex;
   final String themeMode;
@@ -60,7 +60,7 @@ class PersistedData {
   final String cancelShortcut;
 
   PersistedData({
-    this.workspacePath,
+    this.projectPath,
     this.tabs = const [],
     this.selectedTabIndex = 0,
     this.themeMode = 'system',
