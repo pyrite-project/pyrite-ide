@@ -471,7 +471,7 @@ packages:
       path: flserial
       relative: true
     source: path
-    version: "0.7.2"
+    version: "0.7.0"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -1603,7 +1603,7 @@ packages:
     source: hosted
     version: "0.0.1"
   toml:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: toml
       sha256: "9968de24e45b632bf1a654fe1ac7b6fe5261c349243df83fd262397799c45a2d"

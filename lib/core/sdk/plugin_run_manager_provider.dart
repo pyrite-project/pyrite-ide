@@ -9,6 +9,11 @@ import 'package:pyrite_ide/core/sdk/utils.dart';
 import 'package:pyrite_ide/core/sdk/worksapce/local.dart';
 import 'package:pyrite_ide/core/sdk/worksapce/board.dart';
 import 'package:pyrite_ide/core/sdk/editor.dart';
+import 'package:pyrite_ide/core/sdk/persistence.dart';
+import 'package:pyrite_ide/core/sdk/tab.dart';
+import 'package:pyrite_ide/core/sdk/settings_api.dart';
+import 'package:pyrite_ide/core/sdk/data_api.dart';
+import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -18,7 +23,9 @@ class PluginRunManagerNotifier
   final Ref ref;
   bool _routerListenerRegistered = false;
 
-  PluginRunManagerNotifier(this.ref) : super({});
+  PluginRunManagerNotifier(this.ref) : super({}) {
+    ref.read(permissionLogServiceProvider).load();
+  }
 
   Future<void> start(Plugin plugin) async {
     if (state.containsKey(plugin)) return;
@@ -47,6 +54,9 @@ class PluginRunManagerNotifier
     final PluginRunManager runManager = PluginRunManager(
       port: port,
       assetsPath: target.path,
+      pluginId: plugin.id,
+      pluginPermissions: plugin.permissions,
+      permissionLog: ref.read(permissionLogServiceProvider),
     );
     runManager.onDataChanged = () {
       state = {...state};
@@ -54,6 +64,10 @@ class PluginRunManagerNotifier
     ref.read(sdkLocalWorkspaceProvider.notifier).bind(runManager);
     ref.read(sdkBoardWorkspaceProvider.notifier).bind(runManager);
     ref.read(sdkEditorProvider.notifier).bind(runManager);
+    ref.read(sdkPersistenceProvider.notifier).bind(runManager);
+    ref.read(sdkTabProvider.notifier).bind(runManager);
+    ref.read(sdkSettingsProvider.notifier).bind(runManager);
+    ref.read(sdkDataApiProvider.notifier).bind(runManager);
     state = {...state, plugin: runManager};
 
     // Fire-and-forget: Python script blocks forever with asyncio.run().
@@ -70,6 +84,14 @@ class PluginRunManagerNotifier
     );
 
     await runManager.sendLifecycleHook(LifecycleHook.start.value);
+  }
+
+  void stop(Plugin plugin) {
+    final runManager = state[plugin];
+    if (runManager == null) return;
+    runManager.sendLifecycleHook(LifecycleHook.dispose.value);
+    runManager.stop();
+    state = {...state}..remove(plugin);
   }
 
   void setupRouterListener() {
@@ -89,10 +111,13 @@ class PluginRunManagerNotifier
       }
 
       if (currentPluginId != null) {
+        final samePlugin = currentPluginId == previousPluginId;
         for (final entry in state.entries) {
           if (entry.key.id == currentPluginId) {
-            entry.value.sendLifecycleHook(LifecycleHook.resume.value);
-            entry.value.sendPageRefresh();
+            if (!samePlugin) {
+              entry.value.sendLifecycleHook(LifecycleHook.resume.value);
+              entry.value.sendPageRefresh();
+            }
           } else if (previousPluginId != null &&
               entry.key.id != previousPluginId) {
             entry.value.sendLifecycleHook(LifecycleHook.pause.value);
@@ -122,6 +147,7 @@ class PluginRunManagerNotifier
     for (final runManager in state.values) {
       runManager.dispose();
     }
+    ref.read(permissionLogServiceProvider).dispose();
     super.dispose();
   }
 }

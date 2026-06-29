@@ -81,6 +81,7 @@ dependencies:
   flex_color_picker: ^3.7.0
   vertical_card_pager: ^1.6.3
   palette_generator_master: ^1.1.0
+  toml: ^0.15.0
 
 dev_dependencies:
   flutter_test:

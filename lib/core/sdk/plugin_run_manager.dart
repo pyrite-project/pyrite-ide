@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:pyrite_ide/core/sdk/permission_log.dart';
+import 'package:pyrite_ide/core/sdk/permissions.dart';
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -14,6 +16,7 @@ abstract class IdeCommands {
   static const String eventCallback = 'ide.event.callback';
   static const String lifecycleHook = 'ide.lifecycle.hook';
   static const String pageRefresh = 'ide.page.refresh';
+  static const String routerSync = 'ide.router.sync';
   static const String responsePath = 'ide.response.path';
   static const String responseOk = 'ide.response.ok';
   static const String responseError = 'ide.response.error';
@@ -23,6 +26,10 @@ abstract class SdkCommands {
   static const String pagePush = 'sdk.page.push';
   static const String varSet = 'sdk.var.set';
   static const String pathRequest = 'sdk.path.request';
+  static const String routerPush = 'sdk.router.push';
+  static const String routerPop = 'sdk.router.pop';
+  static const String routerReplace = 'sdk.router.replace';
+  static const String routerGoto = 'sdk.router.goto';
   static const String responseOk = 'sdk.response.ok';
   static const String responseError = 'sdk.response.error';
 }
@@ -68,22 +75,58 @@ typedef CommandHandler = void Function(
 // ---------------------------------------------------------------------------
 
 class PluginRunManager {
-  PluginRunManager({required this.port, required this.assetsPath});
+  PluginRunManager({
+    required this.port,
+    required this.assetsPath,
+    this.pluginId = '',
+    this.pluginPermissions = const {},
+    this.permissionLog,
+  }) : dataPath = '$assetsPath/data';
 
   final int port;
   final String assetsPath;
+  final String dataPath;
+  final String pluginId;
+  final Map<String, List<String>> pluginPermissions;
+  final PermissionLogService? permissionLog;
   WebSocketChannel? _channel;
   bool _connecting = false;
   final Map<String, String> pages = {};
   final Map<String, dynamic> vars = {};
   void Function()? onDataChanged;
   void Function(String scope, String path)? onPathRequest;
+  void Function(String currentRoute, List<String> routeStack)? onRouteChanged;
+
+  final List<String> routeStack = [];
+  String currentRoute = 'home';
 
   final Map<String, CommandHandler> _handlers = {};
   final Map<String, Completer<Map<String, dynamic>>> _pendingReplies = {};
 
   void registerHandler(String type, CommandHandler handler) {
-    _handlers[type] = handler;
+    final required = Permissions.getRequirement(type);
+    if (required != null && pluginPermissions.isNotEmpty) {
+      _handlers[type] = (envelope, respond) {
+        final granted = Permissions.check(pluginPermissions, required);
+        permissionLog?.add(PermissionLogEntry(
+          pluginId: pluginId,
+          command: type,
+          required: required,
+          granted: granted,
+        ));
+        if (!granted) {
+          respond(makeEnvelope(
+            type: IdeCommands.responseError,
+            payload: {'message': 'Permission denied: $required'},
+            replyTo: envelope['id'],
+          ));
+          return;
+        }
+        handler(envelope, respond);
+      };
+    } else {
+      _handlers[type] = handler;
+    }
   }
 
   void unregisterHandler(String type) {
@@ -96,6 +139,10 @@ class PluginRunManager {
     registerHandler(SdkCommands.pagePush, _handlePagePush);
     registerHandler(SdkCommands.varSet, _handleVarSet);
     registerHandler(SdkCommands.pathRequest, _handlePathRequest);
+    registerHandler(SdkCommands.routerPush, _handleRouterPush);
+    registerHandler(SdkCommands.routerPop, _handleRouterPop);
+    registerHandler(SdkCommands.routerReplace, _handleRouterReplace);
+    registerHandler(SdkCommands.routerGoto, _handleRouterGoto);
   }
 
   void _handlePagePush(
@@ -105,7 +152,6 @@ class PluginRunManager {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final pagesData = payload['pages'];
     if (pagesData != null) {
-      pages.clear();
       pages.addAll(Map<String, String>.from(pagesData));
     }
     respond(makeEnvelope(
@@ -114,6 +160,87 @@ class PluginRunManager {
       replyTo: envelope['id'],
     ));
     onDataChanged?.call();
+  }
+
+  void _handleRouterPush(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final page = payload['page']?.toString() ?? 'home';
+    routeStack.add(currentRoute);
+    currentRoute = page;
+    _syncRouteToPython();
+    respond(makeEnvelope(
+      type: SdkCommands.responseOk,
+      payload: {'data': null},
+      replyTo: envelope['id'],
+    ));
+    onRouteChanged?.call(currentRoute, routeStack);
+  }
+
+  void _handleRouterPop(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    popRoute();
+    respond(makeEnvelope(
+      type: SdkCommands.responseOk,
+      payload: {'data': null},
+      replyTo: envelope['id'],
+    ));
+  }
+
+  void popRoute() {
+    if (routeStack.isNotEmpty) {
+      currentRoute = routeStack.removeLast();
+    }
+    _syncRouteToPython();
+    onRouteChanged?.call(currentRoute, routeStack);
+  }
+
+  void _handleRouterReplace(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final page = payload['page']?.toString() ?? 'home';
+    currentRoute = page;
+    _syncRouteToPython();
+    respond(makeEnvelope(
+      type: SdkCommands.responseOk,
+      payload: {'data': null},
+      replyTo: envelope['id'],
+    ));
+    onRouteChanged?.call(currentRoute, routeStack);
+  }
+
+  void _handleRouterGoto(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final page = payload['page']?.toString() ?? 'home';
+    routeStack.clear();
+    routeStack.add('home');
+    currentRoute = page;
+    _syncRouteToPython();
+    respond(makeEnvelope(
+      type: SdkCommands.responseOk,
+      payload: {'data': null},
+      replyTo: envelope['id'],
+    ));
+    onRouteChanged?.call(currentRoute, routeStack);
+  }
+
+  void _syncRouteToPython() {
+    sendJson(makeEnvelope(
+      type: IdeCommands.routerSync,
+      payload: {
+        'page': currentRoute,
+        'stack': routeStack,
+      },
+    ));
   }
 
   void _handleVarSet(
@@ -141,11 +268,23 @@ class PluginRunManager {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final scope = payload['scope']?.toString() ?? 'assets';
 
+    String resolvedPath;
+    switch (scope) {
+      case 'data':
+        resolvedPath = dataPath;
+      case 'cache':
+        resolvedPath = '$assetsPath/cache';
+      case 'temp':
+        resolvedPath = Directory.systemTemp.path;
+      default:
+        resolvedPath = assetsPath;
+    }
+
     respond(makeEnvelope(
       type: IdeCommands.responsePath,
       payload: {
         'scope': scope,
-        'path': assetsPath,
+        'path': resolvedPath,
       },
       replyTo: envelope['id'],
     ));
@@ -299,6 +438,17 @@ class PluginRunManager {
   }
 
   // -- Cleanup ---------------------------------------------------------------
+
+  void stop() {
+    _failAllPendingReplies('PluginRunManager stopped');
+    _channel?.sink.close();
+    _channel = null;
+    pages.clear();
+    vars.clear();
+    routeStack.clear();
+    currentRoute = 'home';
+    _handlers.clear();
+  }
 
   void dispose() {
     _failAllPendingReplies('PluginRunManager disposed');

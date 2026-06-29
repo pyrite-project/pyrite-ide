@@ -7,12 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
+import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:serious_python/serious_python.dart';
 
@@ -27,6 +29,7 @@ String? getPythonPath() {
 late final PersistenceManager persistenceManager;
 Timer? _saveTimer;
 Timer? _debounceTimer;
+Timer? _pluginSaveTimer;
 
 void _applyData(PersistedData data) {
   switch (data.themeMode) {
@@ -72,6 +75,13 @@ void _triggerSave() {
   });
 }
 
+void _triggerPluginSave() {
+  _pluginSaveTimer?.cancel();
+  _pluginSaveTimer = Timer(const Duration(seconds: 1), () async {
+    await container.read(pluginManagerProvider.notifier).persist();
+  });
+}
+
 void _startAutoSave() {
   _saveTimer?.cancel();
   _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
@@ -80,6 +90,9 @@ void _startAutoSave() {
   container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
     _triggerSave();
   };
+  container.read(pluginManagerProvider.notifier).setOnChanged(() {
+    _triggerPluginSave();
+  });
 }
 
 // PyriteIDE: Hello World.
@@ -89,9 +102,21 @@ void main() async {
   persistenceManager = PersistenceManager();
   final PersistedData data = await persistenceManager.loadAll();
 
+  final pluginPersistence = PluginPersistence();
+  final persistedPlugins = await pluginPersistence.load();
+
   container = ProviderContainer();
 
   _applyData(data);
+
+  if (persistedPlugins != null && persistedPlugins.isNotEmpty) {
+    container
+        .read(pluginManagerProvider.notifier)
+        .loadPersisted(persistedPlugins);
+  }
+
+  // Auto-start plugins with autoStart: true
+  container.read(pluginManagerProvider.notifier).autoStart();
 
   if (data.workspacePath != null) {
     final dir = Directory(data.workspacePath!);

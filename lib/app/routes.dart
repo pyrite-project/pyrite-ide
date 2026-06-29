@@ -3,6 +3,7 @@ import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/plugins/main.dart';
+import 'package:pyrite_ide/pages/plugins/monitor.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
@@ -68,6 +69,10 @@ GoRouter routes = GoRouter(
                 final id = state.uri.queryParameters['id'];
                 return PluginBody(pluginId: id!);
               },
+            ),
+            GoRoute(
+              path: '/monitor',
+              builder: (context, state) => const PermissionMonitor(),
             ),
           ],
         ),
