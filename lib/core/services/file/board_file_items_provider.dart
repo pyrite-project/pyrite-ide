@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:super_tree/super_tree.dart';
@@ -12,11 +11,9 @@ class BoardFileItemsNotifier
   BoardFileItemsNotifier(this.ref) : super(const []);
 
   Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
-    List<TreeNode<FileSystemItem>> items = await buildFileListItems(
-      await ref.read(boardProvider.notifier).getFileList(),
-    );
+    final entries = await ref.read(boardProvider.notifier).getFileList();
+    List<TreeNode<FileSystemItem>> items = await buildFileListItems(entries);
     state = items;
-
     return items;
   }
 

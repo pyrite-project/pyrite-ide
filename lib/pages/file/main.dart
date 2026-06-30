@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
@@ -183,19 +184,36 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "覆盖设备文件 ${boardFileTarget?.id ?? "（未选择设备文件）"}",
                               callback: () async {
-                                final bytes = await File(node.id).readAsBytes();
-                                await ref
-                                    .read(boardProvider.notifier)
-                                    .writeFileBytes(boardFileTarget!.id, bytes);
-                                ref
-                                    .read(boardFileItemsProvider.notifier)
-                                    .buildRootFileListItems();
+                                try {
+                                  final bytes =
+                                      await File(node.id).readAsBytes();
+                                  await ref
+                                      .read(boardProvider.notifier)
+                                      .writeFileBytes(
+                                          boardFileTarget!.id, bytes);
+                                  ref
+                                      .read(boardFileItemsProvider.notifier)
+                                      .buildRootFileListItems();
 
-                                if (!context.mounted) return;
-                                showEditorSnackBar(
-                                  context,
-                                  "已覆盖设备文件：${boardFileTarget.id}",
-                                );
+                                  if (!context.mounted) return;
+                                  showEditorSnackBar(
+                                    context,
+                                    "已覆盖设备文件：${boardFileTarget.id}",
+                                  );
+                                } on DeviceNotReadyException catch (_) {
+                                  if (!context.mounted) return;
+                                  final sendCtrlC =
+                                      await showDeviceNotReadyDialog(
+                                    context,
+                                    operation: "覆盖设备文件",
+                                  );
+                                  if (sendCtrlC) {
+                                    ref
+                                        .read(
+                                            getUsbSerialProvider().notifier)
+                                        .sendCommand("\x03");
+                                  }
+                                }
                               },
                               attributes: MenuActionAttributes(
                                 disabled:
@@ -275,9 +293,24 @@ class ProjectFiles extends ConsumerWidget {
           children: [
             FilledButton.tonalIcon(
               onPressed: isConnected
-                  ? () => ref
-                        .read(fileProvider.notifier)
-                        .uploadSelectedLocalFileItem(context)
+                  ? () async {
+                      try {
+                        await ref
+                            .read(fileProvider.notifier)
+                            .uploadSelectedLocalFileItem(context);
+                      } on DeviceNotReadyException catch (_) {
+                        if (!context.mounted) return;
+                        final sendCtrlC = await showDeviceNotReadyDialog(
+                          context,
+                          operation: "上传文件到设备",
+                        );
+                        if (sendCtrlC) {
+                          ref
+                              .read(getUsbSerialProvider().notifier)
+                              .sendCommand("\x03");
+                        }
+                      }
+                    }
                   : null,
               icon: const Icon(Icons.upload_outlined, size: 18),
               label: Text("上传选中项"),
@@ -310,11 +343,23 @@ class ProjectFiles extends ConsumerWidget {
             actions: [
               IconButton(
                 tooltip: "刷新设备文件",
-                onPressed: () {
-                  // ref.read(boardProvider.notifier).clear();
-                  ref
-                      .watch(boardFileItemsProvider.notifier)
-                      .buildRootFileListItems();
+                onPressed: () async {
+                  try {
+                    await ref
+                        .watch(boardFileItemsProvider.notifier)
+                        .buildRootFileListItems();
+                  } on DeviceNotReadyException catch (_) {
+                    if (!context.mounted) return;
+                    final sendCtrlC = await showDeviceNotReadyDialog(
+                      context,
+                      operation: "刷新设备文件",
+                    );
+                    if (sendCtrlC) {
+                      ref
+                          .read(getUsbSerialProvider().notifier)
+                          .sendCommand("\x03");
+                    }
+                  }
                 },
                 icon: const Icon(Icons.refresh),
               ),
@@ -375,13 +420,38 @@ class ProjectFiles extends ConsumerWidget {
                                   context,
                                   node.data.name,
                                 )) {
-                                  ref
-                                      .read(boardFileTreeViewControllerProvider)
-                                      .removeNode(node);
-                                  showEditorSnackBar(
-                                    context,
-                                    "已从设备删除 ${node.data.name}",
-                                  );
+                                  try {
+                                    if (node.data is FolderItem) {
+                                      await ref
+                                          .read(boardProvider.notifier)
+                                          .deleteFolder(node.id);
+                                    } else {
+                                      await ref
+                                          .read(boardProvider.notifier)
+                                          .deleteFile(node.id);
+                                    }
+                                    ref
+                                        .read(boardFileTreeViewControllerProvider)
+                                        .removeNode(node);
+                                    if (!context.mounted) return;
+                                    showEditorSnackBar(
+                                      context,
+                                      "已从设备删除 ${node.data.name}",
+                                    );
+                                  } on DeviceNotReadyException catch (_) {
+                                    if (!context.mounted) return;
+                                    final sendCtrlC =
+                                        await showDeviceNotReadyDialog(
+                                      context,
+                                      operation: "删除设备文件",
+                                    );
+                                    if (sendCtrlC) {
+                                      ref
+                                          .read(
+                                              getUsbSerialProvider().notifier)
+                                          .sendCommand("\x03");
+                                    }
+                                  }
                                 }
                               },
                             ),
@@ -389,9 +459,26 @@ class ProjectFiles extends ConsumerWidget {
                             MenuAction(
                               title:
                                   "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}",
-                              callback: () => ref
-                                  .read(boardProvider.notifier)
-                                  .downloadSelectedBoardItem(context),
+                              callback: () async {
+                                try {
+                                  await ref
+                                      .read(boardProvider.notifier)
+                                      .downloadSelectedBoardItem(context);
+                                } on DeviceNotReadyException catch (_) {
+                                  if (!context.mounted) return;
+                                  final sendCtrlC =
+                                      await showDeviceNotReadyDialog(
+                                    context,
+                                    operation: "下载设备文件",
+                                  );
+                                  if (sendCtrlC) {
+                                    ref
+                                        .read(
+                                            getUsbSerialProvider().notifier)
+                                        .sendCommand("\x03");
+                                  }
+                                }
+                              },
                               attributes: MenuActionAttributes(
                                 disabled:
                                     !(ref
@@ -404,21 +491,36 @@ class ProjectFiles extends ConsumerWidget {
                               title:
                                   "覆盖本地文件 ${localFileTarget?.id ?? "（未选择本地文件）"}",
                               callback: () async {
-                                final bytes = await ref
-                                    .read(boardProvider.notifier)
-                                    .getFileBytes(node.id);
-                                await File(
-                                  localFileTarget!.id,
-                                ).writeAsBytes(bytes);
-                                ref
-                                    .read(localFileItemsProvider.notifier)
-                                    .buildRootFileListItems();
+                                try {
+                                  final bytes = await ref
+                                      .read(boardProvider.notifier)
+                                      .getFileBytes(node.id);
+                                  await File(
+                                    localFileTarget!.id,
+                                  ).writeAsBytes(bytes);
+                                  ref
+                                      .read(localFileItemsProvider.notifier)
+                                      .buildRootFileListItems();
 
-                                if (!context.mounted) return;
-                                showEditorSnackBar(
-                                  context,
-                                  "已覆盖本地文件：${localFileTarget.id}",
-                                );
+                                  if (!context.mounted) return;
+                                  showEditorSnackBar(
+                                    context,
+                                    "已覆盖本地文件：${localFileTarget.id}",
+                                  );
+                                } on DeviceNotReadyException catch (_) {
+                                  if (!context.mounted) return;
+                                  final sendCtrlC =
+                                      await showDeviceNotReadyDialog(
+                                    context,
+                                    operation: "读取设备文件",
+                                  );
+                                  if (sendCtrlC) {
+                                    ref
+                                        .read(
+                                            getUsbSerialProvider().notifier)
+                                        .sendCommand("\x03");
+                                  }
+                                }
                               },
                               attributes: MenuActionAttributes(
                                 disabled:

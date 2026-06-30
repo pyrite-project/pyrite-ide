@@ -122,6 +122,14 @@ class RawPasteSession {
     await _queue.readUntil(_prompt, timeout);
   }
 
+  /// Sends SOH and waits for the raw-repl banner + prompt.
+  /// Does NOT send CTRL-C — the caller handles interruption.
+  Future<void> tryHandshake(Duration timeout) async {
+    _write(const [0x01]);
+    await _queue.readUntil(_rawReplBanner, timeout);
+    await _queue.readUntil(_prompt, timeout);
+  }
+
   Future<void> exitRawRepl() async {
     try {
       _write(const [0x02]);
