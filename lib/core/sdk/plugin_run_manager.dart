@@ -360,7 +360,6 @@ class PluginRunManager {
   void _setupListener() {
     _channel!.stream.listen(
       (message) {
-        print(message);
         final Map<String, dynamic> envelope = jsonDecode(message as String);
         final type = envelope['type']?.toString() ?? '';
 

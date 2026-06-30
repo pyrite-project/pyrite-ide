@@ -31,6 +31,7 @@ late final PersistenceManager persistenceManager;
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
+final UseWindow appWindow = UseWindow();
 
 void _applyData(PersistedData data) {
   switch (data.themeMode) {
@@ -146,12 +147,10 @@ void main() async {
         .restoreTabs(data.tabs, data.selectedTabIndex);
   }
 
-  UseWindow().init();
+  appWindow.bind(container);
+  appWindow.init();
 
-  await SeriousPython.run(
-    "assets/python_runtime_boot.zip",
-    appFileName: "boot.py",
-  );
+  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
   // container.read(lspClientProvider);
 
   runApp(

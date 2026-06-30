@@ -99,6 +99,18 @@ class PluginRunManagerNotifier
     state = {...state}..remove(plugin);
   }
 
+  Future<void> stopAllForShutdown() async {
+    final entries = state.entries.toList(growable: false);
+    for (final entry in entries) {
+      try {
+        await entry.value.sendLifecycleHook(LifecycleHook.dispose.value);
+      } catch (_) {}
+      entry.value.stop();
+      ref.read(dataRegistryProvider).removePlugin(entry.key.id);
+    }
+    state = {};
+  }
+
   void setupRouterListener() {
     if (_routerListenerRegistered) return;
     _routerListenerRegistered = true;

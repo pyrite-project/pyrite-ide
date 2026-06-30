@@ -11,6 +11,13 @@ class EditorControllerMapNotifier
   final Ref ref;
   EditorControllerMapNotifier(this.ref) : super({});
 
+  static const _pythonLspCapabilities = LspClientCapabilities(
+    semanticHighlighting: false,
+    documentColor: false,
+    codeFolding: false,
+    inlayHint: false,
+  );
+
   Future<CodeForgeController?> createNewEditorController(
     File file, {
     String? initialText,
@@ -43,6 +50,7 @@ class EditorControllerMapNotifier
           workspacePath: projectPath,
           languageId: "python",
           serverUrl: "ws://${ref.read(lspWebSocketPath)}",
+          capabilities: _pythonLspCapabilities,
           disableWarning: ref.read(disableWarning),
           disableError: ref.read(disableError),
         );
@@ -60,6 +68,7 @@ class EditorControllerMapNotifier
               args: args,
               workspacePath: projectPath,
               languageId: "python",
+              capabilities: _pythonLspCapabilities,
               disableWarning: ref.read(disableWarning),
               disableError: ref.read(disableError),
             );
