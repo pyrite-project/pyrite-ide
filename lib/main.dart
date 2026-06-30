@@ -72,6 +72,9 @@ void _applyData(PersistedData data) {
   container.read(uploadConfirmStyleProvider.notifier).state = data.uploadConfirmStyle;
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
   container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
+  container.read(webReplHost.notifier).state = data.webReplHost;
+  container.read(webReplPort.notifier).state = data.webReplPort;
+  container.read(webReplPassword.notifier).state = data.webReplPassword;
 }
 
 void _triggerSave() {

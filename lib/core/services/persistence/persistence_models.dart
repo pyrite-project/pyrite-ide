@@ -61,6 +61,9 @@ class PersistedData {
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
+  final String webReplHost;
+  final int webReplPort;
+  final String webReplPassword;
 
   PersistedData({
     this.projectPath,
@@ -93,5 +96,8 @@ class PersistedData {
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
+    this.webReplHost = '',
+    this.webReplPort = 8266,
+    this.webReplPassword = '',
   });
 }

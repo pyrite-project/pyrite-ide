@@ -63,6 +63,9 @@ class PersistenceManager {
           settings?.confirmShortcut ?? 'Ctrl+Enter',
       cancelShortcut:
           settings?.cancelShortcut ?? 'Esc',
+      webReplHost: settings?.webReplHost ?? '',
+      webReplPort: settings?.webReplPort ?? 8266,
+      webReplPassword: settings?.webReplPassword ?? '',
     );
   }
 
@@ -100,6 +103,9 @@ class PersistenceManager {
               container.read(confirmShortcutProvider),
           cancelShortcut:
               container.read(cancelShortcutProvider),
+          webReplHost: container.read(webReplHost),
+          webReplPort: container.read(webReplPort),
+          webReplPassword: container.read(webReplPassword),
         ),
       ),
       functionPagePersistence.save(

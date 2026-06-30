@@ -20,6 +20,9 @@ class SettingsPersistedData {
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
+  final String webReplHost;
+  final int webReplPort;
+  final String webReplPassword;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -38,6 +41,9 @@ class SettingsPersistedData {
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
+    this.webReplHost = '',
+    this.webReplPort = 8266,
+    this.webReplPassword = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -57,6 +63,9 @@ class SettingsPersistedData {
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
+    'webReplHost': webReplHost,
+    'webReplPort': webReplPort,
+    'webReplPassword': webReplPassword,
   };
 
   factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -83,6 +92,9 @@ class SettingsPersistedData {
             json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
         cancelShortcut:
             json['cancelShortcut'] as String? ?? 'Esc',
+        webReplHost: json['webReplHost'] as String? ?? '',
+        webReplPort: json['webReplPort'] as int? ?? 8266,
+        webReplPassword: json['webReplPassword'] as String? ?? '',
       );
 }
 

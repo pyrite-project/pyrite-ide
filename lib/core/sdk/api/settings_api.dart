@@ -142,6 +142,27 @@ class SettingsRegistry {
       getter: (ref) => ref.read(cancelShortcutProvider),
       setter: (ref, v) => ref.read(cancelShortcutProvider.notifier).state = v.toString(),
     ),
+    _SettingEntry(
+      name: 'webrepl.host',
+      type: 'string',
+      provider: webReplHost,
+      getter: (ref) => ref.read(webReplHost),
+      setter: (ref, v) => ref.read(webReplHost.notifier).state = v.toString(),
+    ),
+    _SettingEntry(
+      name: 'webrepl.port',
+      type: 'int',
+      provider: webReplPort,
+      getter: (ref) => ref.read(webReplPort),
+      setter: (ref, v) => ref.read(webReplPort.notifier).state = (v as num).toInt(),
+    ),
+    _SettingEntry(
+      name: 'webrepl.password',
+      type: 'string',
+      provider: webReplPassword,
+      getter: (ref) => ref.read(webReplPassword),
+      setter: (ref, v) => ref.read(webReplPassword.notifier).state = v.toString(),
+    ),
   ];
 
   static final Map<String, _SettingEntry> _byName = {

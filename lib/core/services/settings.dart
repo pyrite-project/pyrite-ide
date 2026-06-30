@@ -85,3 +85,7 @@ StateProvider<String> confirmShortcutProvider = StateProvider<String>(
 StateProvider<String> cancelShortcutProvider = StateProvider<String>(
   (ref) => defaultShortcuts['cancel']!,
 );
+
+StateProvider<String> webReplHost = StateProvider<String>((ref) => '');
+StateProvider<int> webReplPort = StateProvider<int>((ref) => 8266);
+StateProvider<String> webReplPassword = StateProvider<String>((ref) => '');

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
@@ -85,13 +86,63 @@ class TerminalSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "WebREPL",
-          description: "通过 WebSocket 连接的远程 REPL。",
+          description: "通过 WiFi WebSocket 连接 MicroPython 设备。",
           children: [
-            const ListTile(
-              leading: Icon(Icons.wifi),
-              title: Text("WebREPL 连接"),
-              subtitle: Text("固件需支持 webrepl 模块"),
-              trailing: PillBadge(label: "即将支持"),
+            SwitchListTile(
+              title: const Text("启用 WebREPL"),
+              subtitle: const Text("通过 WiFi 连接到设备的 WebREPL 服务"),
+              value: ref.watch(webReplProvider).state != WebReplState.disconnected,
+              onChanged: (value) {
+                if (value) {
+                  ref.read(webReplProvider.notifier).connect();
+                } else {
+                  ref.read(webReplProvider.notifier).disconnect();
+                }
+              },
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.wifi),
+              title: const Text("设备 IP 地址"),
+              subtitle: Text(ref.watch(webReplHost).isEmpty
+                  ? "未设置"
+                  : ref.watch(webReplHost)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showInputDialog(
+                context,
+                ref,
+                "设备 IP 地址",
+                "例如 192.168.1.100",
+                ref.read(webReplHost),
+                (value) =>
+                    ref.read(webReplHost.notifier).state = value.trim(),
+              ),
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.numbers),
+              title: const Text("端口"),
+              subtitle: Text("${ref.watch(webReplPort)}"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showPortDialog(context, ref),
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text("密码"),
+              subtitle: Text(ref.watch(webReplPassword).isEmpty
+                  ? "未设置"
+                  : "已设置"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showInputDialog(
+                context,
+                ref,
+                "WebREPL 密码",
+                "设备的 WebREPL 访问密码",
+                ref.read(webReplPassword),
+                (value) =>
+                    ref.read(webReplPassword.notifier).state = value.trim(),
+              ),
             ),
           ],
         ),
@@ -127,6 +178,79 @@ class TerminalSettings extends ConsumerWidget {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  void _showInputDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String title,
+    String hint,
+    String currentValue,
+    void Function(String) onSaved,
+  ) {
+    final controller = TextEditingController(text: currentValue);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: hint,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("取消"),
+          ),
+          FilledButton(
+            onPressed: () {
+              onSaved(controller.text);
+              Navigator.pop(context);
+            },
+            child: const Text("保存"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPortDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController(
+      text: ref.read(webReplPort).toString(),
+    );
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("WebREPL 端口"),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            hintText: "默认 8266",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("取消"),
+          ),
+          FilledButton(
+            onPressed: () {
+              final port = int.tryParse(controller.text.trim());
+              if (port != null && port > 0 && port <= 65535) {
+                ref.read(webReplPort.notifier).state = port;
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("保存"),
+          ),
+        ],
       ),
     );
   }

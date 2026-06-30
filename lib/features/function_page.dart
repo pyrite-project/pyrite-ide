@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
@@ -38,33 +39,63 @@ class ConsolePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
+    final webReplState = ref.watch(webReplProvider);
+    final webReplConnected = webReplState.state == WebReplState.connected;
+    final useWebRepl = webReplConnected || webReplState.state == WebReplState.waitingPassword;
+
     return Column(
       children: [
         PaneHeader(
           title: "REPL",
-          subtitle: isConnected ? "MicroPython 交互式终端" : "连接设备后可输入命令",
+          subtitle: useWebRepl
+              ? "WiFi WebREPL 连接"
+              : (isConnected ? "MicroPython 交互式终端" : "连接设备后可输入命令"),
           leadingIcon: Icons.terminal,
           actions: [
+            if (!isConnected && !webReplConnected)
+              IconButton(
+                tooltip: "连接 WebREPL",
+                onPressed: () {
+                  ref.read(webReplProvider.notifier).connect();
+                },
+                icon: const Icon(Icons.wifi),
+              ),
             IconButton(
               tooltip: "清空终端",
               onPressed: () => repl.write('\x1b[2J\x1b[H'),
               icon: const Icon(Icons.cleaning_services_outlined),
             ),
             IconButton(
-              tooltip: isConnected ? "中断设备运行" : "连接设备后可中断运行",
-              onPressed: isConnected
-                  ? () => ref
-                        .read(getUsbSerialProvider().notifier)
-                        .sendCommand("\x03")
+              tooltip: useWebRepl
+                  ? "中断设备运行"
+                  : (isConnected ? "中断设备运行" : "连接设备后可中断运行"),
+              onPressed: (useWebRepl || isConnected)
+                  ? () {
+                      if (useWebRepl) {
+                        ref.read(webReplProvider.notifier).sendCommand("\x03");
+                      } else {
+                        ref
+                            .read(getUsbSerialProvider().notifier)
+                            .sendCommand("\x03");
+                      }
+                    }
                   : null,
               icon: const Icon(Icons.stop_circle_outlined),
             ),
             IconButton(
-              tooltip: isConnected ? "软重启设备" : "连接设备后可软重启",
-              onPressed: isConnected
-                  ? () => ref
-                        .read(getUsbSerialProvider().notifier)
-                        .sendCommand("\x04")
+              tooltip: useWebRepl
+                  ? "软重启设备"
+                  : (isConnected ? "软重启设备" : "连接设备后可软重启"),
+              onPressed: (useWebRepl || isConnected)
+                  ? () {
+                      if (useWebRepl) {
+                        ref.read(webReplProvider.notifier).sendCommand("\x04");
+                      } else {
+                        ref
+                            .read(getUsbSerialProvider().notifier)
+                            .sendCommand("\x04");
+                      }
+                    }
                   : null,
               icon: const Icon(Icons.restart_alt),
             ),
@@ -514,6 +545,15 @@ class ReplView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final webReplState = ref.watch(webReplProvider);
+    final webReplConnected = webReplState.state == WebReplState.connected;
+
+    if (webReplConnected) {
+      repl.onOutput = (String data) {
+        ref.read(webReplProvider.notifier).sendText(data);
+      };
+    }
+
     final surface = Theme.of(context).colorScheme.surface;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final defaultTheme = TerminalThemes.defaultTheme;
