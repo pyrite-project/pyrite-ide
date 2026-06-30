@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
@@ -62,11 +63,35 @@ class SettingsRegistry {
       setter: (ref, v) => ref.read(useLsp.notifier).state = v == true,
     ),
     _SettingEntry(
+      name: 'lsp.type',
+      type: 'string',
+      provider: lspType,
+      getter: (ref) => ref.read(lspType).name,
+      setter: (ref, v) {
+        final parsed = LspType.values.asNameMap()[v.toString()];
+        if (parsed != null) ref.read(lspType.notifier).state = parsed;
+      },
+    ),
+    _SettingEntry(
       name: 'lsp.websocket_path',
       type: 'string',
       provider: lspWebScoketPath,
       getter: (ref) => ref.read(lspWebScoketPath),
       setter: (ref, v) => ref.read(lspWebScoketPath.notifier).state = v.toString(),
+    ),
+    _SettingEntry(
+      name: 'lsp.stdio_executable',
+      type: 'string',
+      provider: lspStdioExecutable,
+      getter: (ref) => ref.read(lspStdioExecutable),
+      setter: (ref, v) => ref.read(lspStdioExecutable.notifier).state = v.toString(),
+    ),
+    _SettingEntry(
+      name: 'lsp.stdio_args',
+      type: 'string',
+      provider: lspStdioArgs,
+      getter: (ref) => ref.read(lspStdioArgs),
+      setter: (ref, v) => ref.read(lspStdioArgs.notifier).state = v.toString(),
     ),
     _SettingEntry(
       name: 'lsp.disable_warning',

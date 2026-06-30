@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 
@@ -42,8 +43,17 @@ StateProvider<bool> editorWordWrap = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);
 
 StateProvider<bool> useLsp = StateProvider<bool>((ref) => true);
+StateProvider<LspType> lspType = StateProvider<LspType>(
+  (ref) => LspType.webScoket,
+);
 StateProvider<String> lspWebScoketPath = StateProvider<String>(
   (ref) => "127.0.0.1:2026",
+);
+StateProvider<String> lspStdioExecutable = StateProvider<String>(
+  (ref) => "",
+);
+StateProvider<String> lspStdioArgs = StateProvider<String>(
+  (ref) => "--stdio",
 );
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);

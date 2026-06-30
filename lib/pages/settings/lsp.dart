@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
@@ -26,11 +27,81 @@ class LspSettings extends ConsumerWidget {
             ),
             const SectionDivider(),
             ListTile(
-              title: const Text("WebSocket 地址"),
-              subtitle: Text("ws://${ref.watch(lspWebScoketPath)}"),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => showPathDialog(context, ref),
+              title: const Text("连接方式"),
+              subtitle: Text(ref.watch(lspType) == LspType.webScoket ? "WebSocket" : "stdio (本地进程)"),
             ),
+            RadioGroup<LspType>(
+              groupValue: ref.watch(lspType),
+              onChanged: (value) {
+                if (value != null) ref.read(lspType.notifier).state = value;
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    RadioListTile<LspType>(
+                      title: const Text("WebSocket"),
+                      subtitle: const Text("连接到远程 WebSocket 服务器"),
+                      value: LspType.webScoket,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    RadioListTile<LspType>(
+                      title: const Text("stdio"),
+                      subtitle: const Text("启动本地语言服务器进程"),
+                      value: LspType.stdio,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (ref.watch(lspType) == LspType.webScoket) ...[
+              const SectionDivider(),
+              ListTile(
+                title: const Text("WebSocket 地址"),
+                subtitle: Text("ws://${ref.watch(lspWebScoketPath)}"),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showPathDialog(context, ref),
+              ),
+            ] else ...[
+              const SectionDivider(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    TextFormField(
+                      initialValue: ref.read(lspStdioExecutable),
+                      decoration: const InputDecoration(
+                        labelText: "可执行文件路径",
+                        helperText: "例如 python、node 或完整路径",
+                        border: OutlineInputBorder(),
+                      ),
+                      onFieldSubmitted: (value) {
+                        ref.read(lspStdioExecutable.notifier).state = value.trim();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("可执行文件路径已更新")),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      initialValue: ref.read(lspStdioArgs),
+                      decoration: const InputDecoration(
+                        labelText: "启动参数",
+                        helperText: "空格分隔，例如 --stdio",
+                        border: OutlineInputBorder(),
+                      ),
+                      onFieldSubmitted: (value) {
+                        ref.read(lspStdioArgs.notifier).state = value.trim();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("启动参数已更新")),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         SettingsSection(

@@ -151,33 +151,33 @@ class StyleSettings extends ConsumerWidget {
           title: "插件主题",
           description: "使用插件提供的主题配色方案。选中后将覆盖上方的主题风格和主题颜色设置。",
           children: [
-            // Built-in option
-            RadioListTile<String?>(
-              title: Text("内置"),
-              subtitle: Text("使用系统动态色或自定义种子色"),
-              value: null,
+            RadioGroup<String?>(
               groupValue: activePluginThemeIdValue,
               onChanged: (value) {
                 ref.read(activePluginThemeId.notifier).state = value;
               },
-            ),
-            // Plugin themes
-            for (final theme in dataRegistry.allThemes)
-              RadioListTile<String?>(
-                title: Text(theme.name),
-                subtitle: Text(
-                  [
-                    'by ${theme.pluginId}',
-                    if (theme.mode != null)
-                      '· ${theme.mode == 'dark' ? '仅暗色' : '仅亮色'}',
-                  ].join(' '),
-                ),
-                value: theme.id,
-                groupValue: activePluginThemeIdValue,
-                onChanged: (value) {
-                  ref.read(activePluginThemeId.notifier).state = value;
-                },
+              child: Column(
+                children: [
+                  RadioListTile<String?>(
+                    title: Text("内置"),
+                    subtitle: Text("使用系统动态色或自定义种子色"),
+                    value: null,
+                  ),
+                  for (final theme in dataRegistry.allThemes)
+                    RadioListTile<String?>(
+                      title: Text(theme.name),
+                      subtitle: Text(
+                        [
+                          'by ${theme.pluginId}',
+                          if (theme.mode != null)
+                            '· ${theme.mode == 'dark' ? '仅暗色' : '仅亮色'}',
+                        ].join(' '),
+                      ),
+                      value: theme.id,
+                    ),
+                ],
               ),
+            ),
           ],
         ),
       ],

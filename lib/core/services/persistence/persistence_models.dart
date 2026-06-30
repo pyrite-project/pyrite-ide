@@ -44,7 +44,10 @@ class PersistedData {
   final bool editorWordWrap;
   final bool editorLineNumber;
   final bool useLsp;
+  final String lspType;
   final String lspWebSocketPath;
+  final String lspStdioExecutable;
+  final String lspStdioArgs;
   final bool disableWarning;
   final bool disableError;
   final int desktopSelectedIndex;
@@ -73,7 +76,10 @@ class PersistedData {
     this.editorWordWrap = false,
     this.editorLineNumber = true,
     this.useLsp = true,
+    this.lspType = 'webScoket',
     this.lspWebSocketPath = '127.0.0.1:2026',
+    this.lspStdioExecutable = '',
+    this.lspStdioArgs = '--stdio',
     this.disableWarning = false,
     this.disableError = false,
     this.desktopSelectedIndex = 0,

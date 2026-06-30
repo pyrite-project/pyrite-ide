@@ -1,0 +1,1 @@
+enum LspType { webScoket, stdio }

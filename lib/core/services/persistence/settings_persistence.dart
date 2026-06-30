@@ -9,7 +9,10 @@ class SettingsPersistedData {
   final bool editorWordWrap;
   final bool editorLineNumber;
   final bool useLsp;
+  final String lspType;
   final String lspWebSocketPath;
+  final String lspStdioExecutable;
+  final String lspStdioArgs;
   final bool disableWarning;
   final bool disableError;
   final bool chineseToUnicodeConversion;
@@ -24,7 +27,10 @@ class SettingsPersistedData {
     required this.editorWordWrap,
     required this.editorLineNumber,
     required this.useLsp,
+    this.lspType = 'webScoket',
     required this.lspWebSocketPath,
+    this.lspStdioExecutable = '',
+    this.lspStdioArgs = '--stdio',
     required this.disableWarning,
     required this.disableError,
     this.chineseToUnicodeConversion = true,
@@ -40,7 +46,10 @@ class SettingsPersistedData {
     'editorWordWrap': editorWordWrap,
     'editorLineNumber': editorLineNumber,
     'useLsp': useLsp,
+    'lspType': lspType,
     'lspWebSocketPath': lspWebSocketPath,
+    'lspStdioExecutable': lspStdioExecutable,
+    'lspStdioArgs': lspStdioArgs,
     'disableWarning': disableWarning,
     'disableError': disableError,
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
@@ -57,8 +66,11 @@ class SettingsPersistedData {
         editorWordWrap: json['editorWordWrap'] as bool? ?? false,
         editorLineNumber: json['editorLineNumber'] as bool? ?? true,
         useLsp: json['useLsp'] as bool? ?? true,
+        lspType: json['lspType'] as String? ?? 'webScoket',
         lspWebSocketPath:
             json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
+        lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
+        lspStdioArgs: json['lspStdioArgs'] as String? ?? '--stdio',
         disableWarning: json['disableWarning'] as bool? ?? false,
         disableError: json['disableError'] as bool? ?? false,
         chineseToUnicodeConversion:

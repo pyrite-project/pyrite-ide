@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/features/window.dart';
@@ -53,7 +54,11 @@ void _applyData(PersistedData data) {
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
   container.read(editorLineNumber.notifier).state = data.editorLineNumber;
   container.read(useLsp.notifier).state = data.useLsp;
+  container.read(lspType.notifier).state =
+      data.lspType == 'stdio' ? LspType.stdio : LspType.webScoket;
   container.read(lspWebScoketPath.notifier).state = data.lspWebSocketPath;
+  container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
+  container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(disableWarning.notifier).state = data.disableWarning;
   container.read(disableError.notifier).state = data.disableError;
   container.read(desktopSelectedIndex.notifier).state =

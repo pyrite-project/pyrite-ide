@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
@@ -32,16 +34,44 @@ class EditorControllerMapNotifier
     // final fileName = uri.removeLast();
     uri.removeLast();
     final projectPath = uri.join(pattern);
-    CodeForgeController controller = CodeForgeController(
-      lspConfig: (ref.read(useLsp))
-          ? LspSocketConfig(
+
+    LspConfig? lspConfig;
+    if (ref.read(useLsp)) {
+      final type = ref.read(lspType);
+      if (type == LspType.webScoket) {
+        lspConfig = LspSocketConfig(
+          workspacePath: projectPath,
+          languageId: "python",
+          serverUrl: "ws://${ref.read(lspWebScoketPath)}",
+          disableWarning: ref.read(disableWarning),
+          disableError: ref.read(disableError),
+        );
+      } else if (type == LspType.stdio) {
+        final executable = ref.read(lspStdioExecutable);
+        if (executable.isNotEmpty) {
+          final argsStr = ref.read(lspStdioArgs);
+          final args = argsStr
+              .split(' ')
+              .where((s) => s.isNotEmpty)
+              .toList();
+          try {
+            lspConfig = await LspStdioConfig.start(
+              executable: executable,
+              args: args,
               workspacePath: projectPath,
               languageId: "python",
-              serverUrl: "ws://${ref.read(lspWebScoketPath)}",
               disableWarning: ref.read(disableWarning),
               disableError: ref.read(disableError),
-            )
-          : null,
+            );
+          } catch (e) {
+            debugPrint('LSP stdio start failed: $e');
+          }
+        }
+      }
+    }
+
+    CodeForgeController controller = CodeForgeController(
+      lspConfig: lspConfig,
     );
     // controller.openedFile = file.path;
     controller.text = text;
