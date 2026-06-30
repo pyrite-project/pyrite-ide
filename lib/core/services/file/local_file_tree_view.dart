@@ -20,7 +20,7 @@ final localFileTreeViewControllerProvider = StateProvider(
       } else {
         local.renameFile(node.id, newName);
       }
-      // ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+      ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     },
     loadChildren: (node) async {
       // print(node.isExpanded);

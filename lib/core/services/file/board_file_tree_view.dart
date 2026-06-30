@@ -23,6 +23,7 @@ final boardFileTreeViewControllerProvider = StateProvider(
       node.data.name = newName;
       try {
         await ref.read(boardProvider.notifier).rename(node.id, newName);
+        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } on DeviceNotReadyException {
         // Error handled by UI layer
       }
@@ -30,9 +31,7 @@ final boardFileTreeViewControllerProvider = StateProvider(
     loadChildren: (node) async {
       if (node.canLoadChildren == true) {
         return await board.buildFileListItems(
-          await ref
-              .read(boardProvider.notifier)
-              .getFileList(path: node.id),
+          await ref.read(boardProvider.notifier).getFileList(path: node.id),
         );
       } else {
         return [];

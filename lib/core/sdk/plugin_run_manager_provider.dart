@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/sdk/api/persistence.dart';
 import 'package:pyrite_ide/core/sdk/api/tab.dart';
 import 'package:pyrite_ide/core/sdk/api/settings_api.dart';
 import 'package:pyrite_ide/core/sdk/api/data_api.dart';
+import 'package:pyrite_ide/core/sdk/api/serial.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:serious_python/serious_python.dart';
@@ -69,6 +70,7 @@ class PluginRunManagerNotifier
     ref.read(sdkTabProvider.notifier).bind(runManager);
     ref.read(sdkSettingsProvider.notifier).bind(runManager);
     ref.read(sdkDataApiProvider.notifier).bind(runManager);
+    ref.read(sdkSerialProvider.notifier).bind(runManager);
     state = {...state, plugin: runManager};
 
     // Fire-and-forget: Python script blocks forever with asyncio.run().
