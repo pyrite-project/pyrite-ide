@@ -87,10 +87,12 @@ class PluginRunManagerNotifier
     await runManager.sendLifecycleHook(LifecycleHook.start.value);
   }
 
-  void stop(Plugin plugin) {
+  Future<void> stop(Plugin plugin) async {
     final runManager = state[plugin];
     if (runManager == null) return;
-    runManager.sendLifecycleHook(LifecycleHook.dispose.value);
+    try {
+      await runManager.sendLifecycleHook(LifecycleHook.dispose.value);
+    } catch (_) {}
     runManager.stop();
     // Clean up DataRegistry entries for this plugin
     ref.read(dataRegistryProvider).removePlugin(plugin.id);

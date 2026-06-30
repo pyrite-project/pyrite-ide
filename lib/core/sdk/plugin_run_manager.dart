@@ -293,6 +293,7 @@ class PluginRunManager {
   // -- Connection ------------------------------------------------------------
 
   Future<void> connect() async {
+    if (_stopped) return;
     if (_channel != null && _channel!.closeCode == null) return;
     if (_connecting) {
       await Future.doWhile(() async {
@@ -323,6 +324,12 @@ class PluginRunManager {
             rethrow;
           }
         } on WebSocketChannelException {
+          if (attempt < maxRetries) {
+            await Future.delayed(retryDelay);
+          } else {
+            rethrow;
+          }
+        } on Exception {
           if (attempt < maxRetries) {
             await Future.delayed(retryDelay);
           } else {
@@ -439,7 +446,10 @@ class PluginRunManager {
 
   // -- Cleanup ---------------------------------------------------------------
 
+  bool _stopped = false;
+
   void stop() {
+    _stopped = true;
     _failAllPendingReplies('PluginRunManager stopped');
     _channel?.sink.close();
     _channel = null;
