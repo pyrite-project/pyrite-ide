@@ -7,28 +7,25 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:tolyui_message/tolyui_message.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
-import 'package:pyrite_ide/pages/file/main.dart';
-import 'package:pyrite_ide/pages/settings/about.dart';
-import 'package:pyrite_ide/pages/settings/editor.dart';
-import 'package:pyrite_ide/pages/settings/lsp.dart';
-import 'package:pyrite_ide/pages/settings/main.dart';
-import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/device_tools/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
+
+final StateProvider<int> bottomPanelTabProvider = StateProvider<int>((ref) => 0);
 
 Widget consolePage() {
   return const ConsolePage();
@@ -43,16 +40,71 @@ class ConsolePage extends ConsumerWidget {
     final webReplState = ref.watch(webReplProvider);
     final webReplConnected = webReplState.state == WebReplState.connected;
     final useWebRepl = webReplConnected || webReplState.state == WebReplState.waitingPassword;
+    final selectedTab = ref.watch(bottomPanelTabProvider);
+    final title = switch (selectedTab) {
+      1 => '输出',
+      2 => '终端',
+      _ => 'REPL',
+    };
+    final subtitle = switch (selectedTab) {
+      1 => 'IDE 与插件输出',
+      2 => DesktopTerminalView.isSupported ? '桌面 shell 终端' : '当前平台不支持桌面终端',
+      _ => useWebRepl
+          ? 'WiFi WebREPL 连接'
+          : (isConnected ? 'MicroPython 交互式终端' : '连接设备后可输入命令'),
+    };
 
     return Column(
       children: [
         PaneHeader(
-          title: "REPL",
-          subtitle: useWebRepl
-              ? "WiFi WebREPL 连接"
-              : (isConnected ? "MicroPython 交互式终端" : "连接设备后可输入命令"),
-          leadingIcon: Icons.terminal,
-          actions: [
+          title: title,
+          subtitle: subtitle,
+          leadingIcon: selectedTab == 1 ? Icons.article_outlined : Icons.terminal,
+          actions: _buildConsoleActions(ref, selectedTab, isConnected, webReplConnected, useWebRepl),
+        ),
+        _BottomPanelTabs(selectedIndex: selectedTab),
+        Expanded(
+          child: IndexedStack(
+            index: selectedTab,
+            children: const [
+              ReplView(),
+              OutputLogView(),
+              DesktopTerminalView(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildConsoleActions(
+    WidgetRef ref,
+    int selectedTab,
+    bool isConnected,
+    bool webReplConnected,
+    bool useWebRepl,
+  ) {
+    switch (selectedTab) {
+      case 1:
+        return [
+          IconButton(
+            tooltip: '清空输出',
+            onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
+            icon: const Icon(Icons.cleaning_services_outlined),
+          ),
+        ];
+      case 2:
+        return [
+          IconButton(
+            tooltip: '新建终端',
+            onPressed: DesktopTerminalView.isSupported
+                ? () => ref.read(desktopTerminalProvider.notifier).createSession()
+                : null,
+            icon: const Icon(Icons.add),
+          ),
+        ];
+      default:
+        return [
             if (!isConnected && !webReplConnected)
               IconButton(
                 tooltip: "连接 WebREPL",
@@ -100,10 +152,82 @@ class ConsolePage extends ConsumerWidget {
                   : null,
               icon: const Icon(Icons.restart_alt),
             ),
+          ];
+    }
+  }
+}
+
+class _BottomPanelTabs extends ConsumerWidget {
+  const _BottomPanelTabs({required this.selectedIndex});
+
+  final int selectedIndex;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 38,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          _BottomPanelTab(label: 'REPL', icon: Icons.terminal, index: 0, selectedIndex: selectedIndex),
+          _BottomPanelTab(label: '输出', icon: Icons.article_outlined, index: 1, selectedIndex: selectedIndex),
+          _BottomPanelTab(label: '终端', icon: Icons.terminal_outlined, index: 2, selectedIndex: selectedIndex),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomPanelTab extends ConsumerWidget {
+  const _BottomPanelTab({
+    required this.label,
+    required this.icon,
+    required this.index,
+    required this.selectedIndex,
+  });
+
+  final String label;
+  final IconData icon;
+  final int index;
+  final int selectedIndex;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = index == selectedIndex;
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () => ref.read(bottomPanelTabProvider.notifier).state = index,
+      child: Container(
+        height: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? scheme.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: selected ? scheme.primary : scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
           ],
         ),
-        const Expanded(child: ReplView()),
-      ],
+      ),
     );
   }
 }
@@ -555,41 +679,237 @@ class ReplView extends ConsumerWidget {
       };
     }
 
+    final terminalTheme = buildTerminalTheme(context);
     final surface = Theme.of(context).colorScheme.surface;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final defaultTheme = TerminalThemes.defaultTheme;
-    final terminalTheme = TerminalTheme(
-      cursor: defaultTheme.cursor,
-      selection: defaultTheme.selection,
-      foreground: onSurface,
-      background: surface,
-      black: defaultTheme.black,
-      white: defaultTheme.white,
-      red: defaultTheme.red,
-      green: defaultTheme.green,
-      yellow: defaultTheme.yellow,
-      blue: defaultTheme.blue,
-      magenta: defaultTheme.magenta,
-      cyan: defaultTheme.cyan,
-      brightBlack: defaultTheme.brightBlack,
-      brightRed: defaultTheme.brightRed,
-      brightGreen: defaultTheme.brightGreen,
-      brightYellow: defaultTheme.brightYellow,
-      brightBlue: defaultTheme.brightBlue,
-      brightMagenta: defaultTheme.brightMagenta,
-      brightCyan: defaultTheme.brightCyan,
-      brightWhite: defaultTheme.brightWhite,
-      searchHitBackground: defaultTheme.searchHitBackground,
-      searchHitBackgroundCurrent: defaultTheme.searchHitBackgroundCurrent,
-      searchHitForeground: defaultTheme.searchHitForeground,
-    );
     return TerminalView(
       repl,
       controller: replController,
       theme: terminalTheme,
-      key: ValueKey('repl_${surface.value}'),
+      key: ValueKey('repl_${surface.toARGB32()}'),
     );
   }
+}
+
+class OutputLogView extends ConsumerWidget {
+  const OutputLogView({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entries = ref.watch(ideOutputLogProvider);
+    final scheme = Theme.of(context).colorScheme;
+    if (entries.isEmpty) {
+      return Center(
+        child: Text(
+          '暂无输出',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        final time = entry.time;
+        final stamp = '${time.hour.toString().padLeft(2, '0')}:'
+            '${time.minute.toString().padLeft(2, '0')}:'
+            '${time.second.toString().padLeft(2, '0')}';
+        return SelectableText.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '[$stamp] [${_sourceLabel(entry.source)}] ',
+                style: TextStyle(color: scheme.primary),
+              ),
+              TextSpan(text: entry.message),
+            ],
+          ),
+          style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
+        );
+      },
+    );
+  }
+
+  String _sourceLabel(IdeOutputSource source) {
+    return switch (source) {
+      IdeOutputSource.ide => 'IDE',
+      IdeOutputSource.plugin => '插件',
+      IdeOutputSource.terminal => '终端',
+    };
+  }
+}
+
+class DesktopTerminalView extends ConsumerStatefulWidget {
+  const DesktopTerminalView({super.key});
+
+  static bool get isSupported => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+  @override
+  ConsumerState<DesktopTerminalView> createState() => _DesktopTerminalViewState();
+}
+
+class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = ref.read(desktopTerminalProvider);
+      if (DesktopTerminalView.isSupported && state.sessions.isEmpty) {
+        ref.read(desktopTerminalProvider.notifier).createSession();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(desktopTerminalProvider);
+    final scheme = Theme.of(context).colorScheme;
+    if (!DesktopTerminalView.isSupported) {
+      return Center(
+        child: FilledButton.tonalIcon(
+          onPressed: null,
+          icon: const Icon(Icons.terminal_outlined),
+          label: const Text('Android 暂不支持桌面终端'),
+        ),
+      );
+    }
+
+    final session = state.selectedSession;
+    return Row(
+      children: [
+        Expanded(
+          child: session == null
+              ? Center(
+                  child: FilledButton.icon(
+                    onPressed: () => ref.read(desktopTerminalProvider.notifier).createSession(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('新建终端'),
+                  ),
+                )
+              : TerminalView(
+                  session.terminal,
+                  controller: session.controller,
+                  theme: buildTerminalTheme(context),
+                  key: ValueKey('terminal_${session.id}_${scheme.surface.toARGB32()}'),
+                ),
+        ),
+        Container(
+          width: 150,
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLowest,
+            border: Border(left: BorderSide(color: scheme.outlineVariant)),
+          ),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 36,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    const Expanded(child: Text('终端')),
+                    IconButton(
+                      tooltip: '新建终端',
+                      onPressed: () => ref.read(desktopTerminalProvider.notifier).createSession(),
+                      icon: const Icon(Icons.add, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+              if (state.error != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    state.error!,
+                    style: TextStyle(color: scheme.error, fontSize: 12),
+                  ),
+                ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final item in state.sessions)
+                      _TerminalSessionTile(
+                        session: item,
+                        selected: item.id == state.selectedSession?.id,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TerminalSessionTile extends ConsumerWidget {
+  const _TerminalSessionTile({required this.session, required this.selected});
+
+  final DesktopTerminalSession session;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? scheme.secondaryContainer : Colors.transparent,
+      child: InkWell(
+        onTap: () => ref.read(desktopTerminalProvider.notifier).selectSession(session.id),
+        child: SizedBox(
+          height: 34,
+          child: Row(
+            children: [
+              const SizedBox(width: 10),
+              Icon(Icons.terminal, size: 16, color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  session.title,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: selected ? scheme.onSecondaryContainer : scheme.onSurface),
+                ),
+              ),
+              IconButton(
+                tooltip: '关闭终端',
+                onPressed: () => ref.read(desktopTerminalProvider.notifier).closeSession(session.id),
+                icon: const Icon(Icons.close, size: 16),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+TerminalTheme buildTerminalTheme(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  final defaultTheme = TerminalThemes.defaultTheme;
+  return TerminalTheme(
+    cursor: defaultTheme.cursor,
+    selection: defaultTheme.selection,
+    foreground: scheme.onSurface,
+    background: scheme.surface,
+    black: defaultTheme.black,
+    white: defaultTheme.white,
+    red: defaultTheme.red,
+    green: defaultTheme.green,
+    yellow: defaultTheme.yellow,
+    blue: defaultTheme.blue,
+    magenta: defaultTheme.magenta,
+    cyan: defaultTheme.cyan,
+    brightBlack: defaultTheme.brightBlack,
+    brightRed: defaultTheme.brightRed,
+    brightGreen: defaultTheme.brightGreen,
+    brightYellow: defaultTheme.brightYellow,
+    brightBlue: defaultTheme.brightBlue,
+    brightMagenta: defaultTheme.brightMagenta,
+    brightCyan: defaultTheme.brightCyan,
+    brightWhite: defaultTheme.brightWhite,
+    searchHitBackground: defaultTheme.searchHitBackground,
+    searchHitBackgroundCurrent: defaultTheme.searchHitBackgroundCurrent,
+    searchHitForeground: defaultTheme.searchHitForeground,
+  );
 }
 
 Widget buildTitleBar(Widget child) {
@@ -690,6 +1010,7 @@ class EditorToolsBar extends ConsumerWidget {
       tooltip: saved ? "再次保存当前文件" : "保存当前文件",
       onPressed: () async {
         await ref.read(fileProvider.notifier).saveCurrentFile();
+        if (!context.mounted) return;
 
         $message.attach(context);
         $message.success(message: "已保存当前文件");

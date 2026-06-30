@@ -16,6 +16,7 @@ import 'package:pyrite_ide/core/sdk/api/data_api.dart';
 import 'package:pyrite_ide/core/sdk/api/serial.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
@@ -59,7 +60,13 @@ class PluginRunManagerNotifier
       pluginId: plugin.id,
       pluginPermissions: plugin.permissions,
       permissionLog: ref.read(permissionLogServiceProvider),
+      onOutput: (message) => ref
+          .read(ideOutputLogProvider.notifier)
+          .add(IdeOutputSource.plugin, message),
     );
+    ref
+        .read(ideOutputLogProvider.notifier)
+        .add(IdeOutputSource.plugin, '[${plugin.id}] starting');
     runManager.onDataChanged = () {
       state = {...state};
     };

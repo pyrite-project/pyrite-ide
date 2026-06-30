@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
@@ -38,6 +39,9 @@ class UseWindow with WindowListener {
     if (_closing) return;
     _closing = true;
 
+    try {
+      await _container?.read(desktopTerminalProvider.notifier).closeAll();
+    } catch (_) {}
     try {
       await _container
           ?.read(pluginRunManagerProvider.notifier)

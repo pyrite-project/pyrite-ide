@@ -82,6 +82,7 @@ class PluginRunManager {
     this.pluginId = '',
     this.pluginPermissions = const {},
     this.permissionLog,
+    this.onOutput,
   }) : dataPath = '$assetsPath/data';
 
   final int port;
@@ -90,6 +91,7 @@ class PluginRunManager {
   final String pluginId;
   final Map<String, List<String>> pluginPermissions;
   final PermissionLogService? permissionLog;
+  final void Function(String message)? onOutput;
   WebSocketChannel? _channel;
   bool _connecting = false;
   final Map<String, String> pages = {};
@@ -329,6 +331,7 @@ class PluginRunManager {
             Uri.parse('ws://localhost:$port'),
           );
           await _channel!.ready;
+          onOutput?.call('[$pluginId] connected on port $port');
           _initBuiltinHandlers();
           _setupListener();
           break;
@@ -360,6 +363,7 @@ class PluginRunManager {
   void _setupListener() {
     _channel!.stream.listen(
       (message) {
+        onOutput?.call('[$pluginId] <- $message');
         final Map<String, dynamic> envelope = jsonDecode(message as String);
         final type = envelope['type']?.toString() ?? '';
 
@@ -378,10 +382,12 @@ class PluginRunManager {
         }
       },
       onError: (error) {
+        onOutput?.call('[$pluginId] websocket error: $error');
         _failAllPendingReplies(error);
         _channel = null;
       },
       onDone: () {
+        onOutput?.call('[$pluginId] websocket closed');
         _failAllPendingReplies('WebSocket channel closed');
         _channel = null;
       },
@@ -401,6 +407,7 @@ class PluginRunManager {
     if (_channel == null) {
       throw StateError('WebSocket is not connected');
     }
+    onOutput?.call('[$pluginId] -> $message');
     _channel!.sink.add(message);
   }
 
@@ -466,6 +473,7 @@ class PluginRunManager {
 
   void stop() {
     _stopped = true;
+    onOutput?.call('[$pluginId] stopped');
     _failAllPendingReplies('PluginRunManager stopped');
     _channel?.sink.close();
     _channel = null;
