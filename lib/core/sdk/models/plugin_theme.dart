@@ -617,12 +617,6 @@ class PluginThemeData {
         scrolledUnderElevation: appBarScrolledUnderElevation ?? 0,
         centerTitle: appBarCenterTitle,
       ),
-      snackBarTheme: SnackBarThemeData(
-        behavior: SnackBarBehavior.floating,
-        showCloseIcon: true,
-        backgroundColor: scheme.inverseSurface,
-        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
-      ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: navRailBackgroundColor ?? scheme.surfaceContainerLowest,
         indicatorColor: navRailIndicatorColor ?? scheme.secondaryContainer,

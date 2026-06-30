@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:tolyui_message/tolyui_message.dart';
 
 class LspSettings extends ConsumerWidget {
   const LspSettings({super.key});
@@ -28,7 +29,7 @@ class LspSettings extends ConsumerWidget {
             const SectionDivider(),
             ListTile(
               title: const Text("连接方式"),
-              subtitle: Text(ref.watch(lspType) == LspType.webScoket ? "WebSocket" : "stdio (本地进程)"),
+              subtitle: Text(ref.watch(lspType) == LspType.webSocket ? "WebSocket" : "stdio (本地进程)"),
             ),
             RadioGroup<LspType>(
               groupValue: ref.watch(lspType),
@@ -42,7 +43,7 @@ class LspSettings extends ConsumerWidget {
                     RadioListTile<LspType>(
                       title: const Text("WebSocket"),
                       subtitle: const Text("连接到远程 WebSocket 服务器"),
-                      value: LspType.webScoket,
+                      value: LspType.webSocket,
                       contentPadding: EdgeInsets.zero,
                     ),
                     RadioListTile<LspType>(
@@ -55,11 +56,11 @@ class LspSettings extends ConsumerWidget {
                 ),
               ),
             ),
-            if (ref.watch(lspType) == LspType.webScoket) ...[
+            if (ref.watch(lspType) == LspType.webSocket) ...[
               const SectionDivider(),
               ListTile(
                 title: const Text("WebSocket 地址"),
-                subtitle: Text("ws://${ref.watch(lspWebScoketPath)}"),
+                subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showPathDialog(context, ref),
               ),
@@ -78,9 +79,8 @@ class LspSettings extends ConsumerWidget {
                       ),
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioExecutable.notifier).state = value.trim();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("可执行文件路径已更新")),
-                        );
+                        $message.attach(context);
+                        $message.success(message: "可执行文件路径已更新");
                       },
                     ),
                     const SizedBox(height: 12),
@@ -93,9 +93,8 @@ class LspSettings extends ConsumerWidget {
                       ),
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioArgs.notifier).state = value.trim();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("启动参数已更新")),
-                        );
+                        $message.attach(context);
+                        $message.success(message: "启动参数已更新");
                       },
                     ),
                   ],
@@ -138,7 +137,7 @@ class LspSettings extends ConsumerWidget {
 
   void showPathDialog(BuildContext context, WidgetRef ref) async {
     final TextEditingController controller = TextEditingController();
-    controller.text = ref.read(lspWebScoketPath);
+    controller.text = ref.read(lspWebSocketPath);
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -172,17 +171,14 @@ class LspSettings extends ConsumerWidget {
                   throw const FormatException("Invalid WebSocket address");
                 }
               } on FormatException {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("请输入有效的 WebSocket 地址")),
-                );
+                $message.attach(context);
+                $message.error(message: "请输入有效的 WebSocket 地址");
                 return;
               }
-              final messenger = ScaffoldMessenger.of(context);
-              ref.read(lspWebScoketPath.notifier).state = value;
+              ref.read(lspWebSocketPath.notifier).state = value;
               context.pop();
-              messenger.showSnackBar(
-                const SnackBar(content: Text("语言服务器地址已更新")),
-              );
+              $message.attach(context);
+              $message.success(message: "语言服务器地址已更新");
             },
             child: const Text("保存"),
           ),

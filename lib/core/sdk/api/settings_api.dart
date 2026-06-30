@@ -66,18 +66,18 @@ class SettingsRegistry {
       name: 'lsp.type',
       type: 'string',
       provider: lspType,
-      getter: (ref) => ref.read(lspType).name,
+      getter: (ref) => ref.read(lspType).jsonName,
       setter: (ref, v) {
-        final parsed = LspType.values.asNameMap()[v.toString()];
+        final parsed = LspType.fromJsonName(v.toString());
         if (parsed != null) ref.read(lspType.notifier).state = parsed;
       },
     ),
     _SettingEntry(
       name: 'lsp.websocket_path',
       type: 'string',
-      provider: lspWebScoketPath,
-      getter: (ref) => ref.read(lspWebScoketPath),
-      setter: (ref, v) => ref.read(lspWebScoketPath.notifier).state = v.toString(),
+      provider: lspWebSocketPath,
+      getter: (ref) => ref.read(lspWebSocketPath),
+      setter: (ref, v) => ref.read(lspWebSocketPath.notifier).state = v.toString(),
     ),
     _SettingEntry(
       name: 'lsp.stdio_executable',

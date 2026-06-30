@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:tolyui_message/tolyui_message.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
@@ -101,12 +102,6 @@ class PyriteIDE extends ConsumerWidget {
         surfaceTintColor: Colors.transparent,
         foregroundColor: scheme.onSurface,
       ),
-      snackBarTheme: SnackBarThemeData(
-        behavior: SnackBarBehavior.floating,
-        showCloseIcon: true,
-        backgroundColor: scheme.inverseSurface,
-        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
-      ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surfaceContainerLowest,
         indicatorColor: scheme.secondaryContainer,
@@ -169,6 +164,7 @@ class PyriteIDE extends ConsumerWidget {
           routerConfig: routes,
           builder: (context, child) {
             setAppContext(context);
+            $message.attach(context);
             return Material(
               child: ResponsiveBreakpoints.builder(
                 child: child!,
@@ -186,11 +182,11 @@ class PyriteIDE extends ConsumerWidget {
           },
         );
 
-        if (!Platform.isMacOS ||
-            defaultTargetPlatform != TargetPlatform.macOS) {
-          return app;
+        if (Platform.isMacOS ||
+            defaultTargetPlatform == TargetPlatform.macOS) {
+          return MacOSMenu(app: app);
         }
-        return MacOSMenu(app: app);
+        return app;
       },
     );
   }

@@ -50,6 +50,7 @@ dependencies:
   file_picker: ^8.0.0
   file_selector: ^1.1.0
   tolyui: ^0.0.5
+  tolyui_message: ^0.2.6
   open_file: ^3.5.11
   xterm:
     git: https://github.com/Can1425/xterm.dart

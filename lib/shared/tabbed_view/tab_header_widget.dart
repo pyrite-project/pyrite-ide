@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:tolyui_message/tolyui_message.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -225,9 +226,8 @@ class TabHeaderWidget extends StatelessWidget {
                           .read(fileProvider.notifier)
                           .saveCurrentFile();
 
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+                      $message.attach(context);
+                      $message.success(message: "已保存当前文件");
 
                       if (identical(
                         provider.controller,

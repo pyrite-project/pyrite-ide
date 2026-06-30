@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
+import 'package:tolyui_message/tolyui_message.dart';
 
 void showEditorSnackBar(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  $message.attach(context);
+  $message.success(message: message);
 }
 
 /// Shows a prominent Thonny-style dialog when the device is not in REPL state.

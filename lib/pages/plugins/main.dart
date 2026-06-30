@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
+import 'package:tolyui_message/tolyui_message.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
 
@@ -71,9 +72,8 @@ class Plugins extends ConsumerWidget {
                     );
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('安装失败: $e')));
+                  $message.attach(context);
+                  $message.error(message: '安装失败: $e');
                 }
               }
             },
