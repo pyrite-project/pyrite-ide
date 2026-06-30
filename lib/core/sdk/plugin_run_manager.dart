@@ -65,10 +65,11 @@ Map<String, dynamic> makeEnvelope({
 // Command handler type
 // ---------------------------------------------------------------------------
 
-typedef CommandHandler = void Function(
-  Map<String, dynamic> envelope,
-  void Function(Map<String, dynamic>) respond,
-);
+typedef CommandHandler =
+    void Function(
+      Map<String, dynamic> envelope,
+      void Function(Map<String, dynamic>) respond,
+    );
 
 // ---------------------------------------------------------------------------
 // PluginRunManager
@@ -108,18 +109,22 @@ class PluginRunManager {
     if (required != null && pluginPermissions.isNotEmpty) {
       _handlers[type] = (envelope, respond) {
         final granted = Permissions.check(pluginPermissions, required);
-        permissionLog?.add(PermissionLogEntry(
-          pluginId: pluginId,
-          command: type,
-          required: required,
-          granted: granted,
-        ));
+        permissionLog?.add(
+          PermissionLogEntry(
+            pluginId: pluginId,
+            command: type,
+            required: required,
+            granted: granted,
+          ),
+        );
         if (!granted) {
-          respond(makeEnvelope(
-            type: IdeCommands.responseError,
-            payload: {'message': 'Permission denied: $required'},
-            replyTo: envelope['id'],
-          ));
+          respond(
+            makeEnvelope(
+              type: IdeCommands.responseError,
+              payload: {'message': 'Permission denied: $required'},
+              replyTo: envelope['id'],
+            ),
+          );
           return;
         }
         handler(envelope, respond);
@@ -154,11 +159,13 @@ class PluginRunManager {
     if (pagesData != null) {
       pages.addAll(Map<String, String>.from(pagesData));
     }
-    respond(makeEnvelope(
-      type: SdkCommands.responseOk,
-      payload: {'data': null},
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
     onDataChanged?.call();
   }
 
@@ -171,11 +178,13 @@ class PluginRunManager {
     routeStack.add(currentRoute);
     currentRoute = page;
     _syncRouteToPython();
-    respond(makeEnvelope(
-      type: SdkCommands.responseOk,
-      payload: {'data': null},
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
     onRouteChanged?.call(currentRoute, routeStack);
   }
 
@@ -184,11 +193,13 @@ class PluginRunManager {
     void Function(Map<String, dynamic>) respond,
   ) {
     popRoute();
-    respond(makeEnvelope(
-      type: SdkCommands.responseOk,
-      payload: {'data': null},
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
   }
 
   void popRoute() {
@@ -207,11 +218,13 @@ class PluginRunManager {
     final page = payload['page']?.toString() ?? 'home';
     currentRoute = page;
     _syncRouteToPython();
-    respond(makeEnvelope(
-      type: SdkCommands.responseOk,
-      payload: {'data': null},
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
     onRouteChanged?.call(currentRoute, routeStack);
   }
 
@@ -225,22 +238,23 @@ class PluginRunManager {
     routeStack.add('home');
     currentRoute = page;
     _syncRouteToPython();
-    respond(makeEnvelope(
-      type: SdkCommands.responseOk,
-      payload: {'data': null},
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
     onRouteChanged?.call(currentRoute, routeStack);
   }
 
   void _syncRouteToPython() {
-    sendJson(makeEnvelope(
-      type: IdeCommands.routerSync,
-      payload: {
-        'page': currentRoute,
-        'stack': routeStack,
-      },
-    ));
+    sendJson(
+      makeEnvelope(
+        type: IdeCommands.routerSync,
+        payload: {'page': currentRoute, 'stack': routeStack},
+      ),
+    );
   }
 
   void _handleVarSet(
@@ -253,11 +267,13 @@ class PluginRunManager {
     if (varName != null) {
       vars[varName] = varValue;
     }
-    respond(makeEnvelope(
-      type: SdkCommands.responseOk,
-      payload: {'data': null},
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
     onDataChanged?.call();
   }
 
@@ -280,14 +296,13 @@ class PluginRunManager {
         resolvedPath = assetsPath;
     }
 
-    respond(makeEnvelope(
-      type: IdeCommands.responsePath,
-      payload: {
-        'scope': scope,
-        'path': resolvedPath,
-      },
-      replyTo: envelope['id'],
-    ));
+    respond(
+      makeEnvelope(
+        type: IdeCommands.responsePath,
+        payload: {'scope': scope, 'path': resolvedPath},
+        replyTo: envelope['id'],
+      ),
+    );
   }
 
   // -- Connection ------------------------------------------------------------
@@ -345,6 +360,7 @@ class PluginRunManager {
   void _setupListener() {
     _channel!.stream.listen(
       (message) {
+        print(message);
         final Map<String, dynamic> envelope = jsonDecode(message as String);
         final type = envelope['type']?.toString() ?? '';
 
@@ -421,22 +437,23 @@ class PluginRunManager {
 
   Future<void> sendCallback(String name, DynamicMap args, String page) async {
     await connect();
-    sendJson(makeEnvelope(
-      type: IdeCommands.eventCallback,
-      payload: {
-        'page': page,
-        'name': name,
-        'args': _convertToSerializable(args),
-      },
-    ));
+    sendJson(
+      makeEnvelope(
+        type: IdeCommands.eventCallback,
+        payload: {
+          'page': page,
+          'name': name,
+          'args': _convertToSerializable(args),
+        },
+      ),
+    );
   }
 
   Future<void> sendLifecycleHook(String hook) async {
     await connect();
-    sendJson(makeEnvelope(
-      type: IdeCommands.lifecycleHook,
-      payload: {'hook': hook},
-    ));
+    sendJson(
+      makeEnvelope(type: IdeCommands.lifecycleHook, payload: {'hook': hook}),
+    );
   }
 
   Future<void> sendPageRefresh() async {

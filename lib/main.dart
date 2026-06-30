@@ -45,8 +45,9 @@ void _applyData(PersistedData data) {
   if (data.themeColorValue != null) {
     container.read(themeColor.notifier).state = Color(data.themeColorValue!);
   }
-  container.read(themeStyle.notifier).state =
-      ThemeStyle.fromValue(data.themeStyle);
+  container.read(themeStyle.notifier).state = ThemeStyle.fromValue(
+    data.themeStyle,
+  );
   container.read(editorThemeKey.notifier).state = data.editorThemeKey;
   container.read(activePluginThemeId.notifier).state = data.activePluginThemeId;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
@@ -68,8 +69,10 @@ void _applyData(PersistedData data) {
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
-  container.read(enableSignalDetection.notifier).state = data.enableSignalDetection;
-  container.read(uploadConfirmStyleProvider.notifier).state = data.uploadConfirmStyle;
+  container.read(enableSignalDetection.notifier).state =
+      data.enableSignalDetection;
+  container.read(uploadConfirmStyleProvider.notifier).state =
+      data.uploadConfirmStyle;
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
   container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
   container.read(webReplHost.notifier).state = data.webReplHost;
@@ -145,7 +148,10 @@ void main() async {
 
   UseWindow().init();
 
-  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
+  await SeriousPython.run(
+    "assets/python_runtime_boot.zip",
+    appFileName: "boot.py",
+  );
   // container.read(lspClientProvider);
 
   runApp(

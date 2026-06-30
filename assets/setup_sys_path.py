@@ -21,6 +21,8 @@ def setup_sys_path():
             for mod in list(sys.modules.keys()):
                 if mod not in original_keys:
                     del sys.modules[mod]
+
+        print(sys.path)
     # 反向迭代，顺序传入
     for path in reversed(module_paths):
         if not path:
@@ -35,3 +37,4 @@ def setup_sys_path():
     #     print("  ", p, file=sys.stderr)
 
 setup_sys_path()
+print(sys.path)
