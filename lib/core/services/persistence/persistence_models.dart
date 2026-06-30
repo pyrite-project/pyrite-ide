@@ -79,7 +79,7 @@ class PersistedData {
     this.editorWordWrap = false,
     this.editorLineNumber = true,
     this.useLsp = true,
-    this.lspType = 'webScoket',
+    this.lspType = 'web_socket',
     this.lspWebSocketPath = '127.0.0.1:2026',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '--stdio',

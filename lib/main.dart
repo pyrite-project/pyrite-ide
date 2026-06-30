@@ -55,8 +55,8 @@ void _applyData(PersistedData data) {
   container.read(editorLineNumber.notifier).state = data.editorLineNumber;
   container.read(useLsp.notifier).state = data.useLsp;
   container.read(lspType.notifier).state =
-      data.lspType == 'stdio' ? LspType.stdio : LspType.webScoket;
-  container.read(lspWebScoketPath.notifier).state = data.lspWebSocketPath;
+      LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
+  container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(disableWarning.notifier).state = data.disableWarning;

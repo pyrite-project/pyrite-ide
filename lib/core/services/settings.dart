@@ -44,9 +44,9 @@ StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);
 
 StateProvider<bool> useLsp = StateProvider<bool>((ref) => true);
 StateProvider<LspType> lspType = StateProvider<LspType>(
-  (ref) => LspType.webScoket,
+  (ref) => LspType.webSocket,
 );
-StateProvider<String> lspWebScoketPath = StateProvider<String>(
+StateProvider<String> lspWebSocketPath = StateProvider<String>(
   (ref) => "127.0.0.1:2026",
 );
 StateProvider<String> lspStdioExecutable = StateProvider<String>(

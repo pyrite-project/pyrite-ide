@@ -38,11 +38,11 @@ class EditorControllerMapNotifier
     LspConfig? lspConfig;
     if (ref.read(useLsp)) {
       final type = ref.read(lspType);
-      if (type == LspType.webScoket) {
+      if (type == LspType.webSocket) {
         lspConfig = LspSocketConfig(
           workspacePath: projectPath,
           languageId: "python",
-          serverUrl: "ws://${ref.read(lspWebScoketPath)}",
+          serverUrl: "ws://${ref.read(lspWebSocketPath)}",
           disableWarning: ref.read(disableWarning),
           disableError: ref.read(disableError),
         );

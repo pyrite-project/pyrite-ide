@@ -30,7 +30,7 @@ class SettingsPersistedData {
     required this.editorWordWrap,
     required this.editorLineNumber,
     required this.useLsp,
-    this.lspType = 'webScoket',
+    this.lspType = 'web_socket',
     required this.lspWebSocketPath,
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '--stdio',
@@ -75,7 +75,7 @@ class SettingsPersistedData {
         editorWordWrap: json['editorWordWrap'] as bool? ?? false,
         editorLineNumber: json['editorLineNumber'] as bool? ?? true,
         useLsp: json['useLsp'] as bool? ?? true,
-        lspType: json['lspType'] as String? ?? 'webScoket',
+        lspType: json['lspType'] as String? ?? 'web_socket',
         lspWebSocketPath:
             json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
         lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',

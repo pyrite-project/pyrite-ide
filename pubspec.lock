@@ -1539,7 +1539,7 @@ packages:
     source: hosted
     version: "0.3.6+6"
   tolyui_message:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: tolyui_message
       sha256: "3811b9666d90d0088c35cacfe77ef990ed6019f801000d0e39ed8f500817b3bf"

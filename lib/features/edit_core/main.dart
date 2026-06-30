@@ -20,10 +20,12 @@ import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
+import 'package:tolyui_message/tolyui_message.dart';
 import 'package:re_highlight/languages/python.dart';
 
 class EditCore extends ConsumerStatefulWidget {
@@ -226,13 +228,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
           .writeFile(pending.targetPath, currentContent);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("已上传到设备：${pending.targetPath}")));
+      $message.attach(context);
+      $message.success(message: "已上传到设备：${pending.targetPath}");
     } catch (_) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("上传失败")));
+      $message.attach(context);
+      $message.error(message: "上传失败");
     } finally {
       ref.read(pendingUploadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -254,13 +254,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
           .getSelectedController()
           ?.clearGitDiffDecorations();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("已下载到本地：${pending.localPath}")));
+      $message.attach(context);
+      $message.success(message: "已下载到本地：${pending.localPath}");
     } catch (_) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("下载失败")));
+      $message.attach(context);
+      $message.error(message: "下载失败");
     } finally {
       ref.read(pendingDownloadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -289,16 +287,11 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   showEditorSnackBar(context, "正在运行：${controller.openedFile}");
 }
 
-void showEditorSnackBar(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-}
-
 Future saveFile(BuildContext context, WidgetRef ref, {quiet = false}) async {
   await ref.read(fileProvider.notifier).saveCurrentFile();
 
   if (!quiet) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+    $message.attach(context);
+    $message.success(message: "已保存当前文件");
   }
 }
