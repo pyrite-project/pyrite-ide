@@ -41,6 +41,13 @@ void customizationEditorTextFont() async {
 StateProvider<double> editorFontSize = StateProvider<double>((ref) => 15);
 StateProvider<bool> editorWordWrap = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);
+StateProvider<bool> editorCodeFolding = StateProvider<bool>((ref) => true);
+StateProvider<bool> editorGuideLines = StateProvider<bool>((ref) => true);
+StateProvider<bool> editorLocalSuggestions = StateProvider<bool>((ref) => false);
+StateProvider<bool> editorKeyboardSuggestions = StateProvider<bool>((ref) => true);
+StateProvider<bool> editorUseSpaceAsTab = StateProvider<bool>((ref) => true);
+StateProvider<int> editorTabSize = StateProvider<int>((ref) => 4);
+StateProvider<bool> editorGutterDivider = StateProvider<bool>((ref) => false);
 
 StateProvider<bool> useLsp = StateProvider<bool>((ref) => true);
 StateProvider<LspType> lspType = StateProvider<LspType>(
@@ -57,12 +64,28 @@ StateProvider<String> lspStdioArgs = StateProvider<String>(
 );
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspCodeCompletion = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspHoverInfo = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspCodeAction = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspSignatureHelp = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspDocumentColor = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspDocumentHighlight = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspCodeFolding = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspInlayHint = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspGoToDefinition = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspRename = StateProvider<bool>((ref) => true);
 
 StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
   (ref) => true,
 );
 
 StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
+StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
+StateProvider<bool> serialAutoReconnect = StateProvider<bool>((ref) => false);
+StateProvider<String> terminalFontFamily = StateProvider<String>((ref) => "JetBrains Mono");
+StateProvider<double> terminalFontSize = StateProvider<double>((ref) => 13);
+StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);
 
 const Map<String, String> uploadConfirmStyles = {
   "浮动工具栏": "toolbar",

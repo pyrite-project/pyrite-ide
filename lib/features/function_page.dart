@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
@@ -693,21 +694,23 @@ class ReplView extends ConsumerWidget {
       repl,
       controller: replController,
       theme: terminalTheme,
+      textStyle: buildTerminalStyle(ref),
       key: ValueKey('repl_${surface.toARGB32()}'),
     );
   }
 }
 
-class OutputLogView extends StatelessWidget {
+class OutputLogView extends ConsumerWidget {
   const OutputLogView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final surface = Theme.of(context).colorScheme.surface;
     return TerminalView(
       ideOutputTerminal,
       controller: ideOutputController,
       theme: buildTerminalTheme(context),
+      textStyle: buildTerminalStyle(ref),
       key: ValueKey('output_${surface.toARGB32()}'),
     );
   }
@@ -764,6 +767,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                   session.terminal,
                   controller: session.controller,
                   theme: buildTerminalTheme(context),
+                  textStyle: buildTerminalStyle(ref),
                   key: ValueKey('terminal_${session.id}_${scheme.surface.toARGB32()}'),
                 ),
         ),
@@ -883,6 +887,14 @@ TerminalTheme buildTerminalTheme(BuildContext context) {
     searchHitBackground: defaultTheme.searchHitBackground,
     searchHitBackgroundCurrent: defaultTheme.searchHitBackgroundCurrent,
     searchHitForeground: defaultTheme.searchHitForeground,
+  );
+}
+
+TerminalStyle buildTerminalStyle(WidgetRef ref) {
+  return TerminalStyle(
+    fontSize: ref.watch(terminalFontSize),
+    height: ref.watch(terminalLineHeight),
+    fontFamily: editorTextFonts[ref.watch(terminalFontFamily)] ?? 'monospace',
   );
 }
 

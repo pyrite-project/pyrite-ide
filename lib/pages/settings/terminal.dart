@@ -24,11 +24,6 @@ class TerminalSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final serialProvider = Platform.isAndroid
-        ? androidUsbSerialProvider
-        : desktopUsbSerialProvider;
-    final serialState = ref.watch(serialProvider) as dynamic;
-
     final body = ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -39,20 +34,21 @@ class TerminalSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.speed),
               title: const Text("波特率"),
-              subtitle: Text("${serialState.baudRate} baud"),
+              subtitle: Text("${ref.watch(serialDefaultBaudRate)} baud"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showBaudRateDialog(
                 context,
                 ref,
-                serialState.baudRate as int,
+                ref.read(serialDefaultBaudRate),
               ),
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("自动重连"),
               subtitle: const Text("断开后自动尝试重新连接"),
-              value: serialState.autoReconnect as bool,
+              value: ref.watch(serialAutoReconnect),
               onChanged: (value) {
+                ref.read(serialAutoReconnect.notifier).state = value;
                 if (Platform.isAndroid) {
                   ref
                       .read(androidUsbSerialProvider.notifier)
@@ -81,6 +77,53 @@ class TerminalSettings extends ConsumerWidget {
               onChanged: (value) {
                 ref.read(chineseToUnicodeConversion.notifier).state = value;
               },
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: "终端显示",
+          description: "影响 REPL、输出和桌面终端的字体呈现。",
+          children: [
+            ListTile(
+              leading: const Icon(Icons.font_download_outlined),
+              title: const Text("字体"),
+              subtitle: Text(ref.watch(terminalFontFamily)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showTerminalFontDialog(context, ref),
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.format_size),
+              title: const Text("字体大小"),
+              subtitle: Text("${ref.watch(terminalFontSize).toStringAsFixed(0)} px"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showDoubleSliderDialog(
+                context,
+                title: "终端字体大小",
+                value: ref.read(terminalFontSize),
+                min: 10,
+                max: 24,
+                divisions: 14,
+                label: (value) => value.toStringAsFixed(0),
+                onChanged: (value) => ref.read(terminalFontSize.notifier).state = value,
+              ),
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.format_line_spacing),
+              title: const Text("行高"),
+              subtitle: Text(ref.watch(terminalLineHeight).toStringAsFixed(1)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showDoubleSliderDialog(
+                context,
+                title: "终端行高",
+                value: ref.read(terminalLineHeight),
+                min: 1.0,
+                max: 1.8,
+                divisions: 8,
+                label: (value) => value.toStringAsFixed(1),
+                onChanged: (value) => ref.read(terminalLineHeight.notifier).state = value,
+              ),
             ),
           ],
         ),
@@ -173,11 +216,70 @@ class TerminalSettings extends ConsumerWidget {
                 } else {
                   ref.read(desktopUsbSerialProvider.notifier).setBaudRate(rate);
                 }
+                ref.read(serialDefaultBaudRate.notifier).state = rate;
                 Navigator.pop(context);
               },
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  void _showTerminalFontDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text("选择终端字体"),
+        children: editorTextFonts.keys.map((name) {
+          final selected = ref.read(terminalFontFamily) == name;
+          return SimpleDialogOption(
+            child: ListTile(
+              title: Text(name),
+              trailing: selected ? const Icon(Icons.check) : null,
+              minTileHeight: 0,
+              onTap: () {
+                ref.read(terminalFontFamily.notifier).state = name;
+                Navigator.pop(context);
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _showDoubleSliderDialog(
+    BuildContext context, {
+    required String title,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required String Function(double) label,
+    required ValueChanged<double> onChanged,
+  }) {
+    var current = value;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(title),
+          content: Slider(
+            min: min,
+            max: max,
+            divisions: divisions,
+            value: current,
+            label: label(current),
+            onChanged: (value) {
+              setState(() => current = value);
+              onChanged(value);
+            },
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text("完成")),
+          ],
+        ),
       ),
     );
   }

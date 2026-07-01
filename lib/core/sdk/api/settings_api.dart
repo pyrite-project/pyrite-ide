@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 abstract class SdkSettingsCommands {
@@ -55,6 +59,13 @@ class SettingsRegistry {
       getter: (ref) => ref.read(editorLineNumber),
       setter: (ref, v) => ref.read(editorLineNumber.notifier).state = v == true,
     ),
+    _SettingEntry(name: 'editor.code_folding', type: 'bool', provider: editorCodeFolding, getter: (ref) => ref.read(editorCodeFolding), setter: (ref, v) => ref.read(editorCodeFolding.notifier).state = v == true),
+    _SettingEntry(name: 'editor.guide_lines', type: 'bool', provider: editorGuideLines, getter: (ref) => ref.read(editorGuideLines), setter: (ref, v) => ref.read(editorGuideLines.notifier).state = v == true),
+    _SettingEntry(name: 'editor.local_suggestions', type: 'bool', provider: editorLocalSuggestions, getter: (ref) => ref.read(editorLocalSuggestions), setter: (ref, v) => ref.read(editorLocalSuggestions.notifier).state = v == true),
+    _SettingEntry(name: 'editor.keyboard_suggestions', type: 'bool', provider: editorKeyboardSuggestions, getter: (ref) => ref.read(editorKeyboardSuggestions), setter: (ref, v) => ref.read(editorKeyboardSuggestions.notifier).state = v == true),
+    _SettingEntry(name: 'editor.use_space_as_tab', type: 'bool', provider: editorUseSpaceAsTab, getter: (ref) => ref.read(editorUseSpaceAsTab), setter: (ref, v) => ref.read(editorUseSpaceAsTab.notifier).state = v == true),
+    _SettingEntry(name: 'editor.tab_size', type: 'int', provider: editorTabSize, getter: (ref) => ref.read(editorTabSize), setter: (ref, v) => ref.read(editorTabSize.notifier).state = (v as num).toInt()),
+    _SettingEntry(name: 'editor.gutter_divider', type: 'bool', provider: editorGutterDivider, getter: (ref) => ref.read(editorGutterDivider), setter: (ref, v) => ref.read(editorGutterDivider.notifier).state = v == true),
     _SettingEntry(
       name: 'lsp.enabled',
       type: 'bool',
@@ -107,6 +118,17 @@ class SettingsRegistry {
       getter: (ref) => ref.read(disableError),
       setter: (ref, v) => ref.read(disableError.notifier).state = v == true,
     ),
+    _SettingEntry(name: 'lsp.semantic_highlighting', type: 'bool', provider: lspSemanticHighlighting, getter: (ref) => ref.read(lspSemanticHighlighting), setter: (ref, v) => ref.read(lspSemanticHighlighting.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.code_completion', type: 'bool', provider: lspCodeCompletion, getter: (ref) => ref.read(lspCodeCompletion), setter: (ref, v) => ref.read(lspCodeCompletion.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.hover_info', type: 'bool', provider: lspHoverInfo, getter: (ref) => ref.read(lspHoverInfo), setter: (ref, v) => ref.read(lspHoverInfo.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.code_action', type: 'bool', provider: lspCodeAction, getter: (ref) => ref.read(lspCodeAction), setter: (ref, v) => ref.read(lspCodeAction.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.signature_help', type: 'bool', provider: lspSignatureHelp, getter: (ref) => ref.read(lspSignatureHelp), setter: (ref, v) => ref.read(lspSignatureHelp.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.document_color', type: 'bool', provider: lspDocumentColor, getter: (ref) => ref.read(lspDocumentColor), setter: (ref, v) => ref.read(lspDocumentColor.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.document_highlight', type: 'bool', provider: lspDocumentHighlight, getter: (ref) => ref.read(lspDocumentHighlight), setter: (ref, v) => ref.read(lspDocumentHighlight.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.code_folding', type: 'bool', provider: lspCodeFolding, getter: (ref) => ref.read(lspCodeFolding), setter: (ref, v) => ref.read(lspCodeFolding.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.inlay_hint', type: 'bool', provider: lspInlayHint, getter: (ref) => ref.read(lspInlayHint), setter: (ref, v) => ref.read(lspInlayHint.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.go_to_definition', type: 'bool', provider: lspGoToDefinition, getter: (ref) => ref.read(lspGoToDefinition), setter: (ref, v) => ref.read(lspGoToDefinition.notifier).state = v == true),
+    _SettingEntry(name: 'lsp.rename', type: 'bool', provider: lspRename, getter: (ref) => ref.read(lspRename), setter: (ref, v) => ref.read(lspRename.notifier).state = v == true),
     _SettingEntry(
       name: 'editor.chinese_to_unicode',
       type: 'bool',
@@ -163,6 +185,27 @@ class SettingsRegistry {
       getter: (ref) => ref.read(webReplPassword),
       setter: (ref, v) => ref.read(webReplPassword.notifier).state = v.toString(),
     ),
+    _SettingEntry(name: 'serial.default_baud_rate', type: 'int', provider: serialDefaultBaudRate, getter: (ref) => ref.read(serialDefaultBaudRate), setter: (ref, v) {
+      final value = (v as num).toInt();
+      ref.read(serialDefaultBaudRate.notifier).state = value;
+      if (Platform.isAndroid) {
+        ref.read(androidUsbSerialProvider.notifier).setBaudRate(value);
+      } else {
+        ref.read(desktopUsbSerialProvider.notifier).setBaudRate(value);
+      }
+    }),
+    _SettingEntry(name: 'serial.auto_reconnect', type: 'bool', provider: serialAutoReconnect, getter: (ref) => ref.read(serialAutoReconnect), setter: (ref, v) {
+      final value = v == true;
+      ref.read(serialAutoReconnect.notifier).state = value;
+      if (Platform.isAndroid) {
+        ref.read(androidUsbSerialProvider.notifier).setAutoReconnect(value);
+      } else {
+        ref.read(desktopUsbSerialProvider.notifier).setAutoReconnect(value);
+      }
+    }),
+    _SettingEntry(name: 'terminal.font_family', type: 'string', provider: terminalFontFamily, getter: (ref) => ref.read(terminalFontFamily), setter: (ref, v) => ref.read(terminalFontFamily.notifier).state = v.toString()),
+    _SettingEntry(name: 'terminal.font_size', type: 'double', provider: terminalFontSize, getter: (ref) => ref.read(terminalFontSize), setter: (ref, v) => ref.read(terminalFontSize.notifier).state = (v as num).toDouble()),
+    _SettingEntry(name: 'terminal.line_height', type: 'double', provider: terminalLineHeight, getter: (ref) => ref.read(terminalLineHeight), setter: (ref, v) => ref.read(terminalLineHeight.notifier).state = (v as num).toDouble()),
   ];
 
   static final Map<String, _SettingEntry> _byName = {

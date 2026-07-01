@@ -11,13 +11,6 @@ class EditorControllerMapNotifier
   final Ref ref;
   EditorControllerMapNotifier(this.ref) : super({});
 
-  static const _pythonLspCapabilities = LspClientCapabilities(
-    semanticHighlighting: false,
-    documentColor: false,
-    codeFolding: false,
-    inlayHint: false,
-  );
-
   Future<CodeForgeController?> createNewEditorController(
     File file, {
     String? initialText,
@@ -45,12 +38,25 @@ class EditorControllerMapNotifier
     LspConfig? lspConfig;
     if (ref.read(useLsp)) {
       final type = ref.read(lspType);
+      final capabilities = LspClientCapabilities(
+        semanticHighlighting: ref.read(lspSemanticHighlighting),
+        codeCompletion: ref.read(lspCodeCompletion),
+        hoverInfo: ref.read(lspHoverInfo),
+        codeAction: ref.read(lspCodeAction),
+        signatureHelp: ref.read(lspSignatureHelp),
+        documentColor: ref.read(lspDocumentColor),
+        documentHighlight: ref.read(lspDocumentHighlight),
+        codeFolding: ref.read(lspCodeFolding),
+        inlayHint: ref.read(lspInlayHint),
+        goToDefinition: ref.read(lspGoToDefinition),
+        rename: ref.read(lspRename),
+      );
       if (type == LspType.webSocket) {
         lspConfig = LspSocketConfig(
           workspacePath: projectPath,
           languageId: "python",
           serverUrl: "ws://${ref.read(lspWebSocketPath)}",
-          capabilities: _pythonLspCapabilities,
+          capabilities: capabilities,
           disableWarning: ref.read(disableWarning),
           disableError: ref.read(disableError),
         );
@@ -68,7 +74,7 @@ class EditorControllerMapNotifier
               args: args,
               workspacePath: projectPath,
               languageId: "python",
-              capabilities: _pythonLspCapabilities,
+              capabilities: capabilities,
               disableWarning: ref.read(disableWarning),
               disableError: ref.read(disableError),
             );

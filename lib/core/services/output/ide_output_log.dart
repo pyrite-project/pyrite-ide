@@ -26,7 +26,7 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
       source: source,
       message: message,
     );
-    ideOutputTerminal.write('${_formatEntry(entry)}\r\n');
+    ideOutputTerminal.write(_formatEntry(entry));
     final next = [
       ...state,
       entry,
@@ -46,7 +46,13 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
     final stamp = '${time.hour.toString().padLeft(2, '0')}:'
         '${time.minute.toString().padLeft(2, '0')}:'
         '${time.second.toString().padLeft(2, '0')}';
-    return '[$stamp] [${_sourceLabel(entry.source)}] ${entry.message}';
+    final prefix = '[$stamp] [${_sourceLabel(entry.source)}] ';
+    final normalized = entry.message.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final lines = normalized.split('\n');
+    return '${[
+      '$prefix${lines.first}',
+      for (final line in lines.skip(1)) '${' ' * prefix.length}$line',
+    ].join('\r\n')}\r\n';
   }
 
   String _sourceLabel(IdeOutputSource source) {

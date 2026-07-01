@@ -8,6 +8,13 @@ class SettingsPersistedData {
   final double editorFontSize;
   final bool editorWordWrap;
   final bool editorLineNumber;
+  final bool editorCodeFolding;
+  final bool editorGuideLines;
+  final bool editorLocalSuggestions;
+  final bool editorKeyboardSuggestions;
+  final bool editorUseSpaceAsTab;
+  final int editorTabSize;
+  final bool editorGutterDivider;
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
@@ -15,8 +22,24 @@ class SettingsPersistedData {
   final String lspStdioArgs;
   final bool disableWarning;
   final bool disableError;
+  final bool lspSemanticHighlighting;
+  final bool lspCodeCompletion;
+  final bool lspHoverInfo;
+  final bool lspCodeAction;
+  final bool lspSignatureHelp;
+  final bool lspDocumentColor;
+  final bool lspDocumentHighlight;
+  final bool lspCodeFolding;
+  final bool lspInlayHint;
+  final bool lspGoToDefinition;
+  final bool lspRename;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
+  final int serialDefaultBaudRate;
+  final bool serialAutoReconnect;
+  final String terminalFontFamily;
+  final double terminalFontSize;
+  final double terminalLineHeight;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -29,6 +52,13 @@ class SettingsPersistedData {
     required this.editorFontSize,
     required this.editorWordWrap,
     required this.editorLineNumber,
+    this.editorCodeFolding = true,
+    this.editorGuideLines = true,
+    this.editorLocalSuggestions = false,
+    this.editorKeyboardSuggestions = true,
+    this.editorUseSpaceAsTab = true,
+    this.editorTabSize = 4,
+    this.editorGutterDivider = false,
     required this.useLsp,
     this.lspType = 'web_socket',
     required this.lspWebSocketPath,
@@ -36,8 +66,24 @@ class SettingsPersistedData {
     this.lspStdioArgs = '--stdio',
     required this.disableWarning,
     required this.disableError,
+    this.lspSemanticHighlighting = false,
+    this.lspCodeCompletion = true,
+    this.lspHoverInfo = true,
+    this.lspCodeAction = true,
+    this.lspSignatureHelp = true,
+    this.lspDocumentColor = false,
+    this.lspDocumentHighlight = true,
+    this.lspCodeFolding = false,
+    this.lspInlayHint = false,
+    this.lspGoToDefinition = true,
+    this.lspRename = true,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
+    this.serialDefaultBaudRate = 115200,
+    this.serialAutoReconnect = false,
+    this.terminalFontFamily = 'JetBrains Mono',
+    this.terminalFontSize = 13,
+    this.terminalLineHeight = 1.2,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
@@ -51,6 +97,13 @@ class SettingsPersistedData {
     'editorFontSize': editorFontSize,
     'editorWordWrap': editorWordWrap,
     'editorLineNumber': editorLineNumber,
+    'editorCodeFolding': editorCodeFolding,
+    'editorGuideLines': editorGuideLines,
+    'editorLocalSuggestions': editorLocalSuggestions,
+    'editorKeyboardSuggestions': editorKeyboardSuggestions,
+    'editorUseSpaceAsTab': editorUseSpaceAsTab,
+    'editorTabSize': editorTabSize,
+    'editorGutterDivider': editorGutterDivider,
     'useLsp': useLsp,
     'lspType': lspType,
     'lspWebSocketPath': lspWebSocketPath,
@@ -58,8 +111,24 @@ class SettingsPersistedData {
     'lspStdioArgs': lspStdioArgs,
     'disableWarning': disableWarning,
     'disableError': disableError,
+    'lspSemanticHighlighting': lspSemanticHighlighting,
+    'lspCodeCompletion': lspCodeCompletion,
+    'lspHoverInfo': lspHoverInfo,
+    'lspCodeAction': lspCodeAction,
+    'lspSignatureHelp': lspSignatureHelp,
+    'lspDocumentColor': lspDocumentColor,
+    'lspDocumentHighlight': lspDocumentHighlight,
+    'lspCodeFolding': lspCodeFolding,
+    'lspInlayHint': lspInlayHint,
+    'lspGoToDefinition': lspGoToDefinition,
+    'lspRename': lspRename,
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
+    'serialDefaultBaudRate': serialDefaultBaudRate,
+    'serialAutoReconnect': serialAutoReconnect,
+    'terminalFontFamily': terminalFontFamily,
+    'terminalFontSize': terminalFontSize,
+    'terminalLineHeight': terminalLineHeight,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
@@ -74,6 +143,13 @@ class SettingsPersistedData {
         editorFontSize: (json['editorFontSize'] as num?)?.toDouble() ?? 15,
         editorWordWrap: json['editorWordWrap'] as bool? ?? false,
         editorLineNumber: json['editorLineNumber'] as bool? ?? true,
+        editorCodeFolding: json['editorCodeFolding'] as bool? ?? true,
+        editorGuideLines: json['editorGuideLines'] as bool? ?? true,
+        editorLocalSuggestions: json['editorLocalSuggestions'] as bool? ?? false,
+        editorKeyboardSuggestions: json['editorKeyboardSuggestions'] as bool? ?? true,
+        editorUseSpaceAsTab: json['editorUseSpaceAsTab'] as bool? ?? true,
+        editorTabSize: json['editorTabSize'] as int? ?? 4,
+        editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
         useLsp: json['useLsp'] as bool? ?? true,
         lspType: json['lspType'] as String? ?? 'web_socket',
         lspWebSocketPath:
@@ -82,10 +158,26 @@ class SettingsPersistedData {
         lspStdioArgs: json['lspStdioArgs'] as String? ?? '--stdio',
         disableWarning: json['disableWarning'] as bool? ?? false,
         disableError: json['disableError'] as bool? ?? false,
+        lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? false,
+        lspCodeCompletion: json['lspCodeCompletion'] as bool? ?? true,
+        lspHoverInfo: json['lspHoverInfo'] as bool? ?? true,
+        lspCodeAction: json['lspCodeAction'] as bool? ?? true,
+        lspSignatureHelp: json['lspSignatureHelp'] as bool? ?? true,
+        lspDocumentColor: json['lspDocumentColor'] as bool? ?? false,
+        lspDocumentHighlight: json['lspDocumentHighlight'] as bool? ?? true,
+        lspCodeFolding: json['lspCodeFolding'] as bool? ?? false,
+        lspInlayHint: json['lspInlayHint'] as bool? ?? false,
+        lspGoToDefinition: json['lspGoToDefinition'] as bool? ?? true,
+        lspRename: json['lspRename'] as bool? ?? true,
         chineseToUnicodeConversion:
             json['chineseToUnicodeConversion'] as bool? ?? true,
         enableSignalDetection:
             json['enableSignalDetection'] as bool? ?? true,
+        serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
+        serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
+        terminalFontFamily: json['terminalFontFamily'] as String? ?? 'JetBrains Mono',
+        terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
+        terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
         uploadConfirmStyle:
             json['uploadConfirmStyle'] as String? ?? 'toolbar',
         confirmShortcut:

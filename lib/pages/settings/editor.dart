@@ -107,11 +107,68 @@ class EditorSettings extends ConsumerWidget {
               },
             ),
             const SectionDivider(),
-            const ListTile(
-              leading: Icon(Icons.format_list_numbered),
-              title: Text("显示行号"),
-              subtitle: Text("当前编辑器内核默认显示，暂未开放独立开关"),
-              trailing: PillBadge(label: "内核默认"),
+            SwitchListTile(
+              title: const Text("显示行号"),
+              subtitle: const Text("显示左侧 gutter 行号区域"),
+              value: ref.watch(editorLineNumber),
+              onChanged: (value) => ref.read(editorLineNumber.notifier).state = value,
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("显示 gutter 分隔线"),
+              subtitle: const Text("在行号区域和代码之间显示分隔线"),
+              value: ref.watch(editorGutterDivider),
+              onChanged: (value) => ref.read(editorGutterDivider.notifier).state = value,
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("代码折叠"),
+              subtitle: const Text("显示折叠图标并允许折叠代码块"),
+              value: ref.watch(editorCodeFolding),
+              onChanged: (value) => ref.read(editorCodeFolding.notifier).state = value,
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("缩进参考线"),
+              subtitle: const Text("显示每级缩进的纵向参考线"),
+              value: ref.watch(editorGuideLines),
+              onChanged: (value) => ref.read(editorGuideLines.notifier).state = value,
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("本地补全"),
+              subtitle: const Text("启用非 LSP 的本地补全建议，较大文件可能有额外开销"),
+              value: ref.watch(editorLocalSuggestions),
+              onChanged: (value) => ref.read(editorLocalSuggestions.notifier).state = value,
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("键盘补全建议"),
+              subtitle: const Text("允许系统虚拟键盘显示输入建议"),
+              value: ref.watch(editorKeyboardSuggestions),
+              onChanged: (value) => ref.read(editorKeyboardSuggestions.notifier).state = value,
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("Tab 输入空格"),
+              subtitle: const Text("按 Tab 时插入空格而不是制表符"),
+              value: ref.watch(editorUseSpaceAsTab),
+              onChanged: (value) => ref.read(editorUseSpaceAsTab.notifier).state = value,
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.keyboard_tab),
+              title: const Text("Tab 大小"),
+              subtitle: Text("${ref.watch(editorTabSize)} 个字符"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showIntSliderDialog(
+                context,
+                title: "Tab 大小",
+                value: ref.read(editorTabSize),
+                min: 1,
+                max: 8,
+                onChanged: (value) => ref.read(editorTabSize.notifier).state = value,
+              ),
             ),
           ],
         ),
@@ -121,6 +178,41 @@ class EditorSettings extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("编辑器设置")),
       body: body,
+    );
+  }
+
+  void showIntSliderDialog(
+    BuildContext context, {
+    required String title,
+    required int value,
+    required int min,
+    required int max,
+    required ValueChanged<int> onChanged,
+  }) async {
+    var current = value;
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(title),
+            content: Slider(
+              min: min.toDouble(),
+              max: max.toDouble(),
+              divisions: max - min,
+              value: current.toDouble(),
+              label: current.toString(),
+              onChanged: (next) {
+                setState(() => current = next.round());
+                onChanged(current);
+              },
+            ),
+            actions: [
+              FilledButton(onPressed: () => context.pop(), child: const Text("完成")),
+            ],
+          );
+        },
+      ),
     );
   }
 

@@ -126,6 +126,33 @@ class LspSettings extends ConsumerWidget {
             ),
           ],
         ),
+        SettingsSection(
+          title: "LSP 功能",
+          description: "控制 CodeForge 向语言服务器声明和使用的能力。设置会在新打开的编辑器标签页中生效。",
+          children: [
+            _CapabilitySwitch(title: "语义高亮", provider: lspSemanticHighlighting),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "代码补全", provider: lspCodeCompletion),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "悬浮提示", provider: lspHoverInfo),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "代码操作", provider: lspCodeAction),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "签名帮助", provider: lspSignatureHelp),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "文档颜色", provider: lspDocumentColor),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "文档高亮", provider: lspDocumentHighlight),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "代码折叠", provider: lspCodeFolding),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "内联提示", provider: lspInlayHint),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "跳转定义", provider: lspGoToDefinition),
+            const SectionDivider(),
+            _CapabilitySwitch(title: "重命名符号", provider: lspRename),
+          ],
+        ),
       ],
     );
 
@@ -184,6 +211,22 @@ class LspSettings extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CapabilitySwitch extends ConsumerWidget {
+  const _CapabilitySwitch({required this.title, required this.provider});
+
+  final String title;
+  final StateProvider<bool> provider;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SwitchListTile(
+      title: Text(title),
+      value: ref.watch(provider),
+      onChanged: (value) => ref.read(provider.notifier).state = value,
     );
   }
 }

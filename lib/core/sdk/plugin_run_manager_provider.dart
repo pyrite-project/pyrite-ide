@@ -32,69 +32,73 @@ class PluginRunManagerNotifier
 
   Future<void> start(Plugin plugin) async {
     if (state.containsKey(plugin)) return;
+    final outputLog = ref.read(ideOutputLogProvider.notifier);
 
-    final Directory root = await getApplicationSupportDirectory();
-    final Directory target = await Directory(
-      path.join(root.path, "plugin", plugin.id),
-    ).create(recursive: true);
+    try {
+      final Directory root = await getApplicationSupportDirectory();
+      final Directory target = await Directory(
+        path.join(root.path, "plugin", plugin.id),
+      ).create(recursive: true);
 
-    Directory.current = target.path;
-    final int port = await freePort();
-    final String runtimeModulePaths = [
-      path.join(target.path, "__pypackages__"),
-      path.join(target.path, "site-packages"),
-    ].map(escapeForPythonString).join("::");
+      Directory.current = target.path;
+      final int port = await freePort();
+      final String runtimeModulePaths = [
+        path.join(target.path, "__pypackages__"),
+        path.join(target.path, "site-packages"),
+      ].map(escapeForPythonString).join("::");
 
-    await SeriousPython.run(
-      "assets/python_runtime_boot.zip",
-      appFileName: "setup_sys_path.py",
-      environmentVariables: {
-        "RUNTIME_MODULE_PATHS": runtimeModulePaths,
-        "RUNTIME_REPLACE_MODULE_PATHS": "1",
-      },
-    );
+      await SeriousPython.run(
+        "assets/python_runtime_boot.zip",
+        appFileName: "setup_sys_path.py",
+        environmentVariables: {
+          "RUNTIME_MODULE_PATHS": runtimeModulePaths,
+          "RUNTIME_REPLACE_MODULE_PATHS": "1",
+        },
+      );
 
-    final PluginRunManager runManager = PluginRunManager(
-      port: port,
-      assetsPath: target.path,
-      pluginId: plugin.id,
-      pluginPermissions: plugin.permissions,
-      permissionLog: ref.read(permissionLogServiceProvider),
-      onOutput: (message) => ref
-          .read(ideOutputLogProvider.notifier)
-          .add(IdeOutputSource.plugin, message),
-    );
-    ref
-        .read(ideOutputLogProvider.notifier)
-        .add(IdeOutputSource.plugin, '[${plugin.id}] starting');
-    runManager.onDataChanged = () {
-      state = {...state};
-    };
-    ref.read(sdkFileProvider.notifier).bind(runManager);
-    ref.read(sdkBoardProvider.notifier).bind(runManager);
-    ref.read(sdkEditorProvider.notifier).bind(runManager);
-    ref.read(sdkPersistenceProvider.notifier).bind(runManager);
-    ref.read(sdkTabProvider.notifier).bind(runManager);
-    ref.read(sdkSettingsProvider.notifier).bind(runManager);
-    ref.read(sdkDataApiProvider.notifier).bind(runManager);
-    ref.read(sdkSerialProvider.notifier).bind(runManager);
-    state = {...state, plugin: runManager};
+      final PluginRunManager runManager = PluginRunManager(
+        port: port,
+        assetsPath: target.path,
+        pluginId: plugin.id,
+        pluginPermissions: plugin.permissions,
+        permissionLog: ref.read(permissionLogServiceProvider),
+        onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
+      );
+      outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting');
+      runManager.onDataChanged = () {
+        state = {...state};
+      };
+      ref.read(sdkFileProvider.notifier).bind(runManager);
+      ref.read(sdkBoardProvider.notifier).bind(runManager);
+      ref.read(sdkEditorProvider.notifier).bind(runManager);
+      ref.read(sdkPersistenceProvider.notifier).bind(runManager);
+      ref.read(sdkTabProvider.notifier).bind(runManager);
+      ref.read(sdkSettingsProvider.notifier).bind(runManager);
+      ref.read(sdkDataApiProvider.notifier).bind(runManager);
+      ref.read(sdkSerialProvider.notifier).bind(runManager);
+      state = {...state, plugin: runManager};
 
-    // Fire-and-forget: Python script blocks forever with asyncio.run().
-    // On Android sync=false so runProgram returns quickly; on desktop it
-    // blocks but the WS server is the important part.
-    // ignore: unawaited_futures
-    SeriousPython.runProgram(
-      path.join(target.path, "__main__.py"),
-      script: Platform.isWindows ? "" : null,
-      environmentVariables: {
-        "PYRITE_IDE_PLUGIN_PORT": "$port",
-        "PYRITE_IDE_PLUGIN_ID": plugin.id,
-        "PYTHONUNBUFFERED": "1",
-      },
-    );
+      // Fire-and-forget: Python script blocks forever with asyncio.run().
+      // On Android sync=false so runProgram returns quickly; on desktop it
+      // blocks but the WS server is the important part.
+      // ignore: unawaited_futures
+      SeriousPython.runProgram(
+        path.join(target.path, "__main__.py"),
+        script: Platform.isWindows ? "" : null,
+        environmentVariables: {
+          "PYRITE_IDE_PLUGIN_PORT": "$port",
+          "PYRITE_IDE_PLUGIN_ID": plugin.id,
+          "PYTHONUNBUFFERED": "1",
+        },
+      );
 
-    await runManager.sendLifecycleHook(LifecycleHook.start.value);
+      await runManager.sendLifecycleHook(LifecycleHook.start.value);
+    } catch (error, stack) {
+      outputLog.add(
+        IdeOutputSource.plugin,
+        '[${plugin.id}] failed to start: $error\n$stack',
+      );
+    }
   }
 
   Future<void> stop(Plugin plugin) async {

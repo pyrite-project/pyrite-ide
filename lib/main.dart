@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,8 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
@@ -46,6 +49,22 @@ void _installIdeOutputLogger() {
         .add(IdeOutputSource.ide, text);
     _defaultDebugPrint?.call(message, wrapWidth: wrapWidth);
   };
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    final message = details.exceptionAsString();
+    final stack = details.stack?.toString();
+    container
+        .read(ideOutputLogProvider.notifier)
+        .add(IdeOutputSource.ide, '$message${stack == null ? '' : '\n$stack'}');
+    FlutterError.presentError(details);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    container
+        .read(ideOutputLogProvider.notifier)
+        .add(IdeOutputSource.ide, 'Unhandled exception: $error\n$stack');
+    return false;
+  };
 }
 
 void _applyData(PersistedData data) {
@@ -70,6 +89,13 @@ void _applyData(PersistedData data) {
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
   container.read(editorLineNumber.notifier).state = data.editorLineNumber;
+  container.read(editorCodeFolding.notifier).state = data.editorCodeFolding;
+  container.read(editorGuideLines.notifier).state = data.editorGuideLines;
+  container.read(editorLocalSuggestions.notifier).state = data.editorLocalSuggestions;
+  container.read(editorKeyboardSuggestions.notifier).state = data.editorKeyboardSuggestions;
+  container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
+  container.read(editorTabSize.notifier).state = data.editorTabSize;
+  container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
   container.read(useLsp.notifier).state = data.useLsp;
   container.read(lspType.notifier).state =
       LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
@@ -78,6 +104,17 @@ void _applyData(PersistedData data) {
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(disableWarning.notifier).state = data.disableWarning;
   container.read(disableError.notifier).state = data.disableError;
+  container.read(lspSemanticHighlighting.notifier).state = data.lspSemanticHighlighting;
+  container.read(lspCodeCompletion.notifier).state = data.lspCodeCompletion;
+  container.read(lspHoverInfo.notifier).state = data.lspHoverInfo;
+  container.read(lspCodeAction.notifier).state = data.lspCodeAction;
+  container.read(lspSignatureHelp.notifier).state = data.lspSignatureHelp;
+  container.read(lspDocumentColor.notifier).state = data.lspDocumentColor;
+  container.read(lspDocumentHighlight.notifier).state = data.lspDocumentHighlight;
+  container.read(lspCodeFolding.notifier).state = data.lspCodeFolding;
+  container.read(lspInlayHint.notifier).state = data.lspInlayHint;
+  container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
+  container.read(lspRename.notifier).state = data.lspRename;
   container.read(desktopSelectedIndex.notifier).state =
       data.desktopSelectedIndex;
   container.read(mobileSelectedIndex.notifier).state = data.mobileSelectedIndex;
@@ -87,6 +124,15 @@ void _applyData(PersistedData data) {
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
+  container.read(serialDefaultBaudRate.notifier).state = data.serialDefaultBaudRate;
+  container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
+  container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
+  container.read(terminalFontSize.notifier).state = data.terminalFontSize;
+  container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
+  container.read(androidUsbSerialProvider.notifier).setBaudRate(data.serialDefaultBaudRate);
+  container.read(androidUsbSerialProvider.notifier).setAutoReconnect(data.serialAutoReconnect);
+  container.read(desktopUsbSerialProvider.notifier).setBaudRate(data.serialDefaultBaudRate);
+  container.read(desktopUsbSerialProvider.notifier).setAutoReconnect(data.serialAutoReconnect);
   container.read(uploadConfirmStyleProvider.notifier).state =
       data.uploadConfirmStyle;
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
