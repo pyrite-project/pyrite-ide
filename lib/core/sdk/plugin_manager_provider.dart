@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -137,7 +138,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         await dir.delete(recursive: true);
       }
     } catch (e) {
-      print('PluginManager: Failed to delete plugin dir: $e');
+      debugPrint('PluginManager: Failed to delete plugin dir: $e');
     }
 
     state = {...state}..remove(pluginId);

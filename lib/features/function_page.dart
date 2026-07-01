@@ -41,28 +41,17 @@ class ConsolePage extends ConsumerWidget {
     final webReplConnected = webReplState.state == WebReplState.connected;
     final useWebRepl = webReplConnected || webReplState.state == WebReplState.waitingPassword;
     final selectedTab = ref.watch(bottomPanelTabProvider);
-    final title = switch (selectedTab) {
-      1 => '输出',
-      2 => '终端',
-      _ => 'REPL',
-    };
-    final subtitle = switch (selectedTab) {
-      1 => 'IDE 与插件输出',
-      2 => DesktopTerminalView.isSupported ? '桌面 shell 终端' : '当前平台不支持桌面终端',
-      _ => useWebRepl
-          ? 'WiFi WebREPL 连接'
-          : (isConnected ? 'MicroPython 交互式终端' : '连接设备后可输入命令'),
-    };
+    final actions = _buildConsoleActions(
+      ref,
+      selectedTab,
+      isConnected,
+      webReplConnected,
+      useWebRepl,
+    );
 
     return Column(
       children: [
-        PaneHeader(
-          title: title,
-          subtitle: subtitle,
-          leadingIcon: selectedTab == 1 ? Icons.article_outlined : Icons.terminal,
-          actions: _buildConsoleActions(ref, selectedTab, isConnected, webReplConnected, useWebRepl),
-        ),
-        _BottomPanelTabs(selectedIndex: selectedTab),
+        _BottomPanelTabs(selectedIndex: selectedTab, actions: actions),
         Expanded(
           child: IndexedStack(
             index: selectedTab,
@@ -94,15 +83,7 @@ class ConsolePage extends ConsumerWidget {
           ),
         ];
       case 2:
-        return [
-          IconButton(
-            tooltip: '新建终端',
-            onPressed: DesktopTerminalView.isSupported
-                ? () => ref.read(desktopTerminalProvider.notifier).createSession()
-                : null,
-            icon: const Icon(Icons.add),
-          ),
-        ];
+        return const [];
       default:
         return [
             if (!isConnected && !webReplConnected)
@@ -158,9 +139,10 @@ class ConsolePage extends ConsumerWidget {
 }
 
 class _BottomPanelTabs extends ConsumerWidget {
-  const _BottomPanelTabs({required this.selectedIndex});
+  const _BottomPanelTabs({required this.selectedIndex, required this.actions});
 
   final int selectedIndex;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -177,6 +159,32 @@ class _BottomPanelTabs extends ConsumerWidget {
           _BottomPanelTab(label: '输出', icon: Icons.article_outlined, index: 1, selectedIndex: selectedIndex),
           _BottomPanelTab(label: '终端', icon: Icons.terminal_outlined, index: 2, selectedIndex: selectedIndex),
           const Spacer(),
+          if (actions.isNotEmpty) ...[
+            SizedBox(
+              height: 18,
+              child: VerticalDivider(
+                width: 1,
+                color: scheme.outlineVariant,
+              ),
+            ),
+            const SizedBox(width: 4),
+            for (final action in actions)
+              SizedBox.square(
+                dimension: 30,
+                child: IconButtonTheme(
+                  data: const IconButtonThemeData(
+                    style: ButtonStyle(
+                      iconSize: WidgetStatePropertyAll(17),
+                      padding: WidgetStatePropertyAll(EdgeInsets.zero),
+                      minimumSize: WidgetStatePropertyAll(Size.square(30)),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  child: action,
+                ),
+              ),
+            const SizedBox(width: 4),
+          ],
         ],
       ),
     );
@@ -690,52 +698,18 @@ class ReplView extends ConsumerWidget {
   }
 }
 
-class OutputLogView extends ConsumerWidget {
+class OutputLogView extends StatelessWidget {
   const OutputLogView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final entries = ref.watch(ideOutputLogProvider);
-    final scheme = Theme.of(context).colorScheme;
-    if (entries.isEmpty) {
-      return Center(
-        child: Text(
-          '暂无输出',
-          style: TextStyle(color: scheme.onSurfaceVariant),
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: entries.length,
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        final time = entry.time;
-        final stamp = '${time.hour.toString().padLeft(2, '0')}:'
-            '${time.minute.toString().padLeft(2, '0')}:'
-            '${time.second.toString().padLeft(2, '0')}';
-        return SelectableText.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: '[$stamp] [${_sourceLabel(entry.source)}] ',
-                style: TextStyle(color: scheme.primary),
-              ),
-              TextSpan(text: entry.message),
-            ],
-          ),
-          style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
-        );
-      },
+  Widget build(BuildContext context) {
+    final surface = Theme.of(context).colorScheme.surface;
+    return TerminalView(
+      ideOutputTerminal,
+      controller: ideOutputController,
+      theme: buildTerminalTheme(context),
+      key: ValueKey('output_${surface.toARGB32()}'),
     );
-  }
-
-  String _sourceLabel(IdeOutputSource source) {
-    return switch (source) {
-      IdeOutputSource.ide => 'IDE',
-      IdeOutputSource.plugin => '插件',
-      IdeOutputSource.terminal => '终端',
-    };
   }
 }
 

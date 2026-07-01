@@ -556,7 +556,7 @@ class _PluginBodyState extends ConsumerState<PluginBody>
         );
         _runtime.update(pagesLibNames[entry.key]!, remoteWidgets);
       } catch (e) {
-        print("Failed to parse RFW for page[${entry.key}]: $e");
+        debugPrint("Failed to parse RFW for page[${entry.key}]: $e");
       }
     }
     setState(() {});

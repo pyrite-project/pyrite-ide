@@ -141,7 +141,7 @@ class EditorControllerMapNotifier
   }
 
   UndoRedoController? getSelectedUndoRedoController() {
-    print(
+    debugPrint(
       ref
           .read(tabbedViewControllerProvider)
           .selectedTab

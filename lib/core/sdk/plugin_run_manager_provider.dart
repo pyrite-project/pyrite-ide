@@ -89,6 +89,7 @@ class PluginRunManagerNotifier
       script: Platform.isWindows ? "" : null,
       environmentVariables: {
         "PYRITE_IDE_PLUGIN_PORT": "$port",
+        "PYRITE_IDE_PLUGIN_ID": plugin.id,
         "PYTHONUNBUFFERED": "1",
       },
     );

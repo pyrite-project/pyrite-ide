@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart' show RustLib;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
@@ -32,6 +34,19 @@ Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
 final UseWindow appWindow = UseWindow();
+DebugPrintCallback? _defaultDebugPrint;
+
+void _installIdeOutputLogger() {
+  if (_defaultDebugPrint != null) return;
+  _defaultDebugPrint = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    final text = message ?? 'null';
+    container
+        .read(ideOutputLogProvider.notifier)
+        .add(IdeOutputSource.ide, text);
+    _defaultDebugPrint?.call(message, wrapWidth: wrapWidth);
+  };
+}
 
 void _applyData(PersistedData data) {
   switch (data.themeMode) {
@@ -119,6 +134,7 @@ void main() async {
   final persistedPlugins = await pluginPersistence.load();
 
   container = ProviderContainer();
+  _installIdeOutputLogger();
 
   _applyData(data);
 

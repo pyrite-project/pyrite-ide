@@ -23,6 +23,7 @@ abstract class IdeCommands {
 }
 
 abstract class SdkCommands {
+  static const String outputAppend = 'sdk.output.append';
   static const String pagePush = 'sdk.page.push';
   static const String varSet = 'sdk.var.set';
   static const String pathRequest = 'sdk.path.request';
@@ -143,6 +144,7 @@ class PluginRunManager {
   // -- Built-in handlers ----------------------------------------------------
 
   void _initBuiltinHandlers() {
+    registerHandler(SdkCommands.outputAppend, _handleOutputAppend);
     registerHandler(SdkCommands.pagePush, _handlePagePush);
     registerHandler(SdkCommands.varSet, _handleVarSet);
     registerHandler(SdkCommands.pathRequest, _handlePathRequest);
@@ -363,9 +365,18 @@ class PluginRunManager {
   void _setupListener() {
     _channel!.stream.listen(
       (message) {
-        onOutput?.call('[$pluginId] <- $message');
         final Map<String, dynamic> envelope = jsonDecode(message as String);
         final type = envelope['type']?.toString() ?? '';
+        if (type != SdkCommands.outputAppend) {
+          onOutput?.call('[$pluginId] <- $message');
+        }
+        if (type == IdeCommands.responseError || type == SdkCommands.responseError) {
+          final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+          final details = payload['details']?.toString();
+          if (details != null && details.isNotEmpty && details != 'null') {
+            onOutput?.call('[$pluginId] error details:\n$details');
+          }
+        }
 
         // Check if this is a reply to a pending request
         final replyTo = envelope['reply_to']?.toString();
@@ -407,8 +418,34 @@ class PluginRunManager {
     if (_channel == null) {
       throw StateError('WebSocket is not connected');
     }
-    onOutput?.call('[$pluginId] -> $message');
+    if (!_isRoutineAck(message)) {
+      onOutput?.call('[$pluginId] -> $message');
+    }
     _channel!.sink.add(message);
+  }
+
+  bool _isRoutineAck(String message) {
+    try {
+      final envelope = jsonDecode(message) as Map<String, dynamic>;
+      return envelope['type'] == SdkCommands.responseOk &&
+          envelope['payload'] is Map &&
+          (envelope['payload'] as Map)['data'] == null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _handleOutputAppend(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final stream = payload['stream']?.toString() ?? 'stdout';
+    final text = payload['text']?.toString() ?? '';
+    final sourcePluginId = payload['plugin_id']?.toString() ?? pluginId;
+    if (text.isNotEmpty) {
+      onOutput?.call('[$sourcePluginId][$stream] $text');
+    }
   }
 
   void sendJson(Map<String, dynamic> envelope) {
