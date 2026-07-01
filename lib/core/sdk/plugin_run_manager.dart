@@ -290,6 +290,9 @@ class PluginRunManager {
 
     String resolvedPath;
     switch (scope) {
+      case 'plugin':
+      case 'assets':
+        resolvedPath = assetsPath;
       case 'data':
         resolvedPath = dataPath;
       case 'cache':
@@ -300,10 +303,14 @@ class PluginRunManager {
         resolvedPath = assetsPath;
     }
 
+    onOutput?.call(
+      '[$pluginId] path request scope=$scope resolved=$resolvedPath',
+    );
+
     respond(
       makeEnvelope(
         type: IdeCommands.responsePath,
-        payload: {'scope': scope, 'path': resolvedPath},
+        payload: {'scope': scope, 'path': resolvedPath, 'plugin_id': pluginId},
         replyTo: envelope['id'],
       ),
     );

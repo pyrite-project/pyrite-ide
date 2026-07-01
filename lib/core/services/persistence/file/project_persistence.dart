@@ -19,7 +19,7 @@ class ProjectPersistence {
 
   Future<File> get _file async {
     final dir = await getApplicationSupportDirectory();
-    final subDir = Directory('${dir.path}/pyrite_ide');
+    final subDir = Directory('${dir.path}/data');
     if (!await subDir.exists()) await subDir.create(recursive: true);
     return File('${subDir.path}/$_fileName');
   }

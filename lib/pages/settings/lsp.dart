@@ -127,6 +127,45 @@ class LspSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
+          title: "MicroPython Stubs",
+          description: "配置 pylsp 等语言服务使用的 MicroPython 类型存根。",
+          children: [
+            SwitchListTile(
+              title: const Text("启用 Stubs"),
+              subtitle: const Text("启用后语言服务可读取配置的 stubs layer"),
+              value: ref.watch(microPythonStubsEnabled),
+              onChanged: (value) {
+                ref.read(microPythonStubsEnabled.notifier).state = value;
+              },
+            ),
+            const SectionDivider(),
+            SwitchListTile(
+              title: const Text("自动检测 Layer"),
+              subtitle: const Text("后续可根据连接设备推荐 generic/port/board stubs"),
+              value: ref.watch(microPythonStubsAutoDetectLayers),
+              onChanged: (value) {
+                ref.read(microPythonStubsAutoDetectLayers.notifier).state = value;
+              },
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.layers_outlined),
+              title: const Text("Stubs Layers"),
+              subtitle: Text(_layersSummary(ref.watch(microPythonStubsLayers))),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showLayersDialog(context, ref),
+            ),
+            const SectionDivider(),
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text("额外路径"),
+              subtitle: Text(_pathsSummary(ref.watch(microPythonStubsExtraPaths))),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showExtraPathsDialog(context, ref),
+            ),
+          ],
+        ),
+        SettingsSection(
           title: "LSP 功能",
           description: "控制 CodeForge 向语言服务器声明和使用的能力。设置会在新打开的编辑器标签页中生效。",
           children: [
@@ -159,6 +198,106 @@ class LspSettings extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("语言服务器设置")),
       body: body,
+    );
+  }
+
+  String _layersSummary(List<MicroPythonStubsLayer> layers) {
+    if (layers.isEmpty) return "未配置";
+    return layers.map((layer) => '${layer.provider}/${layer.profile}').join(', ');
+  }
+
+  String _pathsSummary(List<String> paths) {
+    if (paths.isEmpty) return "未配置";
+    return paths.length == 1 ? paths.first : "${paths.length} 个路径";
+  }
+
+  void _showLayersDialog(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(
+      text: ref
+          .read(microPythonStubsLayers)
+          .map((layer) => '${layer.provider}/${layer.profile}')
+          .join('\n'),
+    );
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Stubs Layers"),
+        content: SizedBox(
+          width: 460,
+          child: TextField(
+            controller: controller,
+            minLines: 6,
+            maxLines: 12,
+            decoration: const InputDecoration(
+              helperText: "每行一个 layer，格式：provider/profile。上方优先级更高。",
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          FilledButton(
+            onPressed: () {
+              final layers = controller.text
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .where((line) => line.isNotEmpty)
+                  .map((line) {
+                    final parts = line.split('/');
+                    if (parts.length < 2) return null;
+                    return MicroPythonStubsLayer(
+                      provider: parts.first.trim(),
+                      profile: parts.sublist(1).join('/').trim(),
+                    );
+                  })
+                  .whereType<MicroPythonStubsLayer>()
+                  .where((layer) => layer.provider.isNotEmpty && layer.profile.isNotEmpty)
+                  .toList();
+              ref.read(microPythonStubsLayers.notifier).state = layers;
+              context.pop();
+            },
+            child: const Text("保存"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showExtraPathsDialog(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(
+      text: ref.read(microPythonStubsExtraPaths).join('\n'),
+    );
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("额外 Stubs 路径"),
+        content: SizedBox(
+          width: 460,
+          child: TextField(
+            controller: controller,
+            minLines: 6,
+            maxLines: 12,
+            decoration: const InputDecoration(
+              helperText: "每行一个本地路径，会追加给语言服务使用。",
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          FilledButton(
+            onPressed: () {
+              ref.read(microPythonStubsExtraPaths.notifier).state = controller.text
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .where((line) => line.isNotEmpty)
+                  .toList();
+              context.pop();
+            },
+            child: const Text("保存"),
+          ),
+        ],
+      ),
     );
   }
 

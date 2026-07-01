@@ -65,6 +65,7 @@ class PluginRunManagerNotifier
         onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
       );
       outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting');
+      final pluginDirEnv = target.path.replaceAll(r'\', '/');
       runManager.onDataChanged = () {
         state = {...state};
       };
@@ -88,6 +89,9 @@ class PluginRunManagerNotifier
         environmentVariables: {
           "PYRITE_IDE_PLUGIN_PORT": "$port",
           "PYRITE_IDE_PLUGIN_ID": plugin.id,
+          "PYRITE_IDE_PLUGIN_DIR": pluginDirEnv,
+          "PYRITE_IDE_PLUGIN_DATA_DIR": "$pluginDirEnv/data",
+          "PYRITE_IDE_PLUGIN_CACHE_DIR": "$pluginDirEnv/cache",
           "PYTHONUNBUFFERED": "1",
         },
       );

@@ -206,6 +206,20 @@ class SettingsRegistry {
     _SettingEntry(name: 'terminal.font_family', type: 'string', provider: terminalFontFamily, getter: (ref) => ref.read(terminalFontFamily), setter: (ref, v) => ref.read(terminalFontFamily.notifier).state = v.toString()),
     _SettingEntry(name: 'terminal.font_size', type: 'double', provider: terminalFontSize, getter: (ref) => ref.read(terminalFontSize), setter: (ref, v) => ref.read(terminalFontSize.notifier).state = (v as num).toDouble()),
     _SettingEntry(name: 'terminal.line_height', type: 'double', provider: terminalLineHeight, getter: (ref) => ref.read(terminalLineHeight), setter: (ref, v) => ref.read(terminalLineHeight.notifier).state = (v as num).toDouble()),
+    _SettingEntry(name: 'micropython.stubs.enabled', type: 'bool', provider: microPythonStubsEnabled, getter: (ref) => ref.read(microPythonStubsEnabled), setter: (ref, v) => ref.read(microPythonStubsEnabled.notifier).state = v == true),
+    _SettingEntry(name: 'micropython.stubs.auto_detect_layers', type: 'bool', provider: microPythonStubsAutoDetectLayers, getter: (ref) => ref.read(microPythonStubsAutoDetectLayers), setter: (ref, v) => ref.read(microPythonStubsAutoDetectLayers.notifier).state = v == true),
+    _SettingEntry(name: 'micropython.stubs.layers', type: 'list', provider: microPythonStubsLayers, getter: (ref) => ref.read(microPythonStubsLayers).map((layer) => layer.toJson()).toList(), setter: (ref, v) {
+      final list = v is List ? v : const [];
+      ref.read(microPythonStubsLayers.notifier).state = list
+          .whereType<Map>()
+          .map((item) => MicroPythonStubsLayer.fromJson(Map<String, dynamic>.from(item)))
+          .where((layer) => layer.provider.isNotEmpty && layer.profile.isNotEmpty)
+          .toList();
+    }),
+    _SettingEntry(name: 'micropython.stubs.extra_paths', type: 'list', provider: microPythonStubsExtraPaths, getter: (ref) => ref.read(microPythonStubsExtraPaths), setter: (ref, v) {
+      final list = v is List ? v : const [];
+      ref.read(microPythonStubsExtraPaths.notifier).state = list.map((item) => item.toString()).toList();
+    }),
   ];
 
   static final Map<String, _SettingEntry> _byName = {

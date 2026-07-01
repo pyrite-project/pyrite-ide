@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 
 class SettingsPersistedData {
   final String editorTextFont;
@@ -46,6 +47,10 @@ class SettingsPersistedData {
   final String webReplHost;
   final int webReplPort;
   final String webReplPassword;
+  final bool microPythonStubsEnabled;
+  final bool microPythonStubsAutoDetectLayers;
+  final List<MicroPythonStubsLayer> microPythonStubsLayers;
+  final List<String> microPythonStubsExtraPaths;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -90,6 +95,10 @@ class SettingsPersistedData {
     this.webReplHost = '',
     this.webReplPort = 8266,
     this.webReplPassword = '',
+    this.microPythonStubsEnabled = false,
+    this.microPythonStubsAutoDetectLayers = false,
+    this.microPythonStubsLayers = const [],
+    this.microPythonStubsExtraPaths = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -135,59 +144,77 @@ class SettingsPersistedData {
     'webReplHost': webReplHost,
     'webReplPort': webReplPort,
     'webReplPassword': webReplPassword,
+    'microPythonStubsEnabled': microPythonStubsEnabled,
+    'microPythonStubsAutoDetectLayers': microPythonStubsAutoDetectLayers,
+    'microPythonStubsLayers': microPythonStubsLayers
+        .map((layer) => layer.toJson())
+        .toList(),
+    'microPythonStubsExtraPaths': microPythonStubsExtraPaths,
   };
 
-  factory SettingsPersistedData.fromJson(Map<String, dynamic> json) =>
-      SettingsPersistedData(
-        editorTextFont: json['editorTextFont'] as String? ?? 'JetBrains Mono',
-        editorFontSize: (json['editorFontSize'] as num?)?.toDouble() ?? 15,
-        editorWordWrap: json['editorWordWrap'] as bool? ?? false,
-        editorLineNumber: json['editorLineNumber'] as bool? ?? true,
-        editorCodeFolding: json['editorCodeFolding'] as bool? ?? true,
-        editorGuideLines: json['editorGuideLines'] as bool? ?? true,
-        editorLocalSuggestions: json['editorLocalSuggestions'] as bool? ?? false,
-        editorKeyboardSuggestions: json['editorKeyboardSuggestions'] as bool? ?? true,
-        editorUseSpaceAsTab: json['editorUseSpaceAsTab'] as bool? ?? true,
-        editorTabSize: json['editorTabSize'] as int? ?? 4,
-        editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
-        useLsp: json['useLsp'] as bool? ?? true,
-        lspType: json['lspType'] as String? ?? 'web_socket',
-        lspWebSocketPath:
-            json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
-        lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
-        lspStdioArgs: json['lspStdioArgs'] as String? ?? '--stdio',
-        disableWarning: json['disableWarning'] as bool? ?? false,
-        disableError: json['disableError'] as bool? ?? false,
-        lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? false,
-        lspCodeCompletion: json['lspCodeCompletion'] as bool? ?? true,
-        lspHoverInfo: json['lspHoverInfo'] as bool? ?? true,
-        lspCodeAction: json['lspCodeAction'] as bool? ?? true,
-        lspSignatureHelp: json['lspSignatureHelp'] as bool? ?? true,
-        lspDocumentColor: json['lspDocumentColor'] as bool? ?? false,
-        lspDocumentHighlight: json['lspDocumentHighlight'] as bool? ?? true,
-        lspCodeFolding: json['lspCodeFolding'] as bool? ?? false,
-        lspInlayHint: json['lspInlayHint'] as bool? ?? false,
-        lspGoToDefinition: json['lspGoToDefinition'] as bool? ?? true,
-        lspRename: json['lspRename'] as bool? ?? true,
-        chineseToUnicodeConversion:
-            json['chineseToUnicodeConversion'] as bool? ?? true,
-        enableSignalDetection:
-            json['enableSignalDetection'] as bool? ?? true,
-        serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
-        serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
-        terminalFontFamily: json['terminalFontFamily'] as String? ?? 'JetBrains Mono',
-        terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
-        terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
-        uploadConfirmStyle:
-            json['uploadConfirmStyle'] as String? ?? 'toolbar',
-        confirmShortcut:
-            json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
-        cancelShortcut:
-            json['cancelShortcut'] as String? ?? 'Esc',
-        webReplHost: json['webReplHost'] as String? ?? '',
-        webReplPort: json['webReplPort'] as int? ?? 8266,
-        webReplPassword: json['webReplPassword'] as String? ?? '',
-      );
+  factory SettingsPersistedData.fromJson(
+    Map<String, dynamic> json,
+  ) => SettingsPersistedData(
+    editorTextFont: json['editorTextFont'] as String? ?? 'JetBrains Mono',
+    editorFontSize: (json['editorFontSize'] as num?)?.toDouble() ?? 15,
+    editorWordWrap: json['editorWordWrap'] as bool? ?? false,
+    editorLineNumber: json['editorLineNumber'] as bool? ?? true,
+    editorCodeFolding: json['editorCodeFolding'] as bool? ?? true,
+    editorGuideLines: json['editorGuideLines'] as bool? ?? true,
+    editorLocalSuggestions: json['editorLocalSuggestions'] as bool? ?? false,
+    editorKeyboardSuggestions:
+        json['editorKeyboardSuggestions'] as bool? ?? true,
+    editorUseSpaceAsTab: json['editorUseSpaceAsTab'] as bool? ?? true,
+    editorTabSize: json['editorTabSize'] as int? ?? 4,
+    editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
+    useLsp: json['useLsp'] as bool? ?? true,
+    lspType: json['lspType'] as String? ?? 'web_socket',
+    lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
+    lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
+    lspStdioArgs: json['lspStdioArgs'] as String? ?? '--stdio',
+    disableWarning: json['disableWarning'] as bool? ?? false,
+    disableError: json['disableError'] as bool? ?? false,
+    lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? false,
+    lspCodeCompletion: json['lspCodeCompletion'] as bool? ?? true,
+    lspHoverInfo: json['lspHoverInfo'] as bool? ?? true,
+    lspCodeAction: json['lspCodeAction'] as bool? ?? true,
+    lspSignatureHelp: json['lspSignatureHelp'] as bool? ?? true,
+    lspDocumentColor: json['lspDocumentColor'] as bool? ?? false,
+    lspDocumentHighlight: json['lspDocumentHighlight'] as bool? ?? true,
+    lspCodeFolding: json['lspCodeFolding'] as bool? ?? false,
+    lspInlayHint: json['lspInlayHint'] as bool? ?? false,
+    lspGoToDefinition: json['lspGoToDefinition'] as bool? ?? true,
+    lspRename: json['lspRename'] as bool? ?? true,
+    chineseToUnicodeConversion:
+        json['chineseToUnicodeConversion'] as bool? ?? true,
+    enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,
+    serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
+    serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
+    terminalFontFamily:
+        json['terminalFontFamily'] as String? ?? 'JetBrains Mono',
+    terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
+    terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
+    uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
+    confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
+    cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',
+    webReplHost: json['webReplHost'] as String? ?? '',
+    webReplPort: json['webReplPort'] as int? ?? 8266,
+    webReplPassword: json['webReplPassword'] as String? ?? '',
+    microPythonStubsEnabled: json['microPythonStubsEnabled'] as bool? ?? false,
+    microPythonStubsAutoDetectLayers:
+        json['microPythonStubsAutoDetectLayers'] as bool? ?? false,
+    microPythonStubsLayers: (json['microPythonStubsLayers'] as List? ?? [])
+        .whereType<Map>()
+        .map(
+          (item) =>
+              MicroPythonStubsLayer.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList(),
+    microPythonStubsExtraPaths:
+        (json['microPythonStubsExtraPaths'] as List? ?? [])
+            .map((item) => item.toString())
+            .toList(),
+  );
 }
 
 class SettingsPersistence {
@@ -195,7 +222,7 @@ class SettingsPersistence {
 
   Future<File> get _file async {
     final dir = await getApplicationSupportDirectory();
-    final subDir = Directory('${dir.path}/pyrite_ide');
+    final subDir = Directory('${dir.path}/data');
     if (!await subDir.exists()) await subDir.create(recursive: true);
     return File('${subDir.path}/$_fileName');
   }

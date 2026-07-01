@@ -89,6 +89,12 @@ class PersistenceManager {
       webReplHost: settings?.webReplHost ?? '',
       webReplPort: settings?.webReplPort ?? 8266,
       webReplPassword: settings?.webReplPassword ?? '',
+      microPythonStubsEnabled: settings?.microPythonStubsEnabled ?? false,
+      microPythonStubsAutoDetectLayers:
+          settings?.microPythonStubsAutoDetectLayers ?? false,
+      microPythonStubsLayers: settings?.microPythonStubsLayers ?? const [],
+      microPythonStubsExtraPaths:
+          settings?.microPythonStubsExtraPaths ?? const [],
     );
   }
 
@@ -152,6 +158,12 @@ class PersistenceManager {
           webReplHost: container.read(webReplHost),
           webReplPort: container.read(webReplPort),
           webReplPassword: container.read(webReplPassword),
+          microPythonStubsEnabled: container.read(microPythonStubsEnabled),
+          microPythonStubsAutoDetectLayers:
+              container.read(microPythonStubsAutoDetectLayers),
+          microPythonStubsLayers: container.read(microPythonStubsLayers),
+          microPythonStubsExtraPaths:
+              container.read(microPythonStubsExtraPaths),
         ),
       ),
       functionPagePersistence.save(

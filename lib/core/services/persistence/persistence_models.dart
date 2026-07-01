@@ -1,3 +1,5 @@
+import 'package:pyrite_ide/core/models/settings.dart';
+
 class PersistedTab {
   final String filePath;
   final bool isBoardFile;
@@ -87,6 +89,10 @@ class PersistedData {
   final String webReplHost;
   final int webReplPort;
   final String webReplPassword;
+  final bool microPythonStubsEnabled;
+  final bool microPythonStubsAutoDetectLayers;
+  final List<MicroPythonStubsLayer> microPythonStubsLayers;
+  final List<String> microPythonStubsExtraPaths;
 
   PersistedData({
     this.projectPath,
@@ -145,5 +151,9 @@ class PersistedData {
     this.webReplHost = '',
     this.webReplPort = 8266,
     this.webReplPassword = '',
+    this.microPythonStubsEnabled = false,
+    this.microPythonStubsAutoDetectLayers = false,
+    this.microPythonStubsLayers = const [],
+    this.microPythonStubsExtraPaths = const [],
   });
 }

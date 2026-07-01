@@ -112,3 +112,11 @@ StateProvider<String> cancelShortcutProvider = StateProvider<String>(
 StateProvider<String> webReplHost = StateProvider<String>((ref) => '');
 StateProvider<int> webReplPort = StateProvider<int>((ref) => 8266);
 StateProvider<String> webReplPassword = StateProvider<String>((ref) => '');
+
+StateProvider<bool> microPythonStubsEnabled = StateProvider<bool>((ref) => false);
+StateProvider<bool> microPythonStubsAutoDetectLayers =
+    StateProvider<bool>((ref) => false);
+StateProvider<List<MicroPythonStubsLayer>> microPythonStubsLayers =
+    StateProvider<List<MicroPythonStubsLayer>>((ref) => const []);
+StateProvider<List<String>> microPythonStubsExtraPaths =
+    StateProvider<List<String>>((ref) => const []);

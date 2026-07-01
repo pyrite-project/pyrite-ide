@@ -42,6 +42,7 @@ DebugPrintCallback? _defaultDebugPrint;
 void _installIdeOutputLogger() {
   if (_defaultDebugPrint != null) return;
   _defaultDebugPrint = debugPrint;
+  IdeOutputLogNotifier.setDebugMirror(_defaultDebugPrint);
   debugPrint = (String? message, {int? wrapWidth}) {
     final text = message ?? 'null';
     container
@@ -140,6 +141,14 @@ void _applyData(PersistedData data) {
   container.read(webReplHost.notifier).state = data.webReplHost;
   container.read(webReplPort.notifier).state = data.webReplPort;
   container.read(webReplPassword.notifier).state = data.webReplPassword;
+  container.read(microPythonStubsEnabled.notifier).state =
+      data.microPythonStubsEnabled;
+  container.read(microPythonStubsAutoDetectLayers.notifier).state =
+      data.microPythonStubsAutoDetectLayers;
+  container.read(microPythonStubsLayers.notifier).state =
+      data.microPythonStubsLayers;
+  container.read(microPythonStubsExtraPaths.notifier).state =
+      data.microPythonStubsExtraPaths;
 }
 
 void _triggerSave() {

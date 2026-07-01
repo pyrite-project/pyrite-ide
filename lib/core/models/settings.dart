@@ -14,3 +14,25 @@ enum LspType {
         _ => null,
       };
 }
+
+class MicroPythonStubsLayer {
+  const MicroPythonStubsLayer({
+    required this.provider,
+    required this.profile,
+  });
+
+  final String provider;
+  final String profile;
+
+  Map<String, dynamic> toJson() => {
+    'provider': provider,
+    'profile': profile,
+  };
+
+  factory MicroPythonStubsLayer.fromJson(Map<String, dynamic> json) {
+    return MicroPythonStubsLayer(
+      provider: json['provider']?.toString() ?? '',
+      profile: json['profile']?.toString() ?? '',
+    );
+  }
+}

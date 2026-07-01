@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:xterm/xterm.dart';
 
 enum IdeOutputSource { ide, plugin, terminal }
@@ -19,6 +20,12 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
   IdeOutputLogNotifier() : super(const []);
 
   static const int maxEntries = 1000;
+  static DebugPrintCallback? debugMirror;
+  static bool _mirroring = false;
+
+  static void setDebugMirror(DebugPrintCallback? callback) {
+    debugMirror = callback;
+  }
 
   void add(IdeOutputSource source, String message) {
     final entry = IdeOutputEntry(
@@ -34,6 +41,14 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
     state = next.length > maxEntries
         ? next.sublist(next.length - maxEntries)
         : next;
+    if (!_mirroring) {
+      _mirroring = true;
+      try {
+        debugMirror?.call(_formatEntryForDebug(entry));
+      } finally {
+        _mirroring = false;
+      }
+    }
   }
 
   void clear() {
@@ -53,6 +68,14 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
       '$prefix${lines.first}',
       for (final line in lines.skip(1)) '${' ' * prefix.length}$line',
     ].join('\r\n')}\r\n';
+  }
+
+  String _formatEntryForDebug(IdeOutputEntry entry) {
+    final time = entry.time;
+    final stamp = '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}:'
+        '${time.second.toString().padLeft(2, '0')}';
+    return '[$stamp] [${_sourceLabel(entry.source)}] ${entry.message}';
   }
 
   String _sourceLabel(IdeOutputSource source) {
