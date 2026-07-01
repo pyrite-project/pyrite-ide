@@ -21,6 +21,8 @@ import 'package:serious_python/serious_python.dart';
 import 'package:path/path.dart' as path;
 import 'package:freeport/freeport.dart';
 
+String _toForwardSlashes(String value) => value.replaceAll('\\', '/');
+
 class PluginRunManagerNotifier
     extends StateNotifier<Map<Plugin, PluginRunManager>> {
   final Ref ref;
@@ -32,6 +34,10 @@ class PluginRunManagerNotifier
 
   Future<void> start(Plugin plugin) async {
     if (state.containsKey(plugin)) return;
+    if (plugin.type == PluginType.data) {
+      await runOnce(plugin);
+      return;
+    }
     final outputLog = ref.read(ideOutputLogProvider.notifier);
 
     try {
@@ -60,12 +66,13 @@ class PluginRunManagerNotifier
         port: port,
         assetsPath: target.path,
         pluginId: plugin.id,
+        pluginType: plugin.type.name,
         pluginPermissions: plugin.permissions,
         permissionLog: ref.read(permissionLogServiceProvider),
         onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
       );
       outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting');
-      final pluginDirEnv = target.path.replaceAll(r'\', '/');
+      final pluginDirEnv = _toForwardSlashes(target.path);
       runManager.onDataChanged = () {
         state = {...state};
       };
@@ -111,10 +118,70 @@ class PluginRunManagerNotifier
     try {
       await runManager.sendLifecycleHook(LifecycleHook.dispose.value);
     } catch (_) {}
-    runManager.stop();
+    await runManager.stop();
     // Clean up DataRegistry entries for this plugin
     ref.read(dataRegistryProvider).removePlugin(plugin.id);
     state = {...state}..remove(plugin);
+  }
+
+  Future<void> runOnce(Plugin plugin) async {
+    if (plugin.type != PluginType.data) return;
+    final outputLog = ref.read(ideOutputLogProvider.notifier);
+    try {
+      final Directory root = await getApplicationSupportDirectory();
+      final Directory target = await Directory(
+        path.join(root.path, "plugin", plugin.id),
+      ).create(recursive: true);
+      Directory.current = target.path;
+      final int port = await freePort();
+
+      await SeriousPython.run(
+        "assets/python_runtime_boot.zip",
+        appFileName: "setup_sys_path.py",
+        environmentVariables: {
+          "RUNTIME_MODULE_PATHS": [
+            path.join(target.path, "__pypackages__"),
+            path.join(target.path, "site-packages"),
+          ].map(escapeForPythonString).join("::"),
+          "RUNTIME_REPLACE_MODULE_PATHS": "1",
+        },
+      );
+
+      final runManager = PluginRunManager(
+        port: port,
+        assetsPath: target.path,
+        pluginId: plugin.id,
+        pluginType: plugin.type.name,
+        pluginPermissions: plugin.permissions,
+        permissionLog: ref.read(permissionLogServiceProvider),
+        onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
+      );
+      outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting once');
+      final pluginDirEnv = _toForwardSlashes(target.path);
+      ref.read(sdkDataApiProvider.notifier).bind(runManager);
+
+      // No persistent run-manager entry for data plugins.
+      // Fire-and-forget; plugin exits after contribute.
+      // ignore: unawaited_futures
+      SeriousPython.runProgram(
+        path.join(target.path, "__main__.py"),
+        script: Platform.isWindows ? "" : null,
+        environmentVariables: {
+          "PYRITE_IDE_PLUGIN_PORT": "$port",
+          "PYRITE_IDE_PLUGIN_ID": plugin.id,
+          "PYRITE_IDE_PLUGIN_DIR": pluginDirEnv,
+          "PYRITE_IDE_PLUGIN_DATA_DIR": "$pluginDirEnv/data",
+          "PYRITE_IDE_PLUGIN_CACHE_DIR": "$pluginDirEnv/cache",
+          "PYTHONUNBUFFERED": "1",
+        },
+      );
+      await runManager.sendLifecycleHook(LifecycleHook.start.value);
+    } catch (error, stack) {
+      outputLog.add(
+        IdeOutputSource.plugin,
+        '[${plugin.id}] once-run failed: $error\n$stack',
+      );
+    }
   }
 
   Future<void> stopAllForShutdown() async {
@@ -123,7 +190,7 @@ class PluginRunManagerNotifier
       try {
         await entry.value.sendLifecycleHook(LifecycleHook.dispose.value);
       } catch (_) {}
-      entry.value.stop();
+      await entry.value.stop();
       ref.read(dataRegistryProvider).removePlugin(entry.key.id);
     }
     state = {};

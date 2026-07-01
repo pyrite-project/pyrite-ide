@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -237,7 +239,7 @@ class Plugins extends ConsumerWidget {
         ref.read(pluginRunManagerProvider.notifier).start(plugin);
         break;
       case 'stop':
-        ref.read(pluginRunManagerProvider.notifier).stop(plugin);
+        unawaited(ref.read(pluginRunManagerProvider.notifier).stop(plugin));
         break;
       case 'disable':
         ref

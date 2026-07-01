@@ -115,12 +115,19 @@ abstract class Permissions {
     'sdk.serial.set_auto_reconnect': 'serial:write',
 
     // data (theme + i18n)
-    'sdk.theme.register': 'data:write',
+    'sdk.theme.contribute': 'data:write',
+    'sdk.theme.register_runtime': 'data:write',
     'sdk.theme.get': 'data:read',
     'sdk.theme.list': 'data:read',
-    'sdk.i18n.register': 'data:write',
+    'sdk.i18n.contribute': 'data:write',
+    'sdk.i18n.register_runtime': 'data:write',
     'sdk.i18n.get': 'data:read',
     'sdk.i18n.list': 'data:read',
+    'sdk.stubs.contribute': 'data:write',
+    'sdk.stubs.register_runtime': 'data:write',
+    'sdk.stubs.revoke': 'data:write',
+    'sdk.theme.revoke': 'data:write',
+    'sdk.i18n.revoke': 'data:write',
   };
 
   static const Map<String, List<String>> _hierarchy = {

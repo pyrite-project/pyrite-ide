@@ -93,6 +93,7 @@ class PersistedData {
   final bool microPythonStubsAutoDetectLayers;
   final List<MicroPythonStubsLayer> microPythonStubsLayers;
   final List<String> microPythonStubsExtraPaths;
+  final List<DataContributionRecord> dataContributions;
 
   PersistedData({
     this.projectPath,
@@ -155,5 +156,50 @@ class PersistedData {
     this.microPythonStubsAutoDetectLayers = false,
     this.microPythonStubsLayers = const [],
     this.microPythonStubsExtraPaths = const [],
+    this.dataContributions = const [],
   });
+}
+
+class DataContributionRecord {
+  const DataContributionRecord({
+    required this.pluginId,
+    required this.pluginType,
+    required this.kind,
+    required this.contributionId,
+    required this.payload,
+    this.enabled = true,
+  });
+
+  final String pluginId;
+  final String pluginType;
+  final String kind;
+  final String contributionId;
+  final Map<String, dynamic> payload;
+  final bool enabled;
+
+  Map<String, dynamic> toJson() => {
+    'pluginId': pluginId,
+    'pluginType': pluginType,
+    'kind': kind,
+    'contributionId': contributionId,
+    'payload': payload,
+    'enabled': enabled,
+  };
+
+  factory DataContributionRecord.fromJson(Map<String, dynamic> json) {
+    return DataContributionRecord(
+      pluginId: json['pluginId']?.toString() ?? '',
+      pluginType: json['pluginType']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? '',
+      contributionId: json['contributionId']?.toString() ?? '',
+      payload: Map<String, dynamic>.from(json['payload'] as Map? ?? {}),
+      enabled: json['enabled'] as bool? ?? true,
+    );
+  }
+}
+
+class DataContributionKeys {
+  static const theme = 'theme';
+  static const i18n = 'i18n';
+  static const stubs = 'stubs';
 }

@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
+
+final dataContributionsProvider =
+    StateProvider<List<DataContributionRecord>>((ref) => const []);
 
 class StubsProfileEntry {
   const StubsProfileEntry({
@@ -64,6 +68,21 @@ class StubsProviderEntry {
     'aliases': aliases,
     'metadata': metadata,
   };
+
+  factory StubsProviderEntry.fromJson(Map<String, dynamic> json) {
+    return StubsProviderEntry(
+      pluginId: json['plugin_id']?.toString() ?? json['pluginId']?.toString() ?? '',
+      providerId: json['provider_id']?.toString() ?? json['providerId']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? 'micropython',
+      version: json['version']?.toString() ?? '',
+      profiles: (json['profiles'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => StubsProfileEntry.fromMap(Map<String, dynamic>.from(item)))
+          .toList(),
+      aliases: (json['aliases'] as List? ?? const []).map((item) => item.toString()).toList(),
+      metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
+    );
+  }
 }
 
 class DataRegistry extends ChangeNotifier {
@@ -107,6 +126,16 @@ class DataRegistry extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeTheme(String pluginId, String themeName) {
+    final pluginThemes = _themes[pluginId];
+    if (pluginThemes == null) return;
+    pluginThemes.remove(themeName);
+    if (pluginThemes.isEmpty) {
+      _themes.remove(pluginId);
+    }
+    notifyListeners();
+  }
+
   // ── i18n ──
 
   List<String> get availableLocales {
@@ -135,6 +164,17 @@ class DataRegistry extends ChangeNotifier {
   ) {
     _locales.putIfAbsent(pluginId, () => {});
     _locales[pluginId]![locale] = messages;
+    _rebuildMergedLocales();
+    notifyListeners();
+  }
+
+  void removeLocale(String pluginId, String locale) {
+    final pluginLocales = _locales[pluginId];
+    if (pluginLocales == null) return;
+    pluginLocales.remove(locale);
+    if (pluginLocales.isEmpty) {
+      _locales.remove(pluginId);
+    }
     _rebuildMergedLocales();
     notifyListeners();
   }
@@ -189,6 +229,44 @@ class DataRegistry extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeStubsProvider(String pluginId, String providerId) {
+    final existing = _stubsProviders[providerId];
+    if (existing == null || existing.pluginId != pluginId) return;
+    _stubsProviders.remove(providerId);
+    notifyListeners();
+  }
+
+  void restoreContributions(List<DataContributionRecord> records) {
+    for (final record in records) {
+      if (!record.enabled) continue;
+      if (record.kind == DataContributionKeys.stubs) {
+        final entry = StubsProviderEntry.fromJson(record.payload);
+        if (entry.providerId.isNotEmpty) {
+          _stubsProviders[entry.providerId] = entry;
+        }
+      } else if (record.kind == DataContributionKeys.theme) {
+        final themeName = record.contributionId;
+        if (themeName.isNotEmpty) {
+          _themes.putIfAbsent(record.pluginId, () => {});
+          _themes[record.pluginId]![themeName] = PluginThemeData.fromMap(
+            '${record.pluginId}::$themeName',
+            themeName,
+            record.pluginId,
+            record.payload,
+          );
+        }
+      } else if (record.kind == DataContributionKeys.i18n) {
+        final locale = record.contributionId;
+        if (locale.isNotEmpty) {
+          _locales.putIfAbsent(record.pluginId, () => {});
+          _locales[record.pluginId]![locale] = record.payload;
+        }
+      }
+    }
+    _rebuildMergedLocales();
+    notifyListeners();
+  }
+
   void _rebuildMergedLocales() {
     _mergedLocales = {};
     for (final pluginLocales in _locales.values) {
@@ -211,8 +289,8 @@ class DataRegistry extends ChangeNotifier {
     for (final providerId in stubsToRemove) {
       _stubsProviders.remove(providerId);
     }
+    if (hadLocales) _rebuildMergedLocales();
     if (hadThemes || hadLocales || stubsToRemove.isNotEmpty) {
-      if (hadLocales) _rebuildMergedLocales();
       notifyListeners();
     }
   }

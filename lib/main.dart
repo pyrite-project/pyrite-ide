@@ -8,6 +8,7 @@ import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
@@ -149,6 +150,9 @@ void _applyData(PersistedData data) {
       data.microPythonStubsLayers;
   container.read(microPythonStubsExtraPaths.notifier).state =
       data.microPythonStubsExtraPaths;
+  container.read(dataContributionsProvider.notifier).state =
+      data.dataContributions;
+  container.read(dataRegistryProvider).restoreContributions(data.dataContributions);
 }
 
 void _triggerSave() {

@@ -7,21 +7,28 @@ import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 abstract class SdkThemeCommands {
-  static const String register = 'sdk.theme.register';
+  static const String contribute = 'sdk.theme.contribute';
+  static const String registerRuntime = 'sdk.theme.register_runtime';
+  static const String revoke = 'sdk.theme.revoke';
   static const String get = 'sdk.theme.get';
   static const String list = 'sdk.theme.list';
 }
 
 abstract class SdkI18nCommands {
-  static const String register = 'sdk.i18n.register';
+  static const String contribute = 'sdk.i18n.contribute';
+  static const String registerRuntime = 'sdk.i18n.register_runtime';
+  static const String revoke = 'sdk.i18n.revoke';
   static const String get = 'sdk.i18n.get';
   static const String list = 'sdk.i18n.list';
 }
 
 abstract class SdkStubsCommands {
-  static const String register = 'sdk.stubs.register';
+  static const String contribute = 'sdk.stubs.contribute';
+  static const String registerRuntime = 'sdk.stubs.register_runtime';
+  static const String revoke = 'sdk.stubs.revoke';
   static const String get = 'sdk.stubs.get';
   static const String list = 'sdk.stubs.list';
   static const String resolveLayers = 'sdk.stubs.resolve_layers';
@@ -33,15 +40,39 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
 
   void bind(PluginRunManager runManager) {
     state = runManager;
-    runManager.registerHandler(SdkThemeCommands.register, _handleThemeRegister);
+    runManager.registerHandler(SdkThemeCommands.contribute, _handleThemeContribute);
+    runManager.registerHandler(
+      SdkThemeCommands.registerRuntime,
+      (envelope, respond) => _handleThemeRegisterRuntime(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkThemeCommands.revoke,
+      (envelope, respond) => _handleThemeRevoke(runManager, envelope, respond),
+    );
     runManager.registerHandler(SdkThemeCommands.get, _handleThemeGet);
     runManager.registerHandler(SdkThemeCommands.list, _handleThemeList);
-    runManager.registerHandler(SdkI18nCommands.register, _handleI18nRegister);
+    runManager.registerHandler(SdkI18nCommands.contribute, _handleI18nContribute);
+    runManager.registerHandler(
+      SdkI18nCommands.registerRuntime,
+      (envelope, respond) => _handleI18nRegisterRuntime(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkI18nCommands.revoke,
+      (envelope, respond) => _handleI18nRevoke(runManager, envelope, respond),
+    );
     runManager.registerHandler(SdkI18nCommands.get, _handleI18nGet);
     runManager.registerHandler(SdkI18nCommands.list, _handleI18nList);
     runManager.registerHandler(
-      SdkStubsCommands.register,
-      (envelope, respond) => _handleStubsRegister(runManager, envelope, respond),
+      SdkStubsCommands.contribute,
+      (envelope, respond) => _handleStubsContribute(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkStubsCommands.registerRuntime,
+      (envelope, respond) => _handleStubsRegisterRuntime(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkStubsCommands.revoke,
+      (envelope, respond) => _handleStubsRevoke(runManager, envelope, respond),
     );
     runManager.registerHandler(SdkStubsCommands.get, _handleStubsGet);
     runManager.registerHandler(SdkStubsCommands.list, _handleStubsList);
@@ -83,7 +114,7 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
 
   // ── Theme handlers ──
 
-  void _handleThemeRegister(
+  void _handleThemeContribute(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
@@ -106,9 +137,48 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
             name,
             data,
           );
+      _upsertContribution(
+        DataContributionRecord(
+          pluginId: state?.pluginId ?? '',
+          pluginType: state?.pluginType ?? 'ui',
+          kind: DataContributionKeys.theme,
+          contributionId: name,
+          payload: Map<String, dynamic>.from(data),
+        ),
+      );
     }
 
     state?.onDataChanged?.call();
+    _respondOk(envelope, respond, data: true);
+  }
+
+  void _handleThemeRegisterRuntime(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    _handleThemeContribute(envelope, respond);
+  }
+
+  void _handleThemeRevoke(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final name = payload['name']?.toString() ?? '';
+    if (name.isEmpty) {
+      _respondError(envelope, respond, '缺少 name');
+      return;
+    }
+    ref.read(dataRegistryProvider).removeTheme(runManager.pluginId, name);
+    ref.read(dataContributionsProvider.notifier).state = [
+      for (final item in ref.read(dataContributionsProvider))
+        if (!(item.kind == DataContributionKeys.theme &&
+            item.pluginId == runManager.pluginId &&
+            item.contributionId == name))
+          item,
+    ];
     _respondOk(envelope, respond, data: true);
   }
 
@@ -147,7 +217,7 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
 
   // ── i18n handlers ──
 
-  void _handleI18nRegister(
+  void _handleI18nContribute(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
@@ -170,9 +240,48 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
             locale,
             messages,
           );
+      _upsertContribution(
+        DataContributionRecord(
+          pluginId: state?.pluginId ?? '',
+          pluginType: state?.pluginType ?? 'ui',
+          kind: DataContributionKeys.i18n,
+          contributionId: locale,
+          payload: Map<String, dynamic>.from(messages),
+        ),
+      );
     }
 
     state?.onDataChanged?.call();
+    _respondOk(envelope, respond, data: true);
+  }
+
+  void _handleI18nRegisterRuntime(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    _handleI18nContribute(envelope, respond);
+  }
+
+  void _handleI18nRevoke(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final locale = payload['locale']?.toString() ?? '';
+    if (locale.isEmpty) {
+      _respondError(envelope, respond, '缺少 locale');
+      return;
+    }
+    ref.read(dataRegistryProvider).removeLocale(runManager.pluginId, locale);
+    ref.read(dataContributionsProvider.notifier).state = [
+      for (final item in ref.read(dataContributionsProvider))
+        if (!(item.kind == DataContributionKeys.i18n &&
+            item.pluginId == runManager.pluginId &&
+            item.contributionId == locale))
+          item,
+    ];
     _respondOk(envelope, respond, data: true);
   }
 
@@ -211,7 +320,7 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
 
   // ── Stubs handlers ──
 
-  void _handleStubsRegister(
+  void _handleStubsContribute(
     PluginRunManager runManager,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
@@ -223,6 +332,7 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
         : pluginId;
     final kind = payload['kind']?.toString() ?? 'micropython';
     final version = payload['version']?.toString() ?? '';
+    final scope = payload['scope']?.toString() ?? 'auto';
     final rawProfiles = payload['profiles'];
 
     if (providerId.isEmpty) {
@@ -247,21 +357,31 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
     }
 
     try {
-      ref.read(dataRegistryProvider).registerStubsProvider(
-            StubsProviderEntry(
-              pluginId: pluginId,
-              providerId: providerId,
-              kind: kind,
-              version: version,
-              profiles: profiles,
-              aliases: (payload['aliases'] as List? ?? [])
-                  .map((item) => item.toString())
-                  .toList(),
-              metadata: Map<String, dynamic>.from(
-                payload['metadata'] as Map? ?? {},
-              ),
-            ),
-          );
+      final entry = StubsProviderEntry(
+        pluginId: pluginId,
+        providerId: providerId,
+        kind: kind,
+        version: version,
+        profiles: profiles,
+        aliases: (payload['aliases'] as List? ?? [])
+            .map((item) => item.toString())
+            .toList(),
+        metadata: Map<String, dynamic>.from(
+          payload['metadata'] as Map? ?? {},
+        ),
+      );
+      ref.read(dataRegistryProvider).registerStubsProvider(entry);
+      if (scope == 'contribution' || scope == 'auto') {
+        _upsertContribution(
+          DataContributionRecord(
+            pluginId: pluginId,
+            pluginType: runManager.pluginType,
+            kind: 'stubs',
+            contributionId: providerId,
+            payload: entry.toJson(),
+          ),
+        );
+      }
       runManager.onOutput?.call(
         '[$pluginId] registered stubs provider $providerId: '
         '${profiles.map((profile) => '${profile.id}=${profile.path}').join(', ')}',
@@ -273,6 +393,50 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
     }
 
     runManager.onDataChanged?.call();
+    _respondOk(envelope, respond, data: true);
+  }
+
+  void _handleStubsRegisterRuntime(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    _handleStubsContribute(runManager, envelope, respond);
+  }
+
+  void _upsertContribution(DataContributionRecord record) {
+    final current = ref.read(dataContributionsProvider);
+    final next = [
+      for (final item in current)
+        if (!(item.kind == record.kind &&
+            item.pluginId == record.pluginId &&
+            item.contributionId == record.contributionId))
+          item,
+      record,
+    ];
+    ref.read(dataContributionsProvider.notifier).state = next;
+  }
+
+  void _handleStubsRevoke(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final providerId = payload['provider_id']?.toString() ?? '';
+    if (providerId.isEmpty) {
+      _respondError(envelope, respond, '缺少 provider_id');
+      return;
+    }
+    ref.read(dataRegistryProvider).removeStubsProvider(runManager.pluginId, providerId);
+    ref.read(dataContributionsProvider.notifier).state = [
+      for (final item in ref.read(dataContributionsProvider))
+        if (!(item.kind == 'stubs' &&
+            item.pluginId == runManager.pluginId &&
+            item.contributionId == providerId))
+          item,
+    ];
+    _refreshOpenLspStubsConfiguration();
     _respondOk(envelope, respond, data: true);
   }
 
@@ -374,13 +538,17 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
 
   @override
   void dispose() {
-    state?.unregisterHandler(SdkThemeCommands.register);
+    state?.unregisterHandler(SdkThemeCommands.contribute);
+    state?.unregisterHandler(SdkThemeCommands.registerRuntime);
     state?.unregisterHandler(SdkThemeCommands.get);
     state?.unregisterHandler(SdkThemeCommands.list);
-    state?.unregisterHandler(SdkI18nCommands.register);
+    state?.unregisterHandler(SdkI18nCommands.contribute);
+    state?.unregisterHandler(SdkI18nCommands.registerRuntime);
     state?.unregisterHandler(SdkI18nCommands.get);
     state?.unregisterHandler(SdkI18nCommands.list);
-    state?.unregisterHandler(SdkStubsCommands.register);
+    state?.unregisterHandler(SdkStubsCommands.contribute);
+    state?.unregisterHandler(SdkStubsCommands.registerRuntime);
+    state?.unregisterHandler(SdkStubsCommands.revoke);
     state?.unregisterHandler(SdkStubsCommands.get);
     state?.unregisterHandler(SdkStubsCommands.list);
     state?.unregisterHandler(SdkStubsCommands.resolveLayers);

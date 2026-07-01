@@ -5,15 +5,19 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
+import 'package:pyrite_ide/core/services/persistence/data_contributions_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/settings_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/function_page_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/file/project_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/editor/tabs_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class PersistenceManager {
   final AppPersistence appPersistence = AppPersistence();
+  final DataContributionsPersistence dataContributionsPersistence =
+      DataContributionsPersistence();
   final SettingsPersistence settingsPersistence = SettingsPersistence();
   final FunctionPagePersistence functionPagePersistence =
       FunctionPagePersistence();
@@ -26,6 +30,7 @@ class PersistenceManager {
     final functionPage = await functionPagePersistence.load();
     final project = await projectPersistence.load();
     final tabsData = await tabsPersistence.load();
+    final dataContributions = await dataContributionsPersistence.load();
 
     return PersistedData(
       themeMode: app?.themeMode ?? 'system',
@@ -95,6 +100,7 @@ class PersistenceManager {
       microPythonStubsLayers: settings?.microPythonStubsLayers ?? const [],
       microPythonStubsExtraPaths:
           settings?.microPythonStubsExtraPaths ?? const [],
+      dataContributions: dataContributions ?? const [],
     );
   }
 
@@ -178,6 +184,9 @@ class PersistenceManager {
       ),
       _saveProject(container),
       _saveTabs(container),
+      dataContributionsPersistence.save(
+        container.read(dataContributionsProvider),
+      ),
     ]);
   }
 

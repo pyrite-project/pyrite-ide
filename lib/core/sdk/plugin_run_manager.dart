@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/permissions.dart';
+import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:rfw/formats.dart' show DynamicMap, Missing;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -81,6 +82,7 @@ class PluginRunManager {
     required this.port,
     required this.assetsPath,
     this.pluginId = '',
+    this.pluginType = 'ui',
     this.pluginPermissions = const {},
     this.permissionLog,
     this.onOutput,
@@ -90,6 +92,7 @@ class PluginRunManager {
   final String assetsPath;
   final String dataPath;
   final String pluginId;
+  final String pluginType;
   final Map<String, List<String>> pluginPermissions;
   final PermissionLogService? permissionLog;
   final void Function(String message)? onOutput;
@@ -369,6 +372,12 @@ class PluginRunManager {
     }
   }
 
+  Future<void> runOnce() async {
+    await connect();
+    await sendLifecycleHook(LifecycleHook.start.value);
+    await stop();
+  }
+
   void _setupListener() {
     _channel!.stream.listen(
       (message) {
@@ -515,7 +524,7 @@ class PluginRunManager {
 
   bool _stopped = false;
 
-  void stop() {
+  Future<void> stop() async {
     _stopped = true;
     onOutput?.call('[$pluginId] stopped');
     _failAllPendingReplies('PluginRunManager stopped');
