@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -86,6 +87,20 @@ class GitRepositoryService {
     return root.isEmpty ? null : p.normalize(root);
   }
 
+  Future<void> initRepository(String workspacePath) async {
+    final path = workspacePath.trim();
+    if (path.isEmpty) throw ArgumentError('工作区路径不能为空。');
+    if (!Directory(path).existsSync()) {
+      throw ArgumentError('工作区文件夹不存在：$path');
+    }
+
+    await _runGit(null, [
+      '-C',
+      path,
+      'init',
+    ], timeout: const Duration(seconds: 20));
+  }
+
   Future<String> diffForPath(
     String rootPath,
     String filePath, {
@@ -168,6 +183,13 @@ class GitRepositoryService {
     return _gitVoid(rootPath, ['restore', '--staged', '--', ...paths]);
   }
 
+  Future<void> discardChanges(String rootPath, GitStatusEntry entry) {
+    if (entry.isUntracked) {
+      return _gitVoid(rootPath, ['clean', '-f', '--', entry.path]);
+    }
+    return _gitVoid(rootPath, ['restore', '--', entry.path]);
+  }
+
   Future<void> commit(String rootPath, GitCommitInput input) async {
     if ((await _conflictedPaths(rootPath)).isNotEmpty) {
       throw StateError('仍有冲突未解决，不能提交。');
@@ -177,15 +199,26 @@ class GitRepositoryService {
       throw ArgumentError('提交信息不能为空。');
     }
 
-    await _gitVoid(rootPath, [
-      '-c',
-      'user.name=${_authorName(input)}',
-      '-c',
-      'user.email=${_authorEmail(input)}',
-      'commit',
-      '-m',
-      message,
-    ]);
+    final tempDir = await Directory.systemTemp.createTemp('pyrite_git_commit_');
+    final messageFile = File(p.join(tempDir.path, 'message.txt'));
+    try {
+      await messageFile.writeAsString(message, encoding: utf8);
+      await _gitVoid(rootPath, [
+        '-c',
+        'user.name=${_authorName(input)}',
+        '-c',
+        'user.email=${_authorEmail(input)}',
+        '-c',
+        'i18n.commitEncoding=UTF-8',
+        'commit',
+        '-F',
+        messageFile.path,
+      ]);
+    } finally {
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
   }
 
   Future<void> createBranch(String rootPath, String name) async {
@@ -194,8 +227,34 @@ class GitRepositoryService {
     await _gitVoid(rootPath, ['branch', branchName]);
   }
 
-  Future<void> checkoutBranch(String rootPath, String name) {
-    return _gitVoid(rootPath, ['checkout', name]);
+  Future<void> checkoutBranch(
+    String rootPath,
+    String name, {
+    bool remote = false,
+  }) async {
+    final branchName = name.trim();
+    if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+
+    if (!remote) {
+      await _gitVoid(rootPath, ['switch', branchName]);
+      return;
+    }
+
+    if (branchName.contains(' -> ') || branchName.endsWith('/HEAD')) {
+      throw ArgumentError('不能切换到远端 HEAD 指针。');
+    }
+
+    final localName = _localBranchNameForRemote(branchName);
+    final localBranchNames = (await _branchInfos(
+      rootPath,
+      remote: false,
+    )).map((branch) => branch.name).toSet();
+    if (localBranchNames.contains(localName)) {
+      await _gitVoid(rootPath, ['switch', localName]);
+      return;
+    }
+
+    await _gitVoid(rootPath, ['switch', '--track', branchName]);
   }
 
   Future<void> stash(
@@ -273,6 +332,14 @@ class GitRepositoryService {
       timeout: const Duration(minutes: 2),
     );
     return '已从 $remoteName 拉取并合并到 $branch';
+  }
+
+  Future<void> addRemote(String rootPath, String name, String url) {
+    final remoteName = name.trim();
+    final remoteUrl = url.trim();
+    if (remoteName.isEmpty) throw ArgumentError('远端名称不能为空。');
+    if (remoteUrl.isEmpty) throw ArgumentError('远端 URL 不能为空。');
+    return _gitVoid(rootPath, ['remote', 'add', remoteName, remoteUrl]);
   }
 
   Future<void> merge(String rootPath, String targetSpec) {
@@ -427,12 +494,12 @@ class GitRepositoryService {
   }
 
   Future<List<GitStatusEntry>> _statusEntries(String rootPath) async {
-    final output = await _gitOutput(rootPath, [
-      'status',
-      '--porcelain=v1',
-      '-z',
-      '--untracked-files=all',
-    ], allowFailure: true);
+    final output = await _gitOutput(
+      rootPath,
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      allowFailure: true,
+      trimOutput: false,
+    );
     if (output.isEmpty) return const [];
 
     final entries = <GitStatusEntry>[];
@@ -458,6 +525,7 @@ class GitRepositoryService {
           isStaged: _isIndexStatus(indexStatus),
           isUnstaged: _isWorktreeStatus(worktreeStatus),
           isConflicted: _isConflictStatus(indexStatus, worktreeStatus),
+          isUntracked: indexStatus == '?' && worktreeStatus == '?',
         ),
       );
     }
@@ -543,6 +611,9 @@ class GitRepositoryService {
   GitBranchInfo? _branchInfo(String line, bool isRemote) {
     final parts = line.split('\u0000');
     if (parts.length < 3 || parts[1].isEmpty) return null;
+    if (isRemote && (parts[1].contains(' -> ') || parts[1].endsWith('/HEAD'))) {
+      return null;
+    }
     return GitBranchInfo(
       name: parts[1],
       targetSha: parts[2],
@@ -746,6 +817,14 @@ class GitRepositoryService {
     );
   }
 
+  String _localBranchNameForRemote(String remoteBranchName) {
+    final separator = remoteBranchName.indexOf('/');
+    if (separator == -1 || separator == remoteBranchName.length - 1) {
+      return remoteBranchName;
+    }
+    return remoteBranchName.substring(separator + 1);
+  }
+
   Future<List<GitConflictInfo>> _conflicts(
     String rootPath,
     List<GitStatusEntry> entries,
@@ -870,10 +949,11 @@ class GitRepositoryService {
     String rootPath,
     List<String> args, {
     bool allowFailure = false,
+    bool trimOutput = true,
   }) async {
     final result = await _git(rootPath, args, allowFailure: allowFailure);
     if (allowFailure && result.exitCode != 0) return '';
-    return result.stdout.trim();
+    return trimOutput ? result.stdout.trim() : result.stdout;
   }
 
   Future<_GitCommandResult> _git(
@@ -885,7 +965,7 @@ class GitRepositoryService {
   }) {
     return _runGit(
       rootPath,
-      ['-C', rootPath, ...args],
+      ['-C', rootPath, '-c', 'i18n.logOutputEncoding=UTF-8', ...args],
       allowFailure: allowFailure,
       environment: environment,
       timeout: timeout,
@@ -907,6 +987,8 @@ class GitRepositoryService {
         workingDirectory: rootPath,
         environment: mergedEnvironment,
         runInShell: Platform.isWindows,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       ).timeout(timeout ?? commandTimeout);
       final commandResult = _GitCommandResult(
         exitCode: result.exitCode,

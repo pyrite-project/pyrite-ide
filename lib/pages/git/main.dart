@@ -1,10 +1,18 @@
+import 'package:code_forge/code_forge/code_area.dart';
+import 'package:code_forge/code_forge/controller.dart';
+import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/editor_themes.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:re_highlight/languages/diff.dart';
+import 'package:super_context_menu/super_context_menu.dart';
 
 const _fallbackAuthorName = 'Pyrite User';
 const _fallbackAuthorEmail = 'pyrite@example.local';
@@ -83,18 +91,37 @@ class _GitPageState extends ConsumerState<GitPage> {
     final state = ref.watch(gitProvider);
     final snapshot = state.snapshot;
     if (snapshot == null) {
+      final workspacePath = state.workspacePath;
+      final hasWorkspace = workspacePath != null && workspacePath.isNotEmpty;
       return WorkspaceEmptyState(
         icon: Icons.account_tree_outlined,
         title: '没有检测到 Git 仓库',
-        message: '打开一个包含 .git 的本地项目后，这里会显示源代码管理工作台。',
-        actionLabel: '打开文件夹',
-        onAction: () => ref.read(localFileItemsProvider.notifier).openFolder(),
-        secondaryAction: OutlinedButton.icon(
-          onPressed: state.isBusy
-              ? null
-              : () => ref.read(gitProvider.notifier).refresh(),
-          icon: const Icon(Icons.refresh),
-          label: const Text('重新检测'),
+        message: hasWorkspace
+            ? '当前文件夹没有 .git。可以初始化仓库后开始管理更改。'
+            : '打开一个本地项目后，这里会显示源代码管理工作台。',
+        actionLabel: hasWorkspace ? '初始化 Git 仓库' : '打开文件夹',
+        onAction: hasWorkspace
+            ? () => ref.read(gitProvider.notifier).initRepository()
+            : () => ref.read(localFileItemsProvider.notifier).openFolder(),
+        secondaryAction: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () =>
+                  ref.read(localFileItemsProvider.notifier).openFolder(),
+              icon: const Icon(Icons.folder_open_outlined),
+              label: const Text('打开文件夹'),
+            ),
+            OutlinedButton.icon(
+              onPressed: state.isBusy
+                  ? null
+                  : () => ref.read(gitProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新检测'),
+            ),
+          ],
         ),
       );
     }
@@ -229,11 +256,14 @@ class _GitPageState extends ConsumerState<GitPage> {
             trailing: branch.isCurrent
                 ? const PillBadge(label: '当前')
                 : TextButton(
-                    onPressed: state.isBusy || branch.isRemote
+                    onPressed: state.isBusy
                         ? null
                         : () => ref
                               .read(gitProvider.notifier)
-                              .checkoutBranch(branch.name),
+                              .checkoutBranch(
+                                branch.name,
+                                remote: branch.isRemote,
+                              ),
                     child: const Text('切换'),
                   ),
           ),
@@ -242,16 +272,36 @@ class _GitPageState extends ConsumerState<GitPage> {
   }
 
   Widget _remotesTab(GitViewState state, GitRepositorySnapshot snapshot) {
+    final addRemoteButton = FilledButton.tonalIcon(
+      onPressed: state.isBusy ? null : () => _remoteDialog(),
+      icon: const Icon(Icons.add_link_outlined),
+      label: const Text('添加远端'),
+    );
     if (snapshot.remotes.isEmpty) {
-      return const _EmptyPanel(
-        icon: Icons.cloud_off_outlined,
-        title: '没有远端',
-        message: '当前仓库没有配置 remote。',
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: addRemoteButton,
+            ),
+          ),
+          const Expanded(
+            child: _EmptyPanel(
+              icon: Icons.cloud_off_outlined,
+              title: '没有远端',
+              message: '当前仓库没有配置 remote。',
+            ),
+          ),
+        ],
       );
     }
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        Wrap(spacing: 8, runSpacing: 8, children: [addRemoteButton]),
+        const SizedBox(height: 12),
         for (final remote in snapshot.remotes)
           Card(
             margin: const EdgeInsets.only(bottom: 10),
@@ -410,6 +460,7 @@ class _GitPageState extends ConsumerState<GitPage> {
   }
 
   Widget _historyTab(GitViewState state, GitRepositorySnapshot snapshot) {
+    final graphRows = _buildCommitGraphRows(snapshot.commits);
     return _ResponsiveGitPane(
       left: ListView(
         padding: const EdgeInsets.all(12),
@@ -445,31 +496,15 @@ class _GitPageState extends ConsumerState<GitPage> {
                 icon: const Icon(Icons.linear_scale),
                 label: const Text('Rebase'),
               ),
-              OutlinedButton.icon(
-                onPressed: state.isBusy
-                    ? null
-                    : () => _textDialog(
-                        title: 'Cherry-pick',
-                        label: '提交 SHA、标签或引用',
-                        onSubmit: ref.read(gitProvider.notifier).cherryPick,
-                      ),
-                icon: const Icon(Icons.control_point_duplicate_outlined),
-                label: const Text('Cherry-pick'),
-              ),
             ],
           ),
           const SizedBox(height: 12),
-          for (final commit in snapshot.commits)
-            ListTile(
-              leading: CircleAvatar(
-                radius: 16,
-                child: Text(commit.parentShas.length > 1 ? 'M' : 'C'),
-              ),
-              title: Text(commit.summary, overflow: TextOverflow.ellipsis),
-              subtitle: Text(
-                '${commit.shortSha} · ${commit.author} · ${_dateLabel(commit.time)}',
-                overflow: TextOverflow.ellipsis,
-              ),
+          for (var index = 0; index < snapshot.commits.length; index += 1)
+            _CommitHistoryTile(
+              commit: snapshot.commits[index],
+              graphRow: graphRows[index],
+              isLast: index == snapshot.commits.length - 1,
+              dateLabel: _dateLabel(snapshot.commits[index].time),
             ),
         ],
       ),
@@ -481,6 +516,32 @@ class _GitPageState extends ConsumerState<GitPage> {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        _SectionTitle(title: '高级 Git 操作'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: state.isBusy
+                  ? null
+                  : () => _textDialog(
+                      title: 'Cherry-pick',
+                      label: '提交 SHA、标签或引用',
+                      onSubmit: ref.read(gitProvider.notifier).cherryPick,
+                    ),
+              icon: const Icon(Icons.control_point_duplicate_outlined),
+              label: const Text('Cherry-pick'),
+            ),
+            OutlinedButton.icon(
+              onPressed: state.isBusy
+                  ? null
+                  : () => ref.read(gitProvider.notifier).writeCommitGraph(),
+              icon: const Icon(Icons.hub_outlined),
+              label: const Text('写入 commit graph'),
+            ),
+          ],
+        ),
+        const SectionDivider(),
         _SectionTitle(
           title: 'Stash',
           action: snapshot.stashes.isEmpty
@@ -765,6 +826,49 @@ class _GitPageState extends ConsumerState<GitPage> {
     path.dispose();
   }
 
+  Future<void> _remoteDialog() async {
+    final name = TextEditingController(text: 'origin');
+    final url = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('添加远端'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: '远端名称'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: url,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '远端 URL'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                ref.read(gitProvider.notifier).addRemote(name.text, url.text);
+                Navigator.of(context).pop();
+              },
+              child: const Text('添加'),
+            ),
+          ],
+        );
+      },
+    );
+    name.dispose();
+    url.dispose();
+  }
+
   Future<void> _textDialog({
     required String title,
     required String label,
@@ -878,13 +982,6 @@ class _GitHeader extends ConsumerWidget {
                 )
               : const Icon(Icons.refresh),
         ),
-        IconButton(
-          tooltip: '写入 commit graph',
-          onPressed: isBusy
-              ? null
-              : () => ref.read(gitProvider.notifier).writeCommitGraph(),
-          icon: const Icon(Icons.hub_outlined),
-        ),
       ],
     );
   }
@@ -966,6 +1063,183 @@ class _CommitBox extends StatelessWidget {
   }
 }
 
+class _CommitHistoryTile extends StatelessWidget {
+  const _CommitHistoryTile({
+    required this.commit,
+    required this.graphRow,
+    required this.isLast,
+    required this.dateLabel,
+  });
+
+  final GitCommitInfo commit;
+  final _CommitGraphRow graphRow;
+  final bool isLast;
+  final String dateLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      leading: SizedBox(
+        width: graphRow.width,
+        height: double.infinity,
+        child: CustomPaint(
+          painter: _CommitGraphPainter(
+            row: graphRow,
+            isLast: isLast,
+            colorScheme: Theme.of(context).colorScheme,
+          ),
+        ),
+      ),
+      title: Text(commit.summary, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        '${commit.shortSha} · ${commit.author} · $dateLabel',
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _CommitGraphRow {
+  const _CommitGraphRow({
+    required this.laneIndex,
+    required this.laneCount,
+    required this.parentCount,
+  });
+
+  final int laneIndex;
+  final int laneCount;
+  final int parentCount;
+
+  double get width {
+    return (laneCount * _graphLaneSpacing + 20).clamp(40, 112).toDouble();
+  }
+}
+
+const double _graphLaneSpacing = 14;
+const _graphLaneColors = [
+  Color(0xFF3B82F6),
+  Color(0xFF22C55E),
+  Color(0xFFF97316),
+  Color(0xFFE11D48),
+  Color(0xFF8B5CF6),
+  Color(0xFF14B8A6),
+];
+
+List<_CommitGraphRow> _buildCommitGraphRows(List<GitCommitInfo> commits) {
+  final lanes = <String>[];
+  final rows = <_CommitGraphRow>[];
+
+  for (final commit in commits) {
+    var laneIndex = lanes.indexOf(commit.sha);
+    if (laneIndex == -1) {
+      lanes.add(commit.sha);
+      laneIndex = lanes.length - 1;
+    }
+
+    final laneCountBefore = lanes.length;
+    if (commit.parentShas.isEmpty) {
+      lanes.removeAt(laneIndex);
+    } else {
+      lanes[laneIndex] = commit.parentShas.first;
+      for (final parentSha in commit.parentShas.skip(1)) {
+        if (!lanes.contains(parentSha)) {
+          lanes.insert(laneIndex + 1, parentSha);
+        }
+      }
+    }
+
+    rows.add(
+      _CommitGraphRow(
+        laneIndex: laneIndex,
+        laneCount: _largestInt([laneCountBefore, lanes.length, laneIndex + 1]),
+        parentCount: commit.parentShas.length,
+      ),
+    );
+  }
+
+  return rows;
+}
+
+int _largestInt(List<int> values) {
+  return values.reduce((value, element) => value > element ? value : element);
+}
+
+class _CommitGraphPainter extends CustomPainter {
+  const _CommitGraphPainter({
+    required this.row,
+    required this.isLast,
+    required this.colorScheme,
+  });
+
+  final _CommitGraphRow row;
+  final bool isLast;
+  final ColorScheme colorScheme;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final mutedPaint = Paint()
+      ..color = colorScheme.outlineVariant
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+    final laneColor = _graphLaneColors[row.laneIndex % _graphLaneColors.length];
+    final activePaint = Paint()
+      ..color = laneColor
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final fillPaint = Paint()
+      ..color = laneColor
+      ..style = PaintingStyle.fill;
+    final centerY = size.height / 2;
+
+    for (var lane = 0; lane < row.laneCount; lane += 1) {
+      final x = _laneX(lane);
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), mutedPaint);
+    }
+
+    final nodeX = _laneX(row.laneIndex);
+    canvas.drawLine(Offset(nodeX, 0), Offset(nodeX, centerY), activePaint);
+    if (!isLast) {
+      canvas.drawLine(
+        Offset(nodeX, centerY),
+        Offset(nodeX, size.height),
+        activePaint,
+      );
+    }
+
+    for (var index = 1; index < row.parentCount; index += 1) {
+      final targetX = _laneX(row.laneIndex + index);
+      canvas.drawLine(
+        Offset(nodeX, centerY),
+        Offset(targetX, size.height),
+        activePaint,
+      );
+    }
+
+    canvas.drawCircle(Offset(nodeX, centerY), 4.5, fillPaint);
+    canvas.drawCircle(
+      Offset(nodeX, centerY),
+      4.5,
+      Paint()
+        ..color = colorScheme.surface
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+  }
+
+  double _laneX(int index) {
+    return 10 + index * _graphLaneSpacing;
+  }
+
+  @override
+  bool shouldRepaint(covariant _CommitGraphPainter oldDelegate) {
+    return oldDelegate.row != row ||
+        oldDelegate.isLast != isLast ||
+        oldDelegate.colorScheme != colorScheme;
+  }
+}
+
 class _StatusTile extends ConsumerWidget {
   const _StatusTile({required this.entry, required this.isBusy});
 
@@ -974,42 +1248,31 @@ class _StatusTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ListTile(
+    final canDiscard = entry.isUnstaged && !entry.isConflicted;
+    final notifier = ref.read(gitProvider.notifier);
+    final tile = ListTile(
       dense: true,
-      leading: Icon(
-        entry.isConflicted
-            ? Icons.warning_amber_outlined
-            : entry.isStaged
-            ? Icons.task_alt
-            : Icons.edit_outlined,
-      ),
+      leading: Icon(_statusIcon),
       title: Text(entry.path, overflow: TextOverflow.ellipsis),
       subtitle: Text(entry.summary, overflow: TextOverflow.ellipsis),
-      onTap: () => ref
-          .read(gitProvider.notifier)
-          .selectPath(entry.path, staged: entry.isStaged && !entry.isUnstaged),
-      trailing: Wrap(
-        spacing: 2,
+      onTap: () => notifier.selectPath(
+        entry.path,
+        staged: entry.isStaged && !canDiscard,
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          if (canDiscard)
+            IconButton(
+              tooltip: '放弃更改',
+              onPressed: isBusy ? null : () => _confirmDiscard(context, ref),
+              icon: const Icon(Icons.restore_outlined),
+            ),
           IconButton(
-            tooltip: 'Blame',
-            onPressed: isBusy
-                ? null
-                : () async {
-                    await ref.read(gitProvider.notifier).selectPath(entry.path);
-                    await ref.read(gitProvider.notifier).blameSelected();
-                  },
-            icon: const Icon(Icons.person_search_outlined),
-          ),
-          IconButton(
-            tooltip: entry.isStaged ? '取消暂存' : '暂存',
-            onPressed: isBusy
-                ? null
-                : () => entry.isStaged && !entry.isUnstaged
-                      ? ref.read(gitProvider.notifier).unstage(entry.path)
-                      : ref.read(gitProvider.notifier).stage(entry.path),
+            tooltip: entry.isStaged && !canDiscard ? '取消暂存' : '暂存',
+            onPressed: isBusy ? null : () => _toggleStage(ref),
             icon: Icon(
-              entry.isStaged
+              entry.isStaged && !canDiscard
                   ? Icons.remove_done_outlined
                   : Icons.add_task_outlined,
             ),
@@ -1017,6 +1280,85 @@ class _StatusTile extends ConsumerWidget {
         ],
       ),
     );
+
+    return ContextMenuWidget(
+      child: tile,
+      menuProvider: (request) {
+        return Menu(
+          children: [
+            MenuAction(
+              title: '查看 Diff',
+              callback: () => notifier.selectPath(
+                entry.path,
+                staged: entry.isStaged && !canDiscard,
+              ),
+              attributes: MenuActionAttributes(disabled: isBusy),
+            ),
+            MenuAction(
+              title: 'Blame',
+              callback: () => _blame(ref),
+              attributes: MenuActionAttributes(disabled: isBusy),
+            ),
+            MenuSeparator(),
+            MenuAction(
+              title: entry.isStaged && !canDiscard ? '取消暂存' : '暂存',
+              callback: () => _toggleStage(ref),
+              attributes: MenuActionAttributes(disabled: isBusy),
+            ),
+            MenuAction(
+              title: '放弃更改',
+              callback: () => _confirmDiscard(context, ref),
+              attributes: MenuActionAttributes(disabled: isBusy || !canDiscard),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  IconData get _statusIcon {
+    if (entry.isConflicted) return Icons.warning_amber_outlined;
+    if (entry.isStaged) return Icons.task_alt;
+    if (entry.isUntracked) return Icons.note_add_outlined;
+    return Icons.edit_outlined;
+  }
+
+  Future<void> _blame(WidgetRef ref) async {
+    await ref.read(gitProvider.notifier).selectPath(entry.path);
+    await ref.read(gitProvider.notifier).blameSelected();
+  }
+
+  void _toggleStage(WidgetRef ref) {
+    if (entry.isStaged && !entry.isUnstaged) {
+      ref.read(gitProvider.notifier).unstage(entry.path);
+    } else {
+      ref.read(gitProvider.notifier).stage(entry.path);
+    }
+  }
+
+  Future<void> _confirmDiscard(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('放弃更改'),
+          content: Text('将丢弃 ${entry.path} 的工作区更改。此操作不可撤销。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('放弃'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) {
+      await ref.read(gitProvider.notifier).discardChanges(entry);
+    }
   }
 }
 
@@ -1040,7 +1382,7 @@ class _PreviewPanel extends StatelessWidget {
         Expanded(
           child: state.blame.isNotEmpty
               ? _BlameView(lines: state.blame)
-              : _CodeBlock(
+              : _DiffEditor(
                   text: selectedPath == null
                       ? _combinedPatch(snapshot)
                       : state.selectedPatch,
@@ -1056,6 +1398,79 @@ class _PreviewPanel extends StatelessWidget {
       if (snapshot.unstagedPatch.isNotEmpty) snapshot.unstagedPatch,
     ];
     return parts.isEmpty ? 'No diff.' : parts.join('\n');
+  }
+}
+
+class _DiffEditor extends ConsumerStatefulWidget {
+  const _DiffEditor({required this.text});
+
+  final String text;
+
+  @override
+  ConsumerState<_DiffEditor> createState() => _DiffEditorState();
+}
+
+class _DiffEditorState extends ConsumerState<_DiffEditor> {
+  late final CodeForgeController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = CodeForgeController()
+      ..text = _displayText(widget.text)
+      ..readOnly = true;
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiffEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextText = _displayText(widget.text);
+    if (_controller.text != nextText) {
+      _controller.text = nextText;
+    }
+    _controller.readOnly = true;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeKey = ref.watch(editorThemeKey);
+    final entry = findEditorThemeByKey(themeKey) ?? editorThemes.first;
+    final brightness = Theme.of(context).brightness;
+    final surface = Theme.of(context).scaffoldBackgroundColor;
+    final resolvedTheme = applySurfaceBackground(
+      resolveEditorTheme(entry, brightness),
+      surface,
+    );
+
+    return CodeForge(
+      key: ValueKey('git_diff_${themeKey}_${brightness.name}'),
+      controller: _controller,
+      filePath: 'git.diff',
+      readOnly: true,
+      editorTheme: resolvedTheme,
+      language: langDiff,
+      textStyle: TextStyle(
+        fontSize: ref.watch(editorFontSize),
+        fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
+      ),
+      lineWrap: ref.watch(editorWordWrap),
+      useSpaceAsTab: true,
+      tabSize: 4,
+      gutterBuilder: GutterBuilder(
+        builder: (lineNumber, lineText) => '$lineNumber',
+        includeReplacedIndex: false,
+      ),
+    );
+  }
+
+  String _displayText(String text) {
+    return text.isEmpty ? 'No diff.' : text;
   }
 }
 

@@ -45,6 +45,31 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
+  Future<void> initRepository() async {
+    final path = state.workspacePath ?? ref.read(localWorkspaceProvider)?.path;
+    if (path == null || path.isEmpty) {
+      state = state.copyWith(error: '请先打开一个本地文件夹。');
+      return;
+    }
+
+    await _run(
+      () async {
+        await _service.initRepository(path);
+        final snapshot = await _service.loadSnapshot(path);
+        state = state.copyWith(
+          snapshot: snapshot,
+          workspacePath: path,
+          lastMessage: '已初始化 Git 仓库',
+          clearError: true,
+          clearSnapshot: snapshot == null,
+          clearSelection: snapshot == null,
+        );
+      },
+      success: null,
+      refreshAfter: false,
+    );
+  }
+
   void updateCredentials(GitCredentialDraft credentials) {
     state = state.copyWith(credentials: credentials, clearError: true);
   }
@@ -106,6 +131,13 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
+  Future<void> discardChanges(GitStatusEntry entry) async {
+    await _runRoot(
+      (root) async => _service.discardChanges(root, entry),
+      success: '已放弃 ${entry.path} 的工作区更改',
+    );
+  }
+
   Future<void> stageAll() async {
     final paths = state.snapshot?.statusEntries
         .where((entry) => entry.isUnstaged || entry.isConflicted)
@@ -144,9 +176,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
-  Future<void> checkoutBranch(String name) async {
+  Future<void> checkoutBranch(String name, {bool remote = false}) async {
     await _runRoot(
-      (root) async => _service.checkoutBranch(root, name),
+      (root) async => _service.checkoutBranch(root, name, remote: remote),
       success: '已切换到 $name',
     );
   }
@@ -190,6 +222,13 @@ class GitNotifier extends StateNotifier<GitViewState> {
     await _runRoot(
       (root) async => _service.pull(root, remote, state.credentials),
       success: null,
+    );
+  }
+
+  Future<void> addRemote(String name, String url) async {
+    await _runRoot(
+      (root) async => _service.addRemote(root, name, url),
+      success: '已添加远端 $name',
     );
   }
 

@@ -101,6 +101,7 @@ class GitStatusEntry {
     required this.isStaged,
     required this.isUnstaged,
     required this.isConflicted,
+    required this.isUntracked,
   });
 
   final String path;
@@ -108,6 +109,7 @@ class GitStatusEntry {
   final bool isStaged;
   final bool isUnstaged;
   final bool isConflicted;
+  final bool isUntracked;
 
   String get summary => labels.join(' / ');
 }
