@@ -28,62 +28,21 @@ class Plugins extends ConsumerWidget {
         title: Text('插件'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.add_box_outlined),
+            tooltip: '注册并安装插件',
+            onPressed: () => _installPlugin(context, ref),
+          ),
+          IconButton(
             icon: const Icon(Icons.monitor),
             tooltip: '权限监控',
             onPressed: () => context.push('/plugins/monitor'),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          FilledButton(
-            onPressed: () async {
-              try {
-                final result = await FilePicker.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['zip'],
-                );
-                if (result == null || result.files.isEmpty) return;
-
-                final zipPath = result.files.single.path!;
-                final parsed = PluginTomlParser.parseFromZip(zipPath);
-
-                final pluginId = parsed?.id ?? 'unknown';
-                final pluginName = parsed?.name ?? 'Unknown Plugin';
-
-                await ref
-                    .read(pluginManagerProvider.notifier)
-                    .install(
-                      Plugin(
-                        id: pluginId,
-                        name: pluginName,
-                        version: parsed?.version ?? '0.0.0',
-                        author: parsed?.author ?? '',
-                        description: parsed?.description ?? '',
-                        type: PluginType.values.firstWhere(
-                          (e) => e.name == parsed?.type,
-                          orElse: () => PluginType.ui,
-                        ),
-                        declaredPermissions: parsed?.permissions ?? {},
-                        permissions: parsed?.permissions != null
-                            ? Map<String, List<String>>.from(
-                                parsed!.permissions,
-                              )
-                            : {},
-                        platforms: parsed?.platforms ?? [],
-                      ),
-                      zipPath,
-                    );
-              } catch (e) {
-                if (context.mounted) {
-                  showIdeError(context, '安装失败: $e');
-                }
-              }
-            },
-            child: Text("注册并安装"),
-          ),
-          Expanded(
-            child: ListView.builder(
+      body: showPlugins.isEmpty
+          ? _PluginsEmptyState(onInstall: () => _installPlugin(context, ref))
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: showPlugins.length,
               itemBuilder: (context, index) {
                 final plugin = showPlugins[index];
@@ -227,10 +186,49 @@ class Plugins extends ConsumerWidget {
                 );
               },
             ),
-          ),
-        ],
-      ),
     );
+  }
+
+  Future<void> _installPlugin(BuildContext context, WidgetRef ref) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final zipPath = result.files.single.path!;
+      final parsed = PluginTomlParser.parseFromZip(zipPath);
+
+      final pluginId = parsed?.id ?? 'unknown';
+      final pluginName = parsed?.name ?? 'Unknown Plugin';
+
+      await ref
+          .read(pluginManagerProvider.notifier)
+          .install(
+            Plugin(
+              id: pluginId,
+              name: pluginName,
+              version: parsed?.version ?? '0.0.0',
+              author: parsed?.author ?? '',
+              description: parsed?.description ?? '',
+              type: PluginType.values.firstWhere(
+                (e) => e.name == parsed?.type,
+                orElse: () => PluginType.ui,
+              ),
+              declaredPermissions: parsed?.permissions ?? {},
+              permissions: parsed?.permissions != null
+                  ? Map<String, List<String>>.from(parsed!.permissions)
+                  : {},
+              platforms: parsed?.platforms ?? [],
+            ),
+            zipPath,
+          );
+    } catch (e) {
+      if (context.mounted) {
+        showIdeError(context, '安装失败: $e');
+      }
+    }
   }
 
   void _handleMenuAction(
@@ -478,6 +476,47 @@ class Plugins extends ConsumerWidget {
             child: Text('删除', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PluginsEmptyState extends StatelessWidget {
+  const _PluginsEmptyState({required this.onInstall});
+
+  final VoidCallback onInstall;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.extension_outlined, size: 56, color: scheme.primary),
+              const SizedBox(height: 18),
+              Text('尚未安装插件', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                '从本地 ZIP 包注册插件后，它们会显示在这里。',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 22),
+              FilledButton.icon(
+                onPressed: onInstall,
+                icon: const Icon(Icons.add_box_outlined),
+                label: const Text('注册并安装插件'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
