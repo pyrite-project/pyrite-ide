@@ -80,6 +80,7 @@ class Plugin(UiPlugin):
 - `bridge`
 - `path`
 - `settings`
+- `message`
 - 输出/日志基础能力
 - 基础生命周期钩子
 

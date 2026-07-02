@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
-import 'package:tolyui_message/tolyui_message.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 
 void showEditorSnackBar(BuildContext context, String message) {
-  $message.attach(context);
-  $message.success(message: message);
+  showIdeSuccess(context, message);
 }
 
 /// Shows a prominent Thonny-style dialog when the device is not in REPL state.

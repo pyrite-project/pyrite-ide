@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -215,6 +216,7 @@ class SettingsRegistry {
           .map((item) => MicroPythonStubsLayer.fromJson(Map<String, dynamic>.from(item)))
           .where((layer) => layer.provider.isNotEmpty && layer.profile.isNotEmpty)
           .toList();
+      refreshOpenLspStubsConfiguration(ref);
     }),
     _SettingEntry(name: 'micropython.stubs.extra_paths', type: 'list', provider: microPythonStubsExtraPaths, getter: (ref) => ref.read(microPythonStubsExtraPaths), setter: (ref, v) {
       final list = v is List ? v : const [];

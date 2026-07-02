@@ -1,10 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
-import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
@@ -386,7 +381,7 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
         '[$pluginId] registered stubs provider $providerId: '
         '${profiles.map((profile) => '${profile.id}=${profile.path}').join(', ')}',
       );
-      _refreshOpenLspStubsConfiguration();
+      refreshOpenLspStubsConfiguration(ref);
     } catch (error) {
       _respondError(envelope, respond, error.toString());
       return;
@@ -436,45 +431,8 @@ class SdkDataApi extends StateNotifier<PluginRunManager?> {
             item.contributionId == providerId))
           item,
     ];
-    _refreshOpenLspStubsConfiguration();
+    refreshOpenLspStubsConfiguration(ref);
     _respondOk(envelope, respond, data: true);
-  }
-
-  void _refreshOpenLspStubsConfiguration() {
-    final enabled = ref.read(microPythonStubsEnabled);
-    final layers = ref.read(microPythonStubsLayers);
-    final controllers = ref.read(editorControllerMapProvider).values.toList();
-    final stubsConfig = buildLspStubsConfig(ref);
-    ref.read(ideOutputLogProvider.notifier).add(
-          IdeOutputSource.ide,
-          'Stubs refresh requested: enabled=$enabled, '
-          'layers=${layers.map((layer) => '${layer.provider}/${layer.profile}').join(', ')}, '
-          'paths=${stubsConfig.paths.join(';')}, '
-          'openLsp=${controllers.where((controller) => controller.lspConfig != null).length}',
-        );
-    if (stubsConfig.workspaceConfiguration.isEmpty) {
-      ref.read(ideOutputLogProvider.notifier).add(
-            IdeOutputSource.ide,
-            'Skipped LSP stubs refresh: no resolved stubs paths',
-          );
-      return;
-    }
-    for (final controller in controllers) {
-      final lspConfig = controller.lspConfig;
-      if (lspConfig == null || !lspConfig.isInitialized) {
-        continue;
-      }
-      ref.read(ideOutputLogProvider.notifier).add(
-            IdeOutputSource.ide,
-            'Refreshing LSP stubs paths: ${stubsConfig.paths.join(';')}',
-          );
-      unawaited(
-        lspConfig.sendNotification(
-          method: 'workspace/didChangeConfiguration',
-          params: {'settings': stubsConfig.workspaceConfiguration},
-        ),
-      );
-    }
   }
 
   void _handleStubsGet(

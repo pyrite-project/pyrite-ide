@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
-import 'package:tolyui_message/tolyui_message.dart';
 
 class LspSettings extends ConsumerWidget {
   const LspSettings({super.key});
@@ -79,8 +81,7 @@ class LspSettings extends ConsumerWidget {
                       ),
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioExecutable.notifier).state = value.trim();
-                        $message.attach(context);
-                        $message.success(message: "可执行文件路径已更新");
+                        showIdeSuccess(context, "可执行文件路径已更新");
                       },
                     ),
                     const SizedBox(height: 12),
@@ -93,8 +94,7 @@ class LspSettings extends ConsumerWidget {
                       ),
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioArgs.notifier).state = value.trim();
-                        $message.attach(context);
-                        $message.success(message: "启动参数已更新");
+                        showIdeSuccess(context, "启动参数已更新");
                       },
                     ),
                   ],
@@ -212,52 +212,169 @@ class LspSettings extends ConsumerWidget {
   }
 
   void _showLayersDialog(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(
-      text: ref
-          .read(microPythonStubsLayers)
-          .map((layer) => '${layer.provider}/${layer.profile}')
-          .join('\n'),
+    final layers = List<MicroPythonStubsLayer>.from(
+      ref.read(microPythonStubsLayers),
     );
     await showDialog(
       context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final providers = ref.read(dataRegistryProvider).allStubsProviders;
+          return AlertDialog(
+            title: const Text("Stubs Layers"),
+            content: SizedBox(
+              width: 560,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (layers.isEmpty)
+                    const ListTile(
+                      leading: Icon(Icons.layers_clear_outlined),
+                      title: Text("未配置 Layer"),
+                      subtitle: Text("添加 generic、port 或 board stubs layer"),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 360),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: layers.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) => _StubsLayerTile(
+                          layer: layers[index],
+                          profile: _findProfile(ref, layers[index]),
+                          canMoveUp: index > 0,
+                          canMoveDown: index < layers.length - 1,
+                          onMoveUp: () => setDialogState(() {
+                            final item = layers.removeAt(index);
+                            layers.insert(index - 1, item);
+                          }),
+                          onMoveDown: () => setDialogState(() {
+                            final item = layers.removeAt(index);
+                            layers.insert(index + 1, item);
+                          }),
+                          onDelete: () => setDialogState(() {
+                            layers.removeAt(index);
+                          }),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      onPressed: providers.isEmpty
+                          ? null
+                          : () async {
+                              final layer = await _showAddLayerDialog(
+                                context,
+                                ref,
+                                layers,
+                              );
+                              if (layer == null) return;
+                              setDialogState(() => layers.add(layer));
+                            },
+                      icon: const Icon(Icons.add),
+                      label: const Text("添加 Layer"),
+                    ),
+                  ),
+                  if (providers.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text("未找到 stubs provider，请先安装并启用 stubs 插件。"),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+              FilledButton(
+                onPressed: () {
+                  ref.read(microPythonStubsLayers.notifier).state = List.unmodifiable(layers);
+                  refreshOpenLspStubsConfiguration(ref);
+                  context.pop();
+                  showIdeSuccess(context, "Stubs Layers 已更新");
+                },
+                child: const Text("保存"),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  StubsProfileEntry? _findProfile(WidgetRef ref, MicroPythonStubsLayer layer) {
+    return ref.read(dataRegistryProvider).getStubsProfile(
+          layer.provider,
+          layer.profile,
+        );
+  }
+
+  Future<MicroPythonStubsLayer?> _showAddLayerDialog(
+    BuildContext context,
+    WidgetRef ref,
+    List<MicroPythonStubsLayer> selected,
+  ) async {
+    final providers = ref.read(dataRegistryProvider).allStubsProviders;
+    return showDialog<MicroPythonStubsLayer>(
+      context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Stubs Layers"),
+        title: const Text("添加 Stubs Layer"),
         content: SizedBox(
-          width: 460,
-          child: TextField(
-            controller: controller,
-            minLines: 6,
-            maxLines: 12,
-            decoration: const InputDecoration(
-              helperText: "每行一个 layer，格式：provider/profile。上方优先级更高。",
-              border: OutlineInputBorder(),
+          width: 560,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: providers.length,
+              itemBuilder: (context, providerIndex) {
+                final provider = providers[providerIndex];
+                return ExpansionTile(
+                  initiallyExpanded: providerIndex == 0,
+                  title: Text(provider.providerId),
+                  subtitle: Text(
+                    [
+                      if (provider.version.isNotEmpty) provider.version,
+                      '${provider.profiles.length} profiles',
+                    ].join(' · '),
+                  ),
+                  children: [
+                    for (final profile in provider.profiles)
+                      Builder(
+                        builder: (context) {
+                          final alreadySelected = selected.any(
+                            (layer) =>
+                                layer.provider == provider.providerId &&
+                                layer.profile == profile.id,
+                          );
+                          return ListTile(
+                            enabled: !alreadySelected,
+                            title: Text(profile.label ?? profile.id),
+                            subtitle: Text('${provider.providerId}/${profile.id}\n${profile.path}'),
+                            isThreeLine: true,
+                            trailing: alreadySelected
+                                ? const Text("已添加")
+                                : const Icon(Icons.add),
+                            onTap: alreadySelected
+                                ? null
+                                : () => context.pop(
+                                      MicroPythonStubsLayer(
+                                        provider: provider.providerId,
+                                        profile: profile.id,
+                                      ),
+                                    ),
+                          );
+                        },
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),
         actions: [
           TextButton(onPressed: () => context.pop(), child: const Text("取消")),
-          FilledButton(
-            onPressed: () {
-              final layers = controller.text
-                  .split('\n')
-                  .map((line) => line.trim())
-                  .where((line) => line.isNotEmpty)
-                  .map((line) {
-                    final parts = line.split('/');
-                    if (parts.length < 2) return null;
-                    return MicroPythonStubsLayer(
-                      provider: parts.first.trim(),
-                      profile: parts.sublist(1).join('/').trim(),
-                    );
-                  })
-                  .whereType<MicroPythonStubsLayer>()
-                  .where((layer) => layer.provider.isNotEmpty && layer.profile.isNotEmpty)
-                  .toList();
-              ref.read(microPythonStubsLayers.notifier).state = layers;
-              context.pop();
-            },
-            child: const Text("保存"),
-          ),
         ],
       ),
     );
@@ -337,14 +454,12 @@ class LspSettings extends ConsumerWidget {
                   throw const FormatException("Invalid WebSocket address");
                 }
               } on FormatException {
-                $message.attach(context);
-                $message.error(message: "请输入有效的 WebSocket 地址");
+                showIdeError(context, "请输入有效的 WebSocket 地址");
                 return;
               }
               ref.read(lspWebSocketPath.notifier).state = value;
               context.pop();
-              $message.attach(context);
-              $message.success(message: "语言服务器地址已更新");
+              showIdeSuccess(context, "语言服务器地址已更新");
             },
             child: const Text("保存"),
           ),
@@ -366,6 +481,62 @@ class _CapabilitySwitch extends ConsumerWidget {
       title: Text(title),
       value: ref.watch(provider),
       onChanged: (value) => ref.read(provider.notifier).state = value,
+    );
+  }
+}
+
+class _StubsLayerTile extends StatelessWidget {
+  const _StubsLayerTile({
+    required this.layer,
+    required this.profile,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onMoveUp,
+    required this.onMoveDown,
+    required this.onDelete,
+  });
+
+  final MicroPythonStubsLayer layer;
+  final StubsProfileEntry? profile;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = profile?.label ?? '${layer.provider}/${layer.profile}';
+    final subtitle = profile == null
+        ? '未找到 profile: ${layer.provider}/${layer.profile}'
+        : '${layer.provider}/${layer.profile}\n${profile!.path}';
+    return ListTile(
+      leading: Icon(
+        profile == null ? Icons.warning_amber_outlined : Icons.layers_outlined,
+      ),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      isThreeLine: profile != null,
+      trailing: Wrap(
+        spacing: 4,
+        children: [
+          IconButton(
+            tooltip: '上移',
+            onPressed: canMoveUp ? onMoveUp : null,
+            icon: const Icon(Icons.keyboard_arrow_up),
+          ),
+          IconButton(
+            tooltip: '下移',
+            onPressed: canMoveDown ? onMoveDown : null,
+            icon: const Icon(Icons.keyboard_arrow_down),
+          ),
+          IconButton(
+            tooltip: '删除',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
     );
   }
 }

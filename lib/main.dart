@@ -40,31 +40,33 @@ Timer? _pluginSaveTimer;
 final UseWindow appWindow = UseWindow();
 DebugPrintCallback? _defaultDebugPrint;
 
+void _appendIdeOutputLater(String text) {
+  Future<void>.delayed(Duration.zero, () {
+    container
+        .read(ideOutputLogProvider.notifier)
+        .add(IdeOutputSource.ide, text);
+  });
+}
+
 void _installIdeOutputLogger() {
   if (_defaultDebugPrint != null) return;
   _defaultDebugPrint = debugPrint;
   IdeOutputLogNotifier.setDebugMirror(_defaultDebugPrint);
   debugPrint = (String? message, {int? wrapWidth}) {
     final text = message ?? 'null';
-    container
-        .read(ideOutputLogProvider.notifier)
-        .add(IdeOutputSource.ide, text);
+    _appendIdeOutputLater(text);
     _defaultDebugPrint?.call(message, wrapWidth: wrapWidth);
   };
 
   FlutterError.onError = (FlutterErrorDetails details) {
     final message = details.exceptionAsString();
     final stack = details.stack?.toString();
-    container
-        .read(ideOutputLogProvider.notifier)
-        .add(IdeOutputSource.ide, '$message${stack == null ? '' : '\n$stack'}');
+    _appendIdeOutputLater('$message${stack == null ? '' : '\n$stack'}');
     FlutterError.presentError(details);
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
-    container
-        .read(ideOutputLogProvider.notifier)
-        .add(IdeOutputSource.ide, 'Unhandled exception: $error\n$stack');
+    _appendIdeOutputLater('Unhandled exception: $error\n$stack');
     return false;
   };
 }

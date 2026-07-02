@@ -8,12 +8,12 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:tolyui_message/tolyui_message.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
@@ -164,18 +164,22 @@ class PyriteIDE extends ConsumerWidget {
           routerConfig: routes,
           builder: (context, child) {
             setAppContext(context);
-            $message.attach(context);
             return Material(
-              child: ResponsiveBreakpoints.builder(
-                child: child!,
-                breakpoints: [
-                  const Breakpoint(start: 0, end: 599, name: MOBILE),
-                  const Breakpoint(start: 600, end: 839, name: TABLET),
-                  const Breakpoint(
-                    start: 840,
-                    end: double.infinity,
-                    name: DESKTOP,
+              child: Stack(
+                children: [
+                  ResponsiveBreakpoints.builder(
+                    child: child!,
+                    breakpoints: [
+                      const Breakpoint(start: 0, end: 599, name: MOBILE),
+                      const Breakpoint(start: 600, end: 839, name: TABLET),
+                      const Breakpoint(
+                        start: 840,
+                        end: double.infinity,
+                        name: DESKTOP,
+                      ),
+                    ],
                   ),
+                  const IdeMessageHost(),
                 ],
               ),
             );

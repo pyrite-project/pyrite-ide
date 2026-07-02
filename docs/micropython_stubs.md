@@ -86,7 +86,7 @@ plugin-data/
 插件侧 SDK 期望形式：
 
 ```python
-self.stubs.register(
+self.stubs.contribute(
     provider_id="micropython-stubs-official",
     kind="micropython",
     version="1.24.0",
@@ -95,6 +95,29 @@ self.stubs.register(
         {"id": "esp32", "path": ".../stubs/esp32"},
     ],
 )
+```
+
+数据插件可以在贡献 provider 后，为首次使用的用户设置默认 layers：
+
+```python
+def on_contribute(self):
+    provider_id = "micropython-stubs-official"
+    self.stubs.contribute(provider_id=provider_id, profiles=[...])
+
+    def configure_default_layers(**response):
+        current = response.get("data", {}).get("value", [])
+        if current:
+            self.message.warning("已检测到现有 Stubs Layers，未覆盖用户配置")
+            return
+
+        self.settings.micropython_stubs.set_enabled(True)
+        self.settings.micropython_stubs.set_layers([
+            {"provider": provider_id, "profile": "generic"},
+            {"provider": provider_id, "profile": "esp32"},
+        ])
+        self.message.success("MicroPython Stubs Layers 已配置")
+
+    self.settings.micropython_stubs.get_layers(configure_default_layers)
 ```
 
 如果不单独引入 `self.stubs`，也可以挂在 data API 下：
@@ -200,7 +223,7 @@ micropython.stubs.extra_paths: list
 UI 建议：
 
 - “启用 MicroPython Stubs” 开关。
-- “Stubs 层级列表”，可添加、删除、排序。
+- “Stubs 层级列表”，从已注册 provider/profile 中添加、删除、排序。
 - 每层显示 provider、profile、version、path。
 - 标记来源：自动检测、用户手动、项目配置。
 
