@@ -116,8 +116,16 @@ class ProjectFiles extends ConsumerWidget {
                     if (renameField != null) {
                       return renameField;
                     }
+                    final isGitIgnored = local.isGitIgnoredItem(node.data);
                     return ContextMenuWidget(
-                      child: Text(node.data.name),
+                      child: Text(
+                        node.data.name,
+                        style: isGitIgnored
+                            ? TextStyle(
+                                color: Theme.of(context).colorScheme.outline,
+                              )
+                            : null,
+                      ),
                       menuProvider: (request) {
                         ref
                             .read(localFileTreeViewControllerProvider)

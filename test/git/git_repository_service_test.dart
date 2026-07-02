@@ -218,6 +218,127 @@ void main() {
     },
   );
 
+  test('GitNotifier honors explicit staged diff selection', () async {
+    final tempDir = Directory.systemTemp.createTempSync(
+      'pyrite_git_notifier_staged_selection_test_',
+    );
+    final service = _FakeGitRepositoryService();
+    final container = ProviderContainer(
+      overrides: [gitRepositoryServiceProvider.overrideWithValue(service)],
+    );
+
+    try {
+      container.read(gitProvider.notifier);
+      await Future<void>.delayed(Duration.zero);
+
+      service.snapshots.add(
+        _snapshot(tempDir.path, [
+          _statusEntry('tracked.txt', isStaged: true, isUnstaged: true),
+        ]),
+      );
+      await container
+          .read(gitProvider.notifier)
+          .refresh(workspacePath: tempDir.path);
+      await container
+          .read(gitProvider.notifier)
+          .selectPath('tracked.txt', staged: true);
+
+      final state = container.read(gitProvider);
+      expect(state.selectedPath, 'tracked.txt');
+      expect(state.selectedStaged, isTrue);
+      expect(state.selectedPatch, contains('staged'));
+      expect(service.diffRequests.last.staged, isTrue);
+    } finally {
+      container.dispose();
+      tempDir.deleteSync(recursive: true);
+    }
+  });
+
+  test('GitNotifier selects the staged diff after staging a file', () async {
+    final tempDir = Directory.systemTemp.createTempSync(
+      'pyrite_git_notifier_stage_select_test_',
+    );
+    final service = _FakeGitRepositoryService();
+    final container = ProviderContainer(
+      overrides: [gitRepositoryServiceProvider.overrideWithValue(service)],
+    );
+
+    try {
+      container.read(gitProvider.notifier);
+      await Future<void>.delayed(Duration.zero);
+
+      service.snapshots.add(
+        _snapshot(tempDir.path, [_statusEntry('tracked.txt')]),
+      );
+      await container
+          .read(gitProvider.notifier)
+          .refresh(workspacePath: tempDir.path);
+
+      service.snapshots.add(
+        _snapshot(tempDir.path, [
+          _statusEntry('tracked.txt', isStaged: true, isUnstaged: false),
+        ]),
+      );
+      await container.read(gitProvider.notifier).stage('tracked.txt');
+
+      final state = container.read(gitProvider);
+      expect(service.stageRequests, [
+        ['tracked.txt'],
+      ]);
+      expect(state.selectedPath, 'tracked.txt');
+      expect(state.selectedStaged, isTrue);
+      expect(state.selectedPatch, contains('staged'));
+      expect(service.diffRequests.last.staged, isTrue);
+    } finally {
+      container.dispose();
+      tempDir.deleteSync(recursive: true);
+    }
+  });
+
+  test(
+    'GitNotifier selects the unstaged diff after unstaging a file',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'pyrite_git_notifier_unstage_select_test_',
+      );
+      final service = _FakeGitRepositoryService();
+      final container = ProviderContainer(
+        overrides: [gitRepositoryServiceProvider.overrideWithValue(service)],
+      );
+
+      try {
+        container.read(gitProvider.notifier);
+        await Future<void>.delayed(Duration.zero);
+
+        service.snapshots.add(
+          _snapshot(tempDir.path, [
+            _statusEntry('tracked.txt', isStaged: true, isUnstaged: false),
+          ]),
+        );
+        await container
+            .read(gitProvider.notifier)
+            .refresh(workspacePath: tempDir.path);
+
+        service.snapshots.add(
+          _snapshot(tempDir.path, [_statusEntry('tracked.txt')]),
+        );
+        await container.read(gitProvider.notifier).unstage('tracked.txt');
+
+        final state = container.read(gitProvider);
+        expect(service.unstageRequests, [
+          ['tracked.txt'],
+        ]);
+        expect(state.selectedPath, 'tracked.txt');
+        expect(state.selectedStaged, isFalse);
+        expect(state.selectedPatch, contains('unstaged'));
+        expect(service.diffRequests.last.staged, isFalse);
+      } finally {
+        container.dispose();
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
+
   test('GitRepositoryService initializes a folder without .git', () async {
     final tempDir = Directory.systemTemp.createTempSync(
       'pyrite_git_init_test_',
@@ -479,6 +600,8 @@ class _DiffRequest {
 class _FakeGitRepositoryService extends GitRepositoryService {
   final snapshots = <GitRepositorySnapshot?>[];
   final diffRequests = <_DiffRequest>[];
+  final stageRequests = <List<String>>[];
+  final unstageRequests = <List<String>>[];
   var _patchCount = 0;
 
   @override
@@ -490,6 +613,16 @@ class _FakeGitRepositoryService extends GitRepositoryService {
 
   @override
   Future<String?> discoverRoot(String? workspacePath) async => workspacePath;
+
+  @override
+  Future<void> stage(String rootPath, Iterable<String> paths) async {
+    stageRequests.add(List.of(paths));
+  }
+
+  @override
+  Future<void> unstage(String rootPath, Iterable<String> paths) async {
+    unstageRequests.add(List.of(paths));
+  }
 
   @override
   Future<String> diffForEntry(

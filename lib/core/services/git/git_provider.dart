@@ -65,33 +65,12 @@ class GitNotifier extends StateNotifier<GitViewState> {
     state = state.copyWith(credentials: credentials, clearError: true);
   }
 
-  Future<void> selectPath(String path, {bool staged = false}) async {
+  Future<void> selectPath(String path, {bool? staged}) async {
     final rootPath = await _rootPath();
     if (rootPath == null) return;
     await _run(
       () async {
-        final entry = _findStatusEntry(state.snapshot, path);
-        final selectedStaged = entry == null
-            ? staged
-            : _preferredSelectedStaged(entry);
-        final patch = entry == null
-            ? await _service.diffForPath(rootPath, path, staged: selectedStaged)
-            : await _service.diffForEntry(
-                rootPath,
-                entry,
-                staged: selectedStaged,
-              );
-        final history = await _service.fileHistory(rootPath, path);
-        state = state.copyWith(
-          selectedPath: path,
-          selectedStaged: selectedStaged,
-          selectedPatch: patch,
-          blame: const [],
-          lastMessage: history.isEmpty
-              ? '已选择 $path'
-              : '已选择 $path，找到 ${history.length} 条文件历史',
-          clearError: true,
-        );
+        await _selectPathPatch(rootPath, path, staged: staged);
       },
       success: null,
       refreshAfter: false,
@@ -119,6 +98,8 @@ class GitNotifier extends StateNotifier<GitViewState> {
     await _runRoot(
       (root) async => _service.stage(root, [path]),
       success: '已暂存 $path',
+      selectPathAfterRefresh: path,
+      selectStagedAfterRefresh: true,
     );
   }
 
@@ -126,6 +107,8 @@ class GitNotifier extends StateNotifier<GitViewState> {
     await _runRoot(
       (root) async => _service.unstage(root, [path]),
       success: '已取消暂存 $path',
+      selectPathAfterRefresh: path,
+      selectStagedAfterRefresh: false,
     );
   }
 
@@ -322,25 +305,39 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> _runRoot(
     FutureOr<Object?> Function(String rootPath) action, {
     String? success,
+    String? selectPathAfterRefresh,
+    bool? selectStagedAfterRefresh,
   }) async {
     final rootPath = await _rootPath();
     if (rootPath == null) {
       state = state.copyWith(error: '当前工作区不是 Git 仓库。');
       return;
     }
-    await _run(() async {
-      final result = await action(rootPath);
-      state = state.copyWith(
-        lastMessage: result?.toString() ?? success,
-        clearError: true,
-      );
-    }, success: null);
+    await _run(
+      () async {
+        final result = await action(rootPath);
+        state = state.copyWith(
+          lastMessage: result?.toString() ?? success,
+          clearError: true,
+        );
+      },
+      success: null,
+      afterRefresh: selectPathAfterRefresh == null
+          ? null
+          : () => _selectPathPatch(
+              rootPath,
+              selectPathAfterRefresh,
+              staged: selectStagedAfterRefresh,
+              lastMessage: success,
+            ),
+    );
   }
 
   Future<void> _run(
     FutureOr<void> Function() action, {
     String? success,
     bool refreshAfter = true,
+    FutureOr<void> Function()? afterRefresh,
   }) async {
     state = state.copyWith(
       isBusy: true,
@@ -357,11 +354,40 @@ class GitNotifier extends StateNotifier<GitViewState> {
           state.workspacePath ?? ref.read(localWorkspaceProvider)?.path,
         );
       }
+      await afterRefresh?.call();
     } catch (error) {
       state = state.copyWith(error: error.toString());
     } finally {
       state = state.copyWith(isBusy: false);
     }
+  }
+
+  Future<void> _selectPathPatch(
+    String rootPath,
+    String path, {
+    bool? staged,
+    String? lastMessage,
+  }) async {
+    final entry = _findStatusEntry(state.snapshot, path);
+    final selectedStaged = entry == null
+        ? staged ?? false
+        : _selectedStagedForEntry(entry, staged);
+    final patch = entry == null
+        ? await _service.diffForPath(rootPath, path, staged: selectedStaged)
+        : await _service.diffForEntry(rootPath, entry, staged: selectedStaged);
+    final history = await _service.fileHistory(rootPath, path);
+    state = state.copyWith(
+      selectedPath: path,
+      selectedStaged: selectedStaged,
+      selectedPatch: patch,
+      blame: const [],
+      lastMessage:
+          lastMessage ??
+          (history.isEmpty
+              ? '已选择 $path'
+              : '已选择 $path，找到 ${history.length} 条文件历史'),
+      clearError: true,
+    );
   }
 
   Future<void> _loadAndApplySnapshot(String? workspacePath) async {
@@ -405,6 +431,14 @@ class GitNotifier extends StateNotifier<GitViewState> {
       clearError: true,
       clearSelection: clearSelection,
     );
+  }
+
+  bool _selectedStagedForEntry(GitStatusEntry entry, bool? requestedStaged) {
+    if (requestedStaged == true && entry.isStaged) return true;
+    if (requestedStaged == false && (entry.isUnstaged || entry.isUntracked)) {
+      return false;
+    }
+    return _preferredSelectedStaged(entry);
   }
 
   bool _preferredSelectedStaged(GitStatusEntry entry) {

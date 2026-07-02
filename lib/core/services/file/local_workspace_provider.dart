@@ -95,6 +95,9 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
         path.join(state!.path, "new_file"),
       );
     }
+    final isIgnored = (await local.gitIgnoredPaths([
+      actualPath,
+    ])).contains(path.normalize(actualPath));
 
     if (parentPath != null) {
       ref
@@ -103,7 +106,10 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
             parentPath,
             TreeNode(
               id: actualPath,
-              data: FileItem(actualPath.split(local.getPattern()).last),
+              data: local.LocalFileItem(
+                actualPath.split(local.getPattern()).last,
+                isGitIgnored: isIgnored,
+              ),
             ),
           );
     } else {
@@ -112,7 +118,10 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
           .addRoot(
             TreeNode(
               id: actualPath,
-              data: FileItem(actualPath.split(local.getPattern()).last),
+              data: local.LocalFileItem(
+                actualPath.split(local.getPattern()).last,
+                isGitIgnored: isIgnored,
+              ),
             ),
           );
     }
@@ -133,6 +142,9 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
         path.join(state!.path, "new_folder"),
       );
     }
+    final isIgnored = (await local.gitIgnoredPaths([
+      actualPath,
+    ])).contains(path.normalize(actualPath));
 
     if (parentPath != null) {
       ref
@@ -142,7 +154,10 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
             TreeNode(
               id: actualPath,
               canLoadChildren: true,
-              data: FolderItem(path.basename(actualPath)),
+              data: local.LocalFolderItem(
+                path.basename(actualPath),
+                isGitIgnored: isIgnored,
+              ),
             ),
           );
     } else {
@@ -152,7 +167,10 @@ class LocalWorkspaceNotifier extends StateNotifier<Directory?> {
             TreeNode(
               id: actualPath,
               canLoadChildren: true,
-              data: FolderItem(path.basename(actualPath)),
+              data: local.LocalFolderItem(
+                path.basename(actualPath),
+                isGitIgnored: isIgnored,
+              ),
             ),
           );
     }
