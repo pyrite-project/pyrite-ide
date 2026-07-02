@@ -19,6 +19,7 @@ import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -630,10 +631,15 @@ class DesktopView extends ConsumerWidget {
     final width = MediaQuery.sizeOf(context).width;
     final showFunctionPanel = ref.watch(functionPageShow);
     final showExpansionPanel = ref.watch(expansionPageShow) && width >= 1280;
+    final isGitRoute = state.matchedLocation.startsWith('/git');
 
     if (showFunctionPanel) {
       children.add(
-        shadcn.ResizablePane.flex(initialFlex: 2, minSize: 220, child: child),
+        shadcn.ResizablePane.flex(
+          initialFlex: isGitRoute ? 3 : 2,
+          minSize: isGitRoute ? 340 : 220,
+          child: child,
+        ),
       );
     }
     children.add(
@@ -1000,12 +1006,16 @@ class EditorToolsBar extends ConsumerWidget {
           ],
           Flexible(flex: isMobile ? 1 : 2, child: buildFileState(context, ref)),
           const SizedBox(width: 4),
-          Flexible(child: buildBoardConnectState(context, ref)),
+          if (!isMobile) ...[
+            Flexible(child: buildBoardConnectState(context, ref)),
+            const SizedBox(width: 4),
+          ],
+          Flexible(child: buildGitState(context, ref)),
           const SizedBox(width: 4),
           buildConsoleState(context, ref),
           const SizedBox(width: 4),
           if (ref.watch(fileTransferProgressProvider).isActive) ...[
-            Flexible(flex: 1, child: buildTransferState(context, ref)),
+            Flexible(flex: 2, child: buildTransferState(context, ref)),
             const SizedBox(width: 4),
           ],
         ],
@@ -1154,6 +1164,34 @@ class EditorToolsBar extends ConsumerWidget {
           : Theme.of(context).colorScheme.outline,
       tooltip: isConnected ? "打开设备管理" : "连接 MicroPython 设备",
       onPressed: () => context.go("/tools"),
+    );
+  }
+
+  Widget buildGitState(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final summary = ref.watch(gitStatusSummaryProvider);
+    if (summary == null) {
+      return StatusBarButton(
+        label: 'Git',
+        icon: Icons.account_tree_outlined,
+        compact: isMobile,
+        statusColor: scheme.outline,
+        tooltip: '打开源代码管理',
+        onPressed: () => context.go('/git'),
+      );
+    }
+
+    final label = isMobile
+        ? summary.branchLabel
+        : '${summary.branchLabel} · Git';
+    return StatusBarButton(
+      label: label,
+      icon: Icons.account_tree_outlined,
+      compact: isMobile,
+      statusColor: scheme.primary,
+      tooltip: '打开源代码管理',
+      onPressed: () => context.go('/git'),
     );
   }
 

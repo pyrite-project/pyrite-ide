@@ -7,20 +7,16 @@ PODS:
     - FlutterMacOS
   - file_selector_macos (0.0.1):
     - FlutterMacOS
-  - flutter_libserialport (0.0.1):
-    - FlutterMacOS
-    - libserialport
   - flutter_pty (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
   - irondash_engine_context (0.0.1):
     - FlutterMacOS
-  - libserialport (0.1.1)
   - open_file_mac (1.0.3):
     - FlutterMacOS
   - screen_retriever_macos (0.0.1):
     - FlutterMacOS
-  - serious_python_darwin (0.9.12):
+  - serious_python_darwin (0.9.11):
     - Flutter
     - FlutterMacOS
   - super_native_extensions (0.0.1):
@@ -35,7 +31,6 @@ DEPENDENCIES:
   - device_info_plus (from `Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos`)
   - dynamic_color (from `Flutter/ephemeral/.symlinks/plugins/dynamic_color/macos`)
   - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
-  - flutter_libserialport (from `Flutter/ephemeral/.symlinks/plugins/flutter_libserialport/macos`)
   - flutter_pty (from `Flutter/ephemeral/.symlinks/plugins/flutter_pty/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - irondash_engine_context (from `Flutter/ephemeral/.symlinks/plugins/irondash_engine_context/macos`)
@@ -46,10 +41,6 @@ DEPENDENCIES:
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
   - window_manager (from `Flutter/ephemeral/.symlinks/plugins/window_manager/macos`)
 
-SPEC REPOS:
-  trunk:
-    - libserialport
-
 EXTERNAL SOURCES:
   code_forge:
     :path: Flutter/ephemeral/.symlinks/plugins/code_forge/macos
@@ -59,8 +50,6 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/dynamic_color/macos
   file_selector_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
-  flutter_libserialport:
-    :path: Flutter/ephemeral/.symlinks/plugins/flutter_libserialport/macos
   flutter_pty:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_pty/macos
   FlutterMacOS:
@@ -85,14 +74,12 @@ SPEC CHECKSUMS:
   device_info_plus: 4fb280989f669696856f8b129e4a5e3cd6c48f76
   dynamic_color: cb7c2a300ee67ed3bd96c3e852df3af0300bf610
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
-  flutter_libserialport: 2c523cb8d8203fc6d1b0da88190da31ac970eb93
   flutter_pty: 1e360feaf8b1a213d2d50da3c076005b8eef1eee
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   irondash_engine_context: 893c7d96d20ce361d7e996f39d360c4c2f9869ba
-  libserialport: 1cb25e66ef3c92a8e59c2ea3820302c3fa2268cd
   open_file_mac: 76f06c8597551249bdb5e8fd8827a98eae0f4585
-  screen_retriever_macos: 452e51764a9e1cdb74b3c541238795849f21557f
-  serious_python_darwin: 24ab1846359850f14e3562328c7f4743e25cc475
+  screen_retriever_macos: c5508cc3c66ff0d4db650480cf0ab691e220d933
+  serious_python_darwin: baf0e5e3f2d7e2d052a8810c2abcdf4a50238183
   super_native_extensions: c2795d6d9aedf4a79fae25cb6160b71b50549189
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
   window_manager: b729e31d38fb04905235df9ea896128991cad99e

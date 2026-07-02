@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/git/main.dart' deferred as git_page;
 import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/plugins/monitor.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
@@ -57,6 +58,13 @@ GoRouter routes = GoRouter(
           path: '/tools',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: const Tools(), state: state),
+        ),
+        GoRoute(
+          path: '/git',
+          pageBuilder: (context, state) => topCustomTransitionPage(
+            child: const _DeferredGitPage(),
+            state: state,
+          ),
         ),
         GoRoute(
           path: '/plugins',
@@ -137,12 +145,47 @@ GoRouter routes = GoRouter(
   ],
 );
 
+class _DeferredGitPage extends StatefulWidget {
+  const _DeferredGitPage();
+
+  @override
+  State<_DeferredGitPage> createState() => _DeferredGitPageState();
+}
+
+class _DeferredGitPageState extends State<_DeferredGitPage> {
+  // Keep source-control UI out of the app shell startup path.
+  late final Future<void> _loadGitPage = git_page.loadLibrary();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _loadGitPage,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('无法加载 Git 页面：${snapshot.error}'),
+            ),
+          );
+        }
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return git_page.GitPage();
+      },
+    );
+  }
+}
+
 // 地址别名
 const String file = '/file';
 const String tools = '/tools';
+const String git = '/git';
 const String plugins = '/plugins';
 const String settings = '/settings';
 const String edit = '/editor';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [file, tools, plugins, settings, edit];
+const List<String> routesName = [file, tools, git, plugins, settings, edit];

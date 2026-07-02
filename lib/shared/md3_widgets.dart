@@ -226,12 +226,33 @@ class StatusBarButton extends StatelessWidget {
     final child = LayoutBuilder(
       builder: (context, constraints) {
         final hasBoundedWidth = constraints.maxWidth.isFinite;
+        final minLabelWidth = compact ? 72.0 : 96.0;
         final showLabel =
-            !compact || !hasBoundedWidth || constraints.maxWidth >= 72;
+            !hasBoundedWidth || constraints.maxWidth >= minLabelWidth;
+        final availableWidth = hasBoundedWidth ? constraints.maxWidth : 24.0;
+        final iconSize = availableWidth.clamp(0.0, 16.0).toDouble();
+        final iconOnlyChild = Center(child: Icon(icon, size: iconSize));
+        final labeledChild = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            statusIcon,
+            SizedBox(width: compact ? 4 : 6),
+            if (hasBoundedWidth)
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            else
+              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ],
+        );
         return TextButton(
           style: TextButton.styleFrom(
             foregroundColor: scheme.onSurfaceVariant,
-            minimumSize: Size(showLabel ? (compact ? 44 : 56) : 36, 32),
+            minimumSize: Size(showLabel ? (compact ? 44 : 56) : 0, 32),
             padding: showLabel
                 ? EdgeInsetsDirectional.only(
                     start: compact ? 8 : 10,
@@ -243,25 +264,7 @@ class StatusBarButton extends StatelessWidget {
             ),
           ),
           onPressed: onPressed,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              statusIcon,
-              if (showLabel) ...[
-                SizedBox(width: compact ? 4 : 6),
-                if (hasBoundedWidth)
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  )
-                else
-                  Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ],
-          ),
+          child: showLabel ? labeledChild : iconOnlyChild,
         );
       },
     );

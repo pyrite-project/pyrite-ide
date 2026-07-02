@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
@@ -222,6 +223,60 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
   }
 
+  void openReadOnlyGitDiff({
+    required String filePath,
+    required bool staged,
+    required String patch,
+  }) {
+    final tabId = 'git-diff:${staged ? 'staged' : 'unstaged'}:$filePath';
+    final tabTitle = _gitDiffTabTitle(filePath, staged);
+
+    for (final tab in state.tabs) {
+      final value = tab.value;
+      if (value is! TabDataValue ||
+          value.type != 'git_diff' ||
+          value.filePath != tabId) {
+        continue;
+      }
+      final controller = value.editorController;
+      if (controller != null) {
+        setGitDiffPatch(controller, patch);
+      }
+      tab.text = tabTitle;
+      final newController = TabbedViewController(List.from(state.tabs));
+      newController.selectTab(tab);
+      state = newController;
+      return;
+    }
+
+    final controller = CodeForgeController();
+    setGitDiffPatch(controller, patch);
+    final tab = TabData(
+      leading: (context, status) => Padding(
+        padding: const EdgeInsetsGeometry.only(right: 4),
+        child: Icon(
+          Icons.difference_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+      value: TabDataValue(
+        type: 'git_diff',
+        filePath: tabId,
+        editorController: controller,
+        isSaved: true,
+      ),
+      text: tabTitle,
+      content: GitDiffEditor(controller: controller, filePath: filePath),
+      keepAlive: true,
+    );
+
+    state.addTab(tab);
+    final newController = TabbedViewController(List.from(state.tabs));
+    newController.selectTab(tab);
+    state = newController;
+  }
+
   void onTabTap(TabData tabData, int newTabIndex) async {
     // print("tap");
     TabbedViewController newController = TabbedViewController(
@@ -233,16 +288,29 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void afterTabClose(int index, TabData tabData) async {
     final value = tabData.value;
-    final filePath = value.filePath;
     TabbedViewController newController = TabbedViewController(
       List.from(state.tabs),
     );
     state = newController;
 
-    ref.read(pendingUploadProviderMap[filePath]!.notifier).state = null;
-    ref.read(pendingDownloadProviderMap[filePath]!.notifier).state = null;
+    if (value is! TabDataValue) return;
+    final filePath = value.filePath;
 
-    if (value != null && value is TabDataValue && value.isBoardFile == true) {
+    if (value.type == 'git_diff') {
+      value.editorController?.dispose();
+      return;
+    }
+
+    if (value.type != 'file') return;
+
+    if (pendingUploadProviderMap[filePath] != null) {
+      ref.read(pendingUploadProviderMap[filePath]!.notifier).state = null;
+    }
+    if (pendingDownloadProviderMap[filePath] != null) {
+      ref.read(pendingDownloadProviderMap[filePath]!.notifier).state = null;
+    }
+
+    if (value.isBoardFile == true) {
       final file = File(filePath);
       if (await file.exists()) {
         await file.delete();
@@ -320,6 +388,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
     state = newController;
   }
+}
+
+String _gitDiffTabTitle(String filePath, bool staged) {
+  final fileName = filePath.split(RegExp(r'[\\/]')).last;
+  final sideLabel = staged ? '已暂存' : '更改';
+  return '$fileName · $sideLabel';
 }
 
 final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>

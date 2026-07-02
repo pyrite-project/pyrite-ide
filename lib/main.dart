@@ -199,6 +199,24 @@ void _startAutoSave() {
   });
 }
 
+Future<void> _bootstrapPythonRuntime() async {
+  try {
+    await SeriousPython.run(
+      "assets/python_runtime_boot.zip",
+      appFileName: "boot.py",
+    );
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: "pyrite_ide",
+        context: ErrorDescription("while bootstrapping the Python runtime"),
+      ),
+    );
+  }
+}
+
 // PyriteIDE: Hello World.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -242,7 +260,7 @@ void main() async {
   appWindow.bind(container);
   appWindow.init();
 
-  SeriousPython.run("assets/python_runtime_boot.zip", appFileName: "boot.py");
+  await _bootstrapPythonRuntime();
   // container.read(lspClientProvider);
 
   runApp(

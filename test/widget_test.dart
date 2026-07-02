@@ -13,6 +13,7 @@ void main() {
     expect(find.text('1. 打开保存脚本的项目文件夹'), findsOneWidget);
     expect(find.text('打开项目文件夹'), findsOneWidget);
     expect(find.text('连接设备'), findsOneWidget);
+    expect(find.text('新建文件'), findsOneWidget);
   });
 
   testWidgets('mobile portrait navigation opens from drawer', (
@@ -34,6 +35,12 @@ void main() {
 
     expect(find.byType(NavigationDrawer), findsOneWidget);
     expect(find.text('文件'), findsOneWidget);
+    expect(find.text('Git'), findsAtLeastNWidgets(1));
     expect(find.text('编辑器'), findsOneWidget);
+
+    await tester.tap(find.text('Git').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('没有检测到 Git 仓库'), findsOneWidget);
   });
 }
