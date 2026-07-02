@@ -37,6 +37,7 @@ class ProjectFiles extends ConsumerWidget {
             : shadcn.ColorSchemes.darkNeutral,
       ),
       child: shadcn.ResizablePanel.vertical(
+        optionalDivider: true,
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },
@@ -109,7 +110,9 @@ class ProjectFiles extends ConsumerWidget {
                     ref.read(fileProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
-              style: SuperTreeThemes.material().treeStyle,
+              style: SuperTreeThemes.material().treeStyle.copyWith(
+                selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+              ),
               controller: ref.watch(localFileTreeViewControllerProvider),
               prefixBuilder:
                   (BuildContext context, TreeNode<FileSystemItem> node) {
@@ -185,12 +188,15 @@ class ProjectFiles extends ConsumerWidget {
                                   "覆盖设备文件 ${boardFileTarget?.id ?? "（未选择设备文件）"}",
                               callback: () async {
                                 try {
-                                  final bytes =
-                                      await File(node.id).readAsBytes();
+                                  final bytes = await File(
+                                    node.id,
+                                  ).readAsBytes();
                                   await ref
                                       .read(boardProvider.notifier)
                                       .writeFileBytes(
-                                          boardFileTarget!.id, bytes);
+                                        boardFileTarget!.id,
+                                        bytes,
+                                      );
                                   ref
                                       .read(boardFileItemsProvider.notifier)
                                       .buildRootFileListItems();
@@ -204,13 +210,12 @@ class ProjectFiles extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   final sendCtrlC =
                                       await showDeviceNotReadyDialog(
-                                    context,
-                                    operation: "覆盖设备文件",
-                                  );
+                                        context,
+                                        operation: "覆盖设备文件",
+                                      );
                                   if (sendCtrlC) {
                                     ref
-                                        .read(
-                                            getUsbSerialProvider().notifier)
+                                        .read(getUsbSerialProvider().notifier)
                                         .sendCommand("\x03");
                                   }
                                 }
@@ -431,7 +436,9 @@ class ProjectFiles extends ConsumerWidget {
                                           .deleteFile(node.id);
                                     }
                                     ref
-                                        .read(boardFileTreeViewControllerProvider)
+                                        .read(
+                                          boardFileTreeViewControllerProvider,
+                                        )
                                         .removeNode(node);
                                     if (!context.mounted) return;
                                     showEditorSnackBar(
@@ -442,13 +449,12 @@ class ProjectFiles extends ConsumerWidget {
                                     if (!context.mounted) return;
                                     final sendCtrlC =
                                         await showDeviceNotReadyDialog(
-                                      context,
-                                      operation: "删除设备文件",
-                                    );
+                                          context,
+                                          operation: "删除设备文件",
+                                        );
                                     if (sendCtrlC) {
                                       ref
-                                          .read(
-                                              getUsbSerialProvider().notifier)
+                                          .read(getUsbSerialProvider().notifier)
                                           .sendCommand("\x03");
                                     }
                                   }
@@ -468,13 +474,12 @@ class ProjectFiles extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   final sendCtrlC =
                                       await showDeviceNotReadyDialog(
-                                    context,
-                                    operation: "下载设备文件",
-                                  );
+                                        context,
+                                        operation: "下载设备文件",
+                                      );
                                   if (sendCtrlC) {
                                     ref
-                                        .read(
-                                            getUsbSerialProvider().notifier)
+                                        .read(getUsbSerialProvider().notifier)
                                         .sendCommand("\x03");
                                   }
                                 }
@@ -511,13 +516,12 @@ class ProjectFiles extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   final sendCtrlC =
                                       await showDeviceNotReadyDialog(
-                                    context,
-                                    operation: "读取设备文件",
-                                  );
+                                        context,
+                                        operation: "读取设备文件",
+                                      );
                                   if (sendCtrlC) {
                                     ref
-                                        .read(
-                                            getUsbSerialProvider().notifier)
+                                        .read(getUsbSerialProvider().notifier)
                                         .sendCommand("\x03");
                                   }
                                 }

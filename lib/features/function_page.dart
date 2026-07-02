@@ -153,10 +153,7 @@ class _BottomPanelTabs extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       height: 38,
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-      ),
+      decoration: BoxDecoration(color: scheme.surface),
       child: Row(
         children: [
           _BottomPanelTab(
@@ -303,6 +300,7 @@ Widget buildVerticalWorkspace(
   return buildShadcnLayer(
     context,
     shadcn.ResizablePanel.vertical(
+      optionalDivider: true,
       draggerBuilder: (context) {
         return shadcn.HorizontalResizableDragger();
       },
@@ -643,6 +641,7 @@ class DesktopView extends ConsumerWidget {
         initialFlex: 4,
         minSize: 300,
         child: shadcn.ResizablePanel.vertical(
+          optionalDivider: true,
           draggerBuilder: (context) {
             return shadcn.HorizontalResizableDragger();
           },
@@ -666,6 +665,7 @@ class DesktopView extends ConsumerWidget {
     return buildShadcnLayer(
       context,
       shadcn.ResizablePanel.horizontal(
+        optionalDivider: true,
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },
