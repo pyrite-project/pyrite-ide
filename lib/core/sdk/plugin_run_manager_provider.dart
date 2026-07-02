@@ -205,13 +205,24 @@ class PluginRunManagerNotifier
 
   Future<void> stopAllForShutdown() async {
     final entries = state.entries.toList(growable: false);
-    for (final entry in entries) {
-      try {
-        await entry.value.sendLifecycleHook(LifecycleHook.dispose.value);
-      } catch (_) {}
-      await entry.value.stop();
-      ref.read(dataRegistryProvider).removePlugin(entry.key.id);
-    }
+    await Future.wait(
+      entries.map((entry) async {
+        try {
+          await entry.value
+              .sendLifecycleHook(
+                LifecycleHook.dispose.value,
+                connectIfNeeded: false,
+              )
+              .timeout(const Duration(seconds: 1));
+        } catch (_) {}
+        try {
+          await entry.value.stop().timeout(const Duration(seconds: 1));
+        } catch (_) {}
+        try {
+          ref.read(dataRegistryProvider).removePlugin(entry.key.id);
+        } catch (_) {}
+      }),
+    );
     state = {};
   }
 

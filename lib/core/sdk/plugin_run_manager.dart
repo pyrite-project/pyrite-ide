@@ -386,7 +386,8 @@ class PluginRunManager {
         if (type != SdkCommands.outputAppend) {
           onOutput?.call('[$pluginId] <- $message');
         }
-        if (type == IdeCommands.responseError || type == SdkCommands.responseError) {
+        if (type == IdeCommands.responseError ||
+            type == SdkCommands.responseError) {
           final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
           final details = payload['details']?.toString();
           if (details != null && details.isNotEmpty && details != 'null') {
@@ -508,8 +509,15 @@ class PluginRunManager {
     );
   }
 
-  Future<void> sendLifecycleHook(String hook) async {
-    await connect();
+  Future<void> sendLifecycleHook(
+    String hook, {
+    bool connectIfNeeded = true,
+  }) async {
+    if (connectIfNeeded) {
+      await connect();
+    } else if (_channel == null || _channel!.closeCode != null) {
+      return;
+    }
     sendJson(
       makeEnvelope(type: IdeCommands.lifecycleHook, payload: {'hook': hook}),
     );
