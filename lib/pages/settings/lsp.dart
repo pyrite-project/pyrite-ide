@@ -31,7 +31,11 @@ class LspSettings extends ConsumerWidget {
             const SectionDivider(),
             ListTile(
               title: const Text("连接方式"),
-              subtitle: Text(ref.watch(lspType) == LspType.webSocket ? "WebSocket" : "stdio (本地进程)"),
+              subtitle: Text(
+                ref.watch(lspType) == LspType.webSocket
+                    ? "WebSocket"
+                    : "stdio (本地进程)",
+              ),
             ),
             RadioGroup<LspType>(
               groupValue: ref.watch(lspType),
@@ -80,7 +84,8 @@ class LspSettings extends ConsumerWidget {
                         border: OutlineInputBorder(),
                       ),
                       onFieldSubmitted: (value) {
-                        ref.read(lspStdioExecutable.notifier).state = value.trim();
+                        ref.read(lspStdioExecutable.notifier).state = value
+                            .trim();
                         showIdeSuccess(context, "可执行文件路径已更新");
                       },
                     ),
@@ -144,7 +149,8 @@ class LspSettings extends ConsumerWidget {
               subtitle: const Text("后续可根据连接设备推荐 generic/port/board stubs"),
               value: ref.watch(microPythonStubsAutoDetectLayers),
               onChanged: (value) {
-                ref.read(microPythonStubsAutoDetectLayers.notifier).state = value;
+                ref.read(microPythonStubsAutoDetectLayers.notifier).state =
+                    value;
               },
             ),
             const SectionDivider(),
@@ -159,7 +165,9 @@ class LspSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.folder_outlined),
               title: const Text("额外路径"),
-              subtitle: Text(_pathsSummary(ref.watch(microPythonStubsExtraPaths))),
+              subtitle: Text(
+                _pathsSummary(ref.watch(microPythonStubsExtraPaths)),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showExtraPathsDialog(context, ref),
             ),
@@ -203,7 +211,9 @@ class LspSettings extends ConsumerWidget {
 
   String _layersSummary(List<MicroPythonStubsLayer> layers) {
     if (layers.isEmpty) return "未配置";
-    return layers.map((layer) => '${layer.provider}/${layer.profile}').join(', ');
+    return layers
+        .map((layer) => '${layer.provider}/${layer.profile}')
+        .join(', ');
   }
 
   String _pathsSummary(List<String> paths) {
@@ -287,10 +297,14 @@ class LspSettings extends ConsumerWidget {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+              TextButton(
+                onPressed: () => context.pop(),
+                child: const Text("取消"),
+              ),
               FilledButton(
                 onPressed: () {
-                  ref.read(microPythonStubsLayers.notifier).state = List.unmodifiable(layers);
+                  ref.read(microPythonStubsLayers.notifier).state =
+                      List.unmodifiable(layers);
                   refreshOpenLspStubsConfiguration(ref);
                   context.pop();
                   showIdeSuccess(context, "Stubs Layers 已更新");
@@ -305,10 +319,9 @@ class LspSettings extends ConsumerWidget {
   }
 
   StubsProfileEntry? _findProfile(WidgetRef ref, MicroPythonStubsLayer layer) {
-    return ref.read(dataRegistryProvider).getStubsProfile(
-          layer.provider,
-          layer.profile,
-        );
+    return ref
+        .read(dataRegistryProvider)
+        .getStubsProfile(layer.provider, layer.profile);
   }
 
   Future<MicroPythonStubsLayer?> _showAddLayerDialog(
@@ -351,7 +364,9 @@ class LspSettings extends ConsumerWidget {
                           return ListTile(
                             enabled: !alreadySelected,
                             title: Text(profile.label ?? profile.id),
-                            subtitle: Text('${provider.providerId}/${profile.id}\n${profile.path}'),
+                            subtitle: Text(
+                              '${provider.providerId}/${profile.id}\n${profile.path}',
+                            ),
                             isThreeLine: true,
                             trailing: alreadySelected
                                 ? const Text("已添加")
@@ -359,11 +374,11 @@ class LspSettings extends ConsumerWidget {
                             onTap: alreadySelected
                                 ? null
                                 : () => context.pop(
-                                      MicroPythonStubsLayer(
-                                        provider: provider.providerId,
-                                        profile: profile.id,
-                                      ),
+                                    MicroPythonStubsLayer(
+                                      provider: provider.providerId,
+                                      profile: profile.id,
                                     ),
+                                  ),
                           );
                         },
                       ),
@@ -404,7 +419,8 @@ class LspSettings extends ConsumerWidget {
           TextButton(onPressed: () => context.pop(), child: const Text("取消")),
           FilledButton(
             onPressed: () {
-              ref.read(microPythonStubsExtraPaths.notifier).state = controller.text
+              ref.read(microPythonStubsExtraPaths.notifier).state = controller
+                  .text
                   .split('\n')
                   .map((line) => line.trim())
                   .where((line) => line.isNotEmpty)

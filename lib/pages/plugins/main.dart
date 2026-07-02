@@ -66,7 +66,9 @@ class Plugins extends ConsumerWidget {
                         ),
                         declaredPermissions: parsed?.permissions ?? {},
                         permissions: parsed?.permissions != null
-                            ? Map<String, List<String>>.from(parsed!.permissions)
+                            ? Map<String, List<String>>.from(
+                                parsed!.permissions,
+                              )
                             : {},
                         platforms: parsed?.platforms ?? [],
                       ),
@@ -101,6 +103,7 @@ class Plugins extends ConsumerWidget {
                 };
 
                 final isUi = plugin.type == PluginType.ui;
+                final isService = plugin.type == PluginType.service;
                 final isRunning =
                     ref.watch(pluginRunManagerProvider)[plugin] != null;
 
@@ -149,25 +152,32 @@ class Plugins extends ConsumerWidget {
                             ],
                           ),
                         ),
-                      if (isUsable && !isUi && !isRunning)
+                      if (isUsable && isService && !isRunning)
                         PopupMenuItem(
                           value: 'start',
                           child: Row(
                             children: [
-                              Icon(Icons.play_arrow, size: 20, color: Colors.green),
+                              Icon(
+                                Icons.play_arrow,
+                                size: 20,
+                                color: Colors.green,
+                              ),
                               SizedBox(width: 8),
                               Text('启动', style: TextStyle(color: Colors.green)),
                             ],
                           ),
                         ),
-                      if (isUsable && !isUi && isRunning)
+                      if (isUsable && isService && isRunning)
                         PopupMenuItem(
                           value: 'stop',
                           child: Row(
                             children: [
                               Icon(Icons.stop, size: 20, color: Colors.orange),
                               SizedBox(width: 8),
-                              Text('停止', style: TextStyle(color: Colors.orange)),
+                              Text(
+                                '停止',
+                                style: TextStyle(color: Colors.orange),
+                              ),
                             ],
                           ),
                         ),
@@ -187,11 +197,13 @@ class Plugins extends ConsumerWidget {
                           value: 'enable',
                           child: Row(
                             children: [
-                              Icon(Icons.play_circle_outline,
-                                  size: 20, color: Colors.green),
+                              Icon(
+                                Icons.play_circle_outline,
+                                size: 20,
+                                color: Colors.green,
+                              ),
                               SizedBox(width: 8),
-                              Text('启用',
-                                  style: TextStyle(color: Colors.green)),
+                              Text('启用', style: TextStyle(color: Colors.green)),
                             ],
                           ),
                         ),
@@ -305,7 +317,8 @@ class Plugins extends ConsumerWidget {
             final isDeclared = declared != null;
             final enabled = plugin.permissions[resource];
 
-            final masterOn = isDeclared &&
+            final masterOn =
+                isDeclared &&
                 enabled != null &&
                 declared.every((a) => enabled.contains(a));
 
@@ -319,13 +332,16 @@ class Plugins extends ConsumerWidget {
                   title: Text(
                     permLabels[resource] ?? resource,
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 14),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                   value: masterOn,
                   onChanged: isDeclared
                       ? (value) {
-                          final newPerms =
-                              Map<String, List<String>>.from(plugin.permissions);
+                          final newPerms = Map<String, List<String>>.from(
+                            plugin.permissions,
+                          );
                           if (value) {
                             newPerms[resource] = List.from(declared);
                           } else {
@@ -349,9 +365,11 @@ class Plugins extends ConsumerWidget {
                       onChanged: isDeclared && declared.contains(action)
                           ? (value) {
                               final newPerms = Map<String, List<String>>.from(
-                                  plugin.permissions);
-                              final current =
-                                  List<String>.from(newPerms[resource] ?? []);
+                                plugin.permissions,
+                              );
+                              final current = List<String>.from(
+                                newPerms[resource] ?? [],
+                              );
                               if (value) {
                                 if (!current.contains(action)) {
                                   current.add(action);
@@ -397,10 +415,13 @@ class Plugins extends ConsumerWidget {
                     if (plugin.platforms.isNotEmpty)
                       _detailRow('支持平台', plugin.platforms.join(', ')),
                     const SizedBox(height: 12),
-                    Text('权限配置',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[700])),
+                    Text(
+                      '权限配置',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     for (final resource in permLabels.keys)
                       buildCategory(resource),

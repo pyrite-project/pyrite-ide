@@ -60,7 +60,9 @@ class SdkMessageApi extends StateNotifier<PluginRunManager?> {
   }
 
   void _logFallback(String type, String message) {
-    ref.read(ideOutputLogProvider.notifier).add(
+    ref
+        .read(ideOutputLogProvider.notifier)
+        .add(
           IdeOutputSource.plugin,
           '[${state?.pluginId ?? 'plugin'}][$type] $message',
         );
@@ -74,4 +76,4 @@ class SdkMessageApi extends StateNotifier<PluginRunManager?> {
 }
 
 final StateNotifierProvider<SdkMessageApi, PluginRunManager?>
-    sdkMessageApiProvider = StateNotifierProvider((ref) => SdkMessageApi(ref));
+sdkMessageApiProvider = StateNotifierProvider((ref) => SdkMessageApi(ref));

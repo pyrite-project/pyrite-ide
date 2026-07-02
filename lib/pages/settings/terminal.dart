@@ -95,18 +95,11 @@ class TerminalSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.format_size),
               title: const Text("字体大小"),
-              subtitle: Text("${ref.watch(terminalFontSize).toStringAsFixed(0)} px"),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showDoubleSliderDialog(
-                context,
-                title: "终端字体大小",
-                value: ref.read(terminalFontSize),
-                min: 10,
-                max: 24,
-                divisions: 14,
-                label: (value) => value.toStringAsFixed(0),
-                onChanged: (value) => ref.read(terminalFontSize.notifier).state = value,
+              subtitle: Text(
+                "${ref.watch(terminalFontSize).toStringAsFixed(0)} px",
               ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showTerminalFontSizeDialog(context),
             ),
             const SectionDivider(),
             ListTile(
@@ -114,16 +107,7 @@ class TerminalSettings extends ConsumerWidget {
               title: const Text("行高"),
               subtitle: Text(ref.watch(terminalLineHeight).toStringAsFixed(1)),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showDoubleSliderDialog(
-                context,
-                title: "终端行高",
-                value: ref.read(terminalLineHeight),
-                min: 1.0,
-                max: 1.8,
-                divisions: 8,
-                label: (value) => value.toStringAsFixed(1),
-                onChanged: (value) => ref.read(terminalLineHeight.notifier).state = value,
-              ),
+              onTap: () => _showTerminalLineHeightDialog(context),
             ),
           ],
         ),
@@ -134,7 +118,8 @@ class TerminalSettings extends ConsumerWidget {
             SwitchListTile(
               title: const Text("启用 WebREPL"),
               subtitle: const Text("通过 WiFi 连接到设备的 WebREPL 服务"),
-              value: ref.watch(webReplProvider).state != WebReplState.disconnected,
+              value:
+                  ref.watch(webReplProvider).state != WebReplState.disconnected,
               onChanged: (value) {
                 if (value) {
                   ref.read(webReplProvider.notifier).connect();
@@ -147,9 +132,9 @@ class TerminalSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.wifi),
               title: const Text("设备 IP 地址"),
-              subtitle: Text(ref.watch(webReplHost).isEmpty
-                  ? "未设置"
-                  : ref.watch(webReplHost)),
+              subtitle: Text(
+                ref.watch(webReplHost).isEmpty ? "未设置" : ref.watch(webReplHost),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
                 context,
@@ -157,8 +142,7 @@ class TerminalSettings extends ConsumerWidget {
                 "设备 IP 地址",
                 "例如 192.168.1.100",
                 ref.read(webReplHost),
-                (value) =>
-                    ref.read(webReplHost.notifier).state = value.trim(),
+                (value) => ref.read(webReplHost.notifier).state = value.trim(),
               ),
             ),
             const SectionDivider(),
@@ -173,9 +157,9 @@ class TerminalSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.lock_outline),
               title: const Text("密码"),
-              subtitle: Text(ref.watch(webReplPassword).isEmpty
-                  ? "未设置"
-                  : "已设置"),
+              subtitle: Text(
+                ref.watch(webReplPassword).isEmpty ? "未设置" : "已设置",
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
                 context,
@@ -203,83 +187,144 @@ class TerminalSettings extends ConsumerWidget {
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text("选择波特率"),
-        children: kAvailableBaudRates.map((rate) {
-          final selected = rate == current;
-          return SimpleDialogOption(
-            child: ListTile(
-              title: Text("$rate baud"),
-              trailing: selected ? const Icon(Icons.check) : null,
-              minTileHeight: 0,
-              onTap: () {
-                if (Platform.isAndroid) {
-                  ref.read(androidUsbSerialProvider.notifier).setBaudRate(rate);
-                } else {
-                  ref.read(desktopUsbSerialProvider.notifier).setBaudRate(rate);
-                }
-                ref.read(serialDefaultBaudRate.notifier).state = rate;
-                Navigator.pop(context);
-              },
+        children: [
+          SizedBox(
+            width: 360,
+            height: 360,
+            child: ListView(
+              shrinkWrap: true,
+              children: kAvailableBaudRates.map((rate) {
+                final selected = rate == current;
+                return SimpleDialogOption(
+                  child: ListTile(
+                    title: Text("$rate baud"),
+                    trailing: selected ? const Icon(Icons.check) : null,
+                    minTileHeight: 0,
+                    onTap: () {
+                      if (Platform.isAndroid) {
+                        ref
+                            .read(androidUsbSerialProvider.notifier)
+                            .setBaudRate(rate);
+                      } else {
+                        ref
+                            .read(desktopUsbSerialProvider.notifier)
+                            .setBaudRate(rate);
+                      }
+                      ref.read(serialDefaultBaudRate.notifier).state = rate;
+                      Navigator.pop(context);
+                    },
+                  ),
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
+          ),
+        ],
       ),
     );
   }
 
   void _showTerminalFontDialog(BuildContext context, WidgetRef ref) {
+    final List<SimpleDialogOption> children = [];
+    editorTextFonts.forEach((name, value) {
+      final selected = ref.read(terminalFontFamily) == name;
+      children.add(
+        SimpleDialogOption(
+          child: ListTile(
+            title: Text(name),
+            subtitle: Text(
+              "print('Pyrite IDE')",
+              style: TextStyle(fontFamily: value.isEmpty ? null : value),
+            ),
+            trailing: selected ? const Icon(Icons.check) : null,
+            minTileHeight: 0,
+            onTap: () {
+              ref.read(terminalFontFamily.notifier).state = name;
+              Navigator.pop(context);
+            },
+          ),
+        ),
+      );
+    });
     showDialog(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text("选择终端字体"),
-        children: editorTextFonts.keys.map((name) {
-          final selected = ref.read(terminalFontFamily) == name;
-          return SimpleDialogOption(
-            child: ListTile(
-              title: Text(name),
-              trailing: selected ? const Icon(Icons.check) : null,
-              minTileHeight: 0,
-              onTap: () {
-                ref.read(terminalFontFamily.notifier).state = name;
-                Navigator.pop(context);
-              },
-            ),
+      builder: (context) =>
+          SimpleDialog(title: const Text("选择终端字体"), children: children),
+    );
+  }
+
+  void _showTerminalFontSizeDialog(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final size = ref.watch(terminalFontSize);
+          return SimpleDialog(
+            title: const Text("终端字体大小"),
+            children: [
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, 12),
+                child: Text(
+                  "print('Pyrite IDE')",
+                  style: TextStyle(
+                    fontFamily: editorTextFonts[ref.watch(terminalFontFamily)],
+                    fontSize: size,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Slider(
+                  min: 10,
+                  max: 28,
+                  divisions: 18,
+                  value: size,
+                  label: size.toStringAsFixed(0),
+                  onChanged: (value) =>
+                      ref.read(terminalFontSize.notifier).state = value,
+                ),
+              ),
+            ],
           );
-        }).toList(),
+        },
       ),
     );
   }
 
-  void _showDoubleSliderDialog(
-    BuildContext context, {
-    required String title,
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required String Function(double) label,
-    required ValueChanged<double> onChanged,
-  }) {
-    var current = value;
-    showDialog(
+  void _showTerminalLineHeightDialog(BuildContext context) async {
+    await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(title),
-          content: Slider(
-            min: min,
-            max: max,
-            divisions: divisions,
-            value: current,
-            label: label(current),
-            onChanged: (value) {
-              setState(() => current = value);
-              onChanged(value);
-            },
-          ),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(context), child: const Text("完成")),
-          ],
-        ),
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final lineHeight = ref.watch(terminalLineHeight);
+          return SimpleDialog(
+            title: const Text("终端行高"),
+            children: [
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, 12),
+                child: Text(
+                  "print('Pyrite IDE')",
+                  style: TextStyle(
+                    fontFamily: editorTextFonts[ref.watch(terminalFontFamily)],
+                    fontSize: ref.watch(terminalFontSize),
+                    height: lineHeight,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Slider(
+                  min: 1.0,
+                  max: 1.8,
+                  divisions: 8,
+                  value: lineHeight,
+                  label: lineHeight.toStringAsFixed(1),
+                  onChanged: (value) =>
+                      ref.read(terminalLineHeight.notifier).state = value,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

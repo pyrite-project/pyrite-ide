@@ -57,7 +57,10 @@ class IdeMessageNotifier extends StateNotifier<List<IdeMessageEntry>> {
 
   void dismiss(String id) {
     _timers.remove(id)?.cancel();
-    state = [for (final entry in state) if (entry.id != id) entry];
+    state = [
+      for (final entry in state)
+        if (entry.id != id) entry,
+    ];
   }
 
   @override
@@ -72,17 +75,18 @@ class IdeMessageNotifier extends StateNotifier<List<IdeMessageEntry>> {
 
 final ideMessageProvider =
     StateNotifierProvider<IdeMessageNotifier, List<IdeMessageEntry>>(
-  (ref) => IdeMessageNotifier(),
-);
+      (ref) => IdeMessageNotifier(),
+    );
 
 void showIdeMessage(
   BuildContext context,
   String message, {
   IdeMessageType type = IdeMessageType.info,
 }) {
-  ProviderScope.containerOf(context, listen: false)
-      .read(ideMessageProvider.notifier)
-      .show(message, type: type);
+  ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(ideMessageProvider.notifier).show(message, type: type);
 }
 
 void showIdeSuccess(BuildContext context, String message) {
@@ -158,7 +162,8 @@ class _IdeMessagePanel extends ConsumerWidget {
 
   _IdeMessageStyle _styleFor(BuildContext context, IdeMessageType type) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final theme = Theme.of(context).extension<TolyMessageStyleTheme>() ??
+    final theme =
+        Theme.of(context).extension<TolyMessageStyleTheme>() ??
         (isDark
             ? TolyMessageStyleTheme.tolyuiDark()
             : TolyMessageStyleTheme.tolyuiLight());

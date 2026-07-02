@@ -56,10 +56,7 @@ Future<bool> showDeviceNotReadyDialog(
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => ctx.pop(false),
-          child: const Text("取消"),
-        ),
+        TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
         FilledButton.icon(
           onPressed: () => ctx.pop(true),
           icon: const Icon(Icons.stop_circle_outlined, size: 18),

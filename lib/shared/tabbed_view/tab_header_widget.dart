@@ -238,7 +238,10 @@ class TabHeaderWidget extends StatelessWidget {
                             .read(tabbedViewControllerProvider.notifier)
                             .afterFileSave();
                       }
+                      if (!context.mounted) return;
+                      // ignore: use_build_context_synchronously
                       context.pop();
+                      // ignore: use_build_context_synchronously
                       await _onClose(context, index);
                     },
                     child: Text("保存"),

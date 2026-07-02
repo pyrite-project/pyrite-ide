@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
-import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -92,7 +91,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       ),
       value: value,
       text: file.path.split(pattern).last,
-      content: EditCore(file: file, editorController: editorController, undoController: undoRedoCntroller),
+      content: EditCore(
+        file: file,
+        editorController: editorController,
+        undoController: undoRedoCntroller,
+      ),
       keepAlive: true,
     );
 
@@ -269,20 +272,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     for (final persisted in persistedTabs) {
       final file = File(persisted.filePath);
       final exists = await file.exists();
-      if (!exists && persisted.unsavedContent == null) continue;
-
-      if (!exists && persisted.unsavedContent != null) {
-        await file.create(recursive: true);
-        await file.writeAsString(persisted.unsavedContent!);
-      } else if (exists &&
-          !persisted.isSaved &&
-          persisted.unsavedContent != null) {
-        await file.writeAsString(persisted.unsavedContent!);
-      }
+      if (!exists) continue;
 
       final controller = await ref
           .read(editorControllerMapProvider.notifier)
-          .createNewEditorController(file);
+          .createNewEditorController(
+            file,
+            initialText: !persisted.isSaved ? persisted.unsavedContent : null,
+          );
       if (controller == null) continue;
       final tab = await _createNewFileTab(
         file,

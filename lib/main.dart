@@ -95,8 +95,10 @@ void _applyData(PersistedData data) {
   container.read(editorLineNumber.notifier).state = data.editorLineNumber;
   container.read(editorCodeFolding.notifier).state = data.editorCodeFolding;
   container.read(editorGuideLines.notifier).state = data.editorGuideLines;
-  container.read(editorLocalSuggestions.notifier).state = data.editorLocalSuggestions;
-  container.read(editorKeyboardSuggestions.notifier).state = data.editorKeyboardSuggestions;
+  container.read(editorLocalSuggestions.notifier).state =
+      data.editorLocalSuggestions;
+  container.read(editorKeyboardSuggestions.notifier).state =
+      data.editorKeyboardSuggestions;
   container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
   container.read(editorTabSize.notifier).state = data.editorTabSize;
   container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
@@ -108,13 +110,15 @@ void _applyData(PersistedData data) {
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(disableWarning.notifier).state = data.disableWarning;
   container.read(disableError.notifier).state = data.disableError;
-  container.read(lspSemanticHighlighting.notifier).state = data.lspSemanticHighlighting;
+  container.read(lspSemanticHighlighting.notifier).state =
+      data.lspSemanticHighlighting;
   container.read(lspCodeCompletion.notifier).state = data.lspCodeCompletion;
   container.read(lspHoverInfo.notifier).state = data.lspHoverInfo;
   container.read(lspCodeAction.notifier).state = data.lspCodeAction;
   container.read(lspSignatureHelp.notifier).state = data.lspSignatureHelp;
   container.read(lspDocumentColor.notifier).state = data.lspDocumentColor;
-  container.read(lspDocumentHighlight.notifier).state = data.lspDocumentHighlight;
+  container.read(lspDocumentHighlight.notifier).state =
+      data.lspDocumentHighlight;
   container.read(lspCodeFolding.notifier).state = data.lspCodeFolding;
   container.read(lspInlayHint.notifier).state = data.lspInlayHint;
   container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
@@ -128,15 +132,24 @@ void _applyData(PersistedData data) {
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
-  container.read(serialDefaultBaudRate.notifier).state = data.serialDefaultBaudRate;
+  container.read(serialDefaultBaudRate.notifier).state =
+      data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
-  container.read(androidUsbSerialProvider.notifier).setBaudRate(data.serialDefaultBaudRate);
-  container.read(androidUsbSerialProvider.notifier).setAutoReconnect(data.serialAutoReconnect);
-  container.read(desktopUsbSerialProvider.notifier).setBaudRate(data.serialDefaultBaudRate);
-  container.read(desktopUsbSerialProvider.notifier).setAutoReconnect(data.serialAutoReconnect);
+  container
+      .read(androidUsbSerialProvider.notifier)
+      .setBaudRate(data.serialDefaultBaudRate);
+  container
+      .read(androidUsbSerialProvider.notifier)
+      .setAutoReconnect(data.serialAutoReconnect);
+  container
+      .read(desktopUsbSerialProvider.notifier)
+      .setBaudRate(data.serialDefaultBaudRate);
+  container
+      .read(desktopUsbSerialProvider.notifier)
+      .setAutoReconnect(data.serialAutoReconnect);
   container.read(uploadConfirmStyleProvider.notifier).state =
       data.uploadConfirmStyle;
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
@@ -154,7 +167,9 @@ void _applyData(PersistedData data) {
       data.microPythonStubsExtraPaths;
   container.read(dataContributionsProvider.notifier).state =
       data.dataContributions;
-  container.read(dataRegistryProvider).restoreContributions(data.dataContributions);
+  container
+      .read(dataRegistryProvider)
+      .restoreContributions(data.dataContributions);
 }
 
 void _triggerSave() {

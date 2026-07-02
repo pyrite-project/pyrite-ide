@@ -44,7 +44,8 @@ class EditorSettings extends ConsumerWidget {
             ListTile(
               title: const Text("配色方案"),
               subtitle: Text(
-                findEditorThemeByKey(ref.watch(editorThemeKey))?.label ?? "Atom One",
+                findEditorThemeByKey(ref.watch(editorThemeKey))?.label ??
+                    "Atom One",
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => showThemePickerDialog(context, ref),
@@ -55,24 +56,27 @@ class EditorSettings extends ConsumerWidget {
           title: "上传确认",
           description: "上传文件存在差异时的确认方式。",
           children: [
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'toolbar',
-                  icon: Icon(Icons.open_in_full),
-                  label: Text("浮动工具栏"),
-                ),
-                ButtonSegment(
-                  value: 'dialog',
-                  icon: Icon(Icons.chat_bubble_outline),
-                  label: Text("确认对话框"),
-                ),
-              ],
-              selected: {ref.watch(uploadConfirmStyleProvider)},
-              onSelectionChanged: (value) {
-                ref.read(uploadConfirmStyleProvider.notifier).state =
-                    value.first;
-              },
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'toolbar',
+                    icon: Icon(Icons.open_in_full),
+                    label: Text("浮动工具栏"),
+                  ),
+                  ButtonSegment(
+                    value: 'dialog',
+                    icon: Icon(Icons.chat_bubble_outline),
+                    label: Text("确认对话框"),
+                  ),
+                ],
+                selected: {ref.watch(uploadConfirmStyleProvider)},
+                onSelectionChanged: (value) {
+                  ref.read(uploadConfirmStyleProvider.notifier).state =
+                      value.first;
+                },
+              ),
             ),
           ],
         ),
@@ -111,49 +115,56 @@ class EditorSettings extends ConsumerWidget {
               title: const Text("显示行号"),
               subtitle: const Text("显示左侧 gutter 行号区域"),
               value: ref.watch(editorLineNumber),
-              onChanged: (value) => ref.read(editorLineNumber.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorLineNumber.notifier).state = value,
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("显示 gutter 分隔线"),
               subtitle: const Text("在行号区域和代码之间显示分隔线"),
               value: ref.watch(editorGutterDivider),
-              onChanged: (value) => ref.read(editorGutterDivider.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorGutterDivider.notifier).state = value,
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("代码折叠"),
               subtitle: const Text("显示折叠图标并允许折叠代码块"),
               value: ref.watch(editorCodeFolding),
-              onChanged: (value) => ref.read(editorCodeFolding.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorCodeFolding.notifier).state = value,
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("缩进参考线"),
               subtitle: const Text("显示每级缩进的纵向参考线"),
               value: ref.watch(editorGuideLines),
-              onChanged: (value) => ref.read(editorGuideLines.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorGuideLines.notifier).state = value,
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("本地补全"),
               subtitle: const Text("启用非 LSP 的本地补全建议，较大文件可能有额外开销"),
               value: ref.watch(editorLocalSuggestions),
-              onChanged: (value) => ref.read(editorLocalSuggestions.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorLocalSuggestions.notifier).state = value,
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("键盘补全建议"),
               subtitle: const Text("允许系统虚拟键盘显示输入建议"),
               value: ref.watch(editorKeyboardSuggestions),
-              onChanged: (value) => ref.read(editorKeyboardSuggestions.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorKeyboardSuggestions.notifier).state = value,
             ),
             const SectionDivider(),
             SwitchListTile(
               title: const Text("Tab 输入空格"),
               subtitle: const Text("按 Tab 时插入空格而不是制表符"),
               value: ref.watch(editorUseSpaceAsTab),
-              onChanged: (value) => ref.read(editorUseSpaceAsTab.notifier).state = value,
+              onChanged: (value) =>
+                  ref.read(editorUseSpaceAsTab.notifier).state = value,
             ),
             const SectionDivider(),
             ListTile(
@@ -167,7 +178,8 @@ class EditorSettings extends ConsumerWidget {
                 value: ref.read(editorTabSize),
                 min: 1,
                 max: 8,
-                onChanged: (value) => ref.read(editorTabSize.notifier).state = value,
+                onChanged: (value) =>
+                    ref.read(editorTabSize.notifier).state = value,
               ),
             ),
           ],
@@ -208,7 +220,10 @@ class EditorSettings extends ConsumerWidget {
               },
             ),
             actions: [
-              FilledButton(onPressed: () => context.pop(), child: const Text("完成")),
+              FilledButton(
+                onPressed: () => context.pop(),
+                child: const Text("完成"),
+              ),
             ],
           );
         },
@@ -305,9 +320,10 @@ class EditorSettings extends ConsumerWidget {
               final entry = editorThemes[index];
               final selected = entry.key == currentKey;
               final previewTheme = resolveEditorTheme(entry, brightness);
-              final bgColor = previewTheme['root']?.backgroundColor ??
-                  Colors.grey[900];
-              final sampleStyle = previewTheme['keyword'] ??
+              final bgColor =
+                  previewTheme['root']?.backgroundColor ?? Colors.grey[900];
+              final sampleStyle =
+                  previewTheme['keyword'] ??
                   previewTheme['title'] ??
                   const TextStyle(color: Colors.blue);
               return ListTile(
@@ -339,10 +355,7 @@ class EditorSettings extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const Text("取消"),
-          ),
+          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
         ],
       ),
     );
@@ -400,7 +413,8 @@ class _ShortcutRecorderTileState extends State<ShortcutRecorderTile> {
         return KeyEventResult.handled;
       }
       final physicalKey = event.physicalKey;
-      final isModifier = physicalKey == PhysicalKeyboardKey.controlLeft ||
+      final isModifier =
+          physicalKey == PhysicalKeyboardKey.controlLeft ||
           physicalKey == PhysicalKeyboardKey.controlRight ||
           physicalKey == PhysicalKeyboardKey.shiftLeft ||
           physicalKey == PhysicalKeyboardKey.shiftRight ||
@@ -439,17 +453,13 @@ class _ShortcutRecorderTileState extends State<ShortcutRecorderTile> {
       focusNode: _focusNode,
       onKeyEvent: _onKeyEvent,
       child: ListTile(
-        leading: Icon(
-          _recording ? Icons.keyboard : Icons.keyboard_command_key,
-        ),
+        leading: Icon(_recording ? Icons.keyboard : Icons.keyboard_command_key),
         title: Text(widget.title),
         subtitle: Text(
           _recording ? "按下快捷键（Esc 取消）..." : widget.value,
           style: TextStyle(
             fontFamily: 'monospace',
-            color: _recording
-                ? Theme.of(context).colorScheme.primary
-                : null,
+            color: _recording ? Theme.of(context).colorScheme.primary : null,
           ),
         ),
         trailing: _recording

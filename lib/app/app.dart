@@ -186,8 +186,7 @@ class PyriteIDE extends ConsumerWidget {
           },
         );
 
-        if (Platform.isMacOS ||
-            defaultTargetPlatform == TargetPlatform.macOS) {
+        if (Platform.isMacOS || defaultTargetPlatform == TargetPlatform.macOS) {
           return MacOSMenu(app: app);
         }
         return app;

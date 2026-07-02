@@ -289,7 +289,9 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
       .sendCommand(
         "exec(__import__('ubinascii').a2b_base64('$b64').decode())\r",
       );
-  ref.read(ideMessageProvider.notifier).success("正在运行：${controller.openedFile}");
+  ref
+      .read(ideMessageProvider.notifier)
+      .success("正在运行：${controller.openedFile}");
 }
 
 Future saveFile(BuildContext context, WidgetRef ref, {quiet = false}) async {

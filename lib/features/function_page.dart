@@ -26,7 +26,9 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
 
-final StateProvider<int> bottomPanelTabProvider = StateProvider<int>((ref) => 0);
+final StateProvider<int> bottomPanelTabProvider = StateProvider<int>(
+  (ref) => 0,
+);
 
 Widget consolePage() {
   return const ConsolePage();
@@ -40,7 +42,8 @@ class ConsolePage extends ConsumerWidget {
     final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
     final webReplState = ref.watch(webReplProvider);
     final webReplConnected = webReplState.state == WebReplState.connected;
-    final useWebRepl = webReplConnected || webReplState.state == WebReplState.waitingPassword;
+    final useWebRepl =
+        webReplConnected || webReplState.state == WebReplState.waitingPassword;
     final selectedTab = ref.watch(bottomPanelTabProvider);
     final actions = _buildConsoleActions(
       ref,
@@ -87,54 +90,54 @@ class ConsolePage extends ConsumerWidget {
         return const [];
       default:
         return [
-            if (!isConnected && !webReplConnected)
-              IconButton(
-                tooltip: "连接 WebREPL",
-                onPressed: () {
-                  ref.read(webReplProvider.notifier).connect();
-                },
-                icon: const Icon(Icons.wifi),
-              ),
+          if (!isConnected && !webReplConnected)
             IconButton(
-              tooltip: "清空终端",
-              onPressed: () => repl.write('\x1b[2J\x1b[H'),
-              icon: const Icon(Icons.cleaning_services_outlined),
+              tooltip: "连接 WebREPL",
+              onPressed: () {
+                ref.read(webReplProvider.notifier).connect();
+              },
+              icon: const Icon(Icons.wifi),
             ),
-            IconButton(
-              tooltip: useWebRepl
-                  ? "中断设备运行"
-                  : (isConnected ? "中断设备运行" : "连接设备后可中断运行"),
-              onPressed: (useWebRepl || isConnected)
-                  ? () {
-                      if (useWebRepl) {
-                        ref.read(webReplProvider.notifier).sendCommand("\x03");
-                      } else {
-                        ref
-                            .read(getUsbSerialProvider().notifier)
-                            .sendCommand("\x03");
-                      }
+          IconButton(
+            tooltip: "清空终端",
+            onPressed: () => repl.write('\x1b[2J\x1b[H'),
+            icon: const Icon(Icons.cleaning_services_outlined),
+          ),
+          IconButton(
+            tooltip: useWebRepl
+                ? "中断设备运行"
+                : (isConnected ? "中断设备运行" : "连接设备后可中断运行"),
+            onPressed: (useWebRepl || isConnected)
+                ? () {
+                    if (useWebRepl) {
+                      ref.read(webReplProvider.notifier).sendCommand("\x03");
+                    } else {
+                      ref
+                          .read(getUsbSerialProvider().notifier)
+                          .sendCommand("\x03");
                     }
-                  : null,
-              icon: const Icon(Icons.stop_circle_outlined),
-            ),
-            IconButton(
-              tooltip: useWebRepl
-                  ? "软重启设备"
-                  : (isConnected ? "软重启设备" : "连接设备后可软重启"),
-              onPressed: (useWebRepl || isConnected)
-                  ? () {
-                      if (useWebRepl) {
-                        ref.read(webReplProvider.notifier).sendCommand("\x04");
-                      } else {
-                        ref
-                            .read(getUsbSerialProvider().notifier)
-                            .sendCommand("\x04");
-                      }
+                  }
+                : null,
+            icon: const Icon(Icons.stop_circle_outlined),
+          ),
+          IconButton(
+            tooltip: useWebRepl
+                ? "软重启设备"
+                : (isConnected ? "软重启设备" : "连接设备后可软重启"),
+            onPressed: (useWebRepl || isConnected)
+                ? () {
+                    if (useWebRepl) {
+                      ref.read(webReplProvider.notifier).sendCommand("\x04");
+                    } else {
+                      ref
+                          .read(getUsbSerialProvider().notifier)
+                          .sendCommand("\x04");
                     }
-                  : null,
-              icon: const Icon(Icons.restart_alt),
-            ),
-          ];
+                  }
+                : null,
+            icon: const Icon(Icons.restart_alt),
+          ),
+        ];
     }
   }
 }
@@ -156,17 +159,29 @@ class _BottomPanelTabs extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          _BottomPanelTab(label: 'REPL', icon: Icons.terminal, index: 0, selectedIndex: selectedIndex),
-          _BottomPanelTab(label: '输出', icon: Icons.article_outlined, index: 1, selectedIndex: selectedIndex),
-          _BottomPanelTab(label: '终端', icon: Icons.terminal_outlined, index: 2, selectedIndex: selectedIndex),
+          _BottomPanelTab(
+            label: 'REPL',
+            icon: Icons.terminal,
+            index: 0,
+            selectedIndex: selectedIndex,
+          ),
+          _BottomPanelTab(
+            label: '输出',
+            icon: Icons.article_outlined,
+            index: 1,
+            selectedIndex: selectedIndex,
+          ),
+          _BottomPanelTab(
+            label: '终端',
+            icon: Icons.terminal_outlined,
+            index: 2,
+            selectedIndex: selectedIndex,
+          ),
           const Spacer(),
           if (actions.isNotEmpty) ...[
             SizedBox(
               height: 18,
-              child: VerticalDivider(
-                width: 1,
-                color: scheme.outlineVariant,
-              ),
+              child: VerticalDivider(width: 1, color: scheme.outlineVariant),
             ),
             const SizedBox(width: 4),
             for (final action in actions)
@@ -225,7 +240,11 @@ class _BottomPanelTab extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: selected ? scheme.primary : scheme.onSurfaceVariant),
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? scheme.primary : scheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -719,10 +738,12 @@ class OutputLogView extends ConsumerWidget {
 class DesktopTerminalView extends ConsumerStatefulWidget {
   const DesktopTerminalView({super.key});
 
-  static bool get isSupported => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  static bool get isSupported =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
-  ConsumerState<DesktopTerminalView> createState() => _DesktopTerminalViewState();
+  ConsumerState<DesktopTerminalView> createState() =>
+      _DesktopTerminalViewState();
 }
 
 class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
@@ -758,7 +779,9 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
           child: session == null
               ? Center(
                   child: FilledButton.icon(
-                    onPressed: () => ref.read(desktopTerminalProvider.notifier).createSession(),
+                    onPressed: () => ref
+                        .read(desktopTerminalProvider.notifier)
+                        .createSession(),
                     icon: const Icon(Icons.add),
                     label: const Text('新建终端'),
                   ),
@@ -768,7 +791,9 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                   controller: session.controller,
                   theme: buildTerminalTheme(context),
                   textStyle: buildTerminalStyle(ref),
-                  key: ValueKey('terminal_${session.id}_${scheme.surface.toARGB32()}'),
+                  key: ValueKey(
+                    'terminal_${session.id}_${scheme.surface.toARGB32()}',
+                  ),
                 ),
         ),
         Container(
@@ -787,7 +812,9 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                     const Expanded(child: Text('终端')),
                     IconButton(
                       tooltip: '新建终端',
-                      onPressed: () => ref.read(desktopTerminalProvider.notifier).createSession(),
+                      onPressed: () => ref
+                          .read(desktopTerminalProvider.notifier)
+                          .createSession(),
                       icon: const Icon(Icons.add, size: 18),
                     ),
                   ],
@@ -832,24 +859,38 @@ class _TerminalSessionTile extends ConsumerWidget {
     return Material(
       color: selected ? scheme.secondaryContainer : Colors.transparent,
       child: InkWell(
-        onTap: () => ref.read(desktopTerminalProvider.notifier).selectSession(session.id),
+        onTap: () => ref
+            .read(desktopTerminalProvider.notifier)
+            .selectSession(session.id),
         child: SizedBox(
           height: 34,
           child: Row(
             children: [
               const SizedBox(width: 10),
-              Icon(Icons.terminal, size: 16, color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant),
+              Icon(
+                Icons.terminal,
+                size: 16,
+                color: selected
+                    ? scheme.onSecondaryContainer
+                    : scheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   session.title,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: selected ? scheme.onSecondaryContainer : scheme.onSurface),
+                  style: TextStyle(
+                    color: selected
+                        ? scheme.onSecondaryContainer
+                        : scheme.onSurface,
+                  ),
                 ),
               ),
               IconButton(
                 tooltip: '关闭终端',
-                onPressed: () => ref.read(desktopTerminalProvider.notifier).closeSession(session.id),
+                onPressed: () => ref
+                    .read(desktopTerminalProvider.notifier)
+                    .closeSession(session.id),
                 icon: const Icon(Icons.close, size: 16),
               ),
             ],

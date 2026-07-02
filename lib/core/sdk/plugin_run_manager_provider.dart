@@ -28,15 +28,20 @@ class PluginRunManagerNotifier
     extends StateNotifier<Map<Plugin, PluginRunManager>> {
   final Ref ref;
   bool _routerListenerRegistered = false;
+  Future<void> _startupQueue = Future<void>.value();
 
   PluginRunManagerNotifier(this.ref) : super({}) {
     ref.read(permissionLogServiceProvider).load();
   }
 
-  Future<void> start(Plugin plugin) async {
+  Future<void> start(Plugin plugin) {
+    return _enqueueStartup(() => _startNow(plugin));
+  }
+
+  Future<void> _startNow(Plugin plugin) async {
     if (state.containsKey(plugin)) return;
     if (plugin.type == PluginType.data) {
-      await runOnce(plugin);
+      await _runOnceNow(plugin);
       return;
     }
     final outputLog = ref.read(ideOutputLogProvider.notifier);
@@ -126,7 +131,11 @@ class PluginRunManagerNotifier
     state = {...state}..remove(plugin);
   }
 
-  Future<void> runOnce(Plugin plugin) async {
+  Future<void> runOnce(Plugin plugin) {
+    return _enqueueStartup(() => _runOnceNow(plugin));
+  }
+
+  Future<void> _runOnceNow(Plugin plugin) async {
     if (plugin.type != PluginType.data) return;
     final outputLog = ref.read(ideOutputLogProvider.notifier);
     try {
@@ -186,6 +195,12 @@ class PluginRunManagerNotifier
         '[${plugin.id}] once-run failed: $error\n$stack',
       );
     }
+  }
+
+  Future<void> _enqueueStartup(Future<void> Function() action) {
+    final next = _startupQueue.then((_) => action());
+    _startupQueue = next.catchError((_) {});
+    return next;
   }
 
   Future<void> stopAllForShutdown() async {
