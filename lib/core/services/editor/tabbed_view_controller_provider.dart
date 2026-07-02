@@ -216,6 +216,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     required String patch,
   }) {
     final tabId = 'git-diff:${staged ? 'staged' : 'unstaged'}:$filePath';
+    final tabTitle = _gitDiffTabTitle(filePath, staged);
 
     for (final tab in state.tabs) {
       final value = tab.value;
@@ -228,6 +229,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       if (controller != null) {
         setGitDiffPatch(controller, patch);
       }
+      tab.text = tabTitle;
       final newController = TabbedViewController(List.from(state.tabs));
       newController.selectTab(tab);
       state = newController;
@@ -251,7 +253,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         editorController: controller,
         isSaved: true,
       ),
-      text: 'Diff',
+      text: tabTitle,
       content: GitDiffEditor(controller: controller, filePath: filePath),
       keepAlive: true,
     );
@@ -376,6 +378,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
     state = newController;
   }
+}
+
+String _gitDiffTabTitle(String filePath, bool staged) {
+  final fileName = filePath.split(RegExp(r'[\\/]')).last;
+  final sideLabel = staged ? '已暂存' : '更改';
+  return '$fileName · $sideLabel';
 }
 
 final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>

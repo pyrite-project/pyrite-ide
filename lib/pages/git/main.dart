@@ -81,26 +81,6 @@ class _GitPageState extends ConsumerState<GitPage> {
         ).showSnackBar(SnackBar(content: Text(next)));
       }
     });
-    ref.listen<({String? path, bool staged, String patch})>(
-      gitProvider.select(
-        (value) => (
-          path: value.selectedPath,
-          staged: value.selectedStaged,
-          patch: value.selectedPatch,
-        ),
-      ),
-      (previous, next) {
-        if (next.path == null || next.patch.trim().isEmpty) return;
-        ref
-            .read(tabbedViewControllerProvider.notifier)
-            .openReadOnlyGitDiff(
-              filePath: next.path!,
-              staged: next.staged,
-              patch: next.patch,
-            );
-      },
-    );
-
     final state = ref.watch(gitProvider);
     final snapshot = state.snapshot;
     if (snapshot == null) {
@@ -181,63 +161,104 @@ class _GitPageState extends ConsumerState<GitPage> {
     GitRepositorySnapshot snapshot,
   ) {
     final diffFiles = _diffFilesFromSnapshot(snapshot);
-    return _ResponsiveGitPane(
-      left: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          _CommitBox(
-            messageController: _messageController,
-            authorController: _authorController,
-            emailController: _emailController,
-            onCommit: () => _commit(),
-            onStash: () => _stash(),
-            isBusy: state.isBusy,
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: state.isBusy || snapshot.unstagedCount == 0
-                    ? null
-                    : () => ref.read(gitProvider.notifier).stageAll(),
-                icon: const Icon(Icons.add_task),
-                label: const Text('全部暂存'),
-              ),
-              OutlinedButton.icon(
-                onPressed: state.isBusy || snapshot.stagedCount == 0
-                    ? null
-                    : () => ref.read(gitProvider.notifier).unstageAll(),
-                icon: const Icon(Icons.remove_done_outlined),
-                label: const Text('全部取消暂存'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (snapshot.statusEntries.isEmpty)
-            const _EmptyPanel(
-              icon: Icons.check_circle_outline,
-              title: '工作区干净',
-              message: '没有暂存或未暂存的更改。',
-            )
-          else
-            for (final entry in snapshot.statusEntries)
+    final stagedItems = _changeItemsForSide(
+      snapshot.statusEntries,
+      diffFiles,
+      staged: true,
+    );
+    final unstagedItems = _changeItemsForSide(
+      snapshot.statusEntries,
+      diffFiles,
+      staged: false,
+    );
+
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _CommitBox(
+          messageController: _messageController,
+          authorController: _authorController,
+          emailController: _emailController,
+          onCommit: () => _commit(),
+          onStash: () => _stash(),
+          isBusy: state.isBusy,
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: state.isBusy || snapshot.unstagedCount == 0
+                  ? null
+                  : () => ref.read(gitProvider.notifier).stageAll(),
+              icon: const Icon(Icons.add_task),
+              label: const Text('全部暂存'),
+            ),
+            OutlinedButton.icon(
+              onPressed: state.isBusy || snapshot.stagedCount == 0
+                  ? null
+                  : () => ref.read(gitProvider.notifier).unstageAll(),
+              icon: const Icon(Icons.remove_done_outlined),
+              label: const Text('全部取消暂存'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (snapshot.statusEntries.isEmpty)
+          const _EmptyPanel(
+            icon: Icons.check_circle_outline,
+            title: '工作区干净',
+            message: '没有暂存或未暂存的更改。',
+          )
+        else ...[
+          if (stagedItems.isNotEmpty) ...[
+            _ChangeSectionHeader(title: '已暂存的更改', count: stagedItems.length),
+            for (final item in stagedItems)
               _StatusTile(
-                entry: entry,
+                entry: item.entry,
+                diffFile: item.diffFile,
+                stagedSide: true,
                 isBusy: state.isBusy,
-                onOpenDiff: () => _openStatusEntryDiff(entry, diffFiles),
+                onOpenDiff: () => _openChangeItemDiff(item, diffFiles),
               ),
+          ],
+          if (unstagedItems.isNotEmpty) ...[
+            _ChangeSectionHeader(title: '更改', count: unstagedItems.length),
+            for (final item in unstagedItems)
+              _StatusTile(
+                entry: item.entry,
+                diffFile: item.diffFile,
+                stagedSide: false,
+                isBusy: state.isBusy,
+                onOpenDiff: () => _openChangeItemDiff(item, diffFiles),
+              ),
+          ],
         ],
-      ),
-      right: _PreviewPanel(state: state, snapshot: snapshot),
+      ],
     );
   }
 
-  void _openStatusEntryDiff(
+  Future<void> _openChangeItemDiff(
+    _ChangeListItem item,
+    List<_DiffFileItem> diffFiles,
+  ) async {
+    final file = item.diffFile;
+    if (file != null) {
+      _openDiffFile(file);
+      await ref
+          .read(gitProvider.notifier)
+          .selectPath(file.path, staged: file.staged);
+      return;
+    }
+
+    await _openStatusEntryDiff(item.entry, diffFiles);
+  }
+
+  Future<void> _openStatusEntryDiff(
     GitStatusEntry entry,
     List<_DiffFileItem> diffFiles,
-  ) {
+  ) async {
     final preferredStaged = _preferredStagedForStatusEntry(entry);
     final file = _findDiffFileForStatusEntry(
       diffFiles,
@@ -246,10 +267,26 @@ class _GitPageState extends ConsumerState<GitPage> {
     );
     if (file != null) {
       _openDiffFile(file);
+      await ref
+          .read(gitProvider.notifier)
+          .selectPath(entry.path, staged: file.staged);
+      return;
     }
-    ref
+
+    await ref
         .read(gitProvider.notifier)
-        .selectPath(entry.path, staged: file?.staged ?? preferredStaged);
+        .selectPath(entry.path, staged: preferredStaged);
+    final selected = ref.read(gitProvider);
+    if (selected.selectedPath == entry.path &&
+        selected.selectedPatch.trim().isNotEmpty) {
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .openReadOnlyGitDiff(
+            filePath: entry.path,
+            staged: selected.selectedStaged,
+            patch: selected.selectedPatch,
+          );
+    }
   }
 
   void _openDiffFile(_DiffFileItem file) {
@@ -511,55 +548,52 @@ class _GitPageState extends ConsumerState<GitPage> {
       32,
       (width, row) => row.width > width ? row.width : width,
     );
-    return _ResponsiveGitPane(
-      left: ListView(
-        padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
-        children: [
-          Wrap(
-            spacing: 5,
-            runSpacing: 5,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: state.isBusy
-                    ? null
-                    : () => _textDialog(
-                        title: '创建标签',
-                        label: '标签名称',
-                        onSubmit: ref.read(gitProvider.notifier).createTag,
-                      ),
-                icon: const Icon(Icons.sell_outlined),
-                label: const Text('Tag HEAD'),
-              ),
-              OutlinedButton.icon(
-                onPressed: state.isBusy
-                    ? null
-                    : () => _textDialog(
-                        title: 'Merge',
-                        label: '分支、标签或提交',
-                        onSubmit: ref.read(gitProvider.notifier).merge,
-                      ),
-                icon: const Icon(Icons.merge_type),
-                label: const Text('Merge'),
-              ),
-              OutlinedButton.icon(
-                onPressed: state.isBusy ? null : () => _rebaseDialog(),
-                icon: const Icon(Icons.linear_scale),
-                label: const Text('Rebase'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          for (var index = 0; index < snapshot.commits.length; index += 1)
-            _CommitHistoryTile(
-              commit: snapshot.commits[index],
-              graphRow: graphRows[index],
-              graphWidth: graphWidth,
-              isLast: index == snapshot.commits.length - 1,
-              dateLabel: _dateLabel(snapshot.commits[index].time),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
+      children: [
+        Wrap(
+          spacing: 5,
+          runSpacing: 5,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: state.isBusy
+                  ? null
+                  : () => _textDialog(
+                      title: '创建标签',
+                      label: '标签名称',
+                      onSubmit: ref.read(gitProvider.notifier).createTag,
+                    ),
+              icon: const Icon(Icons.sell_outlined),
+              label: const Text('Tag HEAD'),
             ),
-        ],
-      ),
-      right: _PreviewPanel(state: state, snapshot: snapshot),
+            OutlinedButton.icon(
+              onPressed: state.isBusy
+                  ? null
+                  : () => _textDialog(
+                      title: 'Merge',
+                      label: '分支、标签或提交',
+                      onSubmit: ref.read(gitProvider.notifier).merge,
+                    ),
+              icon: const Icon(Icons.merge_type),
+              label: const Text('Merge'),
+            ),
+            OutlinedButton.icon(
+              onPressed: state.isBusy ? null : () => _rebaseDialog(),
+              icon: const Icon(Icons.linear_scale),
+              label: const Text('Rebase'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        for (var index = 0; index < snapshot.commits.length; index += 1)
+          _CommitHistoryTile(
+            commit: snapshot.commits[index],
+            graphRow: graphRows[index],
+            graphWidth: graphWidth,
+            isLast: index == snapshot.commits.length - 1,
+            dateLabel: _dateLabel(snapshot.commits[index].time),
+          ),
+      ],
     );
   }
 
@@ -1695,29 +1729,83 @@ class _CommitGraphPainter extends CustomPainter {
   }
 }
 
+class _ChangeSectionHeader extends StatelessWidget {
+  const _ChangeSectionHeader({required this.title, required this.count});
+
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(4, 12, 4, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          PillBadge(
+            label: '$count',
+            icon: Icons.list_alt_outlined,
+            containerColor: scheme.surfaceContainerHighest,
+            foregroundColor: scheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatusTile extends ConsumerWidget {
   const _StatusTile({
     required this.entry,
+    required this.diffFile,
+    required this.stagedSide,
     required this.isBusy,
     required this.onOpenDiff,
   });
 
   final GitStatusEntry entry;
+  final _DiffFileItem? diffFile;
+  final bool stagedSide;
   final bool isBusy;
   final VoidCallback onOpenDiff;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canDiscard = entry.isUnstaged && !entry.isConflicted;
+    final scheme = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    final addColor = brightness == Brightness.dark
+        ? Colors.greenAccent.shade200
+        : Colors.green.shade700;
+    final removeColor = scheme.error;
+    final canDiscard = !stagedSide && entry.isUnstaged && !entry.isConflicted;
+    final stageActionLabel = stagedSide ? '取消暂存' : '暂存';
     final tile = ListTile(
       dense: true,
       leading: Icon(_statusIcon),
       title: Text(entry.path, overflow: TextOverflow.ellipsis),
-      subtitle: Text(entry.summary, overflow: TextOverflow.ellipsis),
+      subtitle: _StatusTileSubtitle(entry: entry, diffFile: diffFile),
       onTap: isBusy ? null : onOpenDiff,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (diffFile != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 8),
+              child: _ChangeSummary(
+                file: diffFile!,
+                addColor: addColor,
+                removeColor: removeColor,
+              ),
+            ),
           if (canDiscard)
             IconButton(
               tooltip: '放弃更改',
@@ -1725,12 +1813,10 @@ class _StatusTile extends ConsumerWidget {
               icon: const Icon(Icons.restore_outlined),
             ),
           IconButton(
-            tooltip: entry.isStaged && !canDiscard ? '取消暂存' : '暂存',
+            tooltip: stageActionLabel,
             onPressed: isBusy ? null : () => _toggleStage(ref),
             icon: Icon(
-              entry.isStaged && !canDiscard
-                  ? Icons.remove_done_outlined
-                  : Icons.add_task_outlined,
+              stagedSide ? Icons.remove_done_outlined : Icons.add_task_outlined,
             ),
           ),
         ],
@@ -1747,14 +1833,9 @@ class _StatusTile extends ConsumerWidget {
               callback: onOpenDiff,
               attributes: MenuActionAttributes(disabled: isBusy),
             ),
-            MenuAction(
-              title: 'Blame',
-              callback: () => _blame(ref),
-              attributes: MenuActionAttributes(disabled: isBusy),
-            ),
             MenuSeparator(),
             MenuAction(
-              title: entry.isStaged && !canDiscard ? '取消暂存' : '暂存',
+              title: stageActionLabel,
               callback: () => _toggleStage(ref),
               attributes: MenuActionAttributes(disabled: isBusy),
             ),
@@ -1771,18 +1852,13 @@ class _StatusTile extends ConsumerWidget {
 
   IconData get _statusIcon {
     if (entry.isConflicted) return Icons.warning_amber_outlined;
-    if (entry.isStaged) return Icons.task_alt;
+    if (stagedSide) return Icons.task_alt;
     if (entry.isUntracked) return Icons.note_add_outlined;
     return Icons.edit_outlined;
   }
 
-  Future<void> _blame(WidgetRef ref) async {
-    await ref.read(gitProvider.notifier).selectPath(entry.path);
-    await ref.read(gitProvider.notifier).blameSelected();
-  }
-
   void _toggleStage(WidgetRef ref) {
-    if (entry.isStaged && !entry.isUnstaged) {
+    if (stagedSide) {
       ref.read(gitProvider.notifier).unstage(entry.path);
     } else {
       ref.read(gitProvider.notifier).stage(entry.path);
@@ -1815,323 +1891,90 @@ class _StatusTile extends ConsumerWidget {
   }
 }
 
-class _PreviewPanel extends ConsumerWidget {
-  const _PreviewPanel({required this.state, required this.snapshot});
+class _StatusTileSubtitle extends StatelessWidget {
+  const _StatusTileSubtitle({required this.entry, required this.diffFile});
 
-  final GitViewState state;
-  final GitRepositorySnapshot snapshot;
+  final GitStatusEntry entry;
+  final _DiffFileItem? diffFile;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final diffFiles = _diffFilesFromSnapshot(snapshot);
-    final activeFile = _activeDiffFile(diffFiles, state);
-    final selectedPath = activeFile?.path ?? state.selectedPath;
-    final showBlame = state.blame.isNotEmpty && state.selectedPath != null;
-    return Column(
+  Widget build(BuildContext context) {
+    final file = diffFile;
+    if (file == null) {
+      return Text(entry.summary, overflow: TextOverflow.ellipsis);
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        PaneHeader(
-          title: selectedPath ?? 'Diff',
-          subtitle: _subtitle(activeFile, showBlame),
-          leadingIcon: Icons.difference_outlined,
-          actions: [
-            if (diffFiles.isNotEmpty)
-              PillBadge(
-                label: '${diffFiles.length} 文件',
-                icon: Icons.list_alt_outlined,
-              ),
-          ],
-          compact: true,
+        _DiffInfoPill(
+          label: file.stageLabel,
+          color: file.staged ? scheme.primary : scheme.tertiary,
         ),
-        Expanded(child: _buildBody(ref, diffFiles, activeFile, showBlame)),
+        if (entry.summary.isNotEmpty)
+          Text(
+            entry.summary,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        if (file.isBinary)
+          _DiffInfoPill(label: 'Binary', color: scheme.onSurfaceVariant),
       ],
     );
   }
-
-  Widget _buildBody(
-    WidgetRef ref,
-    List<_DiffFileItem> diffFiles,
-    _DiffFileItem? activeFile,
-    bool showBlame,
-  ) {
-    if (diffFiles.isEmpty) {
-      if (showBlame) return _BlameView(lines: state.blame);
-      return const _EmptyPanel(
-        icon: Icons.difference_outlined,
-        title: '没有内容变更',
-        message: '暂存区和工作区中没有可展示的文件 diff。',
-      );
-    }
-
-    final sidebar = _DiffFileSidebar(
-      files: diffFiles,
-      selectedFile: activeFile,
-      isBusy: state.isBusy,
-      onSelected: (file) {
-        ref
-            .read(tabbedViewControllerProvider.notifier)
-            .openReadOnlyGitDiff(
-              filePath: file.path,
-              staged: file.staged,
-              patch: file.patch,
-            );
-        ref
-            .read(gitProvider.notifier)
-            .selectPath(file.path, staged: file.staged);
-      },
-    );
-
-    if (showBlame) {
-      return _BlameView(lines: state.blame);
-    }
-
-    return Column(
-      children: [
-        Expanded(child: sidebar),
-        const Divider(height: 1),
-        const _OpenDiffInEditorHint(),
-      ],
-    );
-  }
-
-  String _subtitle(_DiffFileItem? activeFile, bool showBlame) {
-    if (showBlame) return 'Blame';
-    if (activeFile == null) return snapshot.rootPath;
-    return '${activeFile.stageLabel} · ${activeFile.changeSummary}';
-  }
 }
 
-class _OpenDiffInEditorHint extends StatelessWidget {
-  const _OpenDiffInEditorHint();
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 12, 12),
-      child: Row(
-        children: [
-          Icon(
-            Icons.open_in_new_outlined,
-            size: 18,
-            color: scheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '点击文件后，详细 diff 会在右侧编辑区以只读方式打开。',
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiffFileSidebar extends StatelessWidget {
-  const _DiffFileSidebar({
-    required this.files,
-    required this.selectedFile,
-    required this.isBusy,
-    required this.onSelected,
-  });
-
-  final List<_DiffFileItem> files;
-  final _DiffFileItem? selectedFile;
-  final bool isBusy;
-  final ValueChanged<_DiffFileItem> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(color: scheme.surfaceContainerLowest),
-      child: Column(
-        children: [
-          SizedBox(
-            height: 44,
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 10, 0),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.list_alt_outlined,
-                    size: 18,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '变更文件',
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${files.length}',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: files.length,
-              itemBuilder: (context, index) {
-                final file = files[index];
-                final selected =
-                    selectedFile != null &&
-                    selectedFile!.path == file.path &&
-                    selectedFile!.staged == file.staged;
-                return _DiffFileTile(
-                  file: file,
-                  selected: selected,
-                  enabled: !isBusy,
-                  onTap: () => onSelected(file),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiffFileTile extends StatelessWidget {
-  const _DiffFileTile({
+class _ChangeSummary extends StatelessWidget {
+  const _ChangeSummary({
     required this.file,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
+    required this.addColor,
+    required this.removeColor,
   });
 
   final _DiffFileItem file;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
+  final Color addColor;
+  final Color removeColor;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final brightness = Theme.of(context).brightness;
-    final addColor = brightness == Brightness.dark
-        ? Colors.greenAccent.shade200
-        : Colors.green.shade700;
-    final removeColor = scheme.error;
-    final foreground = selected
-        ? scheme.onSecondaryContainer
-        : scheme.onSurface;
-    final muted = selected
-        ? scheme.onSecondaryContainer.withValues(alpha: 0.78)
-        : scheme.onSurfaceVariant;
+    if (file.isBinary) {
+      return Text(
+        'Binary',
+        textAlign: TextAlign.end,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
 
-    return Material(
-      color: selected
-          ? scheme.secondaryContainer.withValues(alpha: 0.72)
-          : Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(
-                color: selected ? scheme.primary : Colors.transparent,
-                width: 3,
-              ),
+    return SizedBox(
+      width: 48,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '+${file.additions}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: addColor,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          padding: const EdgeInsetsDirectional.fromSTEB(9, 10, 10, 10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                file.isBinary
-                    ? Icons.data_object_outlined
-                    : Icons.article_outlined,
-                size: 20,
-                color: muted,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      file.path,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: foreground,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        _DiffInfoPill(
-                          label: file.stageLabel,
-                          color: file.staged ? scheme.primary : scheme.tertiary,
-                        ),
-                        if (file.isBinary)
-                          _DiffInfoPill(label: 'Binary', color: muted),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 48,
-                child: file.isBinary
-                    ? Text(
-                        'Binary',
-                        textAlign: TextAlign.end,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: muted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '+${file.additions}',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: addColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          Text(
-                            '-${file.deletions}',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: removeColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ],
-                      ),
-              ),
-            ],
+          Text(
+            '-${file.deletions}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: removeColor,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2196,6 +2039,46 @@ class _DiffFileItem {
   }
 
   bool get hasContentChange => isBinary || additions > 0 || deletions > 0;
+}
+
+class _ChangeListItem {
+  const _ChangeListItem({required this.entry, required this.diffFile});
+
+  final GitStatusEntry entry;
+  final _DiffFileItem? diffFile;
+}
+
+List<_ChangeListItem> _changeItemsForSide(
+  List<GitStatusEntry> entries,
+  List<_DiffFileItem> diffFiles, {
+  required bool staged,
+}) {
+  final items = <_ChangeListItem>[];
+  final seenPaths = <String>{};
+
+  for (final file in diffFiles.where((file) => file.staged == staged)) {
+    final entry = _statusEntryForPath(entries, file.path);
+    if (entry == null) continue;
+    items.add(_ChangeListItem(entry: entry, diffFile: file));
+    seenPaths.add(file.path);
+  }
+
+  for (final entry in entries) {
+    final include = staged
+        ? entry.isStaged
+        : entry.isUnstaged || entry.isConflicted;
+    if (!include || seenPaths.contains(entry.path)) continue;
+    items.add(_ChangeListItem(entry: entry, diffFile: null));
+  }
+
+  return items;
+}
+
+GitStatusEntry? _statusEntryForPath(List<GitStatusEntry> entries, String path) {
+  for (final entry in entries) {
+    if (entry.path == path) return entry;
+  }
+  return null;
 }
 
 List<_DiffFileItem> _diffFilesFromSnapshot(GitRepositorySnapshot snapshot) {
@@ -2313,21 +2196,6 @@ String _cleanDiffPath(String value) {
   return path;
 }
 
-_DiffFileItem? _activeDiffFile(List<_DiffFileItem> files, GitViewState state) {
-  if (files.isEmpty) return null;
-  final selectedPath = state.selectedPath;
-  if (selectedPath == null) return files.first;
-  for (final file in files) {
-    if (file.path == selectedPath && file.staged == state.selectedStaged) {
-      return file;
-    }
-  }
-  for (final file in files) {
-    if (file.path == selectedPath) return file;
-  }
-  return files.first;
-}
-
 bool _preferredStagedForStatusEntry(GitStatusEntry entry) {
   final canDiscard = entry.isUnstaged && !entry.isConflicted;
   return entry.isStaged && !canDiscard;
@@ -2345,32 +2213,6 @@ _DiffFileItem? _findDiffFileForStatusEntry(
     if (file.path == path) return file;
   }
   return null;
-}
-
-class _BlameView extends StatelessWidget {
-  const _BlameView({required this.lines});
-
-  final List<GitBlameLine> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: lines.length,
-      itemBuilder: (context, index) {
-        final line = lines[index];
-        return ListTile(
-          dense: true,
-          leading: Text('${line.lineStart}'),
-          title: Text(
-            '${line.commitSha.substring(0, 7)} · ${line.author}',
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text('${line.lineCount} 行 · ${line.email}'),
-        );
-      },
-    );
-  }
 }
 
 class _ThreeWayConflictPreview extends StatelessWidget {
@@ -2429,37 +2271,6 @@ class _CodeBlock extends StatelessWidget {
           style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
         ),
       ),
-    );
-  }
-}
-
-class _ResponsiveGitPane extends StatelessWidget {
-  const _ResponsiveGitPane({required this.left, required this.right});
-
-  final Widget left;
-  final Widget right;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 760) {
-          return Column(
-            children: [
-              Expanded(flex: 3, child: left),
-              const Divider(height: 1),
-              Expanded(flex: 2, child: right),
-            ],
-          );
-        }
-        return Row(
-          children: [
-            SizedBox(width: 360, child: left),
-            const VerticalDivider(width: 1),
-            Expanded(child: right),
-          ],
-        );
-      },
     );
   }
 }
