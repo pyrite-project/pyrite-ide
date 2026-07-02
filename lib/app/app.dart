@@ -68,7 +68,10 @@ class PyriteIDE extends ConsumerWidget {
       return ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
     }
     if (dynamicScheme != null) return dynamicScheme;
-    return ColorScheme.fromSeed(seedColor: Colors.teal, brightness: brightness);
+    return ColorScheme.fromSeed(
+      seedColor: Colors.deepOrange,
+      brightness: brightness,
+    );
   }
 
   ThemeData _buildTheme({
