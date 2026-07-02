@@ -53,7 +53,7 @@ dependencies:
   tolyui_message: ^0.2.6
   open_file: ^3.5.11
   xterm:
-    git: https://github.com/Can1425/xterm.dart
+    path: third_party/xterm.dart
   flutter_pty: ^0.4.2
   json_rpc_2: ^4.0.0
   process_run: ^1.2.4

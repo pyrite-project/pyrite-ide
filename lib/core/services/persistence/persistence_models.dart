@@ -83,6 +83,7 @@ class PersistedData {
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
+  final bool desktopTerminalEnableUnderline;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -146,6 +147,7 @@ class PersistedData {
     this.terminalFontFamily = 'JetBrains Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
+    this.desktopTerminalEnableUnderline = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',

@@ -76,21 +76,18 @@ class PersistenceManager {
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
-      chineseToUnicodeConversion:
-          settings?.chineseToUnicodeConversion ?? true,
-      enableSignalDetection:
-          settings?.enableSignalDetection ?? true,
+      chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
+      enableSignalDetection: settings?.enableSignalDetection ?? true,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
       terminalFontFamily: settings?.terminalFontFamily ?? 'JetBrains Mono',
       terminalFontSize: settings?.terminalFontSize ?? 13,
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
-      uploadConfirmStyle:
-          settings?.uploadConfirmStyle ?? 'toolbar',
-      confirmShortcut:
-          settings?.confirmShortcut ?? 'Ctrl+Enter',
-      cancelShortcut:
-          settings?.cancelShortcut ?? 'Esc',
+      desktopTerminalEnableUnderline:
+          settings?.desktopTerminalEnableUnderline ?? false,
+      uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
+      confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
+      cancelShortcut: settings?.cancelShortcut ?? 'Esc',
       webReplHost: settings?.webReplHost ?? '',
       webReplPort: settings?.webReplPort ?? 8266,
       webReplPassword: settings?.webReplPassword ?? '',
@@ -146,30 +143,32 @@ class PersistenceManager {
           lspInlayHint: container.read(lspInlayHint),
           lspGoToDefinition: container.read(lspGoToDefinition),
           lspRename: container.read(lspRename),
-          chineseToUnicodeConversion:
-              container.read(chineseToUnicodeConversion),
-          enableSignalDetection:
-              container.read(enableSignalDetection),
+          chineseToUnicodeConversion: container.read(
+            chineseToUnicodeConversion,
+          ),
+          enableSignalDetection: container.read(enableSignalDetection),
           serialDefaultBaudRate: container.read(serialDefaultBaudRate),
           serialAutoReconnect: container.read(serialAutoReconnect),
           terminalFontFamily: container.read(terminalFontFamily),
           terminalFontSize: container.read(terminalFontSize),
           terminalLineHeight: container.read(terminalLineHeight),
-          uploadConfirmStyle:
-              container.read(uploadConfirmStyleProvider),
-          confirmShortcut:
-              container.read(confirmShortcutProvider),
-          cancelShortcut:
-              container.read(cancelShortcutProvider),
+          desktopTerminalEnableUnderline: container.read(
+            desktopTerminalEnableUnderline,
+          ),
+          uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
+          confirmShortcut: container.read(confirmShortcutProvider),
+          cancelShortcut: container.read(cancelShortcutProvider),
           webReplHost: container.read(webReplHost),
           webReplPort: container.read(webReplPort),
           webReplPassword: container.read(webReplPassword),
           microPythonStubsEnabled: container.read(microPythonStubsEnabled),
-          microPythonStubsAutoDetectLayers:
-              container.read(microPythonStubsAutoDetectLayers),
+          microPythonStubsAutoDetectLayers: container.read(
+            microPythonStubsAutoDetectLayers,
+          ),
           microPythonStubsLayers: container.read(microPythonStubsLayers),
-          microPythonStubsExtraPaths:
-              container.read(microPythonStubsExtraPaths),
+          microPythonStubsExtraPaths: container.read(
+            microPythonStubsExtraPaths,
+          ),
         ),
       ),
       functionPagePersistence.save(
@@ -192,9 +191,7 @@ class PersistenceManager {
 
   Future<void> _saveProject(ProviderContainer container) async {
     final dir = container.read(fileProvider);
-    await projectPersistence.save(
-      ProjectPersistedData(projectPath: dir?.path),
-    );
+    await projectPersistence.save(ProjectPersistedData(projectPath: dir?.path));
   }
 
   Future<void> _saveTabs(ProviderContainer container) async {

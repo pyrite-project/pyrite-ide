@@ -41,6 +41,7 @@ class SettingsPersistedData {
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
+  final bool desktopTerminalEnableUnderline;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -89,6 +90,7 @@ class SettingsPersistedData {
     this.terminalFontFamily = 'JetBrains Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
+    this.desktopTerminalEnableUnderline = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
@@ -138,6 +140,7 @@ class SettingsPersistedData {
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
     'terminalLineHeight': terminalLineHeight,
+    'desktopTerminalEnableUnderline': desktopTerminalEnableUnderline,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
@@ -194,6 +197,8 @@ class SettingsPersistedData {
         json['terminalFontFamily'] as String? ?? 'JetBrains Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
+    desktopTerminalEnableUnderline:
+        json['desktopTerminalEnableUnderline'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
     cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',

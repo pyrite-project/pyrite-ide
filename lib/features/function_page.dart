@@ -790,7 +790,10 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                   session.terminal,
                   controller: session.controller,
                   theme: buildTerminalTheme(context),
-                  textStyle: buildTerminalStyle(ref),
+                  textStyle: buildTerminalStyle(
+                    ref,
+                    enableUnderline: ref.watch(desktopTerminalEnableUnderline),
+                  ),
                   key: ValueKey(
                     'terminal_${session.id}_${scheme.surface.toARGB32()}',
                   ),
@@ -931,11 +934,12 @@ TerminalTheme buildTerminalTheme(BuildContext context) {
   );
 }
 
-TerminalStyle buildTerminalStyle(WidgetRef ref) {
+TerminalStyle buildTerminalStyle(WidgetRef ref, {bool enableUnderline = true}) {
   return TerminalStyle(
     fontSize: ref.watch(terminalFontSize),
-    height: ref.watch(terminalLineHeight),
+    height: 1.0,
     fontFamily: editorTextFonts[ref.watch(terminalFontFamily)] ?? 'monospace',
+    enableUnderline: enableUnderline,
   );
 }
 

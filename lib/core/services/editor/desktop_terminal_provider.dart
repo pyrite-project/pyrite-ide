@@ -65,7 +65,8 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
   int _nextId = 1;
 
-  bool get isSupported => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  bool get isSupported =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   Future<void> createSession() async {
     if (!isSupported) {
@@ -89,6 +90,9 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       terminal.onOutput = (data) {
         pty.write(Uint8List.fromList(utf8.encode(data)));
       };
+      terminal.onResize = (int cols, int rows, int pw, int ph) {
+        pty.resize(rows, cols);
+      };
       final subscription = pty.output.listen((data) {
         terminal.write(utf8.decode(data, allowMalformed: true));
       });
@@ -96,7 +100,9 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         final hexCode = (code & 0xffffffff).toRadixString(16).padLeft(8, '0');
         final message = '进程已退出，代码 $code (0x$hexCode)';
         terminal.write('\r\n[$message]\r\n');
-        ref.read(ideOutputLogProvider.notifier).add(IdeOutputSource.terminal, '${shell.executable}: $message');
+        ref
+            .read(ideOutputLogProvider.notifier)
+            .add(IdeOutputSource.terminal, '${shell.executable}: $message');
       });
 
       final session = DesktopTerminalSession(
@@ -114,7 +120,10 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       );
       ref
           .read(ideOutputLogProvider.notifier)
-          .add(IdeOutputSource.terminal, '启动 ${session.title}: ${shell.executable}');
+          .add(
+            IdeOutputSource.terminal,
+            '启动 ${session.title}: ${shell.executable}',
+          );
     } catch (error) {
       state = state.copyWith(error: '启动终端失败: $error');
       ref
@@ -152,7 +161,9 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     if (Platform.isWindows) {
       return const _ShellCommand('cmd.exe', []);
     }
-    if (Platform.isLinux || Platform.isMacOS) return const _ShellCommand('bash', []);
+    if (Platform.isLinux || Platform.isMacOS) {
+      return const _ShellCommand('bash', []);
+    }
     return const _ShellCommand('sh', []);
   }
 }
