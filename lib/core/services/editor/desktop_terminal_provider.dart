@@ -84,6 +84,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         shell.executable,
         arguments: shell.arguments,
         workingDirectory: Directory.current.path,
+        environment: _terminalEnvironment(),
         rows: 25,
         columns: 80,
       );
@@ -159,12 +160,31 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
   _ShellCommand _defaultShell() {
     if (Platform.isWindows) {
-      return const _ShellCommand('cmd.exe', []);
+      return _ShellCommand(
+        Platform.environment['ComSpec'] ??
+            Platform.environment['COMSPEC'] ??
+            'cmd.exe',
+        const [],
+      );
     }
     if (Platform.isLinux || Platform.isMacOS) {
       return const _ShellCommand('bash', []);
     }
     return const _ShellCommand('sh', []);
+  }
+
+  Map<String, String> _terminalEnvironment() {
+    final environment = Map<String, String>.of(Platform.environment);
+    environment['TERM'] = environment['TERM']?.isNotEmpty == true
+        ? environment['TERM']!
+        : 'xterm-256color';
+    environment['COLORTERM'] = environment['COLORTERM']?.isNotEmpty == true
+        ? environment['COLORTERM']!
+        : 'truecolor';
+    environment['LANG'] = environment['LANG']?.isNotEmpty == true
+        ? environment['LANG']!
+        : 'en_US.UTF-8';
+    return environment;
   }
 }
 
