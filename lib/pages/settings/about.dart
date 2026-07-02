@@ -32,7 +32,7 @@ class About extends StatelessWidget {
                 child: Image.asset(
                   width: 200,
                   height: 200,
-                  "assets/icons/app_icon.png",
+                  "assets/icons/app_icon.webp",
                   fit: BoxFit.cover,
                 ),
               ),
@@ -130,7 +130,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                 child: Image.asset(
                   width: 80,
                   height: 80,
-                  "assets/icons/app_icon.png",
+                  "assets/icons/app_icon.webp",
                   fit: BoxFit.cover,
                 ),
               ),

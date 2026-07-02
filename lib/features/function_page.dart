@@ -472,8 +472,7 @@ class MobileView extends ConsumerWidget {
                 child: Row(
                   children: [
                     Image.asset(
-                      "assets/icons/app_icon_appbar.png",
-                      color: Theme.of(context).colorScheme.onSurface,
+                      "assets/icons/app_icon.webp",
                       width: 32,
                       height: 32,
                     ),

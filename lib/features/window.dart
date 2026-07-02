@@ -73,8 +73,7 @@ class UseTitleBar extends StatelessWidget {
         child: Row(
           children: [
             Image.asset(
-              "assets/icons/app_icon_appbar.png",
-              color: Theme.of(context).colorScheme.onSurface,
+              "assets/icons/app_icon.webp",
               width: appIconSize,
               height: appIconSize,
             ),
@@ -149,8 +148,7 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "将当前文件另存为",
-              () =>
-                  ref.read(fileProvider.notifier).saveCurrentFileAs(),
+              () => ref.read(fileProvider.notifier).saveCurrentFileAs(),
               leadingIconData: Icons.save_as,
               shortcut: SingleActivator(
                 LogicalKeyboardKey.keyS,

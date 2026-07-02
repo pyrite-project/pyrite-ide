@@ -26,8 +26,7 @@ class EditorWelcome extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Image.asset(
-                  "assets/icons/app_icon_appbar.png",
-                  color: Theme.of(context).colorScheme.primary,
+                  "assets/icons/app_icon.webp",
                   width: 72,
                   height: 72,
                 ),
