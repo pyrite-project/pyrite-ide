@@ -241,29 +241,57 @@ class GitRepositoryService {
     String name, {
     bool remote = false,
   }) async {
+    await _runCheckoutBranch(rootPath, name, remote: remote);
+  }
+
+  Future<void> checkoutBranchWithStash(
+    String rootPath,
+    String name, {
+    bool remote = false,
+  }) async {
     final branchName = name.trim();
     if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+    await _gitVoid(rootPath, [
+      'stash',
+      'push',
+      '--include-untracked',
+      '-m',
+      'PyriteIDE: stash before switching to $branchName',
+    ]);
+    await _runCheckoutBranch(rootPath, branchName, remote: remote);
+  }
 
-    if (!remote) {
-      await _gitVoid(rootPath, ['switch', branchName]);
-      return;
+  Future<void> checkoutBranchWithMerge(
+    String rootPath,
+    String name, {
+    bool remote = false,
+  }) async {
+    await _runCheckoutBranch(rootPath, name, remote: remote, merge: true);
+  }
+
+  Future<void> forceCheckoutBranch(
+    String rootPath,
+    String name, {
+    bool remote = false,
+  }) async {
+    await _gitVoid(rootPath, ['reset', '--hard']);
+    await _gitVoid(rootPath, ['clean', '-fd']);
+    await _runCheckoutBranch(rootPath, name, remote: remote);
+  }
+
+  Future<void> discardTrackedPathsAndCheckoutBranch(
+    String rootPath,
+    String name,
+    Iterable<String> paths, {
+    bool remote = false,
+  }) async {
+    final trackedPaths = paths
+        .map((path) => path.trim())
+        .where((path) => path.isNotEmpty);
+    if (trackedPaths.isNotEmpty) {
+      await _gitVoid(rootPath, ['restore', '--', ...trackedPaths]);
     }
-
-    if (branchName.contains(' -> ') || branchName.endsWith('/HEAD')) {
-      throw ArgumentError('不能切换到远端 HEAD 指针。');
-    }
-
-    final localName = _localBranchNameForRemote(branchName);
-    final localBranchNames = (await _branchInfos(
-      rootPath,
-      remote: false,
-    )).map((branch) => branch.name).toSet();
-    if (localBranchNames.contains(localName)) {
-      await _gitVoid(rootPath, ['switch', localName]);
-      return;
-    }
-
-    await _gitVoid(rootPath, ['switch', '--track', branchName]);
+    await _runCheckoutBranch(rootPath, name, remote: remote);
   }
 
   Future<void> stash(
@@ -291,6 +319,80 @@ class GitRepositoryService {
 
   Future<void> dropStash(String rootPath, int index) {
     return _gitVoid(rootPath, ['stash', 'drop', 'stash@{$index}']);
+  }
+
+  Future<void> _runCheckoutBranch(
+    String rootPath,
+    String name, {
+    required bool remote,
+    bool merge = false,
+  }) async {
+    final args = await _checkoutBranchArgs(rootPath, name, remote: remote);
+    if (merge) {
+      args.insert(1, '--merge');
+    }
+
+    final result = await _git(rootPath, args, allowFailure: true);
+    if (result.exitCode == 0) return;
+
+    final blockedPaths = _checkoutBlockedPaths(result.message);
+    if (blockedPaths.isNotEmpty) {
+      throw GitCheckoutBlockedException(
+        message: result.message,
+        paths: blockedPaths,
+      );
+    }
+    throw StateError(result.message);
+  }
+
+  Future<List<String>> _checkoutBranchArgs(
+    String rootPath,
+    String name, {
+    required bool remote,
+  }) async {
+    final branchName = name.trim();
+    if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+
+    if (!remote) return ['switch', branchName];
+
+    if (branchName.contains(' -> ') || branchName.endsWith('/HEAD')) {
+      throw ArgumentError('不能切换到远端 HEAD 指针。');
+    }
+
+    final localName = _localBranchNameForRemote(branchName);
+    final localBranchNames = (await _branchInfos(
+      rootPath,
+      remote: false,
+    )).map((branch) => branch.name).toSet();
+    if (localBranchNames.contains(localName)) {
+      return ['switch', localName];
+    }
+
+    return ['switch', '-c', localName, '--track', branchName];
+  }
+
+  List<String> _checkoutBlockedPaths(String message) {
+    final paths = <String>[];
+    var collecting = false;
+    for (final rawLine in message.replaceAll('\r\n', '\n').split('\n')) {
+      final line = rawLine.trimRight();
+      if (line.contains('would be overwritten by checkout') ||
+          line.contains('would be overwritten by merge')) {
+        collecting = true;
+        continue;
+      }
+      if (!collecting) continue;
+      final path = line.trim();
+      if (path.isEmpty ||
+          path.startsWith('Please ') ||
+          path.startsWith('Aborting') ||
+          path.startsWith('error:')) {
+        collecting = false;
+        continue;
+      }
+      paths.add(path);
+    }
+    return paths;
   }
 
   Future<String> fetch(
@@ -1069,6 +1171,19 @@ class GitRepositoryService {
         .where((line) => line.isNotEmpty)
         .toList();
   }
+}
+
+class GitCheckoutBlockedException implements Exception {
+  const GitCheckoutBlockedException({
+    required this.message,
+    required this.paths,
+  });
+
+  final String message;
+  final List<String> paths;
+
+  @override
+  String toString() => message;
 }
 
 class _GitCommandResult {

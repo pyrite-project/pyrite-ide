@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
+import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 
 final gitRepositoryServiceProvider = Provider<GitRepositoryService>((ref) {
   return GitRepositoryService();
@@ -157,10 +158,58 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
-  Future<void> checkoutBranch(String name, {bool remote = false}) async {
-    await _runRoot(
-      (root) async => _service.checkoutBranch(root, name, remote: remote),
+  Future<GitCheckoutBlocked?> checkoutBranch(
+    String name, {
+    bool remote = false,
+  }) async {
+    return _checkoutBranch(
+      name,
+      remote: remote,
+      action: (root) => _service.checkoutBranch(root, name, remote: remote),
       success: '已切换到 $name',
+    );
+  }
+
+  Future<void> checkoutBranchWithStash(
+    String name, {
+    bool remote = false,
+  }) async {
+    await _runRoot(
+      (root) => _service.checkoutBranchWithStash(root, name, remote: remote),
+      success: '已储藏更改并切换到 $name',
+    );
+  }
+
+  Future<void> checkoutBranchWithMerge(
+    String name, {
+    bool remote = false,
+  }) async {
+    await _runRoot(
+      (root) => _service.checkoutBranchWithMerge(root, name, remote: remote),
+      success: '已切换到 $name，并尝试迁移更改',
+    );
+  }
+
+  Future<void> forceCheckoutBranch(String name, {bool remote = false}) async {
+    await _runRoot(
+      (root) => _service.forceCheckoutBranch(root, name, remote: remote),
+      success: '已强制切换到 $name',
+    );
+  }
+
+  Future<void> discardPathsAndCheckoutBranch(
+    String name,
+    Iterable<String> paths, {
+    bool remote = false,
+  }) async {
+    await _runRoot(
+      (root) => _service.discardTrackedPathsAndCheckoutBranch(
+        root,
+        name,
+        paths,
+        remote: remote,
+      ),
+      success: '已放弃冲突文件并切换到 $name',
     );
   }
 
@@ -333,6 +382,46 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
+  Future<GitCheckoutBlocked?> _checkoutBranch(
+    String name, {
+    required bool remote,
+    required Future<void> Function(String rootPath) action,
+    required String success,
+  }) async {
+    final rootPath = await _rootPath();
+    if (rootPath == null) {
+      state = state.copyWith(error: '当前工作区不是 Git 仓库。');
+      return null;
+    }
+
+    state = state.copyWith(
+      isBusy: true,
+      clearError: true,
+      clearLastMessage: true,
+    );
+    try {
+      await action(rootPath);
+      state = state.copyWith(lastMessage: success, clearError: true);
+      await _loadAndApplySnapshot(
+        state.workspacePath ?? ref.read(localWorkspaceProvider)?.path,
+      );
+      return null;
+    } on GitCheckoutBlockedException catch (error) {
+      state = state.copyWith(clearError: true);
+      return GitCheckoutBlocked(
+        branchName: name,
+        remote: remote,
+        paths: error.paths,
+        message: error.message,
+      );
+    } catch (error) {
+      state = state.copyWith(error: error.toString());
+      return null;
+    } finally {
+      state = state.copyWith(isBusy: false);
+    }
+  }
+
   Future<void> _run(
     FutureOr<void> Function() action, {
     String? success,
@@ -392,6 +481,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
 
   Future<void> _loadAndApplySnapshot(String? workspacePath) async {
     final snapshot = await _service.loadSnapshot(workspacePath);
+    ref.invalidate(gitStatusSummaryProvider);
     _updateWorkspaceWatch(snapshot);
 
     if (snapshot == null) {

@@ -2,12 +2,12 @@ class GitDiffDisplay {
   const GitDiffDisplay({
     required this.text,
     required this.addedRanges,
-    required this.deletedRanges,
+    required this.removedRanges,
   });
 
   final String text;
   final List<(int startLine, int endLine)> addedRanges;
-  final List<(int startLine, int endLine)> deletedRanges;
+  final List<({int afterLine, String content})> removedRanges;
 }
 
 GitDiffDisplay buildGitDiffDisplay(String patch) {
@@ -19,22 +19,35 @@ GitDiffDisplay buildGitDiffDisplay(String patch) {
     return const GitDiffDisplay(
       text: 'No diff.',
       addedRanges: [],
-      deletedRanges: [],
+      removedRanges: [],
     );
   }
 
   final visibleLines = <String>[];
   final addedRanges = <(int startLine, int endLine)>[];
-  final deletedRanges = <(int startLine, int endLine)>[];
+  final removedRanges = <({int afterLine, String content})>[];
+  final pendingRemovedLines = <String>[];
+  var pendingRemovedAfterLine = -1;
   var insideHunk = false;
   var sawBinaryChange = false;
 
+  void flushRemovedLines() {
+    if (pendingRemovedLines.isEmpty) return;
+    removedRanges.add((
+      afterLine: pendingRemovedAfterLine,
+      content: pendingRemovedLines.join('\n'),
+    ));
+    pendingRemovedLines.clear();
+  }
+
   for (final line in normalizedPatch.split('\n')) {
     if (line.startsWith('diff --git ')) {
+      flushRemovedLines();
       insideHunk = false;
       continue;
     }
     if (line.startsWith('@@ ')) {
+      flushRemovedLines();
       insideHunk = true;
       continue;
     }
@@ -46,27 +59,38 @@ GitDiffDisplay buildGitDiffDisplay(String patch) {
       continue;
     }
 
-    final visibleLineIndex = visibleLines.length;
-    visibleLines.add(line);
-    if (line.startsWith('+')) {
+    if (insideHunk && line.startsWith('+')) {
+      flushRemovedLines();
+      final visibleLineIndex = visibleLines.length;
+      visibleLines.add(line.substring(1));
       addedRanges.add((visibleLineIndex, visibleLineIndex));
-    } else if (line.startsWith('-')) {
-      deletedRanges.add((visibleLineIndex, visibleLineIndex));
+    } else if (insideHunk && line.startsWith('-')) {
+      final afterLine = visibleLines.length - 1;
+      if (pendingRemovedLines.isNotEmpty &&
+          pendingRemovedAfterLine != afterLine) {
+        flushRemovedLines();
+      }
+      pendingRemovedAfterLine = afterLine;
+      pendingRemovedLines.add(line.substring(1));
+    } else {
+      flushRemovedLines();
+      visibleLines.add(line.startsWith(' ') ? line.substring(1) : line);
     }
   }
+  flushRemovedLines();
 
-  if (visibleLines.isEmpty) {
+  if (visibleLines.isEmpty && removedRanges.isEmpty) {
     return GitDiffDisplay(
       text: sawBinaryChange ? 'Binary file changed.' : 'No diff.',
       addedRanges: const [],
-      deletedRanges: const [],
+      removedRanges: const [],
     );
   }
 
   return GitDiffDisplay(
     text: visibleLines.join('\n'),
     addedRanges: addedRanges,
-    deletedRanges: deletedRanges,
+    removedRanges: removedRanges,
   );
 }
 

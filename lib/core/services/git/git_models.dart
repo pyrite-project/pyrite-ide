@@ -130,6 +130,20 @@ class GitBranchInfo {
   final String upstream;
 }
 
+class GitCheckoutBlocked {
+  const GitCheckoutBlocked({
+    required this.branchName,
+    required this.remote,
+    required this.paths,
+    required this.message,
+  });
+
+  final String branchName;
+  final bool remote;
+  final List<String> paths;
+  final String message;
+}
+
 class GitRemoteInfo {
   const GitRemoteInfo({
     required this.name,

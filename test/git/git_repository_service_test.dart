@@ -446,6 +446,91 @@ void main() {
     }
   });
 
+  test(
+    'GitRepositoryService reports branch checkout overwrite paths',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'pyrite_git_checkout_blocked_test_',
+      );
+
+      try {
+        _runGit(tempDir.path, ['init']);
+        _runGit(tempDir.path, ['checkout', '-b', 'main']);
+        _configureIdentity(tempDir.path);
+
+        final trackedFile = File(p.join(tempDir.path, 'tracked.txt'));
+        trackedFile.writeAsStringSync('main\n');
+        _runGit(tempDir.path, ['add', 'tracked.txt']);
+        _runGit(tempDir.path, ['commit', '-m', 'Initial commit']);
+
+        _runGit(tempDir.path, ['checkout', '-b', 'target']);
+        trackedFile.writeAsStringSync('target\n');
+        _runGit(tempDir.path, ['commit', '-am', 'Target change']);
+
+        _runGit(tempDir.path, ['checkout', 'main']);
+        trackedFile.writeAsStringSync('local\n');
+
+        final service = GitRepositoryService();
+        await expectLater(
+          service.checkoutBranch(tempDir.path, 'target'),
+          throwsA(
+            isA<GitCheckoutBlockedException>().having(
+              (error) => error.paths,
+              'paths',
+              contains('tracked.txt'),
+            ),
+          ),
+        );
+
+        expect(_gitOutput(tempDir.path, ['branch', '--show-current']), 'main');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
+
+  test(
+    'GitRepositoryService discards listed tracked paths before checkout',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'pyrite_git_checkout_discard_paths_test_',
+      );
+
+      try {
+        _runGit(tempDir.path, ['init']);
+        _runGit(tempDir.path, ['checkout', '-b', 'main']);
+        _configureIdentity(tempDir.path);
+
+        final trackedFile = File(p.join(tempDir.path, 'tracked.txt'));
+        trackedFile.writeAsStringSync('main\n');
+        _runGit(tempDir.path, ['add', 'tracked.txt']);
+        _runGit(tempDir.path, ['commit', '-m', 'Initial commit']);
+
+        _runGit(tempDir.path, ['checkout', '-b', 'target']);
+        trackedFile.writeAsStringSync('target\n');
+        _runGit(tempDir.path, ['commit', '-am', 'Target change']);
+
+        _runGit(tempDir.path, ['checkout', 'main']);
+        trackedFile.writeAsStringSync('local\n');
+
+        final service = GitRepositoryService();
+        await service.discardTrackedPathsAndCheckoutBranch(
+          tempDir.path,
+          'target',
+          ['tracked.txt'],
+        );
+
+        expect(
+          _gitOutput(tempDir.path, ['branch', '--show-current']),
+          'target',
+        );
+        expect(trackedFile.readAsStringSync(), 'target\n');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
+
   test('GitRepositoryService preserves Chinese commit summaries', () async {
     final tempDir = Directory.systemTemp.createTempSync(
       'pyrite_git_utf8_test_',

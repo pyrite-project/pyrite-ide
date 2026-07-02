@@ -16,12 +16,9 @@ index 99ecb6b..47b6367 100644
 
     final display = buildGitDiffDisplay(patch);
 
-    expect(display.text, '''
- context
--old line
-+new line''');
-    expect(display.deletedRanges, [(1, 1)]);
-    expect(display.addedRanges, [(2, 2)]);
+    expect(display.text, 'context\nnew line');
+    expect(display.removedRanges, [(afterLine: 0, content: 'old line')]);
+    expect(display.addedRanges, [(1, 1)]);
   });
 
   test('buildGitDiffDisplay keeps content lines that look like headers', () {
@@ -37,8 +34,8 @@ index 1111111..2222222 100644
 
     final display = buildGitDiffDisplay(patch);
 
-    expect(display.text, '--- old option\n+++ new option');
-    expect(display.deletedRanges, [(0, 0)]);
-    expect(display.addedRanges, [(1, 1)]);
+    expect(display.text, '++ new option');
+    expect(display.removedRanges, [(afterLine: -1, content: '-- old option')]);
+    expect(display.addedRanges, [(0, 0)]);
   });
 }

@@ -11,6 +11,10 @@ import 'package:super_context_menu/super_context_menu.dart';
 const _fallbackAuthorName = 'Pyrite User';
 const _fallbackAuthorEmail = 'pyrite@example.local';
 
+enum _CheckoutBlockedAction { stash, merge, force }
+
+enum _ForceCheckoutAction { all, listedTracked }
+
 class GitPage extends ConsumerStatefulWidget {
   const GitPage({super.key});
 
@@ -84,6 +88,9 @@ class _GitPageState extends ConsumerState<GitPage> {
     final state = ref.watch(gitProvider);
     final snapshot = state.snapshot;
     if (snapshot == null) {
+      if (state.isBusy) {
+        return const Center(child: CircularProgressIndicator());
+      }
       final workspacePath = state.workspacePath;
       final hasWorkspace = workspacePath != null && workspacePath.isNotEmpty;
       return WorkspaceEmptyState(
@@ -341,12 +348,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                 : TextButton(
                     onPressed: state.isBusy
                         ? null
-                        : () => ref
-                              .read(gitProvider.notifier)
-                              .checkoutBranch(
-                                branch.name,
-                                remote: branch.isRemote,
-                              ),
+                        : () => _checkoutBranch(branch),
                     child: const Text('切换'),
                   ),
           ),
@@ -853,6 +855,142 @@ class _GitPageState extends ConsumerState<GitPage> {
     await ref.read(gitProvider.notifier).stash(_commitInput(message: 'WIP'));
   }
 
+  Future<void> _checkoutBranch(GitBranchInfo branch) async {
+    final blocked = await ref
+        .read(gitProvider.notifier)
+        .checkoutBranch(branch.name, remote: branch.isRemote);
+    if (!mounted || blocked == null) return;
+
+    final action = await _checkoutBlockedDialog(blocked);
+    if (!mounted || action == null) return;
+
+    final notifier = ref.read(gitProvider.notifier);
+    switch (action) {
+      case _CheckoutBlockedAction.stash:
+        await notifier.checkoutBranchWithStash(
+          blocked.branchName,
+          remote: blocked.remote,
+        );
+      case _CheckoutBlockedAction.merge:
+        await notifier.checkoutBranchWithMerge(
+          blocked.branchName,
+          remote: blocked.remote,
+        );
+      case _CheckoutBlockedAction.force:
+        final forceAction = await _forceCheckoutDialog(blocked);
+        if (!mounted || forceAction == null) return;
+        switch (forceAction) {
+          case _ForceCheckoutAction.all:
+            await notifier.forceCheckoutBranch(
+              blocked.branchName,
+              remote: blocked.remote,
+            );
+          case _ForceCheckoutAction.listedTracked:
+            await notifier.discardPathsAndCheckoutBranch(
+              blocked.branchName,
+              blocked.paths,
+              remote: blocked.remote,
+            );
+        }
+    }
+  }
+
+  Future<_CheckoutBlockedAction?> _checkoutBlockedDialog(
+    GitCheckoutBlocked blocked,
+  ) {
+    return showDialog<_CheckoutBlockedAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_outlined),
+        title: const Text('切换分支会覆盖本地更改'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('目标分支：${blocked.branchName}'),
+              const SizedBox(height: 12),
+              Text('这些文件会被目标分支覆盖：'),
+              const SizedBox(height: 8),
+              _BlockedPathList(paths: blocked.paths),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_CheckoutBlockedAction.force),
+            child: const Text('强制迁出'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_CheckoutBlockedAction.merge),
+            child: const Text('迁移更改'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_CheckoutBlockedAction.stash),
+            child: const Text('储藏并迁出'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<_ForceCheckoutAction?> _forceCheckoutDialog(
+    GitCheckoutBlocked blocked,
+  ) {
+    return showDialog<_ForceCheckoutAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          Icons.delete_sweep_outlined,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: const Text('选择强制迁出范围'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('强制迁出会放弃本地更改。'),
+              const SizedBox(height: 12),
+              const Text('被 Git 阻止的文件：'),
+              const SizedBox(height: 8),
+              _BlockedPathList(paths: blocked.paths),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_ForceCheckoutAction.listedTracked),
+            child: const Text('放弃这些跟踪文件'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () =>
+                Navigator.of(context).pop(_ForceCheckoutAction.all),
+            child: const Text('放弃所有文件'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _continueRebase() async {
     await ref.read(gitProvider.notifier).continueRebase(_commitInput());
   }
@@ -1068,6 +1206,38 @@ class _GitHeader extends ConsumerWidget {
               : const Icon(Icons.refresh),
         ),
       ],
+    );
+  }
+}
+
+class _BlockedPathList extends StatelessWidget {
+  const _BlockedPathList({required this.paths});
+
+  final List<String> paths;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 180),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: paths.length,
+          itemBuilder: (context, index) => Padding(
+            padding: EdgeInsets.fromLTRB(12, index == 0 ? 10 : 4, 12, 4),
+            child: Text(
+              paths[index],
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
