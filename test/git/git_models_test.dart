@@ -9,6 +9,20 @@ void main() {
 
     expect(cleared.snapshot, isNull);
   });
+
+  test('GitViewState clears selected staged diff state with selection', () {
+    const state = GitViewState(
+      selectedPath: 'lib/main.dart',
+      selectedStaged: true,
+      selectedPatch: 'diff',
+    );
+
+    final cleared = state.copyWith(clearSelection: true);
+
+    expect(cleared.selectedPath, isNull);
+    expect(cleared.selectedStaged, isFalse);
+    expect(cleared.selectedPatch, isEmpty);
+  });
 }
 
 GitRepositorySnapshot _snapshot() {

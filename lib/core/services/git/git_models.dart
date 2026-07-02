@@ -263,6 +263,7 @@ class GitViewState {
     this.workspacePath,
     this.credentials = const GitCredentialDraft(),
     this.selectedPath,
+    this.selectedStaged = false,
     this.selectedPatch = '',
     this.blame = const [],
     this.isBusy = false,
@@ -274,6 +275,7 @@ class GitViewState {
   final String? workspacePath;
   final GitCredentialDraft credentials;
   final String? selectedPath;
+  final bool selectedStaged;
   final String selectedPatch;
   final List<GitBlameLine> blame;
   final bool isBusy;
@@ -285,6 +287,7 @@ class GitViewState {
     String? workspacePath,
     GitCredentialDraft? credentials,
     String? selectedPath,
+    bool? selectedStaged,
     String? selectedPatch,
     List<GitBlameLine>? blame,
     bool? isBusy,
@@ -300,6 +303,9 @@ class GitViewState {
       workspacePath: workspacePath ?? this.workspacePath,
       credentials: credentials ?? this.credentials,
       selectedPath: clearSelection ? null : selectedPath ?? this.selectedPath,
+      selectedStaged: clearSelection
+          ? false
+          : selectedStaged ?? this.selectedStaged,
       selectedPatch: clearSelection ? '' : selectedPatch ?? this.selectedPatch,
       blame: clearSelection ? const [] : blame ?? this.blame,
       isBusy: isBusy ?? this.isBusy,

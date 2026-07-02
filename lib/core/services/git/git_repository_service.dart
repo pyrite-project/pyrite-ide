@@ -36,6 +36,7 @@ class GitRepositoryService {
     final defaultAuthor = await _configValue(rootPath, 'user.name');
     final defaultEmail = await _configValue(rootPath, 'user.email');
     final aheadBehind = await _aheadBehind(rootPath);
+    final unstagedPatch = await _unstagedPatch(rootPath, statusEntries);
 
     return GitRepositorySnapshot(
       rootPath: rootPath,
@@ -62,10 +63,7 @@ class GitRepositoryService {
         '--cached',
         '--no-ext-diff',
       ], allowFailure: true),
-      unstagedPatch: await _gitOutput(rootPath, [
-        'diff',
-        '--no-ext-diff',
-      ], allowFailure: true),
+      unstagedPatch: unstagedPatch,
     );
   }
 
@@ -113,6 +111,17 @@ class GitRepositoryService {
       '--',
       filePath,
     ], allowFailure: true);
+  }
+
+  Future<String> diffForEntry(
+    String rootPath,
+    GitStatusEntry entry, {
+    bool staged = false,
+  }) {
+    if (entry.isUntracked && !staged) {
+      return _untrackedFilePatch(rootPath, entry.path);
+    }
+    return diffForPath(rootPath, entry.path, staged: staged);
   }
 
   Future<List<GitCommitInfo>> fileHistory(
@@ -493,6 +502,52 @@ class GitRepositoryService {
     return (ahead, behind);
   }
 
+  Future<String> _unstagedPatch(
+    String rootPath,
+    List<GitStatusEntry> entries,
+  ) async {
+    final parts = <String>[
+      await _gitOutput(rootPath, ['diff', '--no-ext-diff'], allowFailure: true),
+    ];
+    for (final entry in entries) {
+      if (!entry.isUntracked) continue;
+      final patch = await _untrackedFilePatch(rootPath, entry.path);
+      if (patch.isNotEmpty) parts.add(patch);
+    }
+    return parts.where((part) => part.isNotEmpty).join('\n');
+  }
+
+  Future<String> _untrackedFilePatch(String rootPath, String filePath) async {
+    final file = File(p.join(rootPath, filePath));
+    if (!await file.exists()) return '';
+
+    final header = StringBuffer()
+      ..writeln('diff --git a/$filePath b/$filePath')
+      ..writeln('new file mode 100644')
+      ..writeln('index 0000000..0000000')
+      ..writeln('--- /dev/null')
+      ..writeln('+++ b/$filePath');
+    final bytes = await file.readAsBytes();
+    if (bytes.contains(0)) {
+      header.writeln('Binary files /dev/null and b/$filePath differ');
+      return header.toString().trimRight();
+    }
+
+    final content = utf8
+        .decode(bytes, allowMalformed: true)
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n');
+    final lines = content.isEmpty ? <String>[] : content.split('\n');
+    if (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+    header.writeln('@@ -0,0 +1,${lines.length} @@');
+    for (final line in lines) {
+      header.writeln('+$line');
+    }
+    return header.toString().trimRight();
+  }
+
   Future<List<GitStatusEntry>> _statusEntries(String rootPath) async {
     final output = await _gitOutput(
       rootPath,
@@ -792,6 +847,7 @@ class GitRepositoryService {
       'log',
       '-n',
       '$limit',
+      '--topo-order',
       '--date=iso-strict',
       '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P',
       if (follow) '--follow',

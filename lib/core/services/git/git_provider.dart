@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
@@ -24,6 +26,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }
 
   final Ref ref;
+  StreamSubscription<FileSystemEvent>? _workspaceWatch;
+  Timer? _refreshDebounce;
+  String? _watchedRootPath;
 
   GitRepositoryService get _service => ref.read(gitRepositoryServiceProvider);
 
@@ -31,14 +36,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
     final path = workspacePath ?? ref.read(localWorkspaceProvider)?.path;
     await _run(
       () async {
-        final snapshot = await _service.loadSnapshot(path);
-        state = state.copyWith(
-          snapshot: snapshot,
-          workspacePath: path,
-          clearError: true,
-          clearSnapshot: snapshot == null,
-          clearSelection: snapshot == null,
-        );
+        await _loadAndApplySnapshot(path);
       },
       success: null,
       refreshAfter: false,
@@ -55,15 +53,8 @@ class GitNotifier extends StateNotifier<GitViewState> {
     await _run(
       () async {
         await _service.initRepository(path);
-        final snapshot = await _service.loadSnapshot(path);
-        state = state.copyWith(
-          snapshot: snapshot,
-          workspacePath: path,
-          lastMessage: '已初始化 Git 仓库',
-          clearError: true,
-          clearSnapshot: snapshot == null,
-          clearSelection: snapshot == null,
-        );
+        await _loadAndApplySnapshot(path);
+        state = state.copyWith(lastMessage: '已初始化 Git 仓库', clearError: true);
       },
       success: null,
       refreshAfter: false,
@@ -79,14 +70,21 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (rootPath == null) return;
     await _run(
       () async {
-        final patch = await _service.diffForPath(
-          rootPath,
-          path,
-          staged: staged,
-        );
+        final entry = _findStatusEntry(state.snapshot, path);
+        final selectedStaged = entry == null
+            ? staged
+            : _preferredSelectedStaged(entry);
+        final patch = entry == null
+            ? await _service.diffForPath(rootPath, path, staged: selectedStaged)
+            : await _service.diffForEntry(
+                rootPath,
+                entry,
+                staged: selectedStaged,
+              );
         final history = await _service.fileHistory(rootPath, path);
         state = state.copyWith(
           selectedPath: path,
+          selectedStaged: selectedStaged,
           selectedPatch: patch,
           blame: const [],
           lastMessage: history.isEmpty
@@ -355,14 +353,8 @@ class GitNotifier extends StateNotifier<GitViewState> {
         state = state.copyWith(lastMessage: success, clearError: true);
       }
       if (refreshAfter) {
-        final snapshot = await _service.loadSnapshot(
+        await _loadAndApplySnapshot(
           state.workspacePath ?? ref.read(localWorkspaceProvider)?.path,
-        );
-        state = state.copyWith(
-          snapshot: snapshot,
-          clearError: true,
-          clearSnapshot: snapshot == null,
-          clearSelection: snapshot == null,
         );
       }
     } catch (error) {
@@ -370,5 +362,127 @@ class GitNotifier extends StateNotifier<GitViewState> {
     } finally {
       state = state.copyWith(isBusy: false);
     }
+  }
+
+  Future<void> _loadAndApplySnapshot(String? workspacePath) async {
+    final snapshot = await _service.loadSnapshot(workspacePath);
+    _updateWorkspaceWatch(snapshot);
+
+    if (snapshot == null) {
+      state = state.copyWith(
+        snapshot: null,
+        workspacePath: workspacePath,
+        clearError: true,
+        clearSnapshot: true,
+        clearSelection: true,
+      );
+      return;
+    }
+
+    final selectedPath = state.selectedPath;
+    var selectedPatch = state.selectedPatch;
+    var selectedStaged = state.selectedStaged;
+    var clearSelection = false;
+    if (selectedPath != null) {
+      final selectedEntry = _findStatusEntry(snapshot, selectedPath);
+      if (selectedEntry == null) {
+        clearSelection = true;
+      } else {
+        selectedStaged = _preferredSelectedStaged(selectedEntry);
+        selectedPatch = await _service.diffForEntry(
+          snapshot.rootPath,
+          selectedEntry,
+          staged: selectedStaged,
+        );
+      }
+    }
+
+    state = state.copyWith(
+      snapshot: snapshot,
+      workspacePath: workspacePath,
+      selectedPatch: selectedPatch,
+      selectedStaged: selectedStaged,
+      clearError: true,
+      clearSelection: clearSelection,
+    );
+  }
+
+  bool _preferredSelectedStaged(GitStatusEntry entry) {
+    if (entry.isUntracked) return false;
+    if (entry.isUnstaged) return false;
+    return !entry.isUnstaged && entry.isStaged;
+  }
+
+  GitStatusEntry? _findStatusEntry(
+    GitRepositorySnapshot? snapshot,
+    String path,
+  ) {
+    if (snapshot == null) return null;
+    for (final entry in snapshot.statusEntries) {
+      if (entry.path == path) return entry;
+    }
+    return null;
+  }
+
+  void _updateWorkspaceWatch(GitRepositorySnapshot? snapshot) {
+    final rootPath = snapshot?.rootPath;
+    if (rootPath == _watchedRootPath) return;
+    _workspaceWatch?.cancel();
+    _workspaceWatch = null;
+    _watchedRootPath = null;
+    if (rootPath == null || rootPath.isEmpty) return;
+
+    try {
+      _workspaceWatch = Directory(rootPath).watch(recursive: true).listen((
+        event,
+      ) {
+        if (_isIgnoredFileEvent(event.path)) return;
+        _scheduleWatchedRefresh();
+      });
+      _watchedRootPath = rootPath;
+    } on FileSystemException {
+      // Some platforms or network folders do not support recursive watching.
+    } on UnsupportedError {
+      // The Git page still supports manual refresh in this case.
+    }
+  }
+
+  bool _isIgnoredFileEvent(String eventPath) {
+    final rootPath = _watchedRootPath;
+    if (rootPath == null) return true;
+    final snapshot = state.snapshot;
+    final ignoredRoots = [
+      if (snapshot?.gitDir.isNotEmpty == true) snapshot!.gitDir,
+      p.join(rootPath, '.git'),
+    ];
+    for (final ignoredRoot in ignoredRoots) {
+      if (_isWithinOrSame(ignoredRoot, eventPath)) return true;
+    }
+    return false;
+  }
+
+  bool _isWithinOrSame(String parent, String child) {
+    final normalizedParent = p.normalize(p.absolute(parent));
+    final normalizedChild = p.normalize(p.absolute(child));
+    return normalizedParent.toLowerCase() == normalizedChild.toLowerCase() ||
+        p.isWithin(normalizedParent, normalizedChild);
+  }
+
+  void _scheduleWatchedRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (state.isBusy) {
+        _scheduleWatchedRefresh();
+        return;
+      }
+      unawaited(refresh(workspacePath: state.snapshot?.rootPath));
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshDebounce?.cancel();
+    _workspaceWatch?.cancel();
+    super.dispose();
   }
 }
