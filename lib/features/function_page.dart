@@ -15,6 +15,7 @@ import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
@@ -1002,6 +1003,11 @@ class EditorToolsBar extends ConsumerWidget {
           Flexible(child: buildBoardConnectState(context, ref)),
           const SizedBox(width: 4),
           buildConsoleState(context, ref),
+          const SizedBox(width: 4),
+          if (ref.watch(fileTransferProgressProvider).isActive) ...[
+            Flexible(flex: 1, child: buildTransferState(context, ref)),
+            const SizedBox(width: 4),
+          ],
         ],
       ),
     );
@@ -1040,6 +1046,66 @@ class EditorToolsBar extends ConsumerWidget {
 
         showIdeSuccess(context, "已保存当前文件");
       },
+    );
+  }
+
+  Widget buildTransferState(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final transfer = ref.watch(fileTransferProgressProvider);
+    final file = transfer.currentFile == null
+        ? ''
+        : path.basename(transfer.currentFile!);
+    final index = transfer.totalFiles > 1
+        ? ' ${transfer.currentIndex}/${transfer.totalFiles}'
+        : '';
+    final percent = transfer.progress == null
+        ? ''
+        : ' ${(transfer.progress! * 100).round()}%';
+    final label =
+        transfer.message ?? '${transfer.directionLabel}$index · $file$percent';
+    final color = transfer.failed ? scheme.error : scheme.primary;
+
+    return Tooltip(
+      message: transfer.currentFile ?? label,
+      child: SizedBox(
+        height: 32,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  transfer.direction == FileTransferDirection.download
+                      ? Icons.file_download_outlined
+                      : Icons.file_upload_outlined,
+                  size: 16,
+                  color: color,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            LinearProgressIndicator(
+              value: transfer.progress,
+              minHeight: 2,
+              color: color,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

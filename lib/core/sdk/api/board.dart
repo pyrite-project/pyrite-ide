@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
@@ -8,6 +9,7 @@ import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
 
 abstract class SdkBoardCommands {
   static const String getDirList = 'sdk.board.get_dir_list';
@@ -419,12 +421,46 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
 
     if (boardPath != null && localPath != null) {
       try {
-        final bytes = await ref
-            .read(boardFileBackendProvider)
-            .readFileBytes(boardPath);
-        await File(localPath).writeAsBytes(bytes);
+        final backend = ref.read(boardFileBackendProvider);
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .start(
+              direction: FileTransferDirection.download,
+              scope: FileTransferScope.file,
+              totalFiles: 1,
+              message: '准备下载文件',
+            );
+        final size = await backend.getFileSize(boardPath);
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .startFile(
+              file: boardPath,
+              index: 1,
+              totalFiles: 1,
+              bytesTotal: size,
+            );
+        final builder = BytesBuilder(copy: false);
+        var offset = 0;
+        while (offset < size) {
+          final length = (size - offset) < 768 ? size - offset : 768;
+          final chunk = await backend.readFileChunk(boardPath, offset, length);
+          builder.add(chunk);
+          offset += chunk.length;
+          ref
+              .read(fileTransferProgressProvider.notifier)
+              .updateBytes(offset, size);
+          if (chunk.isEmpty && length > 0) break;
+        }
+        final bytes = builder.takeBytes();
+        final file = File(localPath);
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes);
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .complete(message: '已下载到本地：$localPath');
         _respondOk(envelope, respond, data: true);
       } catch (e) {
+        ref.read(fileTransferProgressProvider.notifier).fail('下载失败：$e');
         _respondOk(envelope, respond, data: false);
       }
     } else {

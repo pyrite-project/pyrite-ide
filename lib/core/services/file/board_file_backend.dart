@@ -37,11 +37,21 @@ abstract class BoardFileBackend {
   /// Reads raw file bytes from the board.
   Future<Uint8List> readFileBytes(String path);
 
+  Future<int> getFileSize(String path);
+
+  Future<Uint8List> readFileChunk(String path, int offset, int length);
+
   /// Writes a UTF-8 text file through a temporary board-side file.
   Future<void> writeTextFile(String path, String content);
 
   /// Writes raw file bytes through a temporary board-side file.
   Future<void> writeFileBytes(String path, List<int> bytes);
+
+  Future<void> beginWriteFile(String path);
+
+  Future<void> appendWriteFileChunk(String path, List<int> bytes);
+
+  Future<void> finishWriteFile(String path);
 
   Future<void> deleteFile(String path);
 

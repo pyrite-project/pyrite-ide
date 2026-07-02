@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
@@ -114,19 +116,17 @@ class FileNotifier extends StateNotifier<Directory?> {
         .findNodeById(parentDir);
 
     if (parentNode != null) {
-      ref.read(localFileTreeViewControllerProvider).addChild(
+      ref
+          .read(localFileTreeViewControllerProvider)
+          .addChild(
             parentNode,
-            TreeNode(
-              id: filePath,
-              data: FileItem(path.basename(filePath)),
-            ),
+            TreeNode(id: filePath, data: FileItem(path.basename(filePath))),
           );
     } else {
-      ref.read(localFileTreeViewControllerProvider).addRoot(
-            TreeNode(
-              id: filePath,
-              data: FileItem(path.basename(filePath)),
-            ),
+      ref
+          .read(localFileTreeViewControllerProvider)
+          .addRoot(
+            TreeNode(id: filePath, data: FileItem(path.basename(filePath))),
           );
     }
     return filePath;
@@ -142,7 +142,9 @@ class FileNotifier extends StateNotifier<Directory?> {
         .findNodeById(parentDir);
 
     if (parentNode != null) {
-      ref.read(localFileTreeViewControllerProvider).addChild(
+      ref
+          .read(localFileTreeViewControllerProvider)
+          .addChild(
             parentNode,
             TreeNode(
               id: folderPath,
@@ -151,7 +153,9 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
           );
     } else {
-      ref.read(localFileTreeViewControllerProvider).addRoot(
+      ref
+          .read(localFileTreeViewControllerProvider)
+          .addRoot(
             TreeNode(
               id: folderPath,
               canLoadChildren: true,
@@ -295,10 +299,32 @@ class FileNotifier extends StateNotifier<Directory?> {
         }
       }
 
-      await ref
-          .read(boardProvider.notifier)
-          .writeFile(targetPath, content);
-      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      try {
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .start(
+              direction: FileTransferDirection.upload,
+              scope: FileTransferScope.file,
+              totalFiles: 1,
+              message: '准备上传文件',
+            );
+        await ref
+            .read(boardProvider.notifier)
+            .writeFileBytesWithProgress(
+              targetPath,
+              utf8.encode(content),
+              currentFile: sourcePath,
+              index: 1,
+              totalFiles: 1,
+            );
+        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .complete(message: '已上传到设备：$targetPath');
+      } catch (error) {
+        ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+        rethrow;
+      }
 
       showEditorSnackBar(context, "已上传到设备：$targetPath");
     } else if (selected?.data is FolderItem) {
@@ -306,10 +332,18 @@ class FileNotifier extends StateNotifier<Directory?> {
         sourcePath: selected!.id,
         boardFolderPath: boardFolderTarget?.id,
       );
-      await ref
-          .read(boardProvider.notifier)
-          .uploadFolder(selected.id, targetPath);
-      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      try {
+        await ref
+            .read(boardProvider.notifier)
+            .uploadFolder(selected.id, targetPath);
+        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .complete(message: '已上传文件夹到设备：$targetPath');
+      } catch (error) {
+        ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+        rethrow;
+      }
 
       showEditorSnackBar(context, "已上传文件夹到设备：$targetPath");
     }
@@ -406,14 +440,34 @@ class FileNotifier extends StateNotifier<Directory?> {
     String targetPath,
   ) async {
     final bytes = await File(sourcePath).readAsBytes();
-    await ref
-        .read(boardProvider.notifier)
-        .writeFileBytes(targetPath, bytes);
-    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+    try {
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .start(
+            direction: FileTransferDirection.upload,
+            scope: FileTransferScope.file,
+            totalFiles: 1,
+            message: '准备上传文件',
+          );
+      await ref
+          .read(boardProvider.notifier)
+          .writeFileBytesWithProgress(
+            targetPath,
+            bytes,
+            currentFile: sourcePath,
+            index: 1,
+            totalFiles: 1,
+          );
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '已上传到设备：$targetPath');
+    } catch (error) {
+      ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+      rethrow;
+    }
   }
 }
 
-final StateNotifierProvider<FileNotifier, Directory?>
-fileProvider = StateNotifierProvider(
-  (ref) => FileNotifier(ref),
-);
+final StateNotifierProvider<FileNotifier, Directory?> fileProvider =
+    StateNotifierProvider((ref) => FileNotifier(ref));

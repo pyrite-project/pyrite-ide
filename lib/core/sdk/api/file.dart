@@ -5,22 +5,22 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
+
+const _transferChunkSize = 768;
 
 abstract class SdkFileCommands {
   static const String getDirList = 'sdk.file.get_dir_list';
   static const String getRootDir = 'sdk.file.get_root_dir';
   static const String saveCurrentFile = 'sdk.file.save_current_file';
-  static const String saveCurrentFileAs =
-      'sdk.file.save_current_file_as';
+  static const String saveCurrentFileAs = 'sdk.file.save_current_file_as';
   static const String createFile = 'sdk.file.create_file';
   static const String createFolder = 'sdk.file.create_folder';
-  static const String getFocusFileNode =
-      'sdk.file.get_focus_file_node';
-  static const String getFocusFolderNode =
-      'sdk.file.get_focus_folder_node';
+  static const String getFocusFileNode = 'sdk.file.get_focus_file_node';
+  static const String getFocusFolderNode = 'sdk.file.get_focus_folder_node';
   static const String openFile = 'sdk.file.open_file';
   static const String uploadSelectedLocalFileItem =
       'sdk.file.upload_selected_local_file_item';
@@ -44,14 +44,8 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
 
   void bind(PluginRunManager runManager) {
     state = runManager;
-    runManager.registerHandler(
-      SdkFileCommands.getDirList,
-      _handleGetDirList,
-    );
-    runManager.registerHandler(
-      SdkFileCommands.getRootDir,
-      _handleGetRootDir,
-    );
+    runManager.registerHandler(SdkFileCommands.getDirList, _handleGetDirList);
+    runManager.registerHandler(SdkFileCommands.getRootDir, _handleGetRootDir);
     runManager.registerHandler(
       SdkFileCommands.saveCurrentFile,
       _handleSaveCurrentFile,
@@ -60,10 +54,7 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
       SdkFileCommands.saveCurrentFileAs,
       _handleSaveCurrentFileAs,
     );
-    runManager.registerHandler(
-      SdkFileCommands.createFile,
-      _handleCreateFile,
-    );
+    runManager.registerHandler(SdkFileCommands.createFile, _handleCreateFile);
     runManager.registerHandler(
       SdkFileCommands.createFolder,
       _handleCreateFolder,
@@ -76,46 +67,22 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
       SdkFileCommands.getFocusFolderNode,
       _handleGetFocusFolderNode,
     );
-    runManager.registerHandler(
-      SdkFileCommands.openFile,
-      _handleOpenFile,
-    );
+    runManager.registerHandler(SdkFileCommands.openFile, _handleOpenFile);
     runManager.registerHandler(
       SdkFileCommands.uploadSelectedLocalFileItem,
       _handleUploadSelectedLocalFileItem,
     );
     runManager.registerHandler(SdkFileCommands.rename, _handleRename);
     runManager.registerHandler(SdkFileCommands.delete, _handleDelete);
-    runManager.registerHandler(
-      SdkFileCommands.openFolder,
-      _handleOpenFolder,
-    );
+    runManager.registerHandler(SdkFileCommands.openFolder, _handleOpenFolder);
     runManager.registerHandler(SdkFileCommands.isFile, _handleIsFile);
-    runManager.registerHandler(
-      SdkFileCommands.isDirectory,
-      _handleIsDirectory,
-    );
-    runManager.registerHandler(
-      SdkFileCommands.readFile,
-      _handleReadFile,
-    );
-    runManager.registerHandler(
-      SdkFileCommands.writeFile,
-      _handleWriteFile,
-    );
-    runManager.registerHandler(
-      SdkFileCommands.copyFile,
-      _handleCopyFile,
-    );
-    runManager.registerHandler(
-      SdkFileCommands.moveFile,
-      _handleMoveFile,
-    );
+    runManager.registerHandler(SdkFileCommands.isDirectory, _handleIsDirectory);
+    runManager.registerHandler(SdkFileCommands.readFile, _handleReadFile);
+    runManager.registerHandler(SdkFileCommands.writeFile, _handleWriteFile);
+    runManager.registerHandler(SdkFileCommands.copyFile, _handleCopyFile);
+    runManager.registerHandler(SdkFileCommands.moveFile, _handleMoveFile);
     runManager.registerHandler(SdkFileCommands.exists, _handleExists);
-    runManager.registerHandler(
-      SdkFileCommands.uploadFile,
-      _handleUploadFile,
-    );
+    runManager.registerHandler(SdkFileCommands.uploadFile, _handleUploadFile);
     runManager.registerHandler(
       SdkFileCommands.getUniqueName,
       _handleGetUniqueName,
@@ -469,11 +436,45 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
     if (localPath != null && boardPath != null) {
       try {
         final bytes = await File(localPath).readAsBytes();
-        await ref
-            .read(boardFileBackendProvider)
-            .writeFileBytes(boardPath, bytes);
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .start(
+              direction: FileTransferDirection.upload,
+              scope: FileTransferScope.file,
+              totalFiles: 1,
+              message: '准备上传文件',
+            );
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .startFile(
+              file: localPath,
+              index: 1,
+              totalFiles: 1,
+              bytesTotal: bytes.length,
+            );
+        final backend = ref.read(boardFileBackendProvider);
+        await backend.beginWriteFile(boardPath);
+        var offset = 0;
+        while (offset < bytes.length) {
+          final end = (offset + _transferChunkSize) < bytes.length
+              ? offset + _transferChunkSize
+              : bytes.length;
+          await backend.appendWriteFileChunk(
+            boardPath,
+            bytes.sublist(offset, end),
+          );
+          offset = end;
+          ref
+              .read(fileTransferProgressProvider.notifier)
+              .updateBytes(offset, bytes.length);
+        }
+        await backend.finishWriteFile(boardPath);
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .complete(message: '已上传到设备：$boardPath');
         _respondOk(envelope, respond, data: true);
       } catch (e) {
+        ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$e');
         _respondOk(envelope, respond, data: false);
       }
     } else {
@@ -518,9 +519,7 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
     state?.unregisterHandler(SdkFileCommands.getFocusFileNode);
     state?.unregisterHandler(SdkFileCommands.getFocusFolderNode);
     state?.unregisterHandler(SdkFileCommands.openFile);
-    state?.unregisterHandler(
-      SdkFileCommands.uploadSelectedLocalFileItem,
-    );
+    state?.unregisterHandler(SdkFileCommands.uploadSelectedLocalFileItem);
     state?.unregisterHandler(SdkFileCommands.rename);
     state?.unregisterHandler(SdkFileCommands.delete);
     state?.unregisterHandler(SdkFileCommands.openFolder);
@@ -537,7 +536,5 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
   }
 }
 
-final StateNotifierProvider<SdkFile, PluginRunManager?>
-sdkFileProvider = StateNotifierProvider(
-  (ref) => SdkFile(ref),
-);
+final StateNotifierProvider<SdkFile, PluginRunManager?> sdkFileProvider =
+    StateNotifierProvider((ref) => SdkFile(ref));

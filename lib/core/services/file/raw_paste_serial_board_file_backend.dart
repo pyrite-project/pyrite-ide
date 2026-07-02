@@ -100,6 +100,42 @@ _emit_ok(encoded)
   }
 
   @override
+  Future<int> getFileSize(String path) async {
+    final value = await _runJsonValue(
+      _wrapPython('''
+target = ${_pythonTextExpression(path)}
+_emit_ok(os.stat(target)[6])
+'''),
+    );
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    throw const BoardFileProtocolException(
+      'File size response is not a number',
+    );
+  }
+
+  @override
+  Future<Uint8List> readFileChunk(String path, int offset, int length) async {
+    final value = await _runJsonValue(
+      _wrapPython('''
+target = ${_pythonTextExpression(path)}
+with open(target, 'rb') as f:
+  f.seek($offset)
+  data = f.read($length)
+encoded = ubinascii.b2a_base64(data).decode().strip()
+_emit_ok(encoded)
+'''),
+      timeout: _longTimeout,
+    );
+    if (value is! String) {
+      throw const BoardFileProtocolException(
+        'Read chunk response is not a string',
+      );
+    }
+    return decodeBoardFileBytes(value);
+  }
+
+  @override
   Future<void> writeTextFile(String path, String content) async {
     await writeFileBytes(path, utf8.encode(content));
   }
@@ -146,6 +182,58 @@ except Exception:
     pass
   raise
 _emit_ok('SaveFileSuccessfully')
+'''),
+      timeout: _longTimeout,
+    );
+  }
+
+  @override
+  Future<void> beginWriteFile(String path) async {
+    final temp = _pythonTextExpression(_temporaryPathFor(path));
+    await _runJsonValue(
+      _wrapPython('''
+tmp = $temp
+try:
+  os.remove(tmp)
+except OSError:
+  pass
+open(tmp, 'wb').close()
+_emit_ok('BeginWriteSuccessfully')
+'''),
+      timeout: _longTimeout,
+    );
+  }
+
+  @override
+  Future<void> appendWriteFileChunk(String path, List<int> bytes) async {
+    final encoded = _pythonStringLiteral(encodeBoardFileBytes(bytes));
+    final temp = _pythonTextExpression(_temporaryPathFor(path));
+    await _runJsonValue(
+      _wrapPython('''
+tmp = $temp
+data = ubinascii.a2b_base64($encoded)
+with open(tmp, 'ab') as f:
+  f.write(data)
+_emit_ok('AppendWriteSuccessfully')
+'''),
+      timeout: _longTimeout,
+    );
+  }
+
+  @override
+  Future<void> finishWriteFile(String path) async {
+    final target = _pythonTextExpression(path);
+    final temp = _pythonTextExpression(_temporaryPathFor(path));
+    await _runJsonValue(
+      _wrapPython('''
+target = $target
+tmp = $temp
+try:
+  os.remove(target)
+except OSError:
+  pass
+os.rename(tmp, target)
+_emit_ok('FinishWriteSuccessfully')
 '''),
       timeout: _longTimeout,
     );

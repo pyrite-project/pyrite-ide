@@ -12,8 +12,8 @@ import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
+import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
@@ -22,9 +22,9 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
-class BoardNotifier
-    extends StateNotifier<List<TreeNode<FileSystemItem>>> {
+class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   static final _boardPath = path.Context(style: path.Style.posix);
+  static const int _transferChunkSize = 768;
 
   final Ref ref;
 
@@ -45,6 +45,38 @@ class BoardNotifier
     return ref.read(boardFileBackendProvider).readFileBytes(path);
   }
 
+  Future<Uint8List> getFileBytesWithProgress(
+    String sourcePath, {
+    required String currentFile,
+    required int index,
+    required int totalFiles,
+  }) async {
+    final backend = ref.read(boardFileBackendProvider);
+    final progress = ref.read(fileTransferProgressProvider.notifier);
+    final size = await backend.getFileSize(sourcePath);
+    progress.startFile(
+      file: currentFile,
+      index: index,
+      totalFiles: totalFiles,
+      bytesTotal: size,
+    );
+    if (size == 0) return Uint8List(0);
+
+    final builder = BytesBuilder(copy: false);
+    var offset = 0;
+    while (offset < size) {
+      final length = (size - offset) < _transferChunkSize
+          ? size - offset
+          : _transferChunkSize;
+      final chunk = await backend.readFileChunk(sourcePath, offset, length);
+      builder.add(chunk);
+      offset += chunk.length;
+      progress.updateBytes(offset, size);
+      if (chunk.isEmpty && length > 0) break;
+    }
+    return builder.takeBytes();
+  }
+
   Future<String> writeFile(String targetPath, String content) async {
     await ref.read(boardFileBackendProvider).writeTextFile(targetPath, content);
     return 'SaveFileSuccessfully';
@@ -52,6 +84,38 @@ class BoardNotifier
 
   Future<String> writeFileBytes(String targetPath, List<int> bytes) async {
     await ref.read(boardFileBackendProvider).writeFileBytes(targetPath, bytes);
+    return 'SaveFileSuccessfully';
+  }
+
+  Future<String> writeFileBytesWithProgress(
+    String targetPath,
+    List<int> bytes, {
+    required String currentFile,
+    required int index,
+    required int totalFiles,
+  }) async {
+    final backend = ref.read(boardFileBackendProvider);
+    final progress = ref.read(fileTransferProgressProvider.notifier);
+    progress.startFile(
+      file: currentFile,
+      index: index,
+      totalFiles: totalFiles,
+      bytesTotal: bytes.length,
+    );
+    await backend.beginWriteFile(targetPath);
+    var offset = 0;
+    while (offset < bytes.length) {
+      final end = (offset + _transferChunkSize) < bytes.length
+          ? offset + _transferChunkSize
+          : bytes.length;
+      await backend.appendWriteFileChunk(
+        targetPath,
+        bytes.sublist(offset, end),
+      );
+      offset = end;
+      progress.updateBytes(offset, bytes.length);
+    }
+    await backend.finishWriteFile(targetPath);
     return 'SaveFileSuccessfully';
   }
 
@@ -86,14 +150,22 @@ class BoardNotifier
   Future<void> uploadFolder(String localPath, String remotePath) async {
     final dir = io.Directory(localPath);
     final entities = await dir.list(recursive: true).toList();
+    final files = entities.whereType<io.File>().toList(growable: false);
     final createdDirs = <String>{};
+    ref
+        .read(fileTransferProgressProvider.notifier)
+        .start(
+          direction: FileTransferDirection.upload,
+          scope: FileTransferScope.folder,
+          totalFiles: files.length,
+          message: '准备上传文件夹',
+        );
 
     for (final entity in entities) {
       final relativePath = path
           .relative(entity.path, from: localPath)
           .replaceAll('\\', '/');
       final remoteEntityPath = _boardPath.join(remotePath, relativePath);
-      final parentDir = _boardPath.dirname(remoteEntityPath);
 
       if (entity is io.Directory) {
         debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
@@ -103,47 +175,84 @@ class BoardNotifier
         } catch (e) {
           debugPrint('[BoardWS] Failed to create dir: $e');
         }
-      } else if (entity is io.File) {
-        if (!createdDirs.contains(parentDir)) {
-          debugPrint('[BoardWS] Creating parent dir: $parentDir');
-          try {
-            await createFolder(parentDir);
-            createdDirs.add(parentDir);
-          } catch (e) {
-            debugPrint('[BoardWS] Failed to create parent dir: $e');
-          }
-        }
-        debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
-        await writeFileBytes(remoteEntityPath, await entity.readAsBytes());
-        debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
       }
+    }
+
+    for (var i = 0; i < files.length; i++) {
+      final entity = files[i];
+      final relativePath = path
+          .relative(entity.path, from: localPath)
+          .replaceAll('\\', '/');
+      final remoteEntityPath = _boardPath.join(remotePath, relativePath);
+      final parentDir = _boardPath.dirname(remoteEntityPath);
+      if (!createdDirs.contains(parentDir)) {
+        debugPrint('[BoardWS] Creating parent dir: $parentDir');
+        try {
+          await createFolder(parentDir);
+          createdDirs.add(parentDir);
+        } catch (e) {
+          debugPrint('[BoardWS] Failed to create parent dir: $e');
+        }
+      }
+      debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
+      await writeFileBytesWithProgress(
+        remoteEntityPath,
+        await entity.readAsBytes(),
+        currentFile: entity.path,
+        index: i + 1,
+        totalFiles: files.length,
+      );
+      debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
     }
   }
 
   Future<void> downloadFolder(String remotePath, String localPath) async {
     final items = await lisFolderRecursive(path: remotePath);
+    final folders = items
+        .where((item) => item['type'] == 'folder')
+        .toList(growable: false);
+    final files = items
+        .where((item) => item['type'] != 'folder')
+        .toList(growable: false);
+    ref
+        .read(fileTransferProgressProvider.notifier)
+        .start(
+          direction: FileTransferDirection.download,
+          scope: FileTransferScope.folder,
+          totalFiles: files.length,
+          message: '准备下载文件夹',
+        );
 
     final localDir = io.Directory(localPath);
     if (!await localDir.exists()) {
       await localDir.create(recursive: true);
     }
 
-    for (final item in items) {
+    for (final item in folders) {
       final relativePath = _boardPath
           .relative(item['path']!, from: remotePath)
           .replaceAll('\\', '/');
       final localItemPath = path.join(localPath, relativePath);
+      await io.Directory(localItemPath).create(recursive: true);
+    }
 
-      if (item['type'] == 'folder') {
-        await io.Directory(localItemPath).create(recursive: true);
-      } else {
-        debugPrint('[BoardWS] Downloading: ${item['path']}');
-        final bytes = await getFileBytes(item['path']!);
-        final file = io.File(localItemPath);
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes);
-        debugPrint('[BoardWS] Downloaded: $localItemPath');
-      }
+    for (var i = 0; i < files.length; i++) {
+      final item = files[i];
+      final relativePath = _boardPath
+          .relative(item['path']!, from: remotePath)
+          .replaceAll('\\', '/');
+      final localItemPath = path.join(localPath, relativePath);
+      debugPrint('[BoardWS] Downloading: ${item['path']}');
+      final bytes = await getFileBytesWithProgress(
+        item['path']!,
+        currentFile: item['path']!,
+        index: i + 1,
+        totalFiles: files.length,
+      );
+      final file = io.File(localItemPath);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes);
+      debugPrint('[BoardWS] Downloaded: $localItemPath');
     }
   }
 
@@ -180,9 +289,7 @@ class BoardNotifier
     final node = ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
     final file = await board.getLocalFile(node.id);
-    final content = await ref
-        .read(boardProvider.notifier)
-        .getFileContent(id);
+    final content = await ref.read(boardProvider.notifier).getFileContent(id);
     await file.writeAsString(content);
     if (context.mounted) {
       await ref
@@ -311,16 +418,43 @@ class BoardNotifier
         }
       }
 
-      local.writeFile(targetPath, content);
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .start(
+            direction: FileTransferDirection.download,
+            scope: FileTransferScope.file,
+            totalFiles: 1,
+            message: '准备下载文件',
+          );
+      final bytes = await getFileBytesWithProgress(
+        selected?.id ?? selectedTab?.value.filePath,
+        currentFile: selected?.id ?? selectedTab?.value.filePath,
+        index: 1,
+        totalFiles: 1,
+      );
+      final file = File(targetPath);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes);
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '已下载到本地：$targetPath');
 
       showEditorSnackBar(context, "已下载到本地：$targetPath");
     } else {
-      await ref
-          .read(boardProvider.notifier)
-          .downloadFolder(
-            selected?.id ?? selectedTab?.value.filePath,
-            targetPath,
-          );
+      try {
+        await ref
+            .read(boardProvider.notifier)
+            .downloadFolder(
+              selected?.id ?? selectedTab?.value.filePath,
+              targetPath,
+            );
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .complete(message: '已下载文件夹到本地：$targetPath');
+      } catch (error) {
+        ref.read(fileTransferProgressProvider.notifier).fail('下载失败：$error');
+        rethrow;
+      }
 
       showEditorSnackBar(context, "已下载文件夹到本地：$targetPath");
     }
@@ -420,10 +554,5 @@ class BoardNotifier
   }
 }
 
-final StateNotifierProvider<
-  BoardNotifier,
-  List<TreeNode<FileSystemItem>>
->
-boardProvider = StateNotifierProvider(
-  (ref) => BoardNotifier(ref),
-);
+final StateNotifierProvider<BoardNotifier, List<TreeNode<FileSystemItem>>>
+boardProvider = StateNotifierProvider((ref) => BoardNotifier(ref));
