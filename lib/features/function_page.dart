@@ -330,7 +330,7 @@ class ConsoleToggle extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final consoleVisible = ref.watch(consolePageShow);
     return IconButton(
-      tooltip: isMobile ? "打开 REPL" : (consoleVisible ? "隐藏 REPL" : "显示 REPL"),
+      tooltip: isMobile ? "打开控制台" : (consoleVisible ? "隐藏控制台" : "显示 REPL"),
       onPressed: () {
         if (isMobile) {
           showMobileConsoleSheet(context);
@@ -1001,7 +1001,7 @@ class EditorToolsBar extends ConsumerWidget {
           Flexible(flex: isMobile ? 1 : 2, child: buildFileState(context, ref)),
           const SizedBox(width: 4),
           Flexible(child: buildBoardConnectState(context, ref)),
-          const Spacer(),
+          const SizedBox(width: 4),
           buildConsoleState(context, ref),
         ],
       ),
@@ -1096,10 +1096,10 @@ class EditorToolsBar extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final visible = ref.watch(consolePageShow);
     return StatusBarButton(
-      label: isMobile ? "REPL" : (visible ? "REPL 显示" : "REPL 隐藏"),
+      label: isMobile ? "REPL" : (visible ? "显示控制台" : "隐藏控制台"),
       icon: Icons.terminal,
       compact: isMobile,
-      tooltip: isMobile ? "打开 REPL" : (visible ? "隐藏 REPL" : "显示 REPL"),
+      tooltip: isMobile ? "打开控制台" : (visible ? "隐藏控制台" : "显示 REPL"),
       onPressed: () {
         if (isMobile) {
           showMobileConsoleSheet(context);

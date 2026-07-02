@@ -106,7 +106,10 @@ class ProjectFiles extends ConsumerWidget {
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(localEnableDragAndDrop),
-                onNodeTap: (id) =>
+                onNodeTap: (id) => ref
+                    .read(localFileTreeViewControllerProvider)
+                    .setSelectedNodeId(id),
+                onNodeDoubleTap: (id) =>
                     ref.read(fileProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
@@ -375,11 +378,16 @@ class ProjectFiles extends ConsumerWidget {
             child: SuperTreeView<FileSystemItem>(
               logic: TreeViewConfig(
                 enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
-                onNodeTap: (id) =>
+                onNodeTap: (id) => ref
+                    .read(boardFileTreeViewControllerProvider)
+                    .setSelectedNodeId(id),
+                onNodeDoubleTap: (id) =>
                     ref.read(boardProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
-              style: SuperTreeThemes.material().treeStyle,
+              style: SuperTreeThemes.material().treeStyle.copyWith(
+                selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+              ),
               controller: ref.watch(boardFileTreeViewControllerProvider),
               prefixBuilder:
                   (BuildContext context, TreeNode<FileSystemItem> node) {
