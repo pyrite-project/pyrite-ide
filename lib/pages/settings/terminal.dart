@@ -42,7 +42,7 @@ class TerminalSettings extends ConsumerWidget {
                 ref.read(serialDefaultBaudRate),
               ),
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("自动重连"),
               subtitle: const Text("断开后自动尝试重新连接"),
@@ -60,7 +60,7 @@ class TerminalSettings extends ConsumerWidget {
                 }
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("信号检测断开"),
               subtitle: const Text("通过串口信号线检测设备是否断开，兼容常见 USB 串口芯片"),
@@ -69,7 +69,7 @@ class TerminalSettings extends ConsumerWidget {
                 ref.read(enableSignalDetection.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("中文转 Unicode"),
               subtitle: const Text("输入中文时自动转为 \\uXXXX 转义序列"),
@@ -91,7 +91,7 @@ class TerminalSettings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTerminalFontDialog(context, ref),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.format_size),
               title: const Text("字体大小"),
@@ -101,7 +101,7 @@ class TerminalSettings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTerminalFontSizeDialog(context),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.format_line_spacing),
               title: const Text("行高"),
@@ -128,7 +128,7 @@ class TerminalSettings extends ConsumerWidget {
                 }
               },
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.wifi),
               title: const Text("设备 IP 地址"),
@@ -145,7 +145,7 @@ class TerminalSettings extends ConsumerWidget {
                 (value) => ref.read(webReplHost.notifier).state = value.trim(),
               ),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.numbers),
               title: const Text("端口"),
@@ -153,7 +153,7 @@ class TerminalSettings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showPortDialog(context, ref),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.lock_outline),
               title: const Text("密码"),

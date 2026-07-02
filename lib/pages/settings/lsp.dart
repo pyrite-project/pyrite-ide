@@ -28,7 +28,7 @@ class LspSettings extends ConsumerWidget {
                 ref.read(useLsp.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             ListTile(
               title: const Text("连接方式"),
               subtitle: Text(
@@ -63,7 +63,6 @@ class LspSettings extends ConsumerWidget {
               ),
             ),
             if (ref.watch(lspType) == LspType.webSocket) ...[
-              const SectionDivider(),
               ListTile(
                 title: const Text("WebSocket 地址"),
                 subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
@@ -71,7 +70,6 @@ class LspSettings extends ConsumerWidget {
                 onTap: () => showPathDialog(context, ref),
               ),
             ] else ...[
-              const SectionDivider(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
@@ -120,7 +118,7 @@ class LspSettings extends ConsumerWidget {
                 ref.read(disableWarning.notifier).state = !value;
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("显示错误诊断"),
               subtitle: const Text("开启后，错误会以下划线标识"),
@@ -143,7 +141,7 @@ class LspSettings extends ConsumerWidget {
                 ref.read(microPythonStubsEnabled.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("自动检测 Layer"),
               subtitle: const Text("后续可根据连接设备推荐 generic/port/board stubs"),
@@ -153,7 +151,7 @@ class LspSettings extends ConsumerWidget {
                     value;
               },
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.layers_outlined),
               title: const Text("Stubs Layers"),
@@ -161,7 +159,7 @@ class LspSettings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showLayersDialog(context, ref),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.folder_outlined),
               title: const Text("额外路径"),
@@ -178,25 +176,25 @@ class LspSettings extends ConsumerWidget {
           description: "控制 CodeForge 向语言服务器声明和使用的能力。设置会在新打开的编辑器标签页中生效。",
           children: [
             _CapabilitySwitch(title: "语义高亮", provider: lspSemanticHighlighting),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "代码补全", provider: lspCodeCompletion),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "悬浮提示", provider: lspHoverInfo),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "代码操作", provider: lspCodeAction),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "签名帮助", provider: lspSignatureHelp),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "文档颜色", provider: lspDocumentColor),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "文档高亮", provider: lspDocumentHighlight),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "代码折叠", provider: lspCodeFolding),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "内联提示", provider: lspInlayHint),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "跳转定义", provider: lspGoToDefinition),
-            const SectionDivider(),
+
             _CapabilitySwitch(title: "重命名符号", provider: lspRename),
           ],
         ),

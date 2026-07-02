@@ -26,7 +26,7 @@ class EditorSettings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => showTextFontDialog(context, ref),
             ),
-            const SectionDivider(),
+
             ListTile(
               title: const Text("字体大小"),
               subtitle: Text(
@@ -90,7 +90,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (v) =>
                   ref.read(confirmShortcutProvider.notifier).state = v,
             ),
-            const SectionDivider(),
+
             ShortcutRecorderTile(
               title: "取消操作",
               value: ref.watch(cancelShortcutProvider),
@@ -110,7 +110,7 @@ class EditorSettings extends ConsumerWidget {
                 ref.read(editorWordWrap.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("显示行号"),
               subtitle: const Text("显示左侧 gutter 行号区域"),
@@ -118,7 +118,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorLineNumber.notifier).state = value,
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("显示 gutter 分隔线"),
               subtitle: const Text("在行号区域和代码之间显示分隔线"),
@@ -126,7 +126,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorGutterDivider.notifier).state = value,
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("代码折叠"),
               subtitle: const Text("显示折叠图标并允许折叠代码块"),
@@ -134,7 +134,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorCodeFolding.notifier).state = value,
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("缩进参考线"),
               subtitle: const Text("显示每级缩进的纵向参考线"),
@@ -142,7 +142,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorGuideLines.notifier).state = value,
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("本地补全"),
               subtitle: const Text("启用非 LSP 的本地补全建议，较大文件可能有额外开销"),
@@ -150,7 +150,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorLocalSuggestions.notifier).state = value,
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("键盘补全建议"),
               subtitle: const Text("允许系统虚拟键盘显示输入建议"),
@@ -158,7 +158,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorKeyboardSuggestions.notifier).state = value,
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               title: const Text("Tab 输入空格"),
               subtitle: const Text("按 Tab 时插入空格而不是制表符"),
@@ -166,7 +166,7 @@ class EditorSettings extends ConsumerWidget {
               onChanged: (value) =>
                   ref.read(editorUseSpaceAsTab.notifier).state = value,
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.keyboard_tab),
               title: const Text("Tab 大小"),

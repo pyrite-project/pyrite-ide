@@ -24,7 +24,7 @@ class Settings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go("/settings/editor"),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.terminal),
               title: const UseText("调试与终端"),
@@ -32,7 +32,7 @@ class Settings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go("/settings/terminal"),
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.data_object),
               title: const UseText("语言服务器"),
@@ -53,7 +53,7 @@ class Settings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go("/settings/style"),
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               secondary: const Icon(Icons.dashboard),
               title: const Text("功能面板"),
@@ -63,7 +63,7 @@ class Settings extends ConsumerWidget {
                 ref.read(functionPageShow.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               secondary: const Icon(Icons.terminal),
               title: const Text("控制台面板"),
@@ -73,7 +73,7 @@ class Settings extends ConsumerWidget {
                 ref.read(consolePageShow.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             SwitchListTile(
               secondary: const Icon(Icons.expand),
               title: const Text("扩展面板"),
@@ -83,7 +83,7 @@ class Settings extends ConsumerWidget {
                 ref.read(expansionPageShow.notifier).state = value;
               },
             ),
-            const SectionDivider(),
+
             ListTile(
               leading: const Icon(Icons.info_outline),
               title: const UseText("关于"),
