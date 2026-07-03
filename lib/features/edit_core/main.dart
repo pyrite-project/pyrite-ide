@@ -64,19 +64,37 @@ class _EditCoreState extends ConsumerState<EditCore> {
       SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
         saveFile(context, ref);
       },
+      SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+        saveFile(context, ref);
+      },
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () {
+        ref.read(fileProvider.notifier).saveCurrentFileAs();
+      },
+      SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true): () {
         ref.read(fileProvider.notifier).saveCurrentFileAs();
       },
       SingleActivator(LogicalKeyboardKey.keyN, control: true): () {
         ref.read(tabbedViewControllerProvider.notifier).createFile();
       },
+      SingleActivator(LogicalKeyboardKey.keyN, meta: true): () {
+        ref.read(tabbedViewControllerProvider.notifier).createFile();
+      },
       SingleActivator(LogicalKeyboardKey.keyO, control: true): () {
+        ref.read(tabbedViewControllerProvider.notifier).openFile(context);
+      },
+      SingleActivator(LogicalKeyboardKey.keyO, meta: true): () {
         ref.read(tabbedViewControllerProvider.notifier).openFile(context);
       },
       SingleActivator(LogicalKeyboardKey.keyU, control: true): () {
         ref.read(fileProvider.notifier).uploadSelectedLocalFileItem(context);
       },
+      SingleActivator(LogicalKeyboardKey.keyU, meta: true): () {
+        ref.read(fileProvider.notifier).uploadSelectedLocalFileItem(context);
+      },
       SingleActivator(LogicalKeyboardKey.keyR, control: true): () {
+        runCurrentFile(context, ref);
+      },
+      SingleActivator(LogicalKeyboardKey.keyR, meta: true): () {
         runCurrentFile(context, ref);
       },
     };

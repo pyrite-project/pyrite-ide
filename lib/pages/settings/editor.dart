@@ -206,23 +206,22 @@ class EditorSettings extends ConsumerWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
-          return AlertDialog(
+          return SimpleDialog(
             title: Text(title),
-            content: Slider(
-              min: min.toDouble(),
-              max: max.toDouble(),
-              divisions: max - min,
-              value: current.toDouble(),
-              label: current.toString(),
-              onChanged: (next) {
-                setState(() => current = next.round());
-                onChanged(current);
-              },
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => context.pop(),
-                child: const Text("完成"),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+                child: Slider(
+                  min: min.toDouble(),
+                  max: max.toDouble(),
+                  divisions: max - min,
+                  value: current.toDouble(),
+                  label: current.toString(),
+                  onChanged: (next) {
+                    setState(() => current = next.round());
+                    onChanged(current);
+                  },
+                ),
               ),
             ],
           );

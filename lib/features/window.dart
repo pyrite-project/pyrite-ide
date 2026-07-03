@@ -135,7 +135,7 @@ class AppActionBar extends ConsumerWidget {
               () =>
                   ref.read(tabbedViewControllerProvider.notifier).createFile(),
               leadingIconData: Icons.add,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyN, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyN),
             ),
             buildMenuItemButton(
               context,
@@ -144,7 +144,7 @@ class AppActionBar extends ConsumerWidget {
                   .read(tabbedViewControllerProvider.notifier)
                   .openFile(context),
               leadingIconData: Icons.open_in_browser,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyO, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyO),
             ),
             buildMenuItemButton(
               context,
@@ -158,18 +158,14 @@ class AppActionBar extends ConsumerWidget {
               "保存当前文件",
               () => ref.read(fileProvider.notifier).saveCurrentFile(),
               leadingIconData: Icons.save,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyS, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyS),
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
               () => ref.read(fileProvider.notifier).saveCurrentFileAs(),
               leadingIconData: Icons.save_as,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyS,
-                control: true,
-                shift: true,
-              ),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyS, shift: true),
             ),
           ],
           child: Text("文件"),
@@ -190,21 +186,21 @@ class AppActionBar extends ConsumerWidget {
               "剪切",
               ref.read(editorControllerMapProvider.notifier).cut,
               leadingIconData: Icons.cut,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyX, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyX),
             ),
             buildMenuItemButton(
               context,
               "复制",
               ref.read(editorControllerMapProvider.notifier).copy,
               leadingIconData: Icons.copy,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyC, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyC),
             ),
             buildMenuItemButton(
               context,
               "粘贴",
               ref.read(editorControllerMapProvider.notifier).paste,
               leadingIconData: Icons.paste,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyV, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyV),
             ),
           ],
           child: Text("编辑"),
@@ -281,6 +277,18 @@ class AppActionBar extends ConsumerWidget {
       style: ButtonStyle(),
       shortcut: shortcut,
       child: Text(text),
+    );
+  }
+
+  SingleActivator platformShortcut(
+    LogicalKeyboardKey key, {
+    bool shift = false,
+  }) {
+    return SingleActivator(
+      key,
+      control: !Platform.isMacOS,
+      meta: Platform.isMacOS,
+      shift: shift,
     );
   }
 }
