@@ -144,7 +144,7 @@ class PersistedData {
     this.enableSignalDetection = true,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
-    this.terminalFontFamily = 'JetBrains Mono',
+    this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.desktopTerminalEnableUnderline = false,

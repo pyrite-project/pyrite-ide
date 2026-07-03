@@ -54,7 +54,8 @@ dependencies:
   open_file: ^3.5.11
   xterm:
     path: third_party/xterm.dart
-  flutter_pty: ^0.4.2
+  flutter_pty:
+    path: third_party/flutter_pty
   json_rpc_2: ^4.0.0
   process_run: ^1.2.4
   stream_channel: ^2.1.4
@@ -145,6 +146,9 @@ flutter:
     - family: JetBrainsMono
       fonts:
         - asset: assets/fonts/JetBrainsMono-Medium.ttf
+    - family: JetBrainsMapleMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMapleMono-Medium.ttf
     - family: HarmonyOS Sans SC
       fonts:
         - asset: assets/fonts/HarmonyOS_Sans_SC_Medium.ttf

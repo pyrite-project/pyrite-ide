@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 
 const Map<String, String> editorTextFonts = {
   "JetBrains Mono": "JetBrainsMono",
+  "JetBrains Maple Mono": "JetBrainsMapleMono",
   "自定义": "",
 };
 
@@ -86,7 +87,7 @@ StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
 StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
 StateProvider<bool> serialAutoReconnect = StateProvider<bool>((ref) => false);
 StateProvider<String> terminalFontFamily = StateProvider<String>(
-  (ref) => "JetBrains Mono",
+  (ref) => "JetBrains Maple Mono",
 );
 StateProvider<double> terminalFontSize = StateProvider<double>((ref) => 13);
 StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);

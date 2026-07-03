@@ -87,7 +87,7 @@ class SettingsPersistedData {
     this.enableSignalDetection = true,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
-    this.terminalFontFamily = 'JetBrains Mono',
+    this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.desktopTerminalEnableUnderline = false,
@@ -194,7 +194,7 @@ class SettingsPersistedData {
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
     terminalFontFamily:
-        json['terminalFontFamily'] as String? ?? 'JetBrains Mono',
+        json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     desktopTerminalEnableUnderline:

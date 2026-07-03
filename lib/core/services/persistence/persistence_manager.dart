@@ -80,7 +80,8 @@ class PersistenceManager {
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
-      terminalFontFamily: settings?.terminalFontFamily ?? 'JetBrains Mono',
+      terminalFontFamily:
+          settings?.terminalFontFamily ?? 'JetBrains Maple Mono',
       terminalFontSize: settings?.terminalFontSize ?? 13,
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
       desktopTerminalEnableUnderline:

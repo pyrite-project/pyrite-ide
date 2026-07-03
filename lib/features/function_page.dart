@@ -794,6 +794,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                     ref,
                     enableUnderline: ref.watch(desktopTerminalEnableUnderline),
                   ),
+                  hardwareKeyboardOnly: true,
                   key: ValueKey(
                     'terminal_${session.id}_${scheme.surface.toARGB32()}',
                   ),
