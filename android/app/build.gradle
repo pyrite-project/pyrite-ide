@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace "com.can1425.pyrite_ide"
+    namespace "com.can1425.pyride"
     compileSdk flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
@@ -32,7 +32,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.can1425.pyrite_ide"
+        applicationId "com.can1425.pyride"
         minSdkVersion flutter.minSdkVersion
         targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode
