@@ -1,0 +1,7 @@
+[
+{
+  "directory": "C:/Users/can1425/AppData/Local/Pub/Cache/hosted/mirrors.tuna.tsinghua.edu.cn%47dart-pub%47/flutter_pty-0.4.2/android/.cxx/RelWithDebInfo/5r3h2z6s/armeabi-v7a",
+  "command": "E:\\Can1425\\android_sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe --target=armv7-none-linux-androideabi21 --sysroot=E:/Can1425/android_sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/windows-x86_64/sysroot -DDART_SHARED_LIB -Dflutter_pty_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security  -O2 -g -DNDEBUG -fPIC -o CMakeFiles\\flutter_pty.dir\\flutter_pty.c.o -c C:\\Users\\can1425\\AppData\\Local\\Pub\\Cache\\hosted\\mirrors.tuna.tsinghua.edu.cn%47dart-pub%47\\flutter_pty-0.4.2\\src\\flutter_pty.c",
+  "file": "C:\\Users\\can1425\\AppData\\Local\\Pub\\Cache\\hosted\\mirrors.tuna.tsinghua.edu.cn%47dart-pub%47\\flutter_pty-0.4.2\\src\\flutter_pty.c"
+}
+]

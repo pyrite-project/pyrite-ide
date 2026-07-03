@@ -1,0 +1,3 @@
+C:/Users/can1425/AppData/Local/Pub/Cache/hosted/mirrors.tuna.tsinghua.edu.cn%47dart-pub%47/flutter_pty-0.4.2/android/.cxx/RelWithDebInfo/5r3h2z6s/arm64-v8a/CMakeFiles/flutter_pty.dir
+C:/Users/can1425/AppData/Local/Pub/Cache/hosted/mirrors.tuna.tsinghua.edu.cn%47dart-pub%47/flutter_pty-0.4.2/android/.cxx/RelWithDebInfo/5r3h2z6s/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/can1425/AppData/Local/Pub/Cache/hosted/mirrors.tuna.tsinghua.edu.cn%47dart-pub%47/flutter_pty-0.4.2/android/.cxx/RelWithDebInfo/5r3h2z6s/arm64-v8a/CMakeFiles/rebuild_cache.dir

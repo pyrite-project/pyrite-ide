@@ -138,6 +138,8 @@ void _applyData(PersistedData data) {
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
+  container.read(desktopTerminalEnableUnderline.notifier).state =
+      data.desktopTerminalEnableUnderline;
   container
       .read(androidUsbSerialProvider.notifier)
       .setBaudRate(data.serialDefaultBaudRate);

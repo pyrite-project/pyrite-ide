@@ -109,6 +109,16 @@ class TerminalSettings extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTerminalLineHeightDialog(context),
             ),
+
+            SwitchListTile(
+              secondary: const Icon(Icons.format_underlined),
+              title: const Text("桌面终端下划线"),
+              subtitle: const Text("开启后显示 ANSI 下划线；关闭可改善 Claude 等 TUI 的显示"),
+              value: ref.watch(desktopTerminalEnableUnderline),
+              onChanged: (value) {
+                ref.read(desktopTerminalEnableUnderline.notifier).state = value;
+              },
+            ),
           ],
         ),
         SettingsSection(

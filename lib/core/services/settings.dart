@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 
 const Map<String, String> editorTextFonts = {
   "JetBrains Mono": "JetBrainsMono",
+  "JetBrains Maple Mono": "JetBrainsMapleMono",
   "自定义": "",
 };
 
@@ -43,8 +44,12 @@ StateProvider<bool> editorWordWrap = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);
 StateProvider<bool> editorCodeFolding = StateProvider<bool>((ref) => true);
 StateProvider<bool> editorGuideLines = StateProvider<bool>((ref) => true);
-StateProvider<bool> editorLocalSuggestions = StateProvider<bool>((ref) => false);
-StateProvider<bool> editorKeyboardSuggestions = StateProvider<bool>((ref) => true);
+StateProvider<bool> editorLocalSuggestions = StateProvider<bool>(
+  (ref) => false,
+);
+StateProvider<bool> editorKeyboardSuggestions = StateProvider<bool>(
+  (ref) => true,
+);
 StateProvider<bool> editorUseSpaceAsTab = StateProvider<bool>((ref) => true);
 StateProvider<int> editorTabSize = StateProvider<int>((ref) => 4);
 StateProvider<bool> editorGutterDivider = StateProvider<bool>((ref) => false);
@@ -56,15 +61,13 @@ StateProvider<LspType> lspType = StateProvider<LspType>(
 StateProvider<String> lspWebSocketPath = StateProvider<String>(
   (ref) => "127.0.0.1:2026",
 );
-StateProvider<String> lspStdioExecutable = StateProvider<String>(
-  (ref) => "",
-);
-StateProvider<String> lspStdioArgs = StateProvider<String>(
-  (ref) => "--stdio",
-);
+StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
+StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "--stdio");
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
-StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>(
+  (ref) => false,
+);
 StateProvider<bool> lspCodeCompletion = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspHoverInfo = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspCodeAction = StateProvider<bool>((ref) => true);
@@ -83,9 +86,14 @@ StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
 StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
 StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
 StateProvider<bool> serialAutoReconnect = StateProvider<bool>((ref) => false);
-StateProvider<String> terminalFontFamily = StateProvider<String>((ref) => "JetBrains Mono");
+StateProvider<String> terminalFontFamily = StateProvider<String>(
+  (ref) => "JetBrains Maple Mono",
+);
 StateProvider<double> terminalFontSize = StateProvider<double>((ref) => 13);
 StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);
+StateProvider<bool> desktopTerminalEnableUnderline = StateProvider<bool>(
+  (ref) => false,
+);
 
 const Map<String, String> uploadConfirmStyles = {
   "浮动工具栏": "toolbar",
@@ -113,9 +121,12 @@ StateProvider<String> webReplHost = StateProvider<String>((ref) => '');
 StateProvider<int> webReplPort = StateProvider<int>((ref) => 8266);
 StateProvider<String> webReplPassword = StateProvider<String>((ref) => '');
 
-StateProvider<bool> microPythonStubsEnabled = StateProvider<bool>((ref) => false);
-StateProvider<bool> microPythonStubsAutoDetectLayers =
-    StateProvider<bool>((ref) => false);
+StateProvider<bool> microPythonStubsEnabled = StateProvider<bool>(
+  (ref) => false,
+);
+StateProvider<bool> microPythonStubsAutoDetectLayers = StateProvider<bool>(
+  (ref) => false,
+);
 StateProvider<List<MicroPythonStubsLayer>> microPythonStubsLayers =
     StateProvider<List<MicroPythonStubsLayer>>((ref) => const []);
 StateProvider<List<String>> microPythonStubsExtraPaths =

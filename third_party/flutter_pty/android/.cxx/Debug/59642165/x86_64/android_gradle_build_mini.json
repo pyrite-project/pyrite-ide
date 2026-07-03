@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "C:\\Users\\can1425\\AppData\\Local\\Pub\\Cache\\hosted\\mirrors.tuna.tsinghua.edu.cn%47dart-pub%47\\flutter_pty-0.4.2\\src\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "E:\\Can1425\\android_sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\can1425\\AppData\\Local\\Pub\\Cache\\hosted\\mirrors.tuna.tsinghua.edu.cn%47dart-pub%47\\flutter_pty-0.4.2\\android\\.cxx\\Debug\\59642165\\x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "E:\\Can1425\\android_sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\can1425\\AppData\\Local\\Pub\\Cache\\hosted\\mirrors.tuna.tsinghua.edu.cn%47dart-pub%47\\flutter_pty-0.4.2\\android\\.cxx\\Debug\\59642165\\x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "flutter_pty::@6890427a1f51a3e7e1df": {
+      "artifactName": "flutter_pty",
+      "abi": "x86_64",
+      "output": "E:\\Can1425\\pyrite_ide\\build\\flutter_pty\\intermediates\\cxx\\Debug\\59642165\\obj\\x86_64\\libflutter_pty.so",
+      "runtimeFiles": []
+    }
+  }
+}
