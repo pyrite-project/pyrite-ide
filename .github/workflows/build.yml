@@ -58,7 +58,7 @@ jobs:
             target: macos
             command: |
               dart run serious_python:main package "assets/python_runtime_boot" --platform Darwin --asset "assets/python_runtime_boot.zip" --verbose
-              flutter build macos --release --verbose
+              flutter build macos --release --no-tree-shake-icons --verbose
               cd build/macos/Build/Products/Release
               zip -r pyride-macos-darwin.zip PyriteIDE.app
               cd -
