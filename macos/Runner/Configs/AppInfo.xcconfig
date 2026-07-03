@@ -8,7 +8,7 @@
 PRODUCT_NAME = PyriteIDE
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.can1425.pyrite_ide
+PRODUCT_BUNDLE_IDENTIFIER = com.can1425.pyride
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Can1425 All rights reserved.

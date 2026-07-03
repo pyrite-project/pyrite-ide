@@ -1,25 +1,73 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:window_manager/window_manager.dart';
 
-class UseWindow {
+class UseWindow with WindowListener {
+  ProviderContainer? _container;
+  bool _closing = false;
+
   void init() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       WidgetsFlutterBinding.ensureInitialized();
       await windowManager.ensureInitialized();
+      await windowManager.setPreventClose(true);
+      windowManager.addListener(this);
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
         await windowManager.focus();
       });
     }
+  }
+
+  void bind(ProviderContainer container) {
+    _container = container;
+  }
+
+  @override
+  void onWindowClose() async {
+    if (_closing) return;
+    _closing = true;
+
+    try {
+      await Future.wait([
+        _closeDesktopTerminals(),
+        _stopPlugins(),
+      ]).timeout(const Duration(seconds: 2));
+    } catch (_) {
+    } finally {
+      await windowManager.setPreventClose(false);
+      await windowManager.destroy();
+      exit(0);
+    }
+  }
+
+  Future<void> _closeDesktopTerminals() async {
+    try {
+      await _container
+          ?.read(desktopTerminalProvider.notifier)
+          .closeAll()
+          .timeout(const Duration(seconds: 1));
+    } catch (_) {}
+  }
+
+  Future<void> _stopPlugins() async {
+    try {
+      await _container
+          ?.read(pluginRunManagerProvider.notifier)
+          .stopAllForShutdown()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
   }
 }
 
@@ -40,8 +88,7 @@ class UseTitleBar extends StatelessWidget {
         child: Row(
           children: [
             Image.asset(
-              "assets/icons/app_icon_appbar.png",
-              color: Theme.of(context).colorScheme.onSurface,
+              "assets/icons/app_icon.webp",
               width: appIconSize,
               height: appIconSize,
             ),
@@ -88,10 +135,7 @@ class AppActionBar extends ConsumerWidget {
               () =>
                   ref.read(tabbedViewControllerProvider.notifier).createFile(),
               leadingIconData: Icons.add,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyN,
-                control: true,
-              ),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyN),
             ),
             buildMenuItemButton(
               context,
@@ -100,10 +144,7 @@ class AppActionBar extends ConsumerWidget {
                   .read(tabbedViewControllerProvider.notifier)
                   .openFile(context),
               leadingIconData: Icons.open_in_browser,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyO,
-                control: true,
-              ),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyO),
             ),
             buildMenuItemButton(
               context,
@@ -115,23 +156,16 @@ class AppActionBar extends ConsumerWidget {
             buildMenuItemButton(
               context,
               "保存当前文件",
-              () => ref.read(localWorkspaceProvider.notifier).saveFile(),
+              () => ref.read(fileProvider.notifier).saveCurrentFile(),
               leadingIconData: Icons.save,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyS,
-                control: true,
-              ),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyS),
             ),
             buildMenuItemButton(
               context,
               "将当前文件另存为",
-              () => ref.read(localWorkspaceProvider.notifier).saveAs(),
+              () => ref.read(fileProvider.notifier).saveCurrentFileAs(),
               leadingIconData: Icons.save_as,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyS,
-                control: true,
-                shift: true,
-              ),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyS, shift: true),
             ),
           ],
           child: Text("文件"),
@@ -149,43 +183,24 @@ class AppActionBar extends ConsumerWidget {
           menuChildren: [
             buildMenuItemButton(
               context,
-              "撤销",
-              ref.read(editorControllerMapProvider.notifier).undo,
-              leadingIconData: Icons.undo,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyZ, control: true),
-            ),
-            buildMenuItemButton(
-              context,
-              "恢复",
-              ref.read(editorControllerMapProvider.notifier).redo,
-              leadingIconData: Icons.redo,
-              shortcut: SingleActivator(
-                LogicalKeyboardKey.keyZ,
-                control: true,
-                shift: true,
-              ),
-            ),
-            PopupMenuDivider(),
-            buildMenuItemButton(
-              context,
               "剪切",
               ref.read(editorControllerMapProvider.notifier).cut,
               leadingIconData: Icons.cut,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyX, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyX),
             ),
             buildMenuItemButton(
               context,
               "复制",
               ref.read(editorControllerMapProvider.notifier).copy,
               leadingIconData: Icons.copy,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyC, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyC),
             ),
             buildMenuItemButton(
               context,
               "粘贴",
               ref.read(editorControllerMapProvider.notifier).paste,
               leadingIconData: Icons.paste,
-              shortcut: SingleActivator(LogicalKeyboardKey.keyV, control: true),
+              shortcut: platformShortcut(LogicalKeyboardKey.keyV),
             ),
           ],
           child: Text("编辑"),
@@ -262,6 +277,18 @@ class AppActionBar extends ConsumerWidget {
       style: ButtonStyle(),
       shortcut: shortcut,
       child: Text(text),
+    );
+  }
+
+  SingleActivator platformShortcut(
+    LogicalKeyboardKey key, {
+    bool shift = false,
+  }) {
+    return SingleActivator(
+      key,
+      control: !Platform.isMacOS,
+      meta: Platform.isMacOS,
+      shift: shift,
     );
   }
 }

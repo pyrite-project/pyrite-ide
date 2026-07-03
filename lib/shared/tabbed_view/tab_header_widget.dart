@@ -5,8 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -214,6 +214,7 @@ class TabHeaderWidget extends StatelessWidget {
                       foregroundColor: Theme.of(context).colorScheme.onError,
                     ),
                     onPressed: () async {
+                      if (!context.mounted) return;
                       context.pop();
                       await _onClose(context, index);
                     },
@@ -222,12 +223,12 @@ class TabHeaderWidget extends StatelessWidget {
                   TextButton(
                     onPressed: () async {
                       await container
-                          .read(localWorkspaceProvider.notifier)
-                          .saveFile();
+                          .read(fileProvider.notifier)
+                          .saveCurrentFile();
 
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+                      container
+                          .read(ideMessageProvider.notifier)
+                          .success("已保存当前文件");
 
                       if (identical(
                         provider.controller,
@@ -237,7 +238,10 @@ class TabHeaderWidget extends StatelessWidget {
                             .read(tabbedViewControllerProvider.notifier)
                             .afterFileSave();
                       }
+                      if (!context.mounted) return;
+                      // ignore: use_build_context_synchronously
                       context.pop();
+                      // ignore: use_build_context_synchronously
                       await _onClose(context, index);
                     },
                     child: Text("保存"),
@@ -290,7 +294,7 @@ class TabHeaderWidget extends StatelessWidget {
         )) {
           container
               .read(tabbedViewControllerProvider.notifier)
-              .afterTabClose(index);
+              .afterTabClose(index, tabData);
         }
       }
     }

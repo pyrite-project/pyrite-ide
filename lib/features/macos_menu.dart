@@ -5,7 +5,7 @@ import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 
 class MacOSMenu extends ConsumerWidget {
@@ -46,7 +46,7 @@ class MacOSMenu extends ConsumerWidget {
                 label: '新建文件',
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyN,
-                  control: true,
+                  meta: true,
                 ),
                 onSelected: () => ref
                     .read(tabbedViewControllerProvider.notifier)
@@ -56,7 +56,7 @@ class MacOSMenu extends ConsumerWidget {
                 label: '打开文件',
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyO,
-                  control: true,
+                  meta: true,
                 ),
                 onSelected: () => ref
                     .read(tabbedViewControllerProvider.notifier)
@@ -71,20 +71,20 @@ class MacOSMenu extends ConsumerWidget {
                 label: "保存当前文件",
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyS,
-                  control: true,
+                  meta: true,
                 ),
                 onSelected: () =>
-                    ref.read(localWorkspaceProvider.notifier).saveFile(),
+                    ref.read(fileProvider.notifier).saveCurrentFile(),
               ),
               PlatformMenuItem(
                 label: "另存为",
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyS,
-                  control: true,
+                  meta: true,
                   shift: true,
                 ),
                 onSelected: () =>
-                    ref.read(localWorkspaceProvider.notifier).saveAs(),
+                    ref.read(fileProvider.notifier).saveCurrentFileAs(),
               ),
             ],
           ),
@@ -94,27 +94,10 @@ class MacOSMenu extends ConsumerWidget {
         label: '编辑',
         menus: [
           PlatformMenuItem(
-            label: "撤销",
-            shortcut: const SingleActivator(
-              LogicalKeyboardKey.keyZ,
-              control: true,
-            ),
-            onSelected: ref.read(editorControllerMapProvider.notifier).undo,
-          ),
-          PlatformMenuItem(
-            label: "恢复",
-            shortcut: const SingleActivator(
-              LogicalKeyboardKey.keyZ,
-              control: true,
-              shift: true,
-            ),
-            onSelected: ref.read(editorControllerMapProvider.notifier).redo,
-          ),
-          PlatformMenuItem(
             label: "剪切",
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyX,
-              control: true,
+              meta: true,
             ),
             onSelected: ref.read(editorControllerMapProvider.notifier).cut,
           ),
@@ -122,7 +105,7 @@ class MacOSMenu extends ConsumerWidget {
             label: "复制",
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyC,
-              control: true,
+              meta: true,
             ),
             onSelected: ref.read(editorControllerMapProvider.notifier).copy,
           ),
@@ -130,7 +113,7 @@ class MacOSMenu extends ConsumerWidget {
             label: "粘贴",
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyV,
-              control: true,
+              meta: true,
             ),
             onSelected: ref.read(editorControllerMapProvider.notifier).paste,
           ),

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
@@ -14,7 +14,7 @@ class EditorWelcome extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final workspace = ref.watch(localWorkspaceProvider);
+    final workspace = ref.watch(fileProvider);
     final usb = ref.watch(getUsbSerialProvider());
     return SingleChildScrollView(
       child: Padding(
@@ -26,8 +26,7 @@ class EditorWelcome extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Image.asset(
-                  "assets/icons/app_icon_appbar.png",
-                  color: Theme.of(context).colorScheme.primary,
+                  "assets/icons/app_icon.webp",
                   width: 72,
                   height: 72,
                 ),

@@ -2,6 +2,7 @@ import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 
 class StyleSettings extends ConsumerWidget {
@@ -10,12 +11,23 @@ class StyleSettings extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeColorValue = ref.watch(themeColor);
+    final activePluginThemeIdValue = ref.watch(activePluginThemeId);
+    final dataRegistry = ref.watch(dataRegistryProvider);
+
+    final hasPluginTheme = activePluginThemeIdValue != null;
+    final pluginTheme =
+        hasPluginTheme ? dataRegistry.getThemeById(activePluginThemeIdValue) : null;
+    // If plugin theme forces a mode, ThemeMode setting is disabled
+    final themeModeDisabled = pluginTheme?.mode != null;
+
     final body = ListView(
       padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
           title: "主题模式",
-          description: "决定界面跟随系统、常亮或常暗。",
+          description: themeModeDisabled
+              ? "当前插件主题已锁定为${pluginTheme?.mode == 'dark' ? '暗色' : '亮色'}模式。"
+              : "决定界面跟随系统、常亮或常暗。",
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -38,16 +50,20 @@ class StyleSettings extends ConsumerWidget {
                   ),
                 ],
                 selected: {ref.watch(themeMode)},
-                onSelectionChanged: (value) {
-                  ref.read(themeMode.notifier).state = value.first;
-                },
+                onSelectionChanged: themeModeDisabled
+                    ? null
+                    : (value) {
+                        ref.read(themeMode.notifier).state = value.first;
+                      },
               ),
             ),
           ],
         ),
         SettingsSection(
           title: "主题风格",
-          description: "切换不同风格的组件样式与布局密度。",
+          description: hasPluginTheme
+              ? "插件主题启用时此项不可用。"
+              : "切换不同风格的组件样式与布局密度。",
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -70,13 +86,16 @@ class StyleSettings extends ConsumerWidget {
                   ),
                 ],
                 selected: {ref.watch(themeStyle)},
-                onSelectionChanged: (value) {
-                  ref.read(themeStyle.notifier).state = value.first;
-                },
+                onSelectionChanged: hasPluginTheme
+                    ? null
+                    : (value) {
+                        ref.read(themeStyle.notifier).state = value.first;
+                      },
               ),
             ),
           ],
         ),
+        if (!hasPluginTheme)
         SettingsSection(
           title: "主题颜色",
           description: "保留 MD3 动态颜色，也可以选择固定种子色。",
@@ -94,7 +113,8 @@ class StyleSettings extends ConsumerWidget {
                       if (v) {
                         ref.read(themeColor.notifier).state = null;
                       } else {
-                        ref.read(themeColor.notifier).state = Colors.teal;
+                        ref.read(themeColor.notifier).state =
+                            Colors.teal;
                       }
                     },
                   ),
@@ -103,16 +123,17 @@ class StyleSettings extends ConsumerWidget {
                     decoration: BoxDecoration(
                       borderRadius: context.effectiveRadius,
                       border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
+                        color:
+                            Theme.of(context).colorScheme.outlineVariant,
                       ),
                     ),
                     margin: EdgeInsets.all(0),
                     child: ColorPicker(
-                      color:
-                          themeColorValue ??
+                      color: themeColorValue ??
                           Theme.of(context).colorScheme.primary,
-                      onColorChanged: (color) =>
-                          ref.read(themeColor.notifier).state = color,
+                      onColorChanged: (color) => ref
+                          .read(themeColor.notifier)
+                          .state = color,
                       pickersEnabled: const {
                         ColorPickerType.primary: true,
                         ColorPickerType.accent: true,
@@ -121,6 +142,39 @@ class StyleSettings extends ConsumerWidget {
                       enableShadesSelection: false,
                     ),
                   ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: "插件主题",
+          description: "使用插件提供的主题配色方案。选中后将覆盖上方的主题风格和主题颜色设置。",
+          children: [
+            RadioGroup<String?>(
+              groupValue: activePluginThemeIdValue,
+              onChanged: (value) {
+                ref.read(activePluginThemeId.notifier).state = value;
+              },
+              child: Column(
+                children: [
+                  RadioListTile<String?>(
+                    title: Text("内置"),
+                    subtitle: Text("使用系统动态色或自定义种子色"),
+                    value: null,
+                  ),
+                  for (final theme in dataRegistry.allThemes)
+                    RadioListTile<String?>(
+                      title: Text(theme.name),
+                      subtitle: Text(
+                        [
+                          'by ${theme.pluginId}',
+                          if (theme.mode != null)
+                            '· ${theme.mode == 'dark' ? '仅暗色' : '仅亮色'}',
+                        ].join(' '),
+                      ),
+                      value: theme.id,
+                    ),
                 ],
               ),
             ),

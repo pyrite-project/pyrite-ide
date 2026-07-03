@@ -29,14 +29,17 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
 }
 
 Future<File> getLocalFile(String boardFilePath) async {
-  final supportDir = await getApplicationSupportDirectory();
-  debugPrint("debug: appSupportDir ${supportDir.path}");
+  final supportDir = path.join(
+    (await getApplicationSupportDirectory()).path,
+    "temporary_board_files",
+  );
+  debugPrint("debug: appSupportDir $supportDir");
   List<String> fileNameList = boardFilePath.split("/");
   String fileNameResult = "";
   for (int i = 1; i < fileNameList.length; i++) {
     fileNameResult = path.join(fileNameResult, fileNameList[i]);
   }
-  File file = File(path.join(supportDir.path, fileNameResult));
+  File file = File(path.join(supportDir, fileNameResult));
   await file.create(recursive: true, exclusive: false);
   debugPrint("debug: open board file ${file.path}");
 

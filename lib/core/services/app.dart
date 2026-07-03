@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:re_highlight/styles/atom-one-dark-reasonable.dart';
+
+BuildContext? get appContext => _appContext;
+BuildContext? _appContext;
+
+void setAppContext(BuildContext context) {
+  _appContext = context;
+}
 
 enum ThemeStyle {
   standard('标准', 'standard'),
@@ -24,10 +30,13 @@ late final ProviderContainer container;
 final StateProvider<ThemeMode> themeMode = StateProvider(
   (ref) => ThemeMode.system,
 );
-final StateProvider<Map<String, TextStyle>> editorThemeMode = StateProvider(
-  (ref) => atomOneDarkReasonableTheme,
+final StateProvider<String> editorThemeKey = StateProvider(
+  (ref) => "atom-one",
 );
 final StateProvider<Color?> themeColor = StateProvider((ref) => null);
 final StateProvider<ThemeStyle> themeStyle = StateProvider(
   (ref) => ThemeStyle.standard,
+);
+final StateProvider<String?> activePluginThemeId = StateProvider(
+  (ref) => null,
 );

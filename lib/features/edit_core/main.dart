@@ -1,23 +1,28 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:code_forge/code_forge/styling.dart';
+import 'package:code_forge/code_forge/undo_redo.dart';
+import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
+import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:re_highlight/languages/python.dart';
@@ -27,9 +32,11 @@ class EditCore extends ConsumerStatefulWidget {
     super.key,
     required this.file,
     required this.editorController,
+    this.undoController,
   });
   final File file;
   final CodeForgeController editorController;
+  final UndoRedoController? undoController;
 
   @override
   ConsumerState<EditCore> createState() => _EditCoreState();
@@ -57,21 +64,37 @@ class _EditCoreState extends ConsumerState<EditCore> {
       SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
         saveFile(context, ref);
       },
+      SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+        saveFile(context, ref);
+      },
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () {
-        ref.read(localWorkspaceProvider.notifier).saveAs();
+        ref.read(fileProvider.notifier).saveCurrentFileAs();
+      },
+      SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true): () {
+        ref.read(fileProvider.notifier).saveCurrentFileAs();
       },
       SingleActivator(LogicalKeyboardKey.keyN, control: true): () {
+        ref.read(tabbedViewControllerProvider.notifier).createFile();
+      },
+      SingleActivator(LogicalKeyboardKey.keyN, meta: true): () {
         ref.read(tabbedViewControllerProvider.notifier).createFile();
       },
       SingleActivator(LogicalKeyboardKey.keyO, control: true): () {
         ref.read(tabbedViewControllerProvider.notifier).openFile(context);
       },
+      SingleActivator(LogicalKeyboardKey.keyO, meta: true): () {
+        ref.read(tabbedViewControllerProvider.notifier).openFile(context);
+      },
       SingleActivator(LogicalKeyboardKey.keyU, control: true): () {
-        ref
-            .read(localWorkspaceProvider.notifier)
-            .uploadSelectedLocalItem(context);
+        ref.read(fileProvider.notifier).uploadSelectedLocalFileItem(context);
+      },
+      SingleActivator(LogicalKeyboardKey.keyU, meta: true): () {
+        ref.read(fileProvider.notifier).uploadSelectedLocalFileItem(context);
       },
       SingleActivator(LogicalKeyboardKey.keyR, control: true): () {
+        runCurrentFile(context, ref);
+      },
+      SingleActivator(LogicalKeyboardKey.keyR, meta: true): () {
         runCurrentFile(context, ref);
       },
     };
@@ -146,12 +169,21 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 
   Widget body(BuildContext context, WidgetRef ref) {
-    final theme = Map.of(ref.watch(editorThemeMode));
+    final themeKey = ref.watch(editorThemeKey);
+    final entry = findEditorThemeByKey(themeKey) ?? editorThemes.first;
+    final brightness = Theme.of(context).brightness;
+    final surface = Theme.of(context).scaffoldBackgroundColor;
+    final resolvedTheme = applySurfaceBackground(
+      resolveEditorTheme(entry, brightness),
+      surface,
+    );
     return CodeForge(
+      key: ValueKey('${themeKey}_${brightness.name}_${surface.toARGB32()}'),
       filePath: widget.file.path,
-      editorTheme: theme,
+      editorTheme: resolvedTheme,
       language: langPython,
       controller: widget.editorController,
+      undoController: widget.undoController,
       matchHighlightStyle: const MatchHighlightStyle(
         currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
         otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
@@ -161,8 +193,18 @@ class _EditCoreState extends ConsumerState<EditCore> {
         fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
       ),
       lineWrap: ref.watch(editorWordWrap),
-      useSpaceAsTab: true,
-      tabSize: 4,
+      enableFolding: ref.watch(editorCodeFolding),
+      enableGuideLines: ref.watch(editorGuideLines),
+      enableLocalSuggestions: ref.watch(editorLocalSuggestions),
+      enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
+      enableGutter: ref.watch(editorLineNumber),
+      enableGutterDivider: ref.watch(editorGutterDivider),
+      useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
+      tabSize: ref.watch(editorTabSize),
+      gutterBuilder: GutterBuilder(
+        builder: (lineNumber, lineText) => '$lineNumber',
+        includeReplacedIndex: false,
+      ),
     );
   }
 
@@ -205,17 +247,15 @@ class _EditCoreState extends ConsumerState<EditCore> {
           ?.clearGitDiffDecorations();
       final currentContent = pending.content;
       await ref
-          .read(boardWorkspaceProvider.notifier)
+          .read(boardProvider.notifier)
           .writeFile(pending.targetPath, currentContent);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("已上传到设备：${pending.targetPath}")));
+      ref
+          .read(ideMessageProvider.notifier)
+          .success("已上传到设备：${pending.targetPath}");
     } catch (_) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("上传失败")));
+      ref.read(ideMessageProvider.notifier).error("上传失败");
     } finally {
       ref.read(pendingUploadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -237,13 +277,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
           .getSelectedController()
           ?.clearGitDiffDecorations();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("已下载到本地：${pending.localPath}")));
+      ref
+          .read(ideMessageProvider.notifier)
+          .success("已下载到本地：${pending.localPath}");
     } catch (_) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("下载失败")));
+      ref.read(ideMessageProvider.notifier).error("下载失败");
     } finally {
       ref.read(pendingDownloadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -263,22 +301,21 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
   await Future.delayed(const Duration(milliseconds: 160));
 
+  final b64 = base64.encode(utf8.encode(controller!.text));
   ref
       .read(getUsbSerialProvider().notifier)
-      .sendCommand("exec('${controller!.text}')\r");
-  showEditorSnackBar(context, "正在运行：${controller.openedFile}");
-}
-
-void showEditorSnackBar(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      .sendCommand(
+        "exec(__import__('ubinascii').a2b_base64('$b64').decode())\r",
+      );
+  ref
+      .read(ideMessageProvider.notifier)
+      .success("正在运行：${controller.openedFile}");
 }
 
 Future saveFile(BuildContext context, WidgetRef ref, {quiet = false}) async {
-  await ref.read(localWorkspaceProvider.notifier).saveFile();
+  await ref.read(fileProvider.notifier).saveCurrentFile();
 
   if (!quiet) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("已保存当前文件")));
+    ref.read(ideMessageProvider.notifier).success("已保存当前文件");
   }
 }

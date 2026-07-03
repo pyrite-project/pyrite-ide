@@ -7,17 +7,23 @@ class AppPersistedData {
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
+  final String editorThemeKey;
+  final String? activePluginThemeId;
 
   AppPersistedData({
     required this.themeMode,
     this.themeStyle = 'standard',
     this.themeColorValue,
+    this.editorThemeKey = 'atom-one',
+    this.activePluginThemeId,
   });
 
   Map<String, dynamic> toJson() => {
     'themeMode': themeMode,
     'themeStyle': themeStyle,
     'themeColorValue': themeColorValue,
+    'editorThemeKey': editorThemeKey,
+    'activePluginThemeId': activePluginThemeId,
   };
 
   factory AppPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -25,6 +31,8 @@ class AppPersistedData {
         themeMode: json['themeMode'] as String? ?? 'system',
         themeStyle: json['themeStyle'] as String? ?? 'standard',
         themeColorValue: json['themeColorValue'] as int?,
+        editorThemeKey: json['editorThemeKey'] as String? ?? 'atom-one',
+        activePluginThemeId: json['activePluginThemeId'] as String?,
       );
 }
 
@@ -33,7 +41,7 @@ class AppPersistence {
 
   Future<File> get _file async {
     final dir = await getApplicationSupportDirectory();
-    final subDir = Directory('${dir.path}/pyrite_ide');
+    final subDir = Directory('${dir.path}/data');
     if (!await subDir.exists()) await subDir.create(recursive: true);
     return File('${subDir.path}/$_fileName');
   }

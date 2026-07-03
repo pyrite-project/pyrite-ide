@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/board_manager/utils.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
-import 'package:pyrite_ide/core/services/file/board_workspace_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
@@ -49,7 +49,7 @@ class Editor extends ConsumerWidget {
                   ? OutlinedButton.icon(
                       onPressed: canSave && isConnected
                           ? () => ref
-                                .read(boardWorkspaceProvider.notifier)
+                                .read(boardProvider.notifier)
                                 .downloadSelectedBoardItem(context)
                           : null,
                       icon: const Icon(Icons.download_outlined, size: 18),
@@ -58,8 +58,8 @@ class Editor extends ConsumerWidget {
                   : OutlinedButton.icon(
                       onPressed: canSave && isConnected
                           ? () => ref
-                                .read(localWorkspaceProvider.notifier)
-                                .uploadSelectedLocalItem(
+                                .read(fileProvider.notifier)
+                                .uploadSelectedLocalFileItem(
                                   context,
                                   selectedTab: ref
                                       .read(tabbedViewControllerProvider)
@@ -106,7 +106,7 @@ class Editor extends ConsumerWidget {
                 onSelected: (value) {
                   switch (value) {
                     case "saveAs":
-                      ref.read(localWorkspaceProvider.notifier).saveAs();
+                      ref.read(fileProvider.notifier).saveCurrentFileAs();
                       break;
                     case "cut":
                       ref.read(editorControllerMapProvider.notifier).cut();
@@ -199,7 +199,7 @@ class ExpansionPage extends ConsumerWidget {
                 onSelected: (value) {
                   switch (value) {
                     case "saveAs":
-                      ref.read(localWorkspaceProvider.notifier).saveAs();
+                      ref.read(fileProvider.notifier).saveCurrentFileAs();
                       break;
                     case "cut":
                       ref.read(editorControllerMapProvider.notifier).cut();

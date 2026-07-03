@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/git/main.dart' deferred as git_page;
 import 'package:pyrite_ide/pages/plugins/main.dart';
+import 'package:pyrite_ide/pages/plugins/monitor.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
@@ -11,7 +13,7 @@ import 'package:pyrite_ide/pages/settings/terminal.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/tools/main.dart';
+import 'package:pyrite_ide/pages/device_tools/main.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 CustomTransitionPage topCustomTransitionPage({
@@ -58,6 +60,13 @@ GoRouter routes = GoRouter(
               topCustomTransitionPage(child: const Tools(), state: state),
         ),
         GoRoute(
+          path: '/git',
+          pageBuilder: (context, state) => topCustomTransitionPage(
+            child: const _DeferredGitPage(),
+            state: state,
+          ),
+        ),
+        GoRoute(
           path: '/plugins',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: Plugins(), state: state),
@@ -68,6 +77,10 @@ GoRouter routes = GoRouter(
                 final id = state.uri.queryParameters['id'];
                 return PluginBody(pluginId: id!);
               },
+            ),
+            GoRoute(
+              path: '/monitor',
+              builder: (context, state) => const PermissionMonitor(),
             ),
           ],
         ),
@@ -92,7 +105,32 @@ GoRouter routes = GoRouter(
               path: '/terminal',
               builder: (context, state) => const TerminalSettings(),
             ),
-            GoRoute(path: '/about', builder: (context, state) => const About()),
+            GoRoute(
+              path: '/about',
+              builder: (context, state) => const About(),
+              routes: [
+                GoRoute(
+                  path: '/app_details',
+                  builder: (context, state) => const AppDetails(),
+                ),
+                GoRoute(
+                  path: "/feature/modern",
+                  builder: (context, state) => const FeatureModern(),
+                ),
+                GoRoute(
+                  path: "/feature/powerful",
+                  builder: (context, state) => const FeaturePowerful(),
+                ),
+                GoRoute(
+                  path: "/feature/cross_platform",
+                  builder: (context, state) => const FeatureCrossPlatform(),
+                ),
+                GoRoute(
+                  path: "/project",
+                  builder: (context, state) => const AboutProject(),
+                ),
+              ],
+            ),
           ],
         ),
         GoRoute(
@@ -107,12 +145,47 @@ GoRouter routes = GoRouter(
   ],
 );
 
+class _DeferredGitPage extends StatefulWidget {
+  const _DeferredGitPage();
+
+  @override
+  State<_DeferredGitPage> createState() => _DeferredGitPageState();
+}
+
+class _DeferredGitPageState extends State<_DeferredGitPage> {
+  // Keep source-control UI out of the app shell startup path.
+  late final Future<void> _loadGitPage = git_page.loadLibrary();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _loadGitPage,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('无法加载 Git 页面：${snapshot.error}'),
+            ),
+          );
+        }
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return git_page.GitPage();
+      },
+    );
+  }
+}
+
 // 地址别名
 const String file = '/file';
 const String tools = '/tools';
+const String git = '/git';
 const String plugins = '/plugins';
 const String settings = '/settings';
 const String edit = '/editor';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [file, tools, plugins, settings, edit];
+const List<String> routesName = [file, tools, git, plugins, settings, edit];
