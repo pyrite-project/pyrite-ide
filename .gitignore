@@ -48,4 +48,5 @@ app.*.map.json
 /android/app/.cxx
 /android/build
 /android/.kotlin
+**/android/.cxx/
 opencode.json
