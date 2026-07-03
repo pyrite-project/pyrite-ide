@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
+import 'package:pyrite_ide/pages/plugins/pyrite_material_widgets.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
 
@@ -586,7 +587,7 @@ class _PluginBodyState extends ConsumerState<PluginBody>
     if (plugin == null) return;
 
     _runtime.update(coreName, createCoreWidgets());
-    _runtime.update(materialName, createMaterialWidgets());
+    _runtime.update(materialName, createPyriteMaterialWidgets());
 
     final runManager = ref.read(pluginRunManagerProvider)[plugin];
     if (runManager != null) {
@@ -722,7 +723,7 @@ final Runtime _runtime = Runtime();
   Future<void> _loadRemoteWidgets(Plugin plugin) async {
     // Local widget library:
     _runtime.update(coreName, createCoreWidgets()); // 加载core.widgets
-    _runtime.update(materialName, createMaterialWidgets()); // core.material
+    _runtime.update(materialName, createPyriteMaterialWidgets()); // core.material
     _data.update('greet', <String, Object>{
       'name': 'World',
     }); // 设置一个变量 (对应sdk的data)
