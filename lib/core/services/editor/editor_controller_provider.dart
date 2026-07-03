@@ -18,13 +18,6 @@ class EditorControllerMapNotifier
     File file, {
     String? initialText,
   }) async {
-    String pattern = "\\";
-
-    if (Platform.isWindows) {
-      pattern = "\\";
-    } else {
-      pattern = "/";
-    }
     String text = initialText ?? "";
     if (initialText == null) {
       try {
@@ -33,10 +26,7 @@ class EditorControllerMapNotifier
         return null;
       }
     }
-    final uri = Uri.file(file.path).toString().split(pattern);
-    // final fileName = uri.removeLast();
-    uri.removeLast();
-    final projectPath = uri.join(pattern);
+    final projectPath = file.parent.path;
 
     LspConfig? lspConfig;
     if (ref.read(useLsp)) {
@@ -56,10 +46,12 @@ class EditorControllerMapNotifier
       );
       final stubsConfig = buildLspStubsConfig(ref);
       if (stubsConfig.paths.isNotEmpty) {
-        ref.read(ideOutputLogProvider.notifier).add(
-          IdeOutputSource.ide,
-          'LSP stubs paths: ${stubsConfig.paths.join(Platform.pathSeparator)}',
-        );
+        ref
+            .read(ideOutputLogProvider.notifier)
+            .add(
+              IdeOutputSource.ide,
+              'LSP stubs paths: ${stubsConfig.paths.join(Platform.pathSeparator)}',
+            );
       }
       if (type == LspType.webSocket) {
         lspConfig = LspSocketConfig(
@@ -73,13 +65,10 @@ class EditorControllerMapNotifier
           disableError: ref.read(disableError),
         );
       } else if (type == LspType.stdio) {
-        final executable = ref.read(lspStdioExecutable);
+        final executable = ref.read(lspStdioExecutable).trim();
         if (executable.isNotEmpty) {
-          final argsStr = ref.read(lspStdioArgs);
-          final args = argsStr
-              .split(' ')
-              .where((s) => s.isNotEmpty)
-              .toList();
+          final argsStr = ref.read(lspStdioArgs).trim();
+          final args = argsStr.split(' ').where((s) => s.isNotEmpty).toList();
           try {
             lspConfig = await LspStdioConfig.start(
               executable: executable,
@@ -100,9 +89,7 @@ class EditorControllerMapNotifier
       }
     }
 
-    CodeForgeController controller = CodeForgeController(
-      lspConfig: lspConfig,
-    );
+    CodeForgeController controller = CodeForgeController(lspConfig: lspConfig);
     if (lspConfig != null) {
       unawaited(_sendWorkspaceConfiguration(lspConfig));
     }
@@ -120,10 +107,12 @@ class EditorControllerMapNotifier
     }
     if (!lspConfig.isInitialized) return;
     try {
-      ref.read(ideOutputLogProvider.notifier).add(
-        IdeOutputSource.ide,
-        'LSP workspace configuration: ${lspConfig.workspaceConfiguration}',
-      );
+      ref
+          .read(ideOutputLogProvider.notifier)
+          .add(
+            IdeOutputSource.ide,
+            'LSP workspace configuration: ${lspConfig.workspaceConfiguration}',
+          );
       await lspConfig.sendNotification(
         method: 'workspace/didChangeConfiguration',
         params: {'settings': lspConfig.workspaceConfiguration},

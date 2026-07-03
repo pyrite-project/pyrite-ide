@@ -81,6 +81,9 @@ class LspSettings extends ConsumerWidget {
                         helperText: "例如 python、node 或完整路径",
                         border: OutlineInputBorder(),
                       ),
+                      onChanged: (value) {
+                        ref.read(lspStdioExecutable.notifier).state = value;
+                      },
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioExecutable.notifier).state = value
                             .trim();
@@ -95,6 +98,9 @@ class LspSettings extends ConsumerWidget {
                         helperText: "空格分隔，例如 --stdio",
                         border: OutlineInputBorder(),
                       ),
+                      onChanged: (value) {
+                        ref.read(lspStdioArgs.notifier).state = value;
+                      },
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioArgs.notifier).state = value.trim();
                         showIdeSuccess(context, "启动参数已更新");
