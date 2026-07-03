@@ -33,72 +33,72 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  re_highlight: ^0.0.3
-  flutter_riverpod: ^2.6.1
-  flutter_launcher_icons: ^0.14.4
-  riverpod_annotation: ^2.6.1
-  go_router_builder: ^2.7.1
-  go_router: ^15.1.2
-  tabbed_view: ^2.1.0
-  animations: ^2.0.11
-  responsive_framework: ^1.5.1
-  iconify_flutter_plus: ^1.0.4
-  shadcn_flutter: ^0.0.50
-  dynamic_color: ^1.8.1
-  window_manager: ^0.5.1
-  file_picker: ^11.0.2
-  file_selector: ^1.1.0
-  tolyui: ^0.0.5
-  tolyui_message: ^0.2.6
-  open_file: ^3.5.11
+  cupertino_icons: 1.0.9
+  re_highlight: 0.0.3
+  flutter_riverpod: 2.6.1
+  flutter_launcher_icons: 0.14.4
+  riverpod_annotation: 2.6.1
+  go_router_builder: 2.9.0
+  go_router: 15.1.3
+  tabbed_view: 2.1.0
+  animations: 2.2.0
+  responsive_framework: 1.5.1
+  iconify_flutter_plus: 1.0.4
+  shadcn_flutter: 0.0.52
+  dynamic_color: 1.8.1
+  window_manager: 0.5.1
+  file_picker: 11.0.2
+  file_selector: 1.1.0
+  tolyui: 0.0.5
+  tolyui_message: 0.2.6+1
+  open_file: 3.5.11
   xterm:
     path: third_party/xterm.dart
   flutter_pty:
     path: third_party/flutter_pty
-  json_rpc_2: ^4.0.0
-  process_run: ^1.2.4
-  stream_channel: ^2.1.4
-  riverpod: ^2.6.1
-  archive: ^4.0.9
-  path_provider: ^2.1.5
-  path: ^1.9.1
-  meta: any
-  ffi: ^2.2.0
-  m3_floating_toolbar: ^0.1.0
+  json_rpc_2: 4.1.0
+  process_run: 1.3.4
+  stream_channel: 2.1.4
+  riverpod: 2.6.1
+  archive: 4.0.9
+  path_provider: 2.1.6
+  path: 1.9.1
+  meta: 1.18.0
+  ffi: 2.2.0
+  m3_floating_toolbar: 0.1.0
   flserial:
     path: flserial
-  usb_serial: ^0.5.2
+  usb_serial: 0.5.2
   serious_python:
     path: python_runtime/src/serious_python
-  web_socket_channel: ^3.0.3
-  code_forge: ^10.5.0
-  extension_type_unions: ^1.0.10
-  rfw: ^1.1.3
-  freeport: ^1.0.1
-  super_context_menu: ^0.9.1
-  super_drag_and_drop: ^0.9.1
-  super_tree: ^0.2.1
-  flex_color_scheme: ^8.4.0
-  flex_color_picker: ^3.7.0
-  vertical_card_pager: ^1.6.3
-  palette_generator_master: ^1.1.0
-  toml: ^0.15.0
+  web_socket_channel: 3.0.3
+  code_forge: 10.6.0
+  extension_type_unions: 1.0.10
+  rfw: 1.1.3
+  freeport: 1.0.1
+  super_context_menu: 0.9.1
+  super_drag_and_drop: 0.9.1
+  super_tree: 0.2.1
+  flex_color_scheme: 8.4.0
+  flex_color_picker: 3.8.0
+  vertical_card_pager: 1.6.3
+  palette_generator_master: 1.1.0
+  toml: 0.15.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  riverpod_generator:
+  riverpod_generator: 2.6.5
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^6.0.0
+  flutter_lints: 6.0.0
   integration_test:
     sdk: flutter
-  build_runner: ^2.5.4
+  build_runner: 2.5.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -739,7 +739,6 @@ class _MaterialComponentShowcaseState
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
