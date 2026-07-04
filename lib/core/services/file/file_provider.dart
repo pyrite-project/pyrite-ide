@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
+import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_tree_view.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
@@ -192,6 +193,162 @@ class FileNotifier extends StateNotifier<Directory?> {
           .read(localFileTreeViewControllerProvider)
           .findNodeById(path.dirname(focusNodeId));
     }
+  }
+
+  List<TreeNode<FileSystemItem>> getSelectedNodes({bool topLevelOnly = true}) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    final selected = controller.getSelectedNodesInVisibleOrder(
+      topLevelOnly: topLevelOnly,
+    );
+    if (selected.isNotEmpty) return selected;
+
+    final focusNodeId = controller.selectedNodeId;
+    final focusNode = focusNodeId == null
+        ? null
+        : controller.findNodeById(focusNodeId);
+    return focusNode == null ? const [] : [focusNode];
+  }
+
+  Future<void> deleteSelectedLocalItems(BuildContext context) async {
+    final nodes = getSelectedNodes();
+    if (nodes.isEmpty) {
+      showEditorSnackBar(context, "先选择一个本地文件或文件夹");
+      return;
+    }
+
+    for (final node in nodes) {
+      if (node.data is FolderItem) {
+        await local.deleteDir(node.id);
+      } else {
+        await local.deleteFile(node.id);
+      }
+    }
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    showEditorSnackBar(context, "已删除 ${nodes.length} 个本地项目");
+  }
+
+  Future<void> uploadSelectedLocalItems(BuildContext context) async {
+    final nodes = getSelectedNodes();
+    if (nodes.isEmpty) {
+      showEditorSnackBar(context, "先选择一个本地文件或文件夹");
+      return;
+    }
+
+    final boardFolderTarget = ref
+        .read(boardProvider.notifier)
+        .getFocusFolderNode();
+    FileConflictAction? conflictPolicy;
+    var uploaded = 0;
+    var skipped = 0;
+
+    try {
+      for (var i = 0; i < nodes.length; i++) {
+        final node = nodes[i];
+        final targetPath = buildBoardUploadTargetPath(
+          sourcePath: node.id,
+          boardFolderPath: boardFolderTarget?.id,
+        );
+        final exists = await _boardPathExists(
+          targetPath,
+          node.data is FolderItem,
+        );
+        if (exists) {
+          final action = await _resolveConflict(
+            context,
+            policy: conflictPolicy,
+            sourcePath: node.id,
+            targetPath: targetPath,
+            isUpload: true,
+          );
+          switch (action) {
+            case FileConflictAction.cancel:
+              showEditorSnackBar(context, "已取消上传");
+              return;
+            case FileConflictAction.skip:
+              skipped++;
+              continue;
+            case FileConflictAction.skipAll:
+              conflictPolicy = FileConflictAction.skipAll;
+              skipped++;
+              continue;
+            case FileConflictAction.overwriteAll:
+              conflictPolicy = FileConflictAction.overwriteAll;
+              break;
+            case FileConflictAction.overwrite:
+              break;
+          }
+        }
+
+        if (node.data is FolderItem) {
+          await ref
+              .read(boardProvider.notifier)
+              .uploadFolder(node.id, targetPath);
+        } else {
+          final bytes = await File(node.id).readAsBytes();
+          ref
+              .read(fileTransferProgressProvider.notifier)
+              .start(
+                direction: FileTransferDirection.upload,
+                scope: FileTransferScope.file,
+                totalFiles: nodes.length,
+                message: '准备上传文件',
+              );
+          await ref
+              .read(boardProvider.notifier)
+              .writeFileBytesWithProgress(
+                targetPath,
+                bytes,
+                currentFile: node.id,
+                index: i + 1,
+                totalFiles: nodes.length,
+              );
+        }
+        uploaded++;
+      }
+
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '上传完成：$uploaded 个，跳过：$skipped 个');
+      showEditorSnackBar(context, "上传完成：$uploaded 个，跳过：$skipped 个");
+    } catch (error) {
+      ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+      rethrow;
+    }
+  }
+
+  Future<bool> _boardPathExists(String targetPath, bool folder) async {
+    try {
+      if (folder) {
+        await ref.read(boardProvider.notifier).getFileList(path: targetPath);
+      } else {
+        await ref.read(boardProvider.notifier).getFileBytes(targetPath);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<FileConflictAction> _resolveConflict(
+    BuildContext context, {
+    required FileConflictAction? policy,
+    required String sourcePath,
+    required String targetPath,
+    required bool isUpload,
+  }) {
+    if (policy == FileConflictAction.overwriteAll) {
+      return Future.value(FileConflictAction.overwrite);
+    }
+    if (policy == FileConflictAction.skipAll) {
+      return Future.value(FileConflictAction.skip);
+    }
+    return showFileConflictDialog(
+      context,
+      sourcePath: sourcePath,
+      targetPath: targetPath,
+      isUpload: isUpload,
+    );
   }
 
   Future<File?> openFile(BuildContext context, String id) async {

@@ -161,6 +161,8 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           message: '准备上传文件夹',
         );
 
+    await _ensureBoardFolder(remotePath, createdDirs);
+
     for (final entity in entities) {
       final relativePath = path
           .relative(entity.path, from: localPath)
@@ -169,12 +171,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
 
       if (entity is io.Directory) {
         debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
-        try {
-          await createFolder(remoteEntityPath);
-          createdDirs.add(remoteEntityPath);
-        } catch (e) {
-          debugPrint('[BoardWS] Failed to create dir: $e');
-        }
+        await _ensureBoardFolder(remoteEntityPath, createdDirs);
       }
     }
 
@@ -187,12 +184,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       final parentDir = _boardPath.dirname(remoteEntityPath);
       if (!createdDirs.contains(parentDir)) {
         debugPrint('[BoardWS] Creating parent dir: $parentDir');
-        try {
-          await createFolder(parentDir);
-          createdDirs.add(parentDir);
-        } catch (e) {
-          debugPrint('[BoardWS] Failed to create parent dir: $e');
-        }
+        await _ensureBoardFolder(parentDir, createdDirs);
       }
       debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
       await writeFileBytesWithProgress(
@@ -203,6 +195,48 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
         totalFiles: files.length,
       );
       debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
+    }
+  }
+
+  Future<void> _ensureBoardFolder(
+    String folderPath,
+    Set<String> createdDirs,
+  ) async {
+    final normalized = _normalizeBoardFolderPath(folderPath);
+    if (normalized == '/') return;
+
+    var current = '/';
+    for (final part in _boardPath.split(normalized)) {
+      if (part.isEmpty || part == '/') continue;
+      current = current == '/'
+          ? _boardPath.join('/', part)
+          : _boardPath.join(current, part);
+      if (createdDirs.contains(current)) continue;
+
+      try {
+        await createFolder(current);
+      } catch (error) {
+        if (!await _boardFolderExists(current)) {
+          debugPrint('[BoardWS] Failed to create dir: $current: $error');
+          rethrow;
+        }
+      }
+      createdDirs.add(current);
+    }
+  }
+
+  String _normalizeBoardFolderPath(String folderPath) {
+    final normalized = _boardPath.normalize(folderPath.replaceAll('\\', '/'));
+    if (normalized == '.' || normalized.isEmpty) return '/';
+    return normalized.startsWith('/') ? normalized : '/$normalized';
+  }
+
+  Future<bool> _boardFolderExists(String folderPath) async {
+    try {
+      await getFileList(path: folderPath);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -282,6 +316,144 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           .read(boardFileTreeViewControllerProvider)
           .findNodeById(_boardPath.dirname(focusNodeId));
     }
+  }
+
+  List<TreeNode<FileSystemItem>> getSelectedNodes({bool topLevelOnly = true}) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    final selected = controller.getSelectedNodesInVisibleOrder(
+      topLevelOnly: topLevelOnly,
+    );
+    if (selected.isNotEmpty) return selected;
+
+    final focusNodeId = controller.selectedNodeId;
+    final focusNode = focusNodeId == null
+        ? null
+        : controller.findNodeById(focusNodeId);
+    return focusNode == null ? const [] : [focusNode];
+  }
+
+  Future<void> deleteSelectedBoardItems(BuildContext context) async {
+    final nodes = getSelectedNodes();
+    if (nodes.isEmpty) {
+      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      return;
+    }
+
+    for (final node in nodes) {
+      if (node.data is FolderItem) {
+        await deleteFolder(node.id);
+      } else {
+        await deleteFile(node.id);
+      }
+    }
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+    showEditorSnackBar(context, "已从设备删除 ${nodes.length} 个项目");
+  }
+
+  Future<void> downloadSelectedBoardItems(BuildContext context) async {
+    final nodes = getSelectedNodes();
+    if (nodes.isEmpty) {
+      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      return;
+    }
+
+    final localWorkspace = ref.read(fileProvider);
+    if (localWorkspace == null) {
+      showEditorSnackBar(context, "先打开一个本地项目");
+      return;
+    }
+
+    final localFolderTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFolderNode();
+    final targetFolder = localFolderTarget?.id ?? localWorkspace.path;
+    FileConflictAction? conflictPolicy;
+    var downloaded = 0;
+    var skipped = 0;
+
+    for (var i = 0; i < nodes.length; i++) {
+      final node = nodes[i];
+      final targetPath = path.join(targetFolder, _boardPath.basename(node.id));
+      final exists = node.data is FolderItem
+          ? await Directory(targetPath).exists()
+          : await File(targetPath).exists();
+      if (exists) {
+        final action = await _resolveConflict(
+          context,
+          policy: conflictPolicy,
+          sourcePath: node.id,
+          targetPath: targetPath,
+          isUpload: false,
+        );
+        switch (action) {
+          case FileConflictAction.cancel:
+            showEditorSnackBar(context, "已取消下载");
+            return;
+          case FileConflictAction.skip:
+            skipped++;
+            continue;
+          case FileConflictAction.skipAll:
+            conflictPolicy = FileConflictAction.skipAll;
+            skipped++;
+            continue;
+          case FileConflictAction.overwriteAll:
+            conflictPolicy = FileConflictAction.overwriteAll;
+            break;
+          case FileConflictAction.overwrite:
+            break;
+        }
+      }
+
+      if (node.data is FolderItem) {
+        await downloadFolder(node.id, targetPath);
+      } else {
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .start(
+              direction: FileTransferDirection.download,
+              scope: FileTransferScope.file,
+              totalFiles: nodes.length,
+              message: '准备下载文件',
+            );
+        final bytes = await getFileBytesWithProgress(
+          node.id,
+          currentFile: node.id,
+          index: i + 1,
+          totalFiles: nodes.length,
+        );
+        final file = File(targetPath);
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes);
+      }
+      downloaded++;
+    }
+
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    ref
+        .read(fileTransferProgressProvider.notifier)
+        .complete(message: '下载完成：$downloaded 个，跳过：$skipped 个');
+    showEditorSnackBar(context, "下载完成：$downloaded 个，跳过：$skipped 个");
+  }
+
+  Future<FileConflictAction> _resolveConflict(
+    BuildContext context, {
+    required FileConflictAction? policy,
+    required String sourcePath,
+    required String targetPath,
+    required bool isUpload,
+  }) {
+    if (policy == FileConflictAction.overwriteAll) {
+      return Future.value(FileConflictAction.overwrite);
+    }
+    if (policy == FileConflictAction.skipAll) {
+      return Future.value(FileConflictAction.skip);
+    }
+    return showFileConflictDialog(
+      context,
+      sourcePath: sourcePath,
+      targetPath: targetPath,
+      isUpload: isUpload,
+    );
   }
 
   Future<File?> openFile(BuildContext context, String id) async {

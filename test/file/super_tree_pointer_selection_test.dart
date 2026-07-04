@@ -5,21 +5,67 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:super_tree/super_tree.dart';
 
 void main() {
+  TreeNode<String> nestedTree() {
+    return TreeNode<String>(
+      id: 'folder',
+      data: 'Folder',
+      children: <TreeNode<String>>[TreeNode<String>(id: 'file', data: 'File')],
+    )..isExpanded = true;
+  }
+
   Widget buildTree({
     required TreeController<String> controller,
     TreeViewConfig<String> logic = const TreeViewConfig<String>(),
+    Widget Function(BuildContext, TreeNode<String>, Widget?)? contentBuilder,
   }) {
     return MaterialApp(
       home: Scaffold(
         body: SuperTreeView<String>(
           controller: controller,
           prefixBuilder: (context, node) => const SizedBox.shrink(),
-          contentBuilder: (context, node, renameField) => Text(node.data),
+          contentBuilder:
+              contentBuilder ?? (context, node, renameField) => Text(node.data),
           logic: logic,
         ),
       ),
     );
   }
+
+  test('selecting child removes selected ancestor', () {
+    final controller = TreeController<String>(
+      roots: <TreeNode<String>>[nestedTree()],
+    );
+
+    controller.toggleSelection('folder');
+    controller.toggleSelection('file');
+
+    expect(controller.selectedNodeIds, isNot(contains('folder')));
+    expect(controller.selectedNodeIds, contains('file'));
+  });
+
+  test('selecting ancestor removes selected descendants', () {
+    final controller = TreeController<String>(
+      roots: <TreeNode<String>>[nestedTree()],
+    );
+
+    controller.toggleSelection('file');
+    controller.toggleSelection('folder');
+
+    expect(controller.selectedNodeIds, contains('folder'));
+    expect(controller.selectedNodeIds, isNot(contains('file')));
+  });
+
+  test('range selection prunes descendants when ancestor is selected', () {
+    final controller = TreeController<String>(
+      roots: <TreeNode<String>>[nestedTree()],
+    );
+
+    controller.setSelectedNodeId('folder');
+    controller.selectRange('file');
+
+    expect(controller.selectedNodeIds, contains('folder'));
+    expect(controller.selectedNodeIds, isNot(contains('file')));
+  });
 
   testWidgets('selects on primary pointer down before tap resolves', (
     WidgetTester tester,
@@ -111,6 +157,89 @@ void main() {
     expect(find.text('Child'), findsOneWidget);
 
     await gesture.up();
+  });
+
+  testWidgets('tapping caret does not toggle expansion twice', (
+    WidgetTester tester,
+  ) async {
+    final root = TreeNode<String>(
+      id: 'root',
+      data: 'Root',
+      children: <TreeNode<String>>[
+        TreeNode<String>(id: 'child', data: 'Child'),
+      ],
+    );
+    final controller = TreeController<String>(roots: <TreeNode<String>>[root]);
+
+    await tester.pumpWidget(buildTree(controller: controller));
+
+    await tester.tap(find.byKey(const Key('expansion_caret_root')));
+    await tester.pump();
+
+    expect(root.isExpanded, isTrue);
+    expect(find.text('Child'), findsOneWidget);
+  });
+
+  testWidgets('ignored primary pointer down does not expand row', (
+    WidgetTester tester,
+  ) async {
+    final root = TreeNode<String>(
+      id: 'root',
+      data: 'Root',
+      children: <TreeNode<String>>[
+        TreeNode<String>(id: 'child', data: 'Child'),
+      ],
+    );
+    final controller = TreeController<String>(roots: <TreeNode<String>>[root]);
+
+    await tester.pumpWidget(
+      buildTree(
+        controller: controller,
+        logic: TreeViewConfig<String>(
+          ignorePrimaryPointerDown: (node, event) => true,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Root'));
+    await tester.pump();
+
+    expect(root.isExpanded, isFalse);
+    expect(find.text('Child'), findsNothing);
+  });
+
+  testWidgets('does not expand folders during ctrl multi-select', (
+    WidgetTester tester,
+  ) async {
+    final root = TreeNode<String>(
+      id: 'root',
+      data: 'Root',
+      children: <TreeNode<String>>[
+        TreeNode<String>(id: 'child', data: 'Child'),
+      ],
+    );
+    final controller = TreeController<String>(roots: <TreeNode<String>>[root]);
+
+    await tester.pumpWidget(
+      buildTree(
+        controller: controller,
+        logic: const TreeViewConfig<String>(
+          selectionMode: SelectionMode.multiple,
+        ),
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Root')),
+      buttons: kPrimaryButton,
+    );
+
+    expect(controller.selectedNodeIds, contains('root'));
+    expect(root.isExpanded, isFalse);
+
+    await gesture.up();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
   });
 
   testWidgets('does not collapse a tap-expanded node on double-click down', (
