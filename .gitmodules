@@ -4,3 +4,6 @@
 [submodule "flserial"]
 	path = flserial
 	url = https://github.com/pyrite-project/flserial
+[submodule "super_tree"]
+	path = super_tree
+	url = https://github.com/pyrite-project/super_tree

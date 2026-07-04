@@ -1468,11 +1468,10 @@ packages:
   super_tree:
     dependency: "direct main"
     description:
-      name: super_tree
-      sha256: e895d002d1ee7c5158ec05b19e60ebb188251587a8f65ceefef06d207720d4de
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.2.1"
+      path: super_tree
+      relative: true
+    source: path
+    version: "0.3.0"
   sync_http:
     dependency: transitive
     description:
