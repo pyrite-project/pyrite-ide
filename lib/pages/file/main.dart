@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -91,17 +92,24 @@ class ProjectFiles extends ConsumerWidget {
     Widget child,
   ) {
     return DropRegion(
-      formats: const [],
+      formats: const [Formats.fileUri, Formats.plainText],
       hitTestBehavior: HitTestBehavior.opaque,
       onDropOver: (event) =>
-          _hasDragSource(event.session, _FileDragSource.board)
+          _hasDragSource(event.session, _FileDragSource.board) ||
+              _hasExternalFiles(event.session)
           ? DropOperation.copy
           : DropOperation.none,
       onPerformDrop: (event) async {
         final data = _dragData(event.session, _FileDragSource.board);
-        if (data == null || data.paths.isEmpty) return;
-        _selectBoardPaths(ref, data.paths);
-        await _downloadSelectedBoardItems(context, ref);
+        if (data != null && data.paths.isNotEmpty) {
+          _selectBoardPaths(ref, data.paths);
+          await _downloadSelectedBoardItems(context, ref);
+          return;
+        }
+
+        final paths = await _externalFilePaths(event.session);
+        if (paths.isEmpty) return;
+        await _importExternalPaths(context, ref, paths);
       },
       child: child,
     );
@@ -113,18 +121,25 @@ class ProjectFiles extends ConsumerWidget {
     Widget child,
   ) {
     return DropRegion(
-      formats: const [],
+      formats: const [Formats.fileUri, Formats.plainText],
       hitTestBehavior: HitTestBehavior.opaque,
       onDropOver: (event) =>
           ref.read(getUsbSerialProvider()).isConnected &&
-              _hasDragSource(event.session, _FileDragSource.local)
+              (_hasDragSource(event.session, _FileDragSource.local) ||
+                  _hasExternalFiles(event.session))
           ? DropOperation.copy
           : DropOperation.none,
       onPerformDrop: (event) async {
         final data = _dragData(event.session, _FileDragSource.local);
-        if (data == null || data.paths.isEmpty) return;
-        _selectLocalPaths(ref, data.paths);
-        await _uploadSelectedLocalItems(context, ref);
+        if (data != null && data.paths.isNotEmpty) {
+          _selectLocalPaths(ref, data.paths);
+          await _uploadSelectedLocalItems(context, ref);
+          return;
+        }
+
+        final paths = await _externalFilePaths(event.session);
+        if (paths.isEmpty) return;
+        await _uploadLocalPaths(context, ref, paths);
       },
       child: child,
     );
@@ -174,8 +189,72 @@ class ProjectFiles extends ConsumerWidget {
     }
   }
 
+  Future<void> _importExternalPaths(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+  ) async {
+    try {
+      await ref.read(fileProvider.notifier).importExternalPaths(context, paths);
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(context, "导入失败：$error");
+    }
+  }
+
+  Future<void> _uploadLocalPaths(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+  ) async {
+    try {
+      await ref.read(fileProvider.notifier).uploadLocalPaths(context, paths);
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: "上传文件到设备",
+      );
+      if (sendCtrlC) {
+        ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(context, "上传失败：$error");
+    }
+  }
+
   bool _hasDragSource(DropSession session, _FileDragSource source) {
     return _dragData(session, source) != null;
+  }
+
+  bool _hasExternalFiles(DropSession session) {
+    return session.items.any((item) => item.canProvide(Formats.fileUri));
+  }
+
+  Future<List<String>> _externalFilePaths(DropSession session) async {
+    final paths = <String>[];
+    for (final item in session.items) {
+      final uri = await _readFileUri(item);
+      if (uri != null && uri.isScheme('file')) {
+        paths.add(uri.toFilePath());
+      }
+    }
+    return paths;
+  }
+
+  Future<Uri?> _readFileUri(DropItem item) async {
+    final reader = item.dataReader;
+    if (reader == null || !reader.canProvide(Formats.fileUri)) return null;
+
+    final completer = Completer<Uri?>();
+    final progress = reader.getValue<Uri>(
+      Formats.fileUri,
+      (value) => completer.complete(value),
+      onError: completer.completeError,
+    );
+    if (progress == null) return null;
+    return completer.future;
   }
 
   _FileDragData? _dragData(DropSession session, _FileDragSource source) {
@@ -231,7 +310,7 @@ class ProjectFiles extends ConsumerWidget {
             ? _localDragPaths(ref, node)
             : _boardDragPaths(ref, node);
         if (paths.isEmpty) return null;
-        return DragItem(
+        final item = DragItem(
           localData: {
             _dragSourceKey: source == _FileDragSource.local
                 ? _localDragSourceValue
@@ -239,6 +318,8 @@ class ProjectFiles extends ConsumerWidget {
             _dragPathsKey: paths,
           },
         );
+        item.add(Formats.plainText(paths.join('\n')));
+        return item;
       },
       child: child,
     );

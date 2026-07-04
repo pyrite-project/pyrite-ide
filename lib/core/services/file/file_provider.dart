@@ -317,6 +317,173 @@ class FileNotifier extends StateNotifier<Directory?> {
     }
   }
 
+  Future<void> uploadLocalPaths(
+    BuildContext context,
+    List<String> sourcePaths,
+  ) async {
+    if (sourcePaths.isEmpty) return;
+
+    final boardFolderTarget = ref
+        .read(boardProvider.notifier)
+        .getFocusFolderNode();
+    FileConflictAction? conflictPolicy;
+    var uploaded = 0;
+    var skipped = 0;
+
+    try {
+      for (var i = 0; i < sourcePaths.length; i++) {
+        final sourcePath = sourcePaths[i];
+        final isFolder = await Directory(sourcePath).exists();
+        final targetPath = buildBoardUploadTargetPath(
+          sourcePath: sourcePath,
+          boardFolderPath: boardFolderTarget?.id,
+        );
+        final exists = await _boardPathExists(targetPath, isFolder);
+        if (exists) {
+          final action = await _resolveConflict(
+            context,
+            policy: conflictPolicy,
+            sourcePath: sourcePath,
+            targetPath: targetPath,
+            isUpload: true,
+          );
+          switch (action) {
+            case FileConflictAction.cancel:
+              showEditorSnackBar(context, "已取消上传");
+              return;
+            case FileConflictAction.skip:
+              skipped++;
+              continue;
+            case FileConflictAction.skipAll:
+              conflictPolicy = FileConflictAction.skipAll;
+              skipped++;
+              continue;
+            case FileConflictAction.overwriteAll:
+              conflictPolicy = FileConflictAction.overwriteAll;
+              break;
+            case FileConflictAction.overwrite:
+              break;
+          }
+        }
+
+        if (isFolder) {
+          await ref
+              .read(boardProvider.notifier)
+              .uploadFolder(sourcePath, targetPath);
+        } else {
+          final bytes = await File(sourcePath).readAsBytes();
+          ref
+              .read(fileTransferProgressProvider.notifier)
+              .start(
+                direction: FileTransferDirection.upload,
+                scope: FileTransferScope.file,
+                totalFiles: sourcePaths.length,
+                message: '准备上传文件',
+              );
+          await ref
+              .read(boardProvider.notifier)
+              .writeFileBytesWithProgress(
+                targetPath,
+                bytes,
+                currentFile: sourcePath,
+                index: i + 1,
+                totalFiles: sourcePaths.length,
+              );
+        }
+        uploaded++;
+      }
+
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '上传完成：$uploaded 个，跳过：$skipped 个');
+      showEditorSnackBar(context, "上传完成：$uploaded 个，跳过：$skipped 个");
+    } catch (error) {
+      ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+      rethrow;
+    }
+  }
+
+  Future<void> importExternalPaths(
+    BuildContext context,
+    List<String> sourcePaths,
+  ) async {
+    if (sourcePaths.isEmpty) return;
+    final localWorkspace = state;
+    if (localWorkspace == null) {
+      showEditorSnackBar(context, "先打开一个本地项目");
+      return;
+    }
+
+    final localFolderTarget = getFocusFolderNode();
+    final targetFolder = localFolderTarget?.id ?? localWorkspace.path;
+    FileConflictAction? conflictPolicy;
+    var imported = 0;
+    var skipped = 0;
+
+    for (final sourcePath in sourcePaths) {
+      final sourceDir = Directory(sourcePath);
+      final isFolder = await sourceDir.exists();
+      final targetPath = path.join(targetFolder, path.basename(sourcePath));
+      final exists = isFolder
+          ? await Directory(targetPath).exists()
+          : await File(targetPath).exists();
+      if (exists) {
+        final action = await _resolveConflict(
+          context,
+          policy: conflictPolicy,
+          sourcePath: sourcePath,
+          targetPath: targetPath,
+          isUpload: false,
+        );
+        switch (action) {
+          case FileConflictAction.cancel:
+            showEditorSnackBar(context, "已取消导入");
+            return;
+          case FileConflictAction.skip:
+            skipped++;
+            continue;
+          case FileConflictAction.skipAll:
+            conflictPolicy = FileConflictAction.skipAll;
+            skipped++;
+            continue;
+          case FileConflictAction.overwriteAll:
+            conflictPolicy = FileConflictAction.overwriteAll;
+            break;
+          case FileConflictAction.overwrite:
+            break;
+        }
+      }
+
+      if (isFolder) {
+        await _copyDirectory(sourceDir, Directory(targetPath));
+      } else {
+        final targetFile = File(targetPath);
+        await targetFile.parent.create(recursive: true);
+        await File(sourcePath).copy(targetPath);
+      }
+      imported++;
+    }
+
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    showEditorSnackBar(context, "导入完成：$imported 个，跳过：$skipped 个");
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory target) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(recursive: true)) {
+      final relativePath = path.relative(entity.path, from: source.path);
+      final targetPath = path.join(target.path, relativePath);
+      if (entity is Directory) {
+        await Directory(targetPath).create(recursive: true);
+      } else if (entity is File) {
+        final targetFile = File(targetPath);
+        await targetFile.parent.create(recursive: true);
+        await entity.copy(targetPath);
+      }
+    }
+  }
+
   Future<bool> _boardPathExists(String targetPath, bool folder) async {
     try {
       if (folder) {
