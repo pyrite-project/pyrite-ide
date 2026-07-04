@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/file/local_workspace_provider.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 
 final gitStatusSummaryProvider = Provider<GitStatusSummary?>((ref) {
   final workspacePath = ref.watch(localWorkspaceProvider)?.path;
@@ -17,80 +19,66 @@ class GitStatusSummary {
 
   static GitStatusSummary? inspect(String? workspacePath) {
     try {
-      final rootPath = _discoverRoot(workspacePath);
-      if (rootPath == null) return null;
-
-      final gitDir = _resolveGitDir(rootPath);
-      if (gitDir == null) return null;
-
-      return GitStatusSummary(
-        rootPath: rootPath,
-        branchLabel: _readHeadLabel(gitDir) ?? 'Git 仓库',
+      GitDebugLog.log(
+        'GitStatusSummary.inspect start workspace=$workspacePath',
       );
-    } on FileSystemException {
-      return null;
-    } on FormatException {
-      return null;
-    }
-  }
+      if (workspacePath == null || workspacePath.isEmpty) return null;
+      final normalizedPath = p.normalize(workspacePath);
+      final startPath = Directory(normalizedPath).existsSync()
+          ? normalizedPath
+          : p.dirname(normalizedPath);
+      GitDebugLog.log('GitStatusSummary.discover start startPath=$startPath');
+      final gitDir = Repository.discover(startPath: startPath);
+      GitDebugLog.log('GitStatusSummary.discover end gitDir=$gitDir');
+      GitDebugLog.log('GitStatusSummary.open start gitDir=$gitDir');
+      final repo = Repository.open(gitDir);
 
-  static String? _discoverRoot(String? workspacePath) {
-    if (workspacePath == null || workspacePath.isEmpty) return null;
-
-    var current = p.normalize(workspacePath);
-    if (!Directory(current).existsSync()) {
-      current = p.dirname(current);
-    }
-
-    while (true) {
-      final dotGitPath = p.join(current, '.git');
-      final dotGitType = FileSystemEntity.typeSync(dotGitPath);
-      if (dotGitType == FileSystemEntityType.directory ||
-          dotGitType == FileSystemEntityType.file) {
-        return current;
+      try {
+        GitDebugLog.log(
+          'GitStatusSummary.open end path=${repo.path} workdir=${repo.workdir}',
+        );
+        final summary = GitStatusSummary(
+          rootPath: _rootPath(repo, gitDir),
+          branchLabel: _branchLabel(repo),
+        );
+        GitDebugLog.log(
+          'GitStatusSummary.inspect end root=${summary.rootPath} '
+          'branch=${summary.branchLabel}',
+        );
+        return summary;
+      } finally {
+        GitDebugLog.log('GitStatusSummary.free start gitDir=$gitDir');
+        repo.free();
+        GitDebugLog.log('GitStatusSummary.free end gitDir=$gitDir');
       }
-
-      final parent = p.dirname(current);
-      if (parent == current) return null;
-      current = parent;
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitStatusSummary.inspect failed workspace=$workspacePath',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
     }
   }
 
-  static String? _resolveGitDir(String rootPath) {
-    final dotGitPath = p.join(rootPath, '.git');
-    final dotGitType = FileSystemEntity.typeSync(dotGitPath);
-    if (dotGitType == FileSystemEntityType.directory) {
-      return dotGitPath;
-    }
-    if (dotGitType != FileSystemEntityType.file) return null;
-
-    final contents = File(dotGitPath).readAsStringSync();
-    final match = RegExp(
-      r'^gitdir:\s*(.+)\s*$',
-      multiLine: true,
-    ).firstMatch(contents);
-    final gitDirPath = match?.group(1)?.trim();
-    if (gitDirPath == null || gitDirPath.isEmpty) return null;
-
-    return p.normalize(
-      p.isAbsolute(gitDirPath) ? gitDirPath : p.join(rootPath, gitDirPath),
-    );
+  static String _rootPath(Repository repo, String gitDir) {
+    final workdir = repo.workdir;
+    if (workdir.isEmpty) return p.normalize(p.dirname(gitDir));
+    return p.normalize(workdir);
   }
 
-  static String? _readHeadLabel(String gitDir) {
-    final headPath = p.join(gitDir, 'HEAD');
-    if (!File(headPath).existsSync()) return null;
-
-    final head = File(headPath).readAsStringSync().trim();
-    const branchPrefix = 'ref: refs/heads/';
-    const refPrefix = 'ref: refs/';
-    if (head.startsWith(branchPrefix)) {
-      return head.substring(branchPrefix.length);
+  static String _branchLabel(Repository repo) {
+    try {
+      if (repo.isEmpty) return 'Git 仓库';
+      final head = repo.head;
+      try {
+        if (head.isBranch) return head.shorthand;
+        return head.target.sha.substring(0, 7);
+      } finally {
+        head.free();
+      }
+    } catch (_) {
+      return 'Git 仓库';
     }
-    if (head.startsWith(refPrefix)) {
-      return head.substring(refPrefix.length);
-    }
-    if (head.length >= 7) return head.substring(0, 7);
-    return head.isEmpty ? null : head;
   }
 }

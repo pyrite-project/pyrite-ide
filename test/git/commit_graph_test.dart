@@ -46,6 +46,26 @@ void main() {
     expect(rows[3].nodeColorIndex, 0);
     expect(rows[3].laneCount, 1);
   });
+
+  test('commit graph keeps the shared pre-branch history on main color', () {
+    final rows = buildGitCommitGraphRowsForTesting([
+      _commit('merge', ['left', 'right']),
+      _commit('left', ['base']),
+      _commit('right', ['base']),
+      _commit('base'),
+    ]);
+
+    expect(rows[1].nodeColorIndex, 0);
+    expect(rows[1].parentEdges, const [
+      GitCommitGraphDebugEdge(fromLane: 0, toLane: 0),
+    ]);
+    expect(rows[2].nodeColorIndex, 1);
+    expect(rows[2].parentEdges, const [
+      GitCommitGraphDebugEdge(fromLane: 1, toLane: 0, colorIndex: 1),
+    ]);
+    expect(rows[3].nodeLane, 0);
+    expect(rows[3].nodeColorIndex, 0);
+  });
 }
 
 GitCommitInfo _commit(String sha, [List<String> parents = const []]) {

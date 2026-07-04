@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
@@ -32,10 +33,12 @@ class _GitPageState extends ConsumerState<GitPage> {
   late final TextEditingController _publicKeyController;
   late final TextEditingController _privateKeyController;
   late final TextEditingController _passphraseController;
+  String? _lastLoggedBuildSignature;
 
   @override
   void initState() {
     super.initState();
+    GitDebugLog.log('GitPage.initState');
     _messageController = TextEditingController();
     _authorController = TextEditingController(text: _fallbackAuthorName);
     _emailController = TextEditingController(text: _fallbackAuthorEmail);
@@ -44,12 +47,11 @@ class _GitPageState extends ConsumerState<GitPage> {
     _publicKeyController = TextEditingController();
     _privateKeyController = TextEditingController();
     _passphraseController = TextEditingController();
-
-    Future.microtask(() => ref.read(gitProvider.notifier).refresh());
   }
 
   @override
   void dispose() {
+    GitDebugLog.log('GitPage.dispose');
     _messageController.dispose();
     _authorController.dispose();
     _emailController.dispose();
@@ -81,6 +83,13 @@ class _GitPageState extends ConsumerState<GitPage> {
     });
     final state = ref.watch(gitProvider);
     final snapshot = state.snapshot;
+    if (GitDebugLog.enabled) {
+      final buildSignature = _gitPageBuildSignature(state, snapshot);
+      if (buildSignature != _lastLoggedBuildSignature) {
+        _lastLoggedBuildSignature = buildSignature;
+        GitDebugLog.log('GitPage.build $buildSignature');
+      }
+    }
     if (snapshot == null) {
       if (state.isBusy) {
         return const Center(child: CircularProgressIndicator());
@@ -119,7 +128,9 @@ class _GitPageState extends ConsumerState<GitPage> {
         ),
       );
     }
+    GitDebugLog.log('GitPage.syncCommitIdentity start');
     _syncCommitIdentity(snapshot);
+    GitDebugLog.log('GitPage.syncCommitIdentity end');
 
     return DefaultTabController(
       length: 7,
@@ -142,12 +153,12 @@ class _GitPageState extends ConsumerState<GitPage> {
             child: TabBarView(
               children: [
                 _changesTab(context, state, snapshot),
-                _branchesTab(state, snapshot),
-                _remotesTab(state, snapshot),
-                _conflictsTab(state, snapshot),
-                _historyTab(state, snapshot),
-                _advancedTab(state, snapshot),
-                _credentialsTab(state),
+                Builder(builder: (_) => _branchesTab(state, snapshot)),
+                Builder(builder: (_) => _remotesTab(state, snapshot)),
+                Builder(builder: (_) => _conflictsTab(state, snapshot)),
+                Builder(builder: (_) => _historyTab(state, snapshot)),
+                Builder(builder: (_) => _advancedTab(state, snapshot)),
+                Builder(builder: (_) => _credentialsTab(state)),
               ],
             ),
           ),
@@ -1654,13 +1665,18 @@ List<_CommitGraphRow> _buildCommitGraphRows(List<GitCommitInfo> commits) {
             anchorLaneIndex = targetLaneIndex;
           } else {
             edgeColorIndex = nodeLane.colorIndex;
+            final parentLane = lanesAfter[parentLaneIndex];
+            final parentColorIndex = _mainlineColorIndex(
+              parentLane.colorIndex,
+              nodeLane.colorIndex,
+            );
             lanesAfter.removeAt(laneIndex);
             targetLaneIndex = parentLaneIndex > laneIndex
                 ? parentLaneIndex - 1
                 : parentLaneIndex;
             lanesAfter[targetLaneIndex] = _CommitGraphLane(
               sha: parentSha,
-              colorIndex: nodeLane.colorIndex,
+              colorIndex: parentColorIndex,
             );
             anchorLaneIndex = targetLaneIndex;
           }
@@ -1798,6 +1814,8 @@ void _addCommitGraphEdge(List<_CommitGraphEdge> edges, _CommitGraphEdge edge) {
     edges.add(edge);
   }
 }
+
+int _mainlineColorIndex(int left, int right) => left < right ? left : right;
 
 int _largestInt(List<int> values) {
   return values.reduce((value, element) => value > element ? value : element);
@@ -2246,6 +2264,12 @@ GitStatusEntry? _statusEntryForPath(List<GitStatusEntry> entries, String path) {
 }
 
 List<_DiffFileItem> _diffFilesFromSnapshot(GitRepositorySnapshot snapshot) {
+  if (GitDebugLog.enabled) {
+    GitDebugLog.log(
+      'GitPage._diffFilesFromSnapshot start stagedPatch=${snapshot.stagedPatch.length} '
+      'unstagedPatch=${snapshot.unstagedPatch.length}',
+    );
+  }
   final files = <_DiffFileItem>[
     ..._diffFilesFromPatch(snapshot.stagedPatch, staged: true),
     ..._diffFilesFromPatch(snapshot.unstagedPatch, staged: false),
@@ -2256,11 +2280,22 @@ List<_DiffFileItem> _diffFilesFromSnapshot(GitRepositorySnapshot snapshot) {
     final key = '${file.staged}\u0000${file.path}';
     if (seen.add(key)) deduped.add(file);
   }
+  if (GitDebugLog.enabled) {
+    GitDebugLog.log(
+      'GitPage._diffFilesFromSnapshot end files=${files.length} '
+      'deduped=${deduped.length}',
+    );
+  }
   return deduped;
 }
 
 List<_DiffFileItem> _diffFilesFromPatch(String patch, {required bool staged}) {
   if (patch.trim().isEmpty) return const [];
+  if (GitDebugLog.enabled) {
+    GitDebugLog.log(
+      'GitPage._diffFilesFromPatch start staged=$staged bytes=${patch.length}',
+    );
+  }
   final files = <_DiffFileItem>[];
   final lines = patch
       .replaceAll('\r\n', '\n')
@@ -2284,6 +2319,11 @@ List<_DiffFileItem> _diffFilesFromPatch(String patch, {required bool staged}) {
   }
   flushSection();
 
+  if (GitDebugLog.enabled) {
+    GitDebugLog.log(
+      'GitPage._diffFilesFromPatch end staged=$staged files=${files.length}',
+    );
+  }
   return files;
 }
 
@@ -2377,6 +2417,22 @@ _DiffFileItem? _findDiffFileForStatusEntry(
     if (file.path == path) return file;
   }
   return null;
+}
+
+String _gitPageBuildSignature(
+  GitViewState state,
+  GitRepositorySnapshot? snapshot,
+) {
+  if (snapshot == null) {
+    return 'snapshot=null busy=${state.isBusy} workspace=${state.workspacePath} '
+        'error=${state.error != null} message=${state.lastMessage != null}';
+  }
+  return 'root=${snapshot.rootPath} branch=${snapshot.branchLabel} '
+      'busy=${state.isBusy} status=${snapshot.statusEntries.length} '
+      'branches=${snapshot.branches.length} commits=${snapshot.commits.length} '
+      'selected=${state.selectedPath} stagedPatch=${snapshot.stagedPatch.length} '
+      'unstagedPatch=${snapshot.unstagedPatch.length} '
+      'error=${state.error != null} message=${state.lastMessage != null}';
 }
 
 class _ThreeWayConflictPreview extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
@@ -16,10 +17,8 @@ void main() {
       );
 
       try {
-        _runGit(tempDir.path, ['init']);
-        _configureIdentity(tempDir.path);
-
         final service = GitRepositoryService();
+        await _initTestRepository(service, tempDir.path);
         final readmePath = p.join(tempDir.path, 'README.md');
         File(readmePath).writeAsStringSync('hello\n');
 
@@ -66,10 +65,8 @@ void main() {
     );
 
     try {
-      _runGit(tempDir.path, ['init']);
-      _configureIdentity(tempDir.path);
-
       final service = GitRepositoryService();
+      await _initTestRepository(service, tempDir.path);
       File(
         p.join(tempDir.path, 'new_file.txt'),
       ).writeAsStringSync('first\nsecond\n');
@@ -82,6 +79,141 @@ void main() {
       expect(snapshot.unstagedPatch, contains('+++ b/new_file.txt'));
       expect(selectedPatch, contains('+first'));
       expect(selectedPatch, contains('+second'));
+    } finally {
+      tempDir.deleteSync(recursive: true);
+    }
+  });
+
+  test(
+    'GitRepositoryService prunes ignored directories while scanning status',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'pyrite_git_ignored_scan_test_',
+      );
+
+      try {
+        final service = GitRepositoryService();
+        await _initTestRepository(service, tempDir.path);
+        File(
+          p.join(tempDir.path, '.gitignore'),
+        ).writeAsStringSync('ignored/\n');
+        await _commitPaths(service, tempDir.path, [
+          '.gitignore',
+        ], 'Ignore cache');
+
+        final ignoredDir = Directory(p.join(tempDir.path, 'ignored'))
+          ..createSync();
+        for (var i = 0; i < 100; i++) {
+          File(
+            p.join(ignoredDir.path, 'generated_$i.txt'),
+          ).writeAsStringSync('ignored $i\n');
+        }
+        File(
+          p.join(tempDir.path, 'visible.txt'),
+        ).writeAsStringSync('visible\n');
+
+        final snapshot = await service.loadSnapshot(tempDir.path);
+
+        expect(snapshot!.statusEntries.map((entry) => entry.path), [
+          'visible.txt',
+        ]);
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
+
+  test('GitRepositoryService limits large untracked patch previews', () async {
+    final tempDir = Directory.systemTemp.createTempSync(
+      'pyrite_git_large_untracked_test_',
+    );
+
+    try {
+      final service = GitRepositoryService();
+      await _initTestRepository(service, tempDir.path);
+      File(
+        p.join(tempDir.path, 'large.txt'),
+      ).writeAsStringSync('${'x' * (300 * 1024)}\n');
+
+      final snapshot = await service.loadSnapshot(tempDir.path);
+
+      expect(snapshot!.statusEntries.single.path, 'large.txt');
+      expect(snapshot.unstagedPatch, contains('untracked file omitted'));
+      expect(snapshot.unstagedPatch.length, lessThan(2048));
+    } finally {
+      tempDir.deleteSync(recursive: true);
+    }
+  });
+
+  test(
+    'GitRepositoryService collapses nested repositories in status',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'pyrite_git_nested_repo_scan_test_',
+      );
+
+      try {
+        final service = GitRepositoryService();
+        await _initTestRepository(service, tempDir.path);
+        File(p.join(tempDir.path, 'README.md')).writeAsStringSync('hello\n');
+        await _commitPaths(service, tempDir.path, ['README.md'], 'Initial');
+
+        final nestedDir = Directory(p.join(tempDir.path, 'nested_repo'))
+          ..createSync();
+        await _initTestRepository(service, nestedDir.path);
+        File(
+          p.join(nestedDir.path, 'nested.txt'),
+        ).writeAsStringSync('nested\n');
+
+        final snapshot = await service.loadSnapshot(tempDir.path);
+
+        expect(snapshot!.statusEntries.map((entry) => entry.path), [
+          'nested_repo',
+        ]);
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
+
+  test('GitRepositoryService reads packed remote branches safely', () async {
+    final tempDir = Directory.systemTemp.createTempSync(
+      'pyrite_git_packed_remote_branch_test_',
+    );
+
+    try {
+      final service = GitRepositoryService();
+      await _initTestRepository(service, tempDir.path);
+      File(p.join(tempDir.path, 'README.md')).writeAsStringSync('hello\n');
+      await _commitPaths(service, tempDir.path, ['README.md'], 'Initial');
+
+      final gitDir = Repository.discover(startPath: tempDir.path);
+      final sha = _headSha(gitDir);
+      File(p.join(gitDir, 'packed-refs')).writeAsStringSync(
+        [
+          '# pack-refs with: peeled fully-peeled sorted',
+          '$sha refs/remotes/origin/feature/demo',
+          '$sha refs/remotes/origin/main',
+          '',
+        ].join('\n'),
+      );
+      final originRefs = Directory(p.join(gitDir, 'refs', 'remotes', 'origin'))
+        ..createSync(recursive: true);
+      File(
+        p.join(originRefs.path, 'HEAD'),
+      ).writeAsStringSync('ref: refs/remotes/origin/main\n');
+
+      final snapshot = await service.loadSnapshot(tempDir.path);
+      final remoteBranches = snapshot!.branches
+          .where((branch) => branch.isRemote)
+          .map((branch) => branch.name)
+          .toList();
+
+      expect(
+        remoteBranches,
+        containsAll(['origin/feature/demo', 'origin/main']),
+      );
+      expect(remoteBranches, isNot(contains('origin/HEAD')));
     } finally {
       tempDir.deleteSync(recursive: true);
     }
@@ -397,24 +529,30 @@ void main() {
       final sourceDir = Directory(p.join(tempDir.path, 'source'))..createSync();
       final workDir = Directory(p.join(tempDir.path, 'work'))..createSync();
 
-      _runGit(remoteDir.path, ['init', '--bare']);
-      _runGit(sourceDir.path, ['init']);
-      _runGit(sourceDir.path, ['checkout', '-b', 'main']);
-      _configureIdentity(sourceDir.path);
+      final remoteRepo = Repository.init(path: remoteDir.path, bare: true);
+      remoteRepo.free();
+
+      final service = GitRepositoryService();
+      await _initTestRepository(service, sourceDir.path);
       File(p.join(sourceDir.path, 'README.md')).writeAsStringSync('main\n');
-      _runGit(sourceDir.path, ['add', 'README.md']);
-      _runGit(sourceDir.path, ['commit', '-m', 'Initial commit']);
-      _runGit(sourceDir.path, ['remote', 'add', 'origin', remoteDir.path]);
-      _runGit(sourceDir.path, ['push', 'origin', 'main']);
-      _runGit(sourceDir.path, ['checkout', '-b', 'feature/git']);
+      await _commitPaths(service, sourceDir.path, [
+        'README.md',
+      ], 'Initial commit');
+      await service.createBranch(sourceDir.path, 'main');
+      await service.checkoutBranch(sourceDir.path, 'main');
+      await service.addRemote(sourceDir.path, 'origin', remoteDir.path);
+      await service.push(sourceDir.path, 'origin', const GitCredentialDraft());
+
+      await service.createBranch(sourceDir.path, 'feature/git');
+      await service.checkoutBranch(sourceDir.path, 'feature/git');
       File(
         p.join(sourceDir.path, 'feature.txt'),
       ).writeAsStringSync('feature\n');
-      _runGit(sourceDir.path, ['add', 'feature.txt']);
-      _runGit(sourceDir.path, ['commit', '-m', 'Feature commit']);
-      _runGit(sourceDir.path, ['push', 'origin', 'feature/git']);
+      await _commitPaths(service, sourceDir.path, [
+        'feature.txt',
+      ], 'Feature commit');
+      await service.push(sourceDir.path, 'origin', const GitCredentialDraft());
 
-      final service = GitRepositoryService();
       await service.initRepository(workDir.path);
       await service.addRemote(workDir.path, 'origin', remoteDir.path);
       await service.fetch(workDir.path, 'origin', const GitCredentialDraft());
@@ -430,13 +568,10 @@ void main() {
         remote: true,
       );
 
-      expect(
-        _gitOutput(workDir.path, ['branch', '--show-current']),
-        'feature/git',
-      );
       snapshot = await service.loadSnapshot(workDir.path);
+      expect(snapshot!.branchLabel, 'feature/git');
       expect(
-        snapshot!.branches
+        snapshot.branches
             .singleWhere((branch) => branch.name == 'feature/git')
             .upstream,
         'origin/feature/git',
@@ -454,23 +589,26 @@ void main() {
       );
 
       try {
-        _runGit(tempDir.path, ['init']);
-        _runGit(tempDir.path, ['checkout', '-b', 'main']);
-        _configureIdentity(tempDir.path);
-
+        final service = GitRepositoryService();
+        await _initTestRepository(service, tempDir.path);
         final trackedFile = File(p.join(tempDir.path, 'tracked.txt'));
         trackedFile.writeAsStringSync('main\n');
-        _runGit(tempDir.path, ['add', 'tracked.txt']);
-        _runGit(tempDir.path, ['commit', '-m', 'Initial commit']);
+        await _commitPaths(service, tempDir.path, [
+          'tracked.txt',
+        ], 'Initial commit');
+        await service.createBranch(tempDir.path, 'main');
+        await service.checkoutBranch(tempDir.path, 'main');
 
-        _runGit(tempDir.path, ['checkout', '-b', 'target']);
+        await service.createBranch(tempDir.path, 'target');
+        await service.checkoutBranch(tempDir.path, 'target');
         trackedFile.writeAsStringSync('target\n');
-        _runGit(tempDir.path, ['commit', '-am', 'Target change']);
+        await _commitPaths(service, tempDir.path, [
+          'tracked.txt',
+        ], 'Target change');
 
-        _runGit(tempDir.path, ['checkout', 'main']);
+        await service.checkoutBranch(tempDir.path, 'main');
         trackedFile.writeAsStringSync('local\n');
 
-        final service = GitRepositoryService();
         await expectLater(
           service.checkoutBranch(tempDir.path, 'target'),
           throwsA(
@@ -482,7 +620,8 @@ void main() {
           ),
         );
 
-        expect(_gitOutput(tempDir.path, ['branch', '--show-current']), 'main');
+        final snapshot = await service.loadSnapshot(tempDir.path);
+        expect(snapshot!.branchLabel, 'main');
       } finally {
         tempDir.deleteSync(recursive: true);
       }
@@ -497,33 +636,34 @@ void main() {
       );
 
       try {
-        _runGit(tempDir.path, ['init']);
-        _runGit(tempDir.path, ['checkout', '-b', 'main']);
-        _configureIdentity(tempDir.path);
-
+        final service = GitRepositoryService();
+        await _initTestRepository(service, tempDir.path);
         final trackedFile = File(p.join(tempDir.path, 'tracked.txt'));
         trackedFile.writeAsStringSync('main\n');
-        _runGit(tempDir.path, ['add', 'tracked.txt']);
-        _runGit(tempDir.path, ['commit', '-m', 'Initial commit']);
+        await _commitPaths(service, tempDir.path, [
+          'tracked.txt',
+        ], 'Initial commit');
+        await service.createBranch(tempDir.path, 'main');
+        await service.checkoutBranch(tempDir.path, 'main');
 
-        _runGit(tempDir.path, ['checkout', '-b', 'target']);
+        await service.createBranch(tempDir.path, 'target');
+        await service.checkoutBranch(tempDir.path, 'target');
         trackedFile.writeAsStringSync('target\n');
-        _runGit(tempDir.path, ['commit', '-am', 'Target change']);
+        await _commitPaths(service, tempDir.path, [
+          'tracked.txt',
+        ], 'Target change');
 
-        _runGit(tempDir.path, ['checkout', 'main']);
+        await service.checkoutBranch(tempDir.path, 'main');
         trackedFile.writeAsStringSync('local\n');
 
-        final service = GitRepositoryService();
         await service.discardTrackedPathsAndCheckoutBranch(
           tempDir.path,
           'target',
           ['tracked.txt'],
         );
 
-        expect(
-          _gitOutput(tempDir.path, ['branch', '--show-current']),
-          'target',
-        );
+        final snapshot = await service.loadSnapshot(tempDir.path);
+        expect(snapshot!.branchLabel, 'target');
         expect(trackedFile.readAsStringSync(), 'target\n');
       } finally {
         tempDir.deleteSync(recursive: true);
@@ -537,10 +677,8 @@ void main() {
     );
 
     try {
-      _runGit(tempDir.path, ['init']);
-      _configureIdentity(tempDir.path);
-
       final service = GitRepositoryService();
+      await _initTestRepository(service, tempDir.path);
       File(p.join(tempDir.path, 'README.md')).writeAsStringSync('hello\n');
       await service.stage(tempDir.path, ['README.md']);
       await service.commit(
@@ -566,10 +704,8 @@ void main() {
     );
 
     try {
-      _runGit(tempDir.path, ['init']);
-      _configureIdentity(tempDir.path);
-
       final service = GitRepositoryService();
+      await _initTestRepository(service, tempDir.path);
       final trackedFile = File(p.join(tempDir.path, 'tracked.txt'));
       final untrackedFile = File(p.join(tempDir.path, 'untracked.txt'));
       trackedFile.writeAsStringSync('original\n');
@@ -608,25 +744,60 @@ void main() {
   });
 }
 
-void _runGit(String rootPath, List<String> args) {
-  final result = Process.runSync('git', ['-C', rootPath, ...args]);
-  if (result.exitCode != 0) {
-    throw StateError(result.stderr);
-  }
+Future<void> _initTestRepository(
+  GitRepositoryService service,
+  String rootPath,
+) async {
+  await service.initRepository(rootPath);
+  _configureIdentity(rootPath);
 }
 
-String _gitOutput(String rootPath, List<String> args) {
-  final result = Process.runSync('git', ['-C', rootPath, ...args]);
-  if (result.exitCode != 0) {
-    throw StateError(result.stderr);
-  }
-  return result.stdout.toString().trim();
+Future<void> _commitPaths(
+  GitRepositoryService service,
+  String rootPath,
+  Iterable<String> paths,
+  String message,
+) async {
+  await service.stage(rootPath, paths);
+  await service.commit(
+    rootPath,
+    GitCommitInput(
+      message: message,
+      authorName: 'Pyrite Test',
+      authorEmail: 'pyrite-test@example.local',
+    ),
+  );
 }
 
 void _configureIdentity(String rootPath) {
-  _runGit(rootPath, ['config', 'user.name', 'Pyrite Test']);
-  _runGit(rootPath, ['config', 'user.email', 'pyrite-test@example.local']);
-  _runGit(rootPath, ['config', 'core.autocrlf', 'false']);
+  final gitDir = Repository.discover(startPath: rootPath);
+  final repo = Repository.open(gitDir);
+  try {
+    final config = repo.config;
+    try {
+      config['user.name'] = 'Pyrite Test';
+      config['user.email'] = 'pyrite-test@example.local';
+      config['core.autocrlf'] = false;
+    } finally {
+      config.free();
+    }
+  } finally {
+    repo.free();
+  }
+}
+
+String _headSha(String gitDir) {
+  final repo = Repository.open(gitDir);
+  try {
+    final head = repo.head;
+    try {
+      return head.target.sha;
+    } finally {
+      head.free();
+    }
+  } finally {
+    repo.free();
+  }
 }
 
 GitStatusEntry _statusEntry(

@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   file_selector_windows
+  git2dart_binaries
   irondash_engine_context
   screen_retriever_windows
   serious_python_windows

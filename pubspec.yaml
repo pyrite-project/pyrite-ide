@@ -84,6 +84,7 @@ dependencies:
   vertical_card_pager: 1.6.3
   palette_generator_master: 1.1.0
   toml: 0.15.0
+  git2dart: ^0.5.3
 
 dev_dependencies:
   flutter_test:

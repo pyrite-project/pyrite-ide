@@ -1,6 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
+import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as path;
 import 'package:super_tree/super_tree.dart';
 
@@ -85,66 +85,41 @@ Future<Set<String>> gitIgnoredPaths(Iterable<String> entityPaths) async {
   final normalizedPaths = entityPaths.map(path.normalize).toList();
   if (normalizedPaths.isEmpty) return const {};
 
-  final gitRoot = await _gitRootForPath(path.dirname(normalizedPaths.first));
-  if (gitRoot == null) return const {};
-
-  final relativePaths = <String, String>{};
-  for (final entityPath in normalizedPaths) {
-    final isInRepo =
-        path.equals(gitRoot, entityPath) || path.isWithin(gitRoot, entityPath);
-    if (!isInRepo) continue;
-    final relativePath = path
-        .relative(entityPath, from: gitRoot)
-        .replaceAll('\\', '/');
-    relativePaths[relativePath] = entityPath;
-  }
-  if (relativePaths.isEmpty) return const {};
-
   try {
-    final process = await Process.start('git', [
-      '-C',
-      gitRoot,
-      'check-ignore',
-      '-z',
-      '--stdin',
-    ], runInShell: Platform.isWindows);
-    final stdoutFuture = process.stdout.expand((chunk) => chunk).toList();
-    final stderrFuture = process.stderr.drain<void>();
+    final startPath = Directory(normalizedPaths.first).existsSync()
+        ? normalizedPaths.first
+        : path.dirname(normalizedPaths.first);
+    final gitDir = Repository.discover(startPath: startPath);
+    final repo = Repository.open(gitDir);
+    try {
+      final gitRoot = path.normalize(repo.workdir);
+      if (gitRoot.isEmpty) return const {};
 
-    process.stdin.add(utf8.encode(relativePaths.keys.join('\u0000')));
-    process.stdin.add(const [0]);
-    await process.stdin.close();
+      final relativePaths = <String, String>{};
+      for (final entityPath in normalizedPaths) {
+        final isInRepo =
+            path.equals(gitRoot, entityPath) ||
+            path.isWithin(gitRoot, entityPath);
+        if (!isInRepo) continue;
+        final relativePath = path
+            .relative(entityPath, from: gitRoot)
+            .replaceAll('\\', '/');
+        relativePaths[relativePath] = entityPath;
+      }
+      if (relativePaths.isEmpty) return const {};
 
-    final stdout = utf8.decode(await stdoutFuture);
-    await stderrFuture;
-    await process.exitCode;
-
-    final ignored = <String>{};
-    for (final relativePath in stdout.split('\u0000')) {
-      if (relativePath.isEmpty) continue;
-      final entityPath = relativePaths[relativePath];
-      if (entityPath != null) ignored.add(entityPath);
+      final ignored = <String>{};
+      for (final entry in relativePaths.entries) {
+        if (Ignore.pathIsIgnored(repo: repo, path: entry.key)) {
+          ignored.add(entry.value);
+        }
+      }
+      return ignored;
+    } finally {
+      repo.free();
     }
-    return ignored;
   } catch (_) {
     return const {};
-  }
-}
-
-Future<String?> _gitRootForPath(String startPath) async {
-  try {
-    final result = await Process.run('git', [
-      '-C',
-      startPath,
-      'rev-parse',
-      '--show-toplevel',
-    ], runInShell: Platform.isWindows);
-    if (result.exitCode != 0) return null;
-    final output = result.stdout.toString().trim();
-    if (output.isEmpty) return null;
-    return path.normalize(output);
-  } catch (_) {
-    return null;
   }
 }
 
