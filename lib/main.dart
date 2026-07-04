@@ -265,7 +265,6 @@ void main() async {
   container.read(pluginManagerProvider.notifier).autoStart();
 
   if (data.projectPath != null) {
-    GitDebugLog.log('restoring project path ${data.projectPath}');
     final dir = Directory(data.projectPath!);
     if (await dir.exists()) {
       container.read(fileProvider.notifier).setDirectory(dir);
@@ -274,7 +273,7 @@ void main() async {
   }
 
   await RustLib.init();
-  GitDebugLog.log('RustLib initialized');
+  await PlatformSpecific.initialize();
 
   if (data.tabs.isNotEmpty) {
     await container
@@ -284,10 +283,8 @@ void main() async {
 
   appWindow.bind(container);
   appWindow.init();
-  GitDebugLog.log('window initialized');
 
   await _bootstrapPythonRuntime();
-  GitDebugLog.log('python runtime bootstrap finished');
   // container.read(lspClientProvider);
 
   GitDebugLog.log('runApp start');
@@ -299,5 +296,4 @@ void main() async {
   );
 
   _startAutoSave();
-  GitDebugLog.log('main completed');
 }
