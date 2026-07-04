@@ -875,7 +875,7 @@ packages:
     source: hosted
     version: "7.3.1"
   markdown_widget:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: markdown_widget
       sha256: b52c13d3ee4d0e60c812e15b0593f142a3b8a2003cde1babb271d001a1dbdc1c
