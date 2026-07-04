@@ -413,8 +413,6 @@ class MobileView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final useNavigationDrawer =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final routeIndex = routesName.indexOf(
@@ -428,14 +426,11 @@ class MobileView extends ConsumerWidget {
       }
     });
     return Scaffold(
-      drawer: useNavigationDrawer ? mobileNavigationDrawer(context, ref) : null,
-      bottomNavigationBar: useNavigationDrawer
-          ? null
-          : bottomNavigationBar(context, ref),
+      drawer: mobileNavigationDrawer(context, ref),
       body: Column(
         children: [
           Expanded(child: child),
-          EditorToolsBar(showNavigationDrawerButton: useNavigationDrawer),
+          EditorToolsBar(showNavigationDrawerButton: true),
         ],
       ),
     );
@@ -496,14 +491,6 @@ class MobileView extends ConsumerWidget {
           ],
         );
       },
-    );
-  }
-
-  Widget bottomNavigationBar(BuildContext context, WidgetRef ref) {
-    return NavigationBar(
-      destinations: bottomItems,
-      selectedIndex: ref.watch(mobileSelectedIndex),
-      onDestinationSelected: (value) => selectDestination(context, ref, value),
     );
   }
 }
