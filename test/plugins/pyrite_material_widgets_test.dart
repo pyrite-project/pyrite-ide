@@ -137,7 +137,12 @@ widget root = MarkdownBlock(
     "fontFamilyFallback": ["SF Mono", "Monaco"],
     "fontSize": 13.0
   },
-  inlineCodeTextStyle: {"fontFamily": "Menlo"},
+  codeBlockStyleNotMatched: {"color": 0xffe5e7eb},
+  codeBlockTheme: "dark",
+  inlineCodeTextStyle: {
+    "fontFamily": "Menlo",
+    "backgroundColor": 0xff374151
+  },
   onTapLink: event "linkTapped" {}
 );
 '''),
@@ -158,6 +163,23 @@ widget root = MarkdownBlock(
     );
 
     expect(find.byType(markdown_widget.MarkdownBlock), findsOneWidget);
+    final markdownBlock = tester.widget<markdown_widget.MarkdownBlock>(
+      find.byType(markdown_widget.MarkdownBlock),
+    );
+    final codeTheme = markdownBlock.config?.pre.theme;
+    expect(
+      codeTheme?['comment']?.color,
+      markdown_widget.PreConfig.darkConfig.theme['comment']?.color,
+    );
+    expect(codeTheme?['comment']?.fontFamily, 'Menlo');
+    expect(
+      markdownBlock.config?.pre.styleNotMatched?.color,
+      const Color(0xffe5e7eb),
+    );
+    expect(
+      markdownBlock.config?.code.style.backgroundColor,
+      const Color(0xff374151),
+    );
     expect(find.text('Title'), findsOneWidget);
     expect(find.textContaining('docs'), findsOneWidget);
     expect(

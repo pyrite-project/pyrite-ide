@@ -128,6 +128,9 @@ abstract class Permissions {
     'sdk.stubs.revoke': 'data:write',
     'sdk.theme.revoke': 'data:write',
     'sdk.i18n.revoke': 'data:write',
+
+    // dialog
+    'sdk.dialog.open_folder': 'dialog:show',
   };
 
   static const Map<String, List<String>> _hierarchy = {

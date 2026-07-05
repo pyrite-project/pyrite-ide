@@ -48,6 +48,19 @@ Map<String, TextStyle> _mergeMarkdownCodeTheme(
   );
 }
 
+Map<String, TextStyle>? _decodeMarkdownCodeTheme(
+  String? theme,
+  markdown_widget.MarkdownConfig baseConfig,
+) {
+  switch (theme) {
+    case 'dark':
+      return markdown_widget.PreConfig.darkConfig.theme;
+    case 'light':
+      return baseConfig.pre.theme;
+  }
+  return null;
+}
+
 markdown_widget.MarkdownConfig? _decodeMarkdownConfig(rfw.DataSource source) {
   final onTapLink = source.handler<ValueChanged<String>>(
     <Object>['onTapLink'],
@@ -73,6 +86,10 @@ markdown_widget.MarkdownConfig? _decodeMarkdownConfig(rfw.DataSource source) {
     <Object>['codeBlockStyleNotMatched'],
   );
   final codeBlockLanguage = source.v<String>(<Object>['codeBlockLanguage']);
+  final codeBlockTheme = _decodeMarkdownCodeTheme(
+    source.v<String>(<Object>['codeBlockTheme']),
+    baseConfig,
+  );
   final inlineCodeTextStyle = rfw.ArgumentDecoders.textStyle(source, <Object>[
     'inlineCodeTextStyle',
   ]);
@@ -82,7 +99,9 @@ markdown_widget.MarkdownConfig? _decodeMarkdownConfig(rfw.DataSource source) {
       codeBlockDecoration != null ||
       codeBlockTextStyle != null ||
       codeBlockStyleNotMatched != null ||
-      codeBlockLanguage != null) {
+      codeBlockLanguage != null ||
+      codeBlockTheme != null) {
+    final effectiveCodeTheme = codeBlockTheme ?? baseConfig.pre.theme;
     final styleNotMatched =
         (baseConfig.pre.styleNotMatched ?? const TextStyle())
             .merge(codeBlockTextStyle)
@@ -100,8 +119,8 @@ markdown_widget.MarkdownConfig? _decodeMarkdownConfig(rfw.DataSource source) {
             ? null
             : styleNotMatched,
         theme: codeBlockTextStyle == null
-            ? null
-            : _mergeMarkdownCodeTheme(baseConfig.pre.theme, codeBlockTextStyle),
+            ? codeBlockTheme
+            : _mergeMarkdownCodeTheme(effectiveCodeTheme, codeBlockTextStyle),
         language: codeBlockLanguage,
       ),
     );

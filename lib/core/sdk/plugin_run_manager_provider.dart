@@ -15,6 +15,7 @@ import 'package:pyrite_ide/core/sdk/api/settings_api.dart';
 import 'package:pyrite_ide/core/sdk/api/data_api.dart';
 import 'package:pyrite_ide/core/sdk/api/message_api.dart';
 import 'package:pyrite_ide/core/sdk/api/serial.dart';
+import 'package:pyrite_ide/core/sdk/api/dialog.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
@@ -91,6 +92,7 @@ class PluginRunManagerNotifier
       ref.read(sdkDataApiProvider.notifier).bind(runManager);
       ref.read(sdkMessageApiProvider.notifier).bind(runManager);
       ref.read(sdkSerialProvider.notifier).bind(runManager);
+      ref.read(sdkDialogProvider.notifier).bind(runManager);
       state = {...state, plugin: runManager};
 
       // Fire-and-forget: Python script blocks forever with asyncio.run().
@@ -172,6 +174,7 @@ class PluginRunManagerNotifier
       ref.read(sdkDataApiProvider.notifier).bind(runManager);
       ref.read(sdkSettingsProvider.notifier).bind(runManager);
       ref.read(sdkMessageApiProvider.notifier).bind(runManager);
+      ref.read(sdkDialogProvider.notifier).bind(runManager);
 
       // No persistent run-manager entry for data plugins.
       // Fire-and-forget; plugin exits after contribute.
