@@ -75,6 +75,7 @@ dependencies:
   code_forge: 10.6.0
   extension_type_unions: 1.0.10
   rfw: 1.1.3
+  markdown_widget: 2.3.2+8
   freeport: 1.0.1
   super_context_menu: 0.9.1
   super_drag_and_drop: 0.9.1
