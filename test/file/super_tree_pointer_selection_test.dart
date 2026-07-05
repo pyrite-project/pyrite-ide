@@ -87,6 +87,7 @@ void main() {
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('Node')),
+      kind: PointerDeviceKind.mouse,
       buttons: kPrimaryButton,
     );
 
@@ -147,6 +148,7 @@ void main() {
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('Root')),
+      kind: PointerDeviceKind.mouse,
       buttons: kPrimaryButton,
     );
 
@@ -157,6 +159,36 @@ void main() {
     expect(find.text('Child'), findsOneWidget);
 
     await gesture.up();
+  });
+
+  testWidgets('touch pointer down does not expand until tap resolves', (
+    WidgetTester tester,
+  ) async {
+    final root = TreeNode<String>(
+      id: 'root',
+      data: 'Root',
+      children: <TreeNode<String>>[
+        TreeNode<String>(id: 'child', data: 'Child'),
+      ],
+    );
+    final controller = TreeController<String>(roots: <TreeNode<String>>[root]);
+
+    await tester.pumpWidget(buildTree(controller: controller));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Root')),
+      kind: PointerDeviceKind.touch,
+      buttons: kPrimaryButton,
+    );
+
+    expect(root.isExpanded, isFalse);
+    expect(find.text('Child'), findsNothing);
+
+    await gesture.up();
+    await tester.pump();
+
+    expect(root.isExpanded, isTrue);
+    expect(find.text('Child'), findsOneWidget);
   });
 
   testWidgets('tapping caret does not toggle expansion twice', (
@@ -232,6 +264,7 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('Root')),
+      kind: PointerDeviceKind.mouse,
       buttons: kPrimaryButton,
     );
 
@@ -264,6 +297,7 @@ void main() {
 
     final firstClick = await tester.startGesture(
       tester.getCenter(find.text('Root')),
+      kind: PointerDeviceKind.mouse,
       buttons: kPrimaryButton,
     );
     expect(root.isExpanded, isTrue);
@@ -272,6 +306,7 @@ void main() {
 
     final secondClick = await tester.startGesture(
       tester.getCenter(find.text('Root')),
+      kind: PointerDeviceKind.mouse,
       buttons: kPrimaryButton,
     );
 
