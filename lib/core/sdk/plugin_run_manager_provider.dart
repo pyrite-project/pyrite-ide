@@ -59,6 +59,7 @@ class PluginRunManagerNotifier
         path.join(target.path, "__pypackages__"),
         path.join(target.path, "site-packages"),
       ].map(escapeForPythonString).join("::");
+      final pluginDirEnv = _toForwardSlashes(target.path);
 
       await SeriousPython.run(
         "assets/python_runtime_boot.zip",
@@ -66,6 +67,7 @@ class PluginRunManagerNotifier
         environmentVariables: {
           "RUNTIME_MODULE_PATHS": runtimeModulePaths,
           "RUNTIME_REPLACE_MODULE_PATHS": "1",
+          "RUNTIME_PLUGIN_PATH": pluginDirEnv,
         },
       );
 
@@ -79,7 +81,6 @@ class PluginRunManagerNotifier
         onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
       );
       outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting');
-      final pluginDirEnv = _toForwardSlashes(target.path);
       runManager.onDataChanged = () {
         state = {...state};
       };
@@ -147,6 +148,7 @@ class PluginRunManagerNotifier
       ).create(recursive: true);
       Directory.current = target.path;
       final int port = await freePort();
+      final pluginDirEnv = _toForwardSlashes(target.path);
 
       await SeriousPython.run(
         "assets/python_runtime_boot.zip",
@@ -157,6 +159,7 @@ class PluginRunManagerNotifier
             path.join(target.path, "site-packages"),
           ].map(escapeForPythonString).join("::"),
           "RUNTIME_REPLACE_MODULE_PATHS": "1",
+          "RUNTIME_PLUGIN_PATH": pluginDirEnv,
         },
       );
 
@@ -170,7 +173,6 @@ class PluginRunManagerNotifier
         onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
       );
       outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting once');
-      final pluginDirEnv = _toForwardSlashes(target.path);
       ref.read(sdkDataApiProvider.notifier).bind(runManager);
       ref.read(sdkSettingsProvider.notifier).bind(runManager);
       ref.read(sdkMessageApiProvider.notifier).bind(runManager);
