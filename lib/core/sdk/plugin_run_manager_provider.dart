@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/utils.dart';
 import 'package:pyrite_ide/core/sdk/api/file.dart';
@@ -28,11 +29,14 @@ String _toForwardSlashes(String value) => value.replaceAll('\\', '/');
 class PluginRunManagerNotifier
     extends StateNotifier<Map<Plugin, PluginRunManager>> {
   final Ref ref;
+  final PermissionLogService _permissionLog;
   bool _routerListenerRegistered = false;
   Future<void> _startupQueue = Future<void>.value();
 
-  PluginRunManagerNotifier(this.ref) : super({}) {
-    ref.read(permissionLogServiceProvider).load();
+  PluginRunManagerNotifier(this.ref)
+    : _permissionLog = ref.read(permissionLogServiceProvider),
+      super({}) {
+    _permissionLog.load();
   }
 
   Future<void> start(Plugin plugin) {
@@ -62,14 +66,17 @@ class PluginRunManagerNotifier
       final pluginDirEnv = _toForwardSlashes(target.path);
 
       await SeriousPython.run(
-        "assets/python_runtime_boot.zip",
+        pythonRuntimeBootAsset,
         appFileName: "setup_sys_path.py",
+        targetPath: pythonRuntimeBootCachePath,
+        checkHash: true,
         environmentVariables: {
           "RUNTIME_MODULE_PATHS": runtimeModulePaths,
           "RUNTIME_REPLACE_MODULE_PATHS": "1",
           "RUNTIME_PLUGIN_PATH": pluginDirEnv,
         },
       );
+      Directory.current = target.path;
 
       final PluginRunManager runManager = PluginRunManager(
         port: port,
@@ -77,7 +84,7 @@ class PluginRunManagerNotifier
         pluginId: plugin.id,
         pluginType: plugin.type.name,
         pluginPermissions: plugin.permissions,
-        permissionLog: ref.read(permissionLogServiceProvider),
+        permissionLog: _permissionLog,
         onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
       );
       outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting');
@@ -151,8 +158,10 @@ class PluginRunManagerNotifier
       final pluginDirEnv = _toForwardSlashes(target.path);
 
       await SeriousPython.run(
-        "assets/python_runtime_boot.zip",
+        pythonRuntimeBootAsset,
         appFileName: "setup_sys_path.py",
+        targetPath: pythonRuntimeBootCachePath,
+        checkHash: true,
         environmentVariables: {
           "RUNTIME_MODULE_PATHS": [
             path.join(target.path, "__pypackages__"),
@@ -162,6 +171,7 @@ class PluginRunManagerNotifier
           "RUNTIME_PLUGIN_PATH": pluginDirEnv,
         },
       );
+      Directory.current = target.path;
 
       final runManager = PluginRunManager(
         port: port,
@@ -169,7 +179,7 @@ class PluginRunManagerNotifier
         pluginId: plugin.id,
         pluginType: plugin.type.name,
         pluginPermissions: plugin.permissions,
-        permissionLog: ref.read(permissionLogServiceProvider),
+        permissionLog: _permissionLog,
         onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
       );
       outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting once');
@@ -284,7 +294,6 @@ class PluginRunManagerNotifier
     for (final runManager in state.values) {
       runManager.dispose();
     }
-    ref.read(permissionLogServiceProvider).dispose();
     super.dispose();
   }
 }

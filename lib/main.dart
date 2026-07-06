@@ -24,6 +24,7 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:serious_python/serious_python.dart';
 
@@ -217,8 +218,10 @@ void _startAutoSave() {
 Future<void> _bootstrapPythonRuntime() async {
   try {
     await SeriousPython.run(
-      "assets/python_runtime_boot.zip",
+      pythonRuntimeBootAsset,
       appFileName: "boot.py",
+      targetPath: pythonRuntimeBootCachePath,
+      checkHash: true,
     );
   } catch (error, stackTrace) {
     FlutterError.reportError(
@@ -261,9 +264,6 @@ void main() async {
         .loadPersisted(persistedPlugins);
   }
 
-  // Auto-start plugins with autoStart: true
-  container.read(pluginManagerProvider.notifier).autoStart();
-
   if (data.projectPath != null) {
     final dir = Directory(data.projectPath!);
     if (await dir.exists()) {
@@ -285,6 +285,10 @@ void main() async {
   appWindow.init();
 
   await _bootstrapPythonRuntime();
+
+  // Auto-start plugins with autoStart: true after the Python runtime snapshot
+  // has been captured.
+  unawaited(container.read(pluginManagerProvider.notifier).autoStart());
   // container.read(lspClientProvider);
 
   GitDebugLog.log('runApp start');
