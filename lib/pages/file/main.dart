@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
@@ -38,7 +39,53 @@ const _dragSourceKey = 'source';
 const _dragPathsKey = 'paths';
 const _localDragSourceValue = 'local';
 const _boardDragSourceValue = 'board';
-final Map<String, GlobalKey> _dragHandleKeys = <String, GlobalKey>{};
+final Map<String, Rect> _dragHandleRects = <String, Rect>{};
+
+class _DragHandleBounds extends SingleChildRenderObjectWidget {
+  const _DragHandleBounds({required this.handleId, required super.child});
+
+  final String handleId;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderDragHandleBounds(handleId);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderDragHandleBounds renderObject,
+  ) {
+    renderObject.handleId = handleId;
+  }
+}
+
+class _RenderDragHandleBounds extends RenderProxyBox {
+  _RenderDragHandleBounds(this._handleId);
+
+  String _handleId;
+
+  set handleId(String value) {
+    if (_handleId == value) return;
+    _dragHandleRects.remove(_handleId);
+    _handleId = value;
+    markNeedsPaint();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    if (hasSize) {
+      _dragHandleRects[_handleId] = localToGlobal(Offset.zero) & size;
+    }
+  }
+
+  @override
+  void detach() {
+    _dragHandleRects.remove(_handleId);
+    super.detach();
+  }
+}
 
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
@@ -326,23 +373,24 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget _buildDragHandle(_FileDragSource source, String nodeId) {
-    final handleKey = _dragHandleKey(source, nodeId);
+    final handleId = _dragHandleId(source, nodeId);
     return DraggableWidget(
       hitTestBehavior: HitTestBehavior.opaque,
       child: Tooltip(
         message: "拖拽选中项",
-        child: SizedBox.square(
-          key: handleKey,
-          dimension: 28,
-          child: const Icon(Icons.drag_indicator, size: 18),
+        child: _DragHandleBounds(
+          handleId: handleId,
+          child: const SizedBox.square(
+            dimension: 28,
+            child: Icon(Icons.drag_indicator, size: 18),
+          ),
         ),
       ),
     );
   }
 
-  GlobalKey _dragHandleKey(_FileDragSource source, String nodeId) {
-    final key = '${source.name}:$nodeId';
-    return _dragHandleKeys.putIfAbsent(key, GlobalKey.new);
+  String _dragHandleId(_FileDragSource source, String nodeId) {
+    return '${source.name}:$nodeId';
   }
 
   bool _isDragHandlePointer(
@@ -350,12 +398,10 @@ class ProjectFiles extends ConsumerWidget {
     String nodeId,
     Offset globalPosition,
   ) {
-    final context = _dragHandleKey(source, nodeId).currentContext;
-    final renderObject = context?.findRenderObject();
-    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-    final topLeft = renderObject.localToGlobal(Offset.zero);
-    final rect = topLeft & renderObject.size;
-    return rect.contains(globalPosition);
+    return _dragHandleRects[_dragHandleId(source, nodeId)]?.contains(
+          globalPosition,
+        ) ??
+        false;
   }
 
   List<String> _localDragPaths(WidgetRef ref, TreeNode<FileSystemItem> node) {

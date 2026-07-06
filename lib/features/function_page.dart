@@ -616,10 +616,13 @@ class DesktopView extends ConsumerWidget {
   ) {
     final List<shadcn.ResizablePane> children = [];
     final width = MediaQuery.sizeOf(context).width;
-    final showFunctionPanel = ref.watch(functionPageShow);
+    final isEditorRoute = state.matchedLocation.startsWith('/editor');
+    final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
     final showExpansionPanel = ref.watch(expansionPageShow) && width >= 1280;
     final isGitRoute = state.matchedLocation.startsWith('/git');
 
+    // The desktop workspace already owns the central editor pane. Mounting the
+    // /editor route child here would render the same tab controller twice.
     if (showFunctionPanel) {
       children.add(
         shadcn.ResizablePane.flex(
@@ -638,7 +641,7 @@ class DesktopView extends ConsumerWidget {
           draggerBuilder: (context) {
             return shadcn.HorizontalResizableDragger();
           },
-          children: buildConsoleView(ref, Editor()),
+          children: buildConsoleView(ref, const Editor()),
         ),
       ),
     );

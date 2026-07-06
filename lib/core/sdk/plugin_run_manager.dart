@@ -241,8 +241,9 @@ class PluginRunManager {
   ) {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final page = payload['page']?.toString() ?? 'home';
+    final root = payload['root']?.toString() ?? 'home';
     routeStack.clear();
-    routeStack.add('home');
+    routeStack.add(root);
     currentRoute = page;
     _syncRouteToPython();
     respond(
