@@ -4,6 +4,7 @@ import sys
 def setup_sys_path():
     module_paths_str = os.environ.get('RUNTIME_MODULE_PATHS')
     replace = os.environ.get('RUNTIME_REPLACE_MODULE_PATHS') == '1'
+    plugin_path = os.environ.get('RUNTIME_PLUGIN_PATH')
 
     if not module_paths_str and not replace:
         return
@@ -31,6 +32,9 @@ def setup_sys_path():
         normalized = os.path.abspath(path).rstrip(os.sep)
         if normalized not in sys.path:
             sys.path.insert(0, normalized)
+    
+    if plugin_path:
+        sys.path.insert(0, os.path.abspath(plugin_path).rstrip(os.sep))
 
     # print("[serious_python] sys.path adjusted:", file=sys.stderr)
     # for p in sys.path:

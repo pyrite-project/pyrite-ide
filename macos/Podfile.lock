@@ -12,6 +12,8 @@ PODS:
   - flutter_pty (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - git2dart_binaries (1.11.2):
+    - FlutterMacOS
   - irondash_engine_context (0.0.1):
     - FlutterMacOS
   - open_file_mac (1.0.3):
@@ -36,6 +38,7 @@ DEPENDENCIES:
   - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
   - flutter_pty (from `Flutter/ephemeral/.symlinks/plugins/flutter_pty/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - git2dart_binaries (from `Flutter/ephemeral/.symlinks/plugins/git2dart_binaries/macos`)
   - irondash_engine_context (from `Flutter/ephemeral/.symlinks/plugins/irondash_engine_context/macos`)
   - open_file_mac (from `Flutter/ephemeral/.symlinks/plugins/open_file_mac/macos`)
   - screen_retriever_macos (from `Flutter/ephemeral/.symlinks/plugins/screen_retriever_macos/macos`)
@@ -59,6 +62,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_pty/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  git2dart_binaries:
+    :path: Flutter/ephemeral/.symlinks/plugins/git2dart_binaries/macos
   irondash_engine_context:
     :path: Flutter/ephemeral/.symlinks/plugins/irondash_engine_context/macos
   open_file_mac:
@@ -82,6 +87,7 @@ SPEC CHECKSUMS:
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   flutter_pty: 1e360feaf8b1a213d2d50da3c076005b8eef1eee
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  git2dart_binaries: ce40f0f9b064d25651410d394274ff87b6aad208
   irondash_engine_context: 893c7d96d20ce361d7e996f39d360c4c2f9869ba
   open_file_mac: 76f06c8597551249bdb5e8fd8827a98eae0f4585
   screen_retriever_macos: c5508cc3c66ff0d4db650480cf0ab691e220d933

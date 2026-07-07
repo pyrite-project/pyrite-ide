@@ -36,12 +36,14 @@ class SettingsPersistedData {
   final bool lspRename;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
+  final bool ensureBoardFilesystemOnConnect;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
   final bool desktopTerminalEnableUnderline;
+  final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -85,12 +87,14 @@ class SettingsPersistedData {
     this.lspRename = true,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
+    this.ensureBoardFilesystemOnConnect = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.desktopTerminalEnableUnderline = false,
+    this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
@@ -135,12 +139,14 @@ class SettingsPersistedData {
     'lspRename': lspRename,
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
+    'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
     'serialDefaultBaudRate': serialDefaultBaudRate,
     'serialAutoReconnect': serialAutoReconnect,
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
     'terminalLineHeight': terminalLineHeight,
     'desktopTerminalEnableUnderline': desktopTerminalEnableUnderline,
+    'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
@@ -191,6 +197,8 @@ class SettingsPersistedData {
     chineseToUnicodeConversion:
         json['chineseToUnicodeConversion'] as bool? ?? true,
     enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,
+    ensureBoardFilesystemOnConnect:
+        json['ensureBoardFilesystemOnConnect'] as bool? ?? false,
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
     terminalFontFamily:
@@ -199,6 +207,7 @@ class SettingsPersistedData {
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     desktopTerminalEnableUnderline:
         json['desktopTerminalEnableUnderline'] as bool? ?? false,
+    useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
     cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',

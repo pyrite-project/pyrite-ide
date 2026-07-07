@@ -302,7 +302,7 @@ Widget buildVerticalWorkspace(
   return buildShadcnLayer(
     context,
     shadcn.ResizablePanel.vertical(
-      optionalDivider: true,
+      optionalDivider: false,
       draggerBuilder: (context) {
         return shadcn.HorizontalResizableDragger();
       },
@@ -413,8 +413,6 @@ class MobileView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final useNavigationDrawer =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final routeIndex = routesName.indexOf(
@@ -428,14 +426,11 @@ class MobileView extends ConsumerWidget {
       }
     });
     return Scaffold(
-      drawer: useNavigationDrawer ? mobileNavigationDrawer(context, ref) : null,
-      bottomNavigationBar: useNavigationDrawer
-          ? null
-          : bottomNavigationBar(context, ref),
+      drawer: mobileNavigationDrawer(context, ref),
       body: Column(
         children: [
           Expanded(child: child),
-          EditorToolsBar(showNavigationDrawerButton: useNavigationDrawer),
+          EditorToolsBar(showNavigationDrawerButton: true),
         ],
       ),
     );
@@ -496,14 +491,6 @@ class MobileView extends ConsumerWidget {
           ],
         );
       },
-    );
-  }
-
-  Widget bottomNavigationBar(BuildContext context, WidgetRef ref) {
-    return NavigationBar(
-      destinations: bottomItems,
-      selectedIndex: ref.watch(mobileSelectedIndex),
-      onDestinationSelected: (value) => selectDestination(context, ref, value),
     );
   }
 }
@@ -629,10 +616,13 @@ class DesktopView extends ConsumerWidget {
   ) {
     final List<shadcn.ResizablePane> children = [];
     final width = MediaQuery.sizeOf(context).width;
-    final showFunctionPanel = ref.watch(functionPageShow);
+    final isEditorRoute = state.matchedLocation.startsWith('/editor');
+    final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
     final showExpansionPanel = ref.watch(expansionPageShow) && width >= 1280;
     final isGitRoute = state.matchedLocation.startsWith('/git');
 
+    // The desktop workspace already owns the central editor pane. Mounting the
+    // /editor route child here would render the same tab controller twice.
     if (showFunctionPanel) {
       children.add(
         shadcn.ResizablePane.flex(
@@ -647,11 +637,11 @@ class DesktopView extends ConsumerWidget {
         initialFlex: 4,
         minSize: 300,
         child: shadcn.ResizablePanel.vertical(
-          optionalDivider: true,
+          optionalDivider: false,
           draggerBuilder: (context) {
             return shadcn.HorizontalResizableDragger();
           },
-          children: buildConsoleView(ref, Editor()),
+          children: buildConsoleView(ref, const Editor()),
         ),
       ),
     );
@@ -671,7 +661,7 @@ class DesktopView extends ConsumerWidget {
     return buildShadcnLayer(
       context,
       shadcn.ResizablePanel.horizontal(
-        optionalDivider: true,
+        optionalDivider: false,
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },

@@ -96,7 +96,6 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         editorController: editorController,
         undoController: undoRedoCntroller,
       ),
-      keepAlive: true,
     );
 
     String savedText = editorController.text;
@@ -268,7 +267,6 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       ),
       text: tabTitle,
       content: GitDiffEditor(controller: controller, filePath: filePath),
-      keepAlive: true,
     );
 
     state.addTab(tab);

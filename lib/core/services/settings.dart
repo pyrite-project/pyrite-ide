@@ -84,6 +84,9 @@ StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
 );
 
 StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
+StateProvider<bool> ensureBoardFilesystemOnConnect = StateProvider<bool>(
+  (ref) => false,
+);
 StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
 StateProvider<bool> serialAutoReconnect = StateProvider<bool>((ref) => false);
 StateProvider<String> terminalFontFamily = StateProvider<String>(
@@ -92,6 +95,10 @@ StateProvider<String> terminalFontFamily = StateProvider<String>(
 StateProvider<double> terminalFontSize = StateProvider<double>((ref) => 13);
 StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);
 StateProvider<bool> desktopTerminalEnableUnderline = StateProvider<bool>(
+  (ref) => false,
+);
+
+StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(
   (ref) => false,
 );
 

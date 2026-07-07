@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -16,12 +17,14 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:serious_python/serious_python.dart';
 
@@ -61,11 +64,22 @@ void _installIdeOutputLogger() {
   FlutterError.onError = (FlutterErrorDetails details) {
     final message = details.exceptionAsString();
     final stack = details.stack?.toString();
+    GitDebugLog.log(
+      'FlutterError library=${details.library ?? ''} '
+      'context=${details.context?.toString() ?? ''}',
+      error: details.exception,
+      stackTrace: details.stack,
+    );
     _appendIdeOutputLater('$message${stack == null ? '' : '\n$stack'}');
     FlutterError.presentError(details);
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
+    GitDebugLog.log(
+      'PlatformDispatcher.onError',
+      error: error,
+      stackTrace: stack,
+    );
     _appendIdeOutputLater('Unhandled exception: $error\n$stack');
     return false;
   };
@@ -132,6 +146,8 @@ void _applyData(PersistedData data) {
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
+  container.read(ensureBoardFilesystemOnConnect.notifier).state =
+      data.ensureBoardFilesystemOnConnect;
   container.read(serialDefaultBaudRate.notifier).state =
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
@@ -140,6 +156,8 @@ void _applyData(PersistedData data) {
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
   container.read(desktopTerminalEnableUnderline.notifier).state =
       data.desktopTerminalEnableUnderline;
+  container.read(useMaterialContextMenu.notifier).state =
+      data.useMaterialContextMenu;
   container
       .read(androidUsbSerialProvider.notifier)
       .setBaudRate(data.serialDefaultBaudRate);
@@ -204,8 +222,10 @@ void _startAutoSave() {
 Future<void> _bootstrapPythonRuntime() async {
   try {
     await SeriousPython.run(
-      "assets/python_runtime_boot.zip",
+      pythonRuntimeBootAsset,
       appFileName: "boot.py",
+      targetPath: pythonRuntimeBootCachePath,
+      checkHash: true,
     );
   } catch (error, stackTrace) {
     FlutterError.reportError(
@@ -221,7 +241,14 @@ Future<void> _bootstrapPythonRuntime() async {
 
 // PyriteIDE: Hello World.
 void main() async {
+  GitDebugLog.startSession();
+  GitDebugLog.log('main start');
   WidgetsFlutterBinding.ensureInitialized();
+  GitDebugLog.log('WidgetsFlutterBinding initialized');
+  await GitDebugLog.timeAsync(
+    'git2dart PlatformSpecific.initialize',
+    PlatformSpecific.initialize,
+  );
 
   persistenceManager = PersistenceManager();
   final PersistedData data = await persistenceManager.loadAll();
@@ -231,6 +258,7 @@ void main() async {
 
   container = ProviderContainer();
   _installIdeOutputLogger();
+  GitDebugLog.log('ProviderContainer and global error logging installed');
 
   _applyData(data);
 
@@ -239,9 +267,6 @@ void main() async {
         .read(pluginManagerProvider.notifier)
         .loadPersisted(persistedPlugins);
   }
-
-  // Auto-start plugins with autoStart: true
-  container.read(pluginManagerProvider.notifier).autoStart();
 
   if (data.projectPath != null) {
     final dir = Directory(data.projectPath!);
@@ -252,6 +277,7 @@ void main() async {
   }
 
   await RustLib.init();
+  await PlatformSpecific.initialize();
 
   if (data.tabs.isNotEmpty) {
     await container
@@ -263,8 +289,13 @@ void main() async {
   appWindow.init();
 
   await _bootstrapPythonRuntime();
+
+  // Auto-start plugins with autoStart: true after the Python runtime snapshot
+  // has been captured.
+  unawaited(container.read(pluginManagerProvider.notifier).autoStart());
   // container.read(lspClientProvider);
 
+  GitDebugLog.log('runApp start');
   runApp(
     UncontrolledProviderScope(
       container: container,

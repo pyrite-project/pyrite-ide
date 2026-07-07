@@ -71,6 +71,15 @@ class TerminalSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
+              title: const Text("连接时校验设备文件系统"),
+              subtitle: const Text("为部分 mPython 固件尝试挂载未就绪的根 VFS，默认关闭"),
+              value: ref.watch(ensureBoardFilesystemOnConnect),
+              onChanged: (value) {
+                ref.read(ensureBoardFilesystemOnConnect.notifier).state = value;
+              },
+            ),
+
+            SwitchListTile(
               title: const Text("中文转 Unicode"),
               subtitle: const Text("输入中文时自动转为 \\uXXXX 转义序列"),
               value: ref.watch(chineseToUnicodeConversion),

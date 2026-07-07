@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   file_selector_linux
+  git2dart_binaries
   irondash_engine_context
   open_file_linux
   screen_retriever_linux

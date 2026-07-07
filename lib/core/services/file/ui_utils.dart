@@ -119,6 +119,56 @@ Future<bool> showDiffConfirmDialog(
   return result ?? false;
 }
 
+enum FileConflictAction { overwrite, skip, overwriteAll, skipAll, cancel }
+
+Future<FileConflictAction> showFileConflictDialog(
+  BuildContext context, {
+  required String sourcePath,
+  required String targetPath,
+  required bool isUpload,
+}) async {
+  final result = await showDialog<FileConflictAction>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.warning_amber_outlined),
+      title: Text(isUpload ? "上传冲突" : "下载冲突"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("目标位置已存在同名项目：$targetPath"),
+          const SizedBox(height: 8),
+          Text("来源：$sourcePath"),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => ctx.pop(FileConflictAction.cancel),
+          child: const Text("取消"),
+        ),
+        TextButton(
+          onPressed: () => ctx.pop(FileConflictAction.skip),
+          child: const Text("跳过"),
+        ),
+        TextButton(
+          onPressed: () => ctx.pop(FileConflictAction.skipAll),
+          child: const Text("跳过全部"),
+        ),
+        TextButton(
+          onPressed: () => ctx.pop(FileConflictAction.overwriteAll),
+          child: const Text("覆盖全部"),
+        ),
+        FilledButton(
+          onPressed: () => ctx.pop(FileConflictAction.overwrite),
+          child: const Text("覆盖"),
+        ),
+      ],
+    ),
+  );
+  return result ?? FileConflictAction.cancel;
+}
+
 Future<bool> confirmDelete(BuildContext context, String name) async {
   final result = await showDialog<bool>(
     context: context,

@@ -59,6 +59,8 @@ abstract class BoardFileBackend {
 
   Future<void> rename(String path, String newName);
 
+  Future<void> move(String oldPath, String newPath);
+
   Future<void> createFolder(String path);
 }
 

@@ -35,12 +35,16 @@ CustomTransitionPage topCustomTransitionPage({
 GoRouter routes = GoRouter(
   observers: [routeObserver],
   redirect: (context, state) {
+    final isDesktop = ResponsiveBreakpoints.of(context).isDesktop;
     if (state.matchedLocation == "/") {
-      if (ResponsiveBreakpoints.of(context).isDesktop) {
+      if (isDesktop) {
         return "/file";
       } else {
         return "/editor";
       }
+    }
+    if (isDesktop && state.matchedLocation.startsWith("/editor")) {
+      return "/file";
     }
     return null;
   },

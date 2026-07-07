@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/serial/repl_io.dart';
 import 'package:pyrite_ide/core/services/serial/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/file/board_filesystem_mount.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:usb_serial/usb_serial.dart';
@@ -92,6 +93,7 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
       selectedPortName: device.deviceName,
       isConnected: true,
     );
+    _ensureFilesystemMountedIfEnabled();
   }
 
   void _onData(Uint8List data) {
@@ -173,6 +175,7 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
         isConnected: true,
       );
       bindReplOnOutputCallback();
+      _ensureFilesystemMountedIfEnabled();
     });
   }
 
@@ -182,6 +185,11 @@ class AndroidUsbSerialNotifier extends StateNotifier<AndroidUsbSerialState> {
 
   void setAutoReconnect(bool value) {
     state = state.copyWith(autoReconnect: value);
+  }
+
+  void _ensureFilesystemMountedIfEnabled() {
+    if (!ref.read(ensureBoardFilesystemOnConnect)) return;
+    unawaited(ensureBoardFilesystemMountedOnce(ref));
   }
 
   void sendBytes(Uint8List bytes) {

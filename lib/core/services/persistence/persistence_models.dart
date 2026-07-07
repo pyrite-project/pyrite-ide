@@ -78,12 +78,14 @@ class PersistedData {
   final bool expansionPageShow;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
+  final bool ensureBoardFilesystemOnConnect;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
   final bool desktopTerminalEnableUnderline;
+  final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -142,12 +144,14 @@ class PersistedData {
     this.expansionPageShow = true,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
+    this.ensureBoardFilesystemOnConnect = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.desktopTerminalEnableUnderline = false,
+    this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',

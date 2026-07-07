@@ -34,28 +34,44 @@ class PluginPersistedData {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'version': version,
-        'author': author,
-        'description': description,
-        'type': type,
-        'declaredPermissions': declaredPermissions,
-        'permissions': permissions,
-        'platforms': platforms,
-        'status': status,
-        'autoStart': autoStart,
-      };
+    'id': id,
+    'name': name,
+    'version': version,
+    'author': author,
+    'description': description,
+    'type': type,
+    'declaredPermissions': declaredPermissions,
+    'permissions': permissions,
+    'platforms': platforms,
+    'status': status,
+    'autoStart': autoStart,
+  };
 
   factory PluginPersistedData.fromJson(Map<String, dynamic> json) {
-    Map<String, List<String>> _parsePerms(dynamic raw) {
+    List<String> normalizeActions(String resource, List<String> actions) {
+      if (resource == 'dialog' &&
+          !actions.contains('show') &&
+          (actions.contains('read') || actions.contains('write'))) {
+        return ['show'];
+      }
+      return actions;
+    }
+
+    Map<String, List<String>> parsePerms(dynamic raw) {
       if (raw is Map<String, dynamic>) {
-        return raw.map((k, v) => MapEntry(
+        return raw.map(
+          (k, v) => MapEntry(
+            k,
+            normalizeActions(
               k,
               (v as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-            ));
+            ),
+          ),
+        );
       } else if (raw is List<dynamic>) {
-        return {for (final p in raw) p.toString(): ['*']};
+        return {
+          for (final p in raw) p.toString(): ['*'],
+        };
       }
       return <String, List<String>>{};
     }
@@ -67,9 +83,10 @@ class PluginPersistedData {
       author: json['author'] as String? ?? '',
       description: json['description'] as String? ?? '',
       type: json['type'] as String? ?? 'ui',
-      declaredPermissions: _parsePerms(json['declaredPermissions']),
-      permissions: _parsePerms(json['permissions']),
-      platforms: (json['platforms'] as List<dynamic>?)
+      declaredPermissions: parsePerms(json['declaredPermissions']),
+      permissions: parsePerms(json['permissions']),
+      platforms:
+          (json['platforms'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
@@ -79,8 +96,9 @@ class PluginPersistedData {
   }
 
   Plugin toPlugin() {
-    final effectiveDeclared =
-        declaredPermissions.isNotEmpty ? declaredPermissions : permissions;
+    final effectiveDeclared = declaredPermissions.isNotEmpty
+        ? declaredPermissions
+        : permissions;
     return Plugin(
       id: id,
       name: name,
@@ -103,18 +121,18 @@ class PluginPersistedData {
   }
 
   static PluginPersistedData fromPlugin(Plugin plugin) => PluginPersistedData(
-        id: plugin.id,
-        name: plugin.name,
-        version: plugin.version,
-        author: plugin.author,
-        description: plugin.description,
-        type: plugin.type.name,
-        declaredPermissions: plugin.declaredPermissions,
-        permissions: plugin.permissions,
-        platforms: plugin.platforms,
-        status: plugin.status.name,
-        autoStart: plugin.autoStart,
-      );
+    id: plugin.id,
+    name: plugin.name,
+    version: plugin.version,
+    author: plugin.author,
+    description: plugin.description,
+    type: plugin.type.name,
+    declaredPermissions: plugin.declaredPermissions,
+    permissions: plugin.permissions,
+    platforms: plugin.platforms,
+    status: plugin.status.name,
+    autoStart: plugin.autoStart,
+  );
 }
 
 class PluginPersistence {
@@ -147,9 +165,9 @@ class PluginPersistence {
     try {
       final file = await _file;
       final data = plugins.map(PluginPersistedData.fromPlugin).toList();
-      await file.writeAsString(jsonEncode({
-        'plugins': data.map((e) => e.toJson()).toList(),
-      }));
+      await file.writeAsString(
+        jsonEncode({'plugins': data.map((e) => e.toJson()).toList()}),
+      );
     } catch (e) {
       debugPrint('PluginPersistence: Failed to save: $e');
     }
@@ -167,6 +185,7 @@ class PluginTomlParser {
     'tab': ['create', 'manage'],
     'settings': ['read', 'write'],
     'data': ['read', 'write'],
+    'dialog': ['show'],
   };
 
   static const List<String> _allActions = ['read', 'write'];
@@ -214,8 +233,7 @@ class PluginTomlParser {
       final map = doc.toMap();
 
       final general = map['general'] as Map<String, dynamic>? ?? {};
-      final permissions =
-          map['permissions'] as Map<String, dynamic>? ?? {};
+      final permissions = map['permissions'] as Map<String, dynamic>? ?? {};
       final platform = map['platform'] as Map<String, dynamic>? ?? {};
 
       final parsedPermissions = <String, List<String>>{};
@@ -223,13 +241,15 @@ class PluginTomlParser {
         final value = entry.value;
         final resourceName = entry.key;
         if (value == true) {
-          parsedPermissions[resourceName] =
-              List.from(_resourceActions[resourceName] ?? _allActions);
+          parsedPermissions[resourceName] = List.from(
+            _resourceActions[resourceName] ?? _allActions,
+          );
         } else if (value == false) {
           // skip
         } else if (value is List) {
-          parsedPermissions[resourceName] =
-              value.map((e) => e.toString()).toList();
+          parsedPermissions[resourceName] = value
+              .map((e) => e.toString())
+              .toList();
         }
       }
 

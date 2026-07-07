@@ -293,6 +293,7 @@ class Plugins extends ConsumerWidget {
       'tab': '标签页',
       'settings': '设置',
       'data': '数据',
+      'dialog': '对话框',
     };
 
     const allResourceActions = {
@@ -305,6 +306,7 @@ class Plugins extends ConsumerWidget {
       'tab': ['create', 'manage'],
       'settings': ['read', 'write'],
       'data': ['read', 'write'],
+      'dialog': ['show'],
     };
 
     showDialog(

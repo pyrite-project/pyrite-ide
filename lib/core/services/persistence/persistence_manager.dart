@@ -78,6 +78,8 @@ class PersistenceManager {
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
+      ensureBoardFilesystemOnConnect:
+          settings?.ensureBoardFilesystemOnConnect ?? false,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
       terminalFontFamily:
@@ -86,6 +88,7 @@ class PersistenceManager {
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
       desktopTerminalEnableUnderline:
           settings?.desktopTerminalEnableUnderline ?? false,
+      useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
       cancelShortcut: settings?.cancelShortcut ?? 'Esc',
@@ -148,6 +151,9 @@ class PersistenceManager {
             chineseToUnicodeConversion,
           ),
           enableSignalDetection: container.read(enableSignalDetection),
+          ensureBoardFilesystemOnConnect: container.read(
+            ensureBoardFilesystemOnConnect,
+          ),
           serialDefaultBaudRate: container.read(serialDefaultBaudRate),
           serialAutoReconnect: container.read(serialAutoReconnect),
           terminalFontFamily: container.read(terminalFontFamily),
@@ -156,6 +162,7 @@ class PersistenceManager {
           desktopTerminalEnableUnderline: container.read(
             desktopTerminalEnableUnderline,
           ),
+          useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
           confirmShortcut: container.read(confirmShortcutProvider),
           cancelShortcut: container.read(cancelShortcutProvider),
