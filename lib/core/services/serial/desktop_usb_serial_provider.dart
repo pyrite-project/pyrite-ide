@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/services/serial/repl_io.dart';
 import 'package:pyrite_ide/core/services/serial/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/file/board_filesystem_mount.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -138,6 +139,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     if (ok) {
       _serial = serial;
       state = state.copyWith(selectedPortName: path, isConnected: true);
+      _ensureFilesystemMountedIfEnabled();
     } else {
       await _eventSub?.cancel();
       _eventSub = null;
@@ -219,6 +221,11 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
 
   void setAutoReconnect(bool value) {
     state = state.copyWith(autoReconnect: value);
+  }
+
+  void _ensureFilesystemMountedIfEnabled() {
+    if (!ref.read(ensureBoardFilesystemOnConnect)) return;
+    unawaited(ensureBoardFilesystemMountedOnce(ref));
   }
 
   void sendBytes(Uint8List bytes) {

@@ -36,6 +36,7 @@ class SettingsPersistedData {
   final bool lspRename;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
+  final bool ensureBoardFilesystemOnConnect;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
   final String terminalFontFamily;
@@ -86,6 +87,7 @@ class SettingsPersistedData {
     this.lspRename = true,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
+    this.ensureBoardFilesystemOnConnect = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
     this.terminalFontFamily = 'JetBrains Maple Mono',
@@ -137,6 +139,7 @@ class SettingsPersistedData {
     'lspRename': lspRename,
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
+    'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
     'serialDefaultBaudRate': serialDefaultBaudRate,
     'serialAutoReconnect': serialAutoReconnect,
     'terminalFontFamily': terminalFontFamily,
@@ -194,6 +197,8 @@ class SettingsPersistedData {
     chineseToUnicodeConversion:
         json['chineseToUnicodeConversion'] as bool? ?? true,
     enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,
+    ensureBoardFilesystemOnConnect:
+        json['ensureBoardFilesystemOnConnect'] as bool? ?? false,
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
     terminalFontFamily:

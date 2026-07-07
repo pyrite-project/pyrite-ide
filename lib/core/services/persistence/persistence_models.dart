@@ -78,6 +78,7 @@ class PersistedData {
   final bool expansionPageShow;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
+  final bool ensureBoardFilesystemOnConnect;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
   final String terminalFontFamily;
@@ -143,6 +144,7 @@ class PersistedData {
     this.expansionPageShow = true,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
+    this.ensureBoardFilesystemOnConnect = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
     this.terminalFontFamily = 'JetBrains Maple Mono',

@@ -146,6 +146,8 @@ void _applyData(PersistedData data) {
   container.read(expansionPageShow.notifier).state = data.expansionPageShow;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
+  container.read(ensureBoardFilesystemOnConnect.notifier).state =
+      data.ensureBoardFilesystemOnConnect;
   container.read(serialDefaultBaudRate.notifier).state =
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;

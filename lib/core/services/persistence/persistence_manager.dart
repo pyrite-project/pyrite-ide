@@ -78,6 +78,8 @@ class PersistenceManager {
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
+      ensureBoardFilesystemOnConnect:
+          settings?.ensureBoardFilesystemOnConnect ?? false,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
       terminalFontFamily:
@@ -149,6 +151,9 @@ class PersistenceManager {
             chineseToUnicodeConversion,
           ),
           enableSignalDetection: container.read(enableSignalDetection),
+          ensureBoardFilesystemOnConnect: container.read(
+            ensureBoardFilesystemOnConnect,
+          ),
           serialDefaultBaudRate: container.read(serialDefaultBaudRate),
           serialAutoReconnect: container.read(serialAutoReconnect),
           terminalFontFamily: container.read(terminalFontFamily),

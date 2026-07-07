@@ -102,20 +102,8 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       totalFiles: totalFiles,
       bytesTotal: bytes.length,
     );
-    await backend.beginWriteFile(targetPath);
-    var offset = 0;
-    while (offset < bytes.length) {
-      final end = (offset + _transferChunkSize) < bytes.length
-          ? offset + _transferChunkSize
-          : bytes.length;
-      await backend.appendWriteFileChunk(
-        targetPath,
-        bytes.sublist(offset, end),
-      );
-      offset = end;
-      progress.updateBytes(offset, bytes.length);
-    }
-    await backend.finishWriteFile(targetPath);
+    await backend.writeFileBytes(targetPath, bytes);
+    progress.updateBytes(bytes.length, bytes.length);
     return 'SaveFileSuccessfully';
   }
 
