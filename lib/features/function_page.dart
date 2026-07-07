@@ -302,7 +302,7 @@ Widget buildVerticalWorkspace(
   return buildShadcnLayer(
     context,
     shadcn.ResizablePanel.vertical(
-      optionalDivider: true,
+      optionalDivider: false,
       draggerBuilder: (context) {
         return shadcn.HorizontalResizableDragger();
       },
@@ -637,7 +637,7 @@ class DesktopView extends ConsumerWidget {
         initialFlex: 4,
         minSize: 300,
         child: shadcn.ResizablePanel.vertical(
-          optionalDivider: true,
+          optionalDivider: false,
           draggerBuilder: (context) {
             return shadcn.HorizontalResizableDragger();
           },
@@ -661,7 +661,7 @@ class DesktopView extends ConsumerWidget {
     return buildShadcnLayer(
       context,
       shadcn.ResizablePanel.horizontal(
-        optionalDivider: true,
+        optionalDivider: false,
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },

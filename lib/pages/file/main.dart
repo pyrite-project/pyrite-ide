@@ -25,6 +25,16 @@ import 'package:super_tree/super_tree.dart';
 
 final localFileSelectionModeProvider = StateProvider<bool>((ref) => false);
 final boardFileSelectionModeProvider = StateProvider<bool>((ref) => false);
+final localFileScrollControllerProvider = Provider.autoDispose((ref) {
+  final controller = ScrollController();
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+final boardFileScrollControllerProvider = Provider.autoDispose((ref) {
+  final controller = ScrollController();
+  ref.onDispose(controller.dispose);
+  return controller;
+});
 
 enum _FileDragSource { local, board }
 
@@ -40,6 +50,64 @@ const _dragPathsKey = 'paths';
 const _localDragSourceValue = 'local';
 const _boardDragSourceValue = 'board';
 final Map<String, Rect> _dragHandleRects = <String, Rect>{};
+final Map<_FileDragSource, Rect> _dropRegionRects = <_FileDragSource, Rect>{};
+
+class _DropRegionBounds extends SingleChildRenderObjectWidget {
+  const _DropRegionBounds({required this.source, required super.child});
+
+  final _FileDragSource source;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderDropRegionBounds(source);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderDropRegionBounds renderObject,
+  ) {
+    renderObject.source = source;
+  }
+}
+
+class _RenderDropRegionBounds extends RenderProxyBox {
+  _RenderDropRegionBounds(this._source);
+
+  _FileDragSource _source;
+
+  set source(_FileDragSource value) {
+    if (_source == value) return;
+    _dropRegionRects.remove(_source);
+    _source = value;
+    markNeedsPaint();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    if (hasSize) {
+      _dropRegionRects[_source] = localToGlobal(Offset.zero) & size;
+    }
+  }
+
+  @override
+  void detach() {
+    _dropRegionRects.remove(_source);
+    super.detach();
+  }
+}
+
+void _scrollControllerBy(ScrollController controller, double delta) {
+  if (!controller.hasClients || delta == 0) return;
+  final position = controller.position;
+  final next = (position.pixels + delta).clamp(
+    position.minScrollExtent,
+    position.maxScrollExtent,
+  );
+  if (next == position.pixels) return;
+  position.jumpTo(next);
+}
 
 class _DragHandleBounds extends SingleChildRenderObjectWidget {
   const _DragHandleBounds({required this.handleId, required super.child});
@@ -105,7 +173,7 @@ class ProjectFiles extends ConsumerWidget {
             : shadcn.ColorSchemes.darkNeutral,
       ),
       child: shadcn.ResizablePanel.vertical(
-        optionalDivider: true,
+        optionalDivider: false,
         draggerBuilder: (context) {
           return shadcn.HorizontalResizableDragger();
         },
@@ -138,27 +206,66 @@ class ProjectFiles extends ConsumerWidget {
     WidgetRef ref,
     Widget child,
   ) {
-    return DropRegion(
-      formats: const [Formats.fileUri, Formats.plainText],
-      hitTestBehavior: HitTestBehavior.opaque,
-      onDropOver: (event) =>
-          _hasDragSource(event.session, _FileDragSource.board) ||
-              _hasExternalFiles(event.session)
-          ? DropOperation.copy
-          : DropOperation.none,
-      onPerformDrop: (event) async {
-        final data = _dragData(event.session, _FileDragSource.board);
-        if (data != null && data.paths.isNotEmpty) {
-          _selectBoardPaths(ref, data.paths);
-          await _downloadSelectedBoardItems(context, ref);
-          return;
-        }
+    final scrollController = ref.watch(localFileScrollControllerProvider);
+    return _DropRegionBounds(
+      source: _FileDragSource.local,
+      child: DropRegion(
+        formats: const [Formats.fileUri, Formats.plainText],
+        hitTestBehavior: HitTestBehavior.opaque,
+        onDropOver: (event) {
+          _autoScrollDropRegion(
+            _FileDragSource.local,
+            scrollController,
+            event.position.global,
+          );
+          return _hasDragSource(event.session, _FileDragSource.local)
+              ? DropOperation.move
+              : _hasDragSource(event.session, _FileDragSource.board) ||
+                    _hasExternalFiles(event.session)
+              ? DropOperation.copy
+              : DropOperation.none;
+        },
+        onPerformDrop: (event) async {
+          final targetFolderPath = _localFolderPathForDrop(
+            ref,
+            event.position.global,
+          );
+          final localData = _dragData(event.session, _FileDragSource.local);
+          if (localData != null && localData.paths.isNotEmpty) {
+            final targetFolder =
+                targetFolderPath ?? ref.read(fileProvider)?.path;
+            if (targetFolder == null) return;
+            await _moveLocalPathsToFolder(
+              context,
+              ref,
+              localData.paths,
+              targetFolder,
+            );
+            return;
+          }
 
-        final paths = await _externalFilePaths(event.session);
-        if (paths.isEmpty) return;
-        await _importExternalPaths(context, ref, paths);
-      },
-      child: child,
+          final data = _dragData(event.session, _FileDragSource.board);
+          if (data != null && data.paths.isNotEmpty) {
+            _selectBoardPaths(ref, data.paths);
+            await _downloadSelectedBoardItems(
+              context,
+              ref,
+              localFolderPath: targetFolderPath,
+            );
+            return;
+          }
+
+          final paths = await _externalFilePaths(event.session);
+          if (paths.isEmpty) return;
+          await _importExternalPaths(
+            context,
+            ref,
+            paths,
+            localFolderPath: targetFolderPath,
+          );
+        },
+        child: child,
+      ),
     );
   }
 
@@ -167,39 +274,348 @@ class ProjectFiles extends ConsumerWidget {
     WidgetRef ref,
     Widget child,
   ) {
-    return DropRegion(
-      formats: const [Formats.fileUri, Formats.plainText],
-      hitTestBehavior: HitTestBehavior.opaque,
-      onDropOver: (event) =>
-          ref.read(getUsbSerialProvider()).isConnected &&
-              (_hasDragSource(event.session, _FileDragSource.local) ||
-                  _hasExternalFiles(event.session))
-          ? DropOperation.copy
-          : DropOperation.none,
-      onPerformDrop: (event) async {
-        final data = _dragData(event.session, _FileDragSource.local);
-        if (data != null && data.paths.isNotEmpty) {
-          _selectLocalPaths(ref, data.paths);
-          await _uploadSelectedLocalItems(context, ref);
-          return;
-        }
+    final scrollController = ref.watch(boardFileScrollControllerProvider);
+    return _DropRegionBounds(
+      source: _FileDragSource.board,
+      child: DropRegion(
+        formats: const [Formats.fileUri, Formats.plainText],
+        hitTestBehavior: HitTestBehavior.opaque,
+        onDropOver: (event) {
+          _autoScrollDropRegion(
+            _FileDragSource.board,
+            scrollController,
+            event.position.global,
+          );
+          return ref.read(getUsbSerialProvider()).isConnected &&
+                  _hasDragSource(event.session, _FileDragSource.board)
+              ? DropOperation.move
+              : ref.read(getUsbSerialProvider()).isConnected &&
+                    (_hasDragSource(event.session, _FileDragSource.local) ||
+                        _hasExternalFiles(event.session))
+              ? DropOperation.copy
+              : DropOperation.none;
+        },
+        onPerformDrop: (event) async {
+          final targetFolderPath = _boardFolderPathForDrop(
+            ref,
+            event.position.global,
+          );
+          final boardData = _dragData(event.session, _FileDragSource.board);
+          if (boardData != null && boardData.paths.isNotEmpty) {
+            await _moveBoardPathsToFolder(
+              context,
+              ref,
+              boardData.paths,
+              targetFolderPath ?? '/',
+            );
+            return;
+          }
 
-        final paths = await _externalFilePaths(event.session);
-        if (paths.isEmpty) return;
-        await _uploadLocalPaths(context, ref, paths);
-      },
-      child: child,
+          final data = _dragData(event.session, _FileDragSource.local);
+          if (data != null && data.paths.isNotEmpty) {
+            _selectLocalPaths(ref, data.paths);
+            await _uploadSelectedLocalItems(
+              context,
+              ref,
+              boardFolderPath: targetFolderPath,
+            );
+            return;
+          }
+
+          final paths = await _externalFilePaths(event.session);
+          if (paths.isEmpty) return;
+          await _uploadLocalPaths(
+            context,
+            ref,
+            paths,
+            boardFolderPath: targetFolderPath,
+          );
+        },
+        child: child,
+      ),
     );
+  }
+
+  void _autoScrollDropRegion(
+    _FileDragSource source,
+    ScrollController controller,
+    Offset globalPosition,
+  ) {
+    final rect = _dropRegionRects[source];
+    if (rect == null) return;
+    const edgeThreshold = 56.0;
+    const maxDelta = 28.0;
+    final distanceToTop = globalPosition.dy - rect.top;
+    final distanceToBottom = rect.bottom - globalPosition.dy;
+    if (distanceToTop < edgeThreshold) {
+      final ratio = ((edgeThreshold - distanceToTop) / edgeThreshold).clamp(
+        0.0,
+        1.0,
+      );
+      _scrollBy(controller, -maxDelta * ratio);
+    } else if (distanceToBottom < edgeThreshold) {
+      final ratio = ((edgeThreshold - distanceToBottom) / edgeThreshold).clamp(
+        0.0,
+        1.0,
+      );
+      _scrollBy(controller, maxDelta * ratio);
+    }
+  }
+
+  void _scrollBy(ScrollController controller, double delta) {
+    _scrollControllerBy(controller, delta);
+  }
+
+  String? _localFolderPathForDrop(WidgetRef ref, Offset globalPosition) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    final targetNode = controller.findVisibleNodeAtGlobalPosition(
+      globalPosition,
+    );
+    if (targetNode != null) {
+      if (targetNode.data is FolderItem) return targetNode.id;
+      return path.dirname(targetNode.id);
+    }
+
+    return ref.read(fileProvider.notifier).getFocusFolderNode()?.id;
+  }
+
+  String? _boardFolderPathForDrop(WidgetRef ref, Offset globalPosition) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    final targetNode = controller.findVisibleNodeAtGlobalPosition(
+      globalPosition,
+    );
+    if (targetNode != null) {
+      if (targetNode.data is FolderItem) return targetNode.id;
+      return path.posix.dirname(targetNode.id);
+    }
+
+    return ref.read(boardProvider.notifier).getFocusFolderNode()?.id ?? '/';
+  }
+
+  String _localMoveTargetFolder(
+    WidgetRef ref,
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) {
+    if (position == NodeDropPosition.inside && targetNode.data is FolderItem) {
+      return targetNode.id;
+    }
+    return targetNode.parent?.id ?? ref.read(fileProvider)!.path;
+  }
+
+  String _boardMoveTargetFolder(
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) {
+    if (position == NodeDropPosition.inside && targetNode.data is FolderItem) {
+      return targetNode.id;
+    }
+    return targetNode.parent?.id ?? '/';
+  }
+
+  List<TreeNode<FileSystemItem>> _localNodesForPaths(
+    WidgetRef ref,
+    List<String> paths,
+  ) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    return paths
+        .map(controller.findNodeById)
+        .whereType<TreeNode<FileSystemItem>>()
+        .toList(growable: false);
+  }
+
+  List<TreeNode<FileSystemItem>> _boardNodesForPaths(
+    WidgetRef ref,
+    List<String> paths,
+  ) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    return paths
+        .map(controller.findNodeById)
+        .whereType<TreeNode<FileSystemItem>>()
+        .toList(growable: false);
+  }
+
+  Future<void> _moveLocalPathsToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+    String targetFolder,
+  ) async {
+    final nodes = _localNodesForPaths(ref, paths)
+        .where((node) => !_isLocalNodeAlreadyInFolder(node, targetFolder))
+        .toList(growable: false);
+    if (nodes.isEmpty) return;
+
+    await _moveLocalNodesToFolder(
+      context,
+      ref,
+      nodes,
+      TreeNode(id: targetFolder, data: FolderItem(path.basename(targetFolder))),
+      NodeDropPosition.inside,
+    );
+  }
+
+  Future<void> _moveBoardPathsToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+    String targetFolder,
+  ) async {
+    final nodes = _boardNodesForPaths(ref, paths)
+        .where((node) => !_isBoardNodeAlreadyInFolder(node, targetFolder))
+        .toList(growable: false);
+    if (nodes.isEmpty) return;
+
+    await _moveBoardNodesToFolder(
+      context,
+      ref,
+      nodes,
+      TreeNode(
+        id: targetFolder,
+        data: FolderItem(path.posix.basename(targetFolder)),
+      ),
+      NodeDropPosition.inside,
+    );
+  }
+
+  Future<bool> _moveLocalNodesToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> draggedNodes,
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) async {
+    final targetFolder = _localMoveTargetFolder(ref, targetNode, position);
+    final nodes = draggedNodes
+        .where((node) => !_isLocalNodeAlreadyInFolder(node, targetFolder))
+        .toList(growable: false);
+    if (nodes.isEmpty) return true;
+
+    unawaited(_confirmAndMoveLocalNodes(context, ref, nodes, targetFolder));
+    return true;
+  }
+
+  Future<void> _confirmAndMoveLocalNodes(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) return;
+    if (!await _confirmMoveItems(context, nodes, targetFolder)) return;
+    try {
+      await ref
+          .read(fileProvider.notifier)
+          .moveLocalNodes(context, nodes, targetFolder);
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(context, "移动失败：$error");
+    }
+  }
+
+  Future<bool> _moveBoardNodesToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> draggedNodes,
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) async {
+    final targetFolder = _boardMoveTargetFolder(targetNode, position);
+    final nodes = draggedNodes
+        .where((node) => !_isBoardNodeAlreadyInFolder(node, targetFolder))
+        .toList(growable: false);
+    if (nodes.isEmpty) return true;
+
+    unawaited(_confirmAndMoveBoardNodes(context, ref, nodes, targetFolder));
+    return true;
+  }
+
+  Future<void> _confirmAndMoveBoardNodes(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) return;
+    if (!await _confirmMoveItems(context, nodes, targetFolder)) return;
+    try {
+      await ref
+          .read(boardProvider.notifier)
+          .moveBoardNodes(context, nodes, targetFolder);
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: "移动设备文件",
+      );
+      if (sendCtrlC) {
+        ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(context, "移动失败：$error");
+    }
+  }
+
+  Future<bool> _confirmMoveItems(
+    BuildContext context,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    final sourceLabel = nodes.length == 1
+        ? nodes.single.data.name
+        : "选中的 ${nodes.length} 个项目";
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.drive_file_move_outline),
+        title: const Text("确认移动"),
+        content: Text("是否要将「$sourceLabel」移动到「$targetFolder」？"),
+        actions: [
+          TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text("移动")),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  bool _isLocalNodeAlreadyInFolder(
+    TreeNode<FileSystemItem> node,
+    String targetFolder,
+  ) {
+    return path.equals(
+      path.normalize(path.absolute(path.dirname(node.id))),
+      path.normalize(path.absolute(targetFolder)),
+    );
+  }
+
+  bool _isBoardNodeAlreadyInFolder(
+    TreeNode<FileSystemItem> node,
+    String targetFolder,
+  ) {
+    final parent = path.posix.normalize(path.posix.dirname(node.id));
+    final target = path.posix.normalize(
+      targetFolder.isEmpty ? '/' : targetFolder,
+    );
+    return parent == target;
   }
 
   Future<void> _downloadSelectedBoardItems(
     BuildContext context,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    String? localFolderPath,
+  }) async {
     try {
       await ref
           .read(boardProvider.notifier)
-          .downloadSelectedBoardItems(context);
+          .downloadSelectedBoardItems(
+            context,
+            localFolderPath: localFolderPath,
+          );
     } on DeviceNotReadyException catch (_) {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
@@ -217,10 +633,13 @@ class ProjectFiles extends ConsumerWidget {
 
   Future<void> _uploadSelectedLocalItems(
     BuildContext context,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    String? boardFolderPath,
+  }) async {
     try {
-      await ref.read(fileProvider.notifier).uploadSelectedLocalItems(context);
+      await ref
+          .read(fileProvider.notifier)
+          .uploadSelectedLocalItems(context, boardFolderPath: boardFolderPath);
     } on DeviceNotReadyException catch (_) {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
@@ -239,10 +658,17 @@ class ProjectFiles extends ConsumerWidget {
   Future<void> _importExternalPaths(
     BuildContext context,
     WidgetRef ref,
-    List<String> paths,
-  ) async {
+    List<String> paths, {
+    String? localFolderPath,
+  }) async {
     try {
-      await ref.read(fileProvider.notifier).importExternalPaths(context, paths);
+      await ref
+          .read(fileProvider.notifier)
+          .importExternalPaths(
+            context,
+            paths,
+            localFolderPath: localFolderPath,
+          );
     } catch (error) {
       if (!context.mounted) return;
       showIdeError(context, "导入失败：$error");
@@ -252,10 +678,13 @@ class ProjectFiles extends ConsumerWidget {
   Future<void> _uploadLocalPaths(
     BuildContext context,
     WidgetRef ref,
-    List<String> paths,
-  ) async {
+    List<String> paths, {
+    String? boardFolderPath,
+  }) async {
     try {
-      await ref.read(fileProvider.notifier).uploadLocalPaths(context, paths);
+      await ref
+          .read(fileProvider.notifier)
+          .uploadLocalPaths(context, paths, boardFolderPath: boardFolderPath);
     } on DeviceNotReadyException catch (_) {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
@@ -351,7 +780,7 @@ class ProjectFiles extends ConsumerWidget {
     required Widget child,
   }) {
     return DragItemWidget(
-      allowedOperations: () => [DropOperation.copy],
+      allowedOperations: () => [DropOperation.copy, DropOperation.move],
       dragItemProvider: (_) {
         final paths = source == _FileDragSource.local
             ? _localDragPaths(ref, node)
@@ -422,6 +851,219 @@ class ProjectFiles extends ConsumerWidget {
         .getSelectedNodes()
         .map((node) => node.id)
         .toList(growable: false);
+  }
+
+  Menu _buildLocalNodeMenu(
+    BuildContext context,
+    WidgetRef ref,
+    Directory localWorkspace,
+    TreeNode<FileSystemItem> node,
+  ) {
+    final localController = ref.read(localFileTreeViewControllerProvider);
+    if (!localController.selectedNodeIds.contains(node.id)) {
+      localController.setSelectedNodeId(node.id);
+    }
+    final selectedNodes = ref.read(fileProvider.notifier).getSelectedNodes();
+    final selectedCount = selectedNodes.length;
+
+    final TreeNode<FileSystemItem>? boardFileTarget = ref
+        .read(boardProvider.notifier)
+        .getFocusFileNode();
+    final TreeNode<FileSystemItem>? boardFolderTarget = ref
+        .read(boardProvider.notifier)
+        .getFocusFolderNode();
+    final TreeNode<FileSystemItem>? localFolderTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFolderNode();
+
+    return Menu(
+      children: [
+        MenuAction(
+          title: "重命名",
+          callback: () => ref
+              .read(localFileTreeViewControllerProvider)
+              .setRenamingNodeId(node.id),
+          attributes: MenuActionAttributes(disabled: selectedCount != 1),
+        ),
+        MenuAction(
+          title: selectedCount > 1 ? "删除选中的 $selectedCount 个项目" : "删除",
+          callback: () async {
+            if (await confirmDelete(
+              context,
+              selectedCount > 1 ? "$selectedCount 个项目" : node.data.name,
+            )) {
+              await ref
+                  .read(fileProvider.notifier)
+                  .deleteSelectedLocalItems(context);
+            }
+          },
+        ),
+        MenuSeparator(),
+        MenuAction(
+          title: selectedCount > 1
+              ? "上传选中的 $selectedCount 个项目到设备文件夹 ${boardFolderTarget?.id ?? "/"}"
+              : "上传到设备文件夹 ${boardFolderTarget?.id ?? "/"}",
+          callback: () => _uploadSelectedLocalItems(context, ref),
+          attributes: MenuActionAttributes(
+            disabled: !ref.watch(getUsbSerialProvider()).isConnected,
+          ),
+        ),
+        MenuAction(
+          title: "覆盖设备文件 ${boardFileTarget?.id ?? "（未选择设备文件）"}",
+          callback: () async {
+            try {
+              final bytes = await File(node.id).readAsBytes();
+              await ref
+                  .read(boardProvider.notifier)
+                  .writeFileBytes(boardFileTarget!.id, bytes);
+              ref
+                  .read(boardFileItemsProvider.notifier)
+                  .buildRootFileListItems();
+
+              if (!context.mounted) return;
+              showEditorSnackBar(context, "已覆盖设备文件：${boardFileTarget.id}");
+            } on DeviceNotReadyException catch (_) {
+              if (!context.mounted) return;
+              final sendCtrlC = await showDeviceNotReadyDialog(
+                context,
+                operation: "覆盖设备文件",
+              );
+              if (sendCtrlC) {
+                ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+              }
+            }
+          },
+          attributes: MenuActionAttributes(
+            disabled:
+                !ref.watch(getUsbSerialProvider()).isConnected ||
+                selectedCount != 1 ||
+                (boardFileTarget == null || (node.data is FolderItem)),
+          ),
+        ),
+        MenuSeparator(),
+        MenuAction(
+          title: "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件",
+          callback: () async {
+            final parentDir = localFolderTarget?.id ?? localWorkspace.path;
+            final uniquePath = await local.getUniqueFilePath(
+              path.join(parentDir, "new_file"),
+            );
+            await ref.read(fileProvider.notifier).createFile(uniquePath);
+          },
+        ),
+        MenuAction(
+          title: "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件夹",
+          callback: () async {
+            final parentDir = localFolderTarget?.id ?? localWorkspace.path;
+            final uniquePath = await local.getUniqueFolderPath(
+              path.join(parentDir, "new_folder"),
+            );
+            await ref.read(fileProvider.notifier).createFolder(uniquePath);
+          },
+        ),
+      ],
+    );
+  }
+
+  Menu _buildBoardNodeMenu(
+    BuildContext context,
+    WidgetRef ref,
+    TreeNode<FileSystemItem> node,
+  ) {
+    final boardController = ref.read(boardFileTreeViewControllerProvider);
+    if (!boardController.selectedNodeIds.contains(node.id)) {
+      boardController.setSelectedNodeId(node.id);
+    }
+    final selectedNodes = ref.read(boardProvider.notifier).getSelectedNodes();
+    final selectedCount = selectedNodes.length;
+
+    final TreeNode<FileSystemItem>? localFileTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFileNode();
+    final TreeNode<FileSystemItem>? localFolderTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFolderNode();
+
+    return Menu(
+      children: [
+        MenuAction(
+          title: "重命名",
+          callback: () => ref
+              .read(boardFileTreeViewControllerProvider)
+              .setRenamingNodeId(node.id),
+          attributes: MenuActionAttributes(disabled: selectedCount != 1),
+        ),
+        MenuAction(
+          title: selectedCount > 1 ? "删除选中的 $selectedCount 个项目" : "删除",
+          callback: () async {
+            if (await confirmDelete(
+              context,
+              selectedCount > 1 ? "$selectedCount 个项目" : node.data.name,
+            )) {
+              try {
+                await ref
+                    .read(boardProvider.notifier)
+                    .deleteSelectedBoardItems(context);
+              } on DeviceNotReadyException catch (_) {
+                if (!context.mounted) return;
+                final sendCtrlC = await showDeviceNotReadyDialog(
+                  context,
+                  operation: "删除设备文件",
+                );
+                if (sendCtrlC) {
+                  ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+                }
+              }
+            }
+          },
+        ),
+        MenuSeparator(),
+        MenuAction(
+          title: selectedCount > 1
+              ? "下载选中的 $selectedCount 个项目到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}"
+              : "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}",
+          callback: () => _downloadSelectedBoardItems(context, ref),
+          attributes: MenuActionAttributes(
+            disabled:
+                !ref.watch(getUsbSerialProvider()).isConnected ||
+                (ref.watch(fileProvider)?.path == null),
+          ),
+        ),
+        MenuAction(
+          title: "覆盖本地文件 ${localFileTarget?.id ?? "（未选择本地文件）"}",
+          callback: () async {
+            try {
+              final bytes = await ref
+                  .read(boardProvider.notifier)
+                  .getFileBytes(node.id);
+              await File(localFileTarget!.id).writeAsBytes(bytes);
+              ref
+                  .read(localFileItemsProvider.notifier)
+                  .buildRootFileListItems();
+
+              if (!context.mounted) return;
+              showEditorSnackBar(context, "已覆盖本地文件：${localFileTarget.id}");
+            } on DeviceNotReadyException catch (_) {
+              if (!context.mounted) return;
+              final sendCtrlC = await showDeviceNotReadyDialog(
+                context,
+                operation: "读取设备文件",
+              );
+              if (sendCtrlC) {
+                ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+              }
+            }
+          },
+          attributes: MenuActionAttributes(
+            disabled:
+                (localFileTarget == null) ||
+                selectedCount != 1 ||
+                ((ref.watch(fileProvider)?.path == null) ||
+                    (node.data is FolderItem)),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget buildLocalHeader(
@@ -664,6 +1306,26 @@ class ProjectFiles extends ConsumerWidget {
                   node.id,
                   event.position,
                 ),
+                rowWrapperBuilder: (context, node, child) => ContextMenuWidget(
+                  menuProvider: (_) =>
+                      _buildLocalNodeMenu(context, ref, localWorkspace, node),
+                  child: _wrapFileDragSource(
+                    ref: ref,
+                    node: node,
+                    source: _FileDragSource.local,
+                    child: child,
+                  ),
+                ),
+                dragAndDrop: TreeDragAndDropConfig<FileSystemItem>(
+                  onMoveNodes: (draggedNodes, targetNode, position) =>
+                      _moveLocalNodesToFolder(
+                        context,
+                        ref,
+                        draggedNodes,
+                        targetNode,
+                        position,
+                      ),
+                ),
                 enableDragAndDrop: ref.watch(localEnableDragAndDrop),
                 selectionMode: selectionMode
                     ? SelectionMode.none
@@ -678,6 +1340,7 @@ class ProjectFiles extends ConsumerWidget {
                 selectedColor: Theme.of(context).colorScheme.secondaryContainer,
               ),
               controller: ref.watch(localFileTreeViewControllerProvider),
+              scrollController: ref.watch(localFileScrollControllerProvider),
               prefixBuilder:
                   (BuildContext context, TreeNode<FileSystemItem> node) {
                     return SuperTreeThemes.material().fileSystemIconProvider!
@@ -724,170 +1387,14 @@ class ProjectFiles extends ConsumerWidget {
                         Expanded(child: label),
                       ],
                     );
-                    return ContextMenuWidget(
-                      child: _wrapFileDragSource(
-                        ref: ref,
-                        node: node,
-                        source: _FileDragSource.local,
-                        child: selectionMode
-                            ? GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () =>
-                                    localController.toggleSelection(node.id),
-                                child: row,
-                              )
-                            : row,
-                      ),
-                      menuProvider: (request) {
-                        final localController = ref.read(
-                          localFileTreeViewControllerProvider,
-                        );
-                        if (!localController.selectedNodeIds.contains(
-                          node.id,
-                        )) {
-                          localController.setSelectedNodeId(node.id);
-                        }
-                        final selectedNodes = ref
-                            .read(fileProvider.notifier)
-                            .getSelectedNodes();
-                        final selectedCount = selectedNodes.length;
-
-                        final TreeNode<FileSystemItem>? boardFileTarget = ref
-                            .read(boardProvider.notifier)
-                            .getFocusFileNode();
-
-                        final TreeNode<FileSystemItem>? boardFolderTarget = ref
-                            .read(boardProvider.notifier)
-                            .getFocusFolderNode();
-                        final TreeNode<FileSystemItem>? localFolderTarget = ref
-                            .read(fileProvider.notifier)
-                            .getFocusFolderNode();
-
-                        return Menu(
-                          children: [
-                            MenuAction(
-                              title: "重命名",
-                              callback: () => ref
-                                  .read(localFileTreeViewControllerProvider)
-                                  .setRenamingNodeId(node.id),
-                              attributes: MenuActionAttributes(
-                                disabled: selectedCount != 1,
-                              ),
-                            ),
-                            MenuAction(
-                              title: selectedCount > 1
-                                  ? "删除选中的 $selectedCount 个项目"
-                                  : "删除",
-                              callback: () async {
-                                if (await confirmDelete(
-                                  context,
-                                  selectedCount > 1
-                                      ? "$selectedCount 个项目"
-                                      : node.data.name,
-                                )) {
-                                  await ref
-                                      .read(fileProvider.notifier)
-                                      .deleteSelectedLocalItems(context);
-                                }
-                              },
-                            ),
-                            MenuSeparator(),
-                            MenuAction(
-                              title: selectedCount > 1
-                                  ? "上传选中的 $selectedCount 个项目到设备文件夹 ${boardFolderTarget?.id ?? "/"}"
-                                  : "上传到设备文件夹 ${boardFolderTarget?.id ?? "/"}",
-                              callback: () =>
-                                  _uploadSelectedLocalItems(context, ref),
-                              attributes: MenuActionAttributes(
-                                disabled: !(ref
-                                    .watch(getUsbSerialProvider())
-                                    .isConnected),
-                              ),
-                            ),
-                            MenuAction(
-                              title:
-                                  "覆盖设备文件 ${boardFileTarget?.id ?? "（未选择设备文件）"}",
-                              callback: () async {
-                                try {
-                                  final bytes = await File(
-                                    node.id,
-                                  ).readAsBytes();
-                                  await ref
-                                      .read(boardProvider.notifier)
-                                      .writeFileBytes(
-                                        boardFileTarget!.id,
-                                        bytes,
-                                      );
-                                  ref
-                                      .read(boardFileItemsProvider.notifier)
-                                      .buildRootFileListItems();
-
-                                  if (!context.mounted) return;
-                                  showEditorSnackBar(
-                                    context,
-                                    "已覆盖设备文件：${boardFileTarget.id}",
-                                  );
-                                } on DeviceNotReadyException catch (_) {
-                                  if (!context.mounted) return;
-                                  final sendCtrlC =
-                                      await showDeviceNotReadyDialog(
-                                        context,
-                                        operation: "覆盖设备文件",
-                                      );
-                                  if (sendCtrlC) {
-                                    ref
-                                        .read(getUsbSerialProvider().notifier)
-                                        .sendCommand("\x03");
-                                  }
-                                }
-                              },
-                              attributes: MenuActionAttributes(
-                                disabled:
-                                    !(ref
-                                        .watch(getUsbSerialProvider())
-                                        .isConnected) ||
-                                    selectedCount != 1 ||
-                                    (boardFileTarget == null ||
-                                        (node.data is FolderItem)),
-                              ),
-                            ),
-                            MenuSeparator(),
-                            MenuAction(
-                              title:
-                                  "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件",
-                              callback: () async {
-                                final parentDir =
-                                    localFolderTarget?.id ??
-                                    localWorkspace.path;
-                                final uniquePath = await local
-                                    .getUniqueFilePath(
-                                      path.join(parentDir, "new_file"),
-                                    );
-                                await ref
-                                    .read(fileProvider.notifier)
-                                    .createFile(uniquePath);
-                              },
-                            ),
-                            MenuAction(
-                              title:
-                                  "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件夹",
-                              callback: () async {
-                                final parentDir =
-                                    localFolderTarget?.id ??
-                                    localWorkspace.path;
-                                final uniquePath = await local
-                                    .getUniqueFolderPath(
-                                      path.join(parentDir, "new_folder"),
-                                    );
-                                await ref
-                                    .read(fileProvider.notifier)
-                                    .createFolder(uniquePath);
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    );
+                    return selectionMode
+                        ? GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                localController.toggleSelection(node.id),
+                            child: row,
+                          )
+                        : row;
                   },
             ),
           ),
@@ -976,6 +1483,25 @@ class ProjectFiles extends ConsumerWidget {
                   node.id,
                   event.position,
                 ),
+                rowWrapperBuilder: (context, node, child) => ContextMenuWidget(
+                  menuProvider: (_) => _buildBoardNodeMenu(context, ref, node),
+                  child: _wrapFileDragSource(
+                    ref: ref,
+                    node: node,
+                    source: _FileDragSource.board,
+                    child: child,
+                  ),
+                ),
+                dragAndDrop: TreeDragAndDropConfig<FileSystemItem>(
+                  onMoveNodes: (draggedNodes, targetNode, position) =>
+                      _moveBoardNodesToFolder(
+                        context,
+                        ref,
+                        draggedNodes,
+                        targetNode,
+                        position,
+                      ),
+                ),
                 enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
                 selectionMode: selectionMode
                     ? SelectionMode.none
@@ -991,6 +1517,7 @@ class ProjectFiles extends ConsumerWidget {
                 selectedColor: Theme.of(context).colorScheme.secondaryContainer,
               ),
               controller: ref.watch(boardFileTreeViewControllerProvider),
+              scrollController: ref.watch(boardFileScrollControllerProvider),
               prefixBuilder:
                   (BuildContext context, TreeNode<FileSystemItem> node) {
                     return SuperTreeThemes.material().fileSystemIconProvider!
@@ -1029,145 +1556,14 @@ class ProjectFiles extends ConsumerWidget {
                         Expanded(child: label),
                       ],
                     );
-                    return ContextMenuWidget(
-                      child: _wrapFileDragSource(
-                        ref: ref,
-                        node: node,
-                        source: _FileDragSource.board,
-                        child: selectionMode
-                            ? GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () =>
-                                    boardController.toggleSelection(node.id),
-                                child: row,
-                              )
-                            : row,
-                      ),
-                      menuProvider: (request) {
-                        final boardController = ref.read(
-                          boardFileTreeViewControllerProvider,
-                        );
-                        if (!boardController.selectedNodeIds.contains(
-                          node.id,
-                        )) {
-                          boardController.setSelectedNodeId(node.id);
-                        }
-                        final selectedNodes = ref
-                            .read(boardProvider.notifier)
-                            .getSelectedNodes();
-                        final selectedCount = selectedNodes.length;
-
-                        final TreeNode<FileSystemItem>? localFileTarget = ref
-                            .read(fileProvider.notifier)
-                            .getFocusFileNode();
-
-                        final TreeNode<FileSystemItem>? localFolderTarget = ref
-                            .read(fileProvider.notifier)
-                            .getFocusFolderNode();
-
-                        return Menu(
-                          children: [
-                            MenuAction(
-                              title: "重命名",
-                              callback: () => ref
-                                  .read(boardFileTreeViewControllerProvider)
-                                  .setRenamingNodeId(node.id),
-                              attributes: MenuActionAttributes(
-                                disabled: selectedCount != 1,
-                              ),
-                            ),
-                            MenuAction(
-                              title: selectedCount > 1
-                                  ? "删除选中的 $selectedCount 个项目"
-                                  : "删除",
-                              callback: () async {
-                                if (await confirmDelete(
-                                  context,
-                                  selectedCount > 1
-                                      ? "$selectedCount 个项目"
-                                      : node.data.name,
-                                )) {
-                                  try {
-                                    await ref
-                                        .read(boardProvider.notifier)
-                                        .deleteSelectedBoardItems(context);
-                                  } on DeviceNotReadyException catch (_) {
-                                    if (!context.mounted) return;
-                                    final sendCtrlC =
-                                        await showDeviceNotReadyDialog(
-                                          context,
-                                          operation: "删除设备文件",
-                                        );
-                                    if (sendCtrlC) {
-                                      ref
-                                          .read(getUsbSerialProvider().notifier)
-                                          .sendCommand("\x03");
-                                    }
-                                  }
-                                }
-                              },
-                            ),
-                            MenuSeparator(),
-                            MenuAction(
-                              title: selectedCount > 1
-                                  ? "下载选中的 $selectedCount 个项目到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}"
-                                  : "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}",
-                              callback: () =>
-                                  _downloadSelectedBoardItems(context, ref),
-                              attributes: MenuActionAttributes(
-                                disabled:
-                                    !(ref
-                                        .watch(getUsbSerialProvider())
-                                        .isConnected) ||
-                                    (ref.watch(fileProvider)?.path == null),
-                              ),
-                            ),
-                            MenuAction(
-                              title:
-                                  "覆盖本地文件 ${localFileTarget?.id ?? "（未选择本地文件）"}",
-                              callback: () async {
-                                try {
-                                  final bytes = await ref
-                                      .read(boardProvider.notifier)
-                                      .getFileBytes(node.id);
-                                  await File(
-                                    localFileTarget!.id,
-                                  ).writeAsBytes(bytes);
-                                  ref
-                                      .read(localFileItemsProvider.notifier)
-                                      .buildRootFileListItems();
-
-                                  if (!context.mounted) return;
-                                  showEditorSnackBar(
-                                    context,
-                                    "已覆盖本地文件：${localFileTarget.id}",
-                                  );
-                                } on DeviceNotReadyException catch (_) {
-                                  if (!context.mounted) return;
-                                  final sendCtrlC =
-                                      await showDeviceNotReadyDialog(
-                                        context,
-                                        operation: "读取设备文件",
-                                      );
-                                  if (sendCtrlC) {
-                                    ref
-                                        .read(getUsbSerialProvider().notifier)
-                                        .sendCommand("\x03");
-                                  }
-                                }
-                              },
-                              attributes: MenuActionAttributes(
-                                disabled:
-                                    (localFileTarget == null) ||
-                                    selectedCount != 1 ||
-                                    ((ref.watch(fileProvider)?.path == null) ||
-                                        (node.data is FolderItem)),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    );
+                    return selectionMode
+                        ? GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                boardController.toggleSelection(node.id),
+                            child: row,
+                          )
+                        : row;
                   },
             ),
           ),

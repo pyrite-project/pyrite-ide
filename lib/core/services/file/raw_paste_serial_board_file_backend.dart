@@ -288,6 +288,16 @@ _emit_ok('RenameSuccessfully')
   }
 
   @override
+  Future<void> move(String oldPath, String newPath) async {
+    await _runJsonValue(
+      _wrapPython('''
+os.rename(${_pythonTextExpression(oldPath)}, ${_pythonTextExpression(newPath)})
+_emit_ok('MoveSuccessfully')
+'''),
+    );
+  }
+
+  @override
   Future<void> createFolder(String path) async {
     await _runJsonValue(
       _wrapPython('''

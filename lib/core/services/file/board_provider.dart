@@ -134,6 +134,10 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     return 'RenameSuccessfully';
   }
 
+  Future<void> move(String oldPath, String newPath) async {
+    await ref.read(boardFileBackendProvider).move(oldPath, newPath);
+  }
+
   Future<void> createFolder(String path) async {
     await ref.read(boardFileBackendProvider).createFolder(path);
   }
@@ -231,6 +235,18 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     return normalized.startsWith('/') ? normalized : '/$normalized';
   }
 
+  String _normalizeBoardPath(String filePath) {
+    final normalized = _boardPath.normalize(filePath.replaceAll('\\', '/'));
+    if (normalized == '.' || normalized.isEmpty) return '/';
+    return normalized.startsWith('/') ? normalized : '/$normalized';
+  }
+
+  bool _isBoardPathInside(String childPath, String parentPath) {
+    final child = _normalizeBoardPath(childPath);
+    final parent = _normalizeBoardPath(parentPath);
+    return child == parent || _boardPath.isWithin(parent, child);
+  }
+
   Future<bool> _boardFolderExists(String folderPath) async {
     try {
       await getFileList(path: folderPath);
@@ -238,6 +254,24 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<bool> _boardPathExistsAny(String targetPath) async {
+    if (await _boardFolderExists(targetPath)) return true;
+    try {
+      await getFileBytes(targetPath);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _deleteBoardPathAny(String targetPath) async {
+    if (await _boardFolderExists(targetPath)) {
+      await deleteFolder(targetPath);
+      return;
+    }
+    await deleteFile(targetPath);
   }
 
   Future<void> downloadFolder(String remotePath, String localPath) async {
@@ -350,7 +384,111 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     showEditorSnackBar(context, "已从设备删除 ${nodes.length} 个项目");
   }
 
-  Future<void> downloadSelectedBoardItems(BuildContext context) async {
+  Future<void> moveBoardNodes(
+    BuildContext context,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    final normalizedTargetFolder = _normalizeBoardFolderPath(targetFolder);
+    final movableNodes = nodes
+        .where(
+          (node) =>
+              _normalizeBoardPath(_boardPath.dirname(node.id)) !=
+              normalizedTargetFolder,
+        )
+        .toList(growable: false);
+    if (movableNodes.isEmpty) return;
+    FileConflictAction? conflictPolicy;
+    var moved = 0;
+    var skipped = 0;
+    ref
+        .read(fileTransferProgressProvider.notifier)
+        .start(
+          direction: FileTransferDirection.move,
+          scope: movableNodes.any((node) => node.data is FolderItem)
+              ? FileTransferScope.folder
+              : FileTransferScope.file,
+          totalFiles: movableNodes.length,
+          message: '准备移动设备文件',
+        );
+
+    try {
+      for (var i = 0; i < movableNodes.length; i++) {
+        final node = movableNodes[i];
+        final sourcePath = _normalizeBoardPath(node.id);
+        final targetPath = normalizedTargetFolder == '/'
+            ? '/${_boardPath.basename(sourcePath)}'
+            : _boardPath.join(
+                normalizedTargetFolder,
+                _boardPath.basename(sourcePath),
+              );
+        if (sourcePath == targetPath) {
+          skipped++;
+          continue;
+        }
+        if (node.data is FolderItem &&
+            _isBoardPathInside(normalizedTargetFolder, sourcePath)) {
+          showEditorSnackBar(context, "不能将文件夹移动到自身或子文件夹中");
+          skipped++;
+          continue;
+        }
+
+        final targetExists = await _boardPathExistsAny(targetPath);
+        if (targetExists) {
+          final action = await _resolveConflict(
+            context,
+            policy: conflictPolicy,
+            sourcePath: sourcePath,
+            targetPath: targetPath,
+            isUpload: true,
+          );
+          switch (action) {
+            case FileConflictAction.cancel:
+              showEditorSnackBar(context, "已取消移动");
+              return;
+            case FileConflictAction.skip:
+              skipped++;
+              continue;
+            case FileConflictAction.skipAll:
+              conflictPolicy = FileConflictAction.skipAll;
+              skipped++;
+              continue;
+            case FileConflictAction.overwriteAll:
+              conflictPolicy = FileConflictAction.overwriteAll;
+              break;
+            case FileConflictAction.overwrite:
+              break;
+          }
+          await _deleteBoardPathAny(targetPath);
+        }
+
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .startFile(
+              file: sourcePath,
+              index: i + 1,
+              totalFiles: movableNodes.length,
+              bytesTotal: 0,
+            );
+        await move(sourcePath, targetPath);
+        moved++;
+      }
+
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '移动完成：$moved 个，跳过：$skipped 个');
+      showEditorSnackBar(context, "移动完成：$moved 个，跳过：$skipped 个");
+    } catch (error) {
+      ref.read(fileTransferProgressProvider.notifier).fail('移动失败：$error');
+      rethrow;
+    }
+  }
+
+  Future<void> downloadSelectedBoardItems(
+    BuildContext context, {
+    String? localFolderPath,
+  }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
       showEditorSnackBar(context, "先选择一个设备文件或文件夹");
@@ -363,10 +501,10 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       return;
     }
 
-    final localFolderTarget = ref
-        .read(fileProvider.notifier)
-        .getFocusFolderNode();
-    final targetFolder = localFolderTarget?.id ?? localWorkspace.path;
+    final localFolderTarget =
+        localFolderPath ??
+        ref.read(fileProvider.notifier).getFocusFolderNode()?.id;
+    final targetFolder = localFolderTarget ?? localWorkspace.path;
     FileConflictAction? conflictPolicy;
     var downloaded = 0;
     var skipped = 0;

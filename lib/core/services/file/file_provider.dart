@@ -227,16 +227,19 @@ class FileNotifier extends StateNotifier<Directory?> {
     showEditorSnackBar(context, "已删除 ${nodes.length} 个本地项目");
   }
 
-  Future<void> uploadSelectedLocalItems(BuildContext context) async {
+  Future<void> uploadSelectedLocalItems(
+    BuildContext context, {
+    String? boardFolderPath,
+  }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
       showEditorSnackBar(context, "先选择一个本地文件或文件夹");
       return;
     }
 
-    final boardFolderTarget = ref
-        .read(boardProvider.notifier)
-        .getFocusFolderNode();
+    final boardFolderTarget =
+        boardFolderPath ??
+        ref.read(boardProvider.notifier).getFocusFolderNode()?.id;
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -246,7 +249,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         final node = nodes[i];
         final targetPath = buildBoardUploadTargetPath(
           sourcePath: node.id,
-          boardFolderPath: boardFolderTarget?.id,
+          boardFolderPath: boardFolderTarget,
         );
         final exists = await _boardPathExists(
           targetPath,
@@ -277,6 +280,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             case FileConflictAction.overwrite:
               break;
           }
+          await _deleteBoardPath(targetPath, node.data is FolderItem);
         }
 
         if (node.data is FolderItem) {
@@ -319,13 +323,14 @@ class FileNotifier extends StateNotifier<Directory?> {
 
   Future<void> uploadLocalPaths(
     BuildContext context,
-    List<String> sourcePaths,
-  ) async {
+    List<String> sourcePaths, {
+    String? boardFolderPath,
+  }) async {
     if (sourcePaths.isEmpty) return;
 
-    final boardFolderTarget = ref
-        .read(boardProvider.notifier)
-        .getFocusFolderNode();
+    final boardFolderTarget =
+        boardFolderPath ??
+        ref.read(boardProvider.notifier).getFocusFolderNode()?.id;
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -336,7 +341,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         final isFolder = await Directory(sourcePath).exists();
         final targetPath = buildBoardUploadTargetPath(
           sourcePath: sourcePath,
-          boardFolderPath: boardFolderTarget?.id,
+          boardFolderPath: boardFolderTarget,
         );
         final exists = await _boardPathExists(targetPath, isFolder);
         if (exists) {
@@ -364,6 +369,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             case FileConflictAction.overwrite:
               break;
           }
+          await _deleteBoardPath(targetPath, isFolder);
         }
 
         if (isFolder) {
@@ -406,8 +412,9 @@ class FileNotifier extends StateNotifier<Directory?> {
 
   Future<void> importExternalPaths(
     BuildContext context,
-    List<String> sourcePaths,
-  ) async {
+    List<String> sourcePaths, {
+    String? localFolderPath,
+  }) async {
     if (sourcePaths.isEmpty) return;
     final localWorkspace = state;
     if (localWorkspace == null) {
@@ -415,58 +422,212 @@ class FileNotifier extends StateNotifier<Directory?> {
       return;
     }
 
-    final localFolderTarget = getFocusFolderNode();
-    final targetFolder = localFolderTarget?.id ?? localWorkspace.path;
+    final localFolderTarget = localFolderPath ?? getFocusFolderNode()?.id;
+    final targetFolder = localFolderTarget ?? localWorkspace.path;
     FileConflictAction? conflictPolicy;
     var imported = 0;
     var skipped = 0;
 
-    for (final sourcePath in sourcePaths) {
-      final sourceDir = Directory(sourcePath);
-      final isFolder = await sourceDir.exists();
-      final targetPath = path.join(targetFolder, path.basename(sourcePath));
-      final exists = isFolder
-          ? await Directory(targetPath).exists()
-          : await File(targetPath).exists();
-      if (exists) {
-        final action = await _resolveConflict(
-          context,
-          policy: conflictPolicy,
-          sourcePath: sourcePath,
-          targetPath: targetPath,
-          isUpload: false,
+    ref
+        .read(fileTransferProgressProvider.notifier)
+        .start(
+          direction: FileTransferDirection.download,
+          scope: FileTransferScope.folder,
+          totalFiles: sourcePaths.length,
+          message: '准备导入文件',
         );
-        switch (action) {
-          case FileConflictAction.cancel:
-            showEditorSnackBar(context, "已取消导入");
-            return;
-          case FileConflictAction.skip:
-            skipped++;
-            continue;
-          case FileConflictAction.skipAll:
-            conflictPolicy = FileConflictAction.skipAll;
-            skipped++;
-            continue;
-          case FileConflictAction.overwriteAll:
-            conflictPolicy = FileConflictAction.overwriteAll;
-            break;
-          case FileConflictAction.overwrite:
-            break;
+
+    try {
+      for (var i = 0; i < sourcePaths.length; i++) {
+        final sourcePath = sourcePaths[i];
+        final sourceDir = Directory(sourcePath);
+        final isFolder = await sourceDir.exists();
+        final targetPath = path.join(targetFolder, path.basename(sourcePath));
+        final exists = isFolder
+            ? await Directory(targetPath).exists()
+            : await File(targetPath).exists();
+        if (exists) {
+          final action = await _resolveConflict(
+            context,
+            policy: conflictPolicy,
+            sourcePath: sourcePath,
+            targetPath: targetPath,
+            isUpload: false,
+          );
+          switch (action) {
+            case FileConflictAction.cancel:
+              showEditorSnackBar(context, "已取消导入");
+              return;
+            case FileConflictAction.skip:
+              skipped++;
+              continue;
+            case FileConflictAction.skipAll:
+              conflictPolicy = FileConflictAction.skipAll;
+              skipped++;
+              continue;
+            case FileConflictAction.overwriteAll:
+              conflictPolicy = FileConflictAction.overwriteAll;
+              break;
+            case FileConflictAction.overwrite:
+              break;
+          }
+          await _deleteLocalPath(targetPath);
         }
+
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .startFile(
+              file: sourcePath,
+              index: i + 1,
+              totalFiles: sourcePaths.length,
+              bytesTotal: 0,
+            );
+        if (isFolder) {
+          await _copyDirectory(sourceDir, Directory(targetPath));
+        } else {
+          final targetFile = File(targetPath);
+          await targetFile.parent.create(recursive: true);
+          await File(sourcePath).copy(targetPath);
+        }
+        imported++;
       }
 
-      if (isFolder) {
-        await _copyDirectory(sourceDir, Directory(targetPath));
-      } else {
-        final targetFile = File(targetPath);
-        await targetFile.parent.create(recursive: true);
-        await File(sourcePath).copy(targetPath);
-      }
-      imported++;
+      ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '导入完成：$imported 个，跳过：$skipped 个');
+      showEditorSnackBar(context, "导入完成：$imported 个，跳过：$skipped 个");
+    } catch (error) {
+      ref.read(fileTransferProgressProvider.notifier).fail('导入失败：$error');
+      rethrow;
+    }
+  }
+
+  Future<void> moveLocalNodes(
+    BuildContext context,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    final movableNodes = nodes
+        .where((node) => !_isLocalNodeAlreadyInTargetFolder(node, targetFolder))
+        .toList(growable: false);
+    if (movableNodes.isEmpty) return;
+    if (!await Directory(targetFolder).exists()) {
+      showEditorSnackBar(context, "目标文件夹不存在：$targetFolder");
+      return;
     }
 
-    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-    showEditorSnackBar(context, "导入完成：$imported 个，跳过：$skipped 个");
+    FileConflictAction? conflictPolicy;
+    var moved = 0;
+    var skipped = 0;
+    ref
+        .read(fileTransferProgressProvider.notifier)
+        .start(
+          direction: FileTransferDirection.move,
+          scope: movableNodes.any((node) => node.data is FolderItem)
+              ? FileTransferScope.folder
+              : FileTransferScope.file,
+          totalFiles: movableNodes.length,
+          message: '准备移动文件',
+        );
+
+    try {
+      for (var i = 0; i < movableNodes.length; i++) {
+        final node = movableNodes[i];
+        final sourcePath = node.id;
+        final targetPath = path.join(targetFolder, path.basename(sourcePath));
+        if (path.equals(sourcePath, targetPath)) {
+          skipped++;
+          continue;
+        }
+        if (node.data is FolderItem &&
+            _isLocalPathInside(targetFolder, sourcePath)) {
+          showEditorSnackBar(context, "不能将文件夹移动到自身或子文件夹中");
+          skipped++;
+          continue;
+        }
+
+        final targetExists =
+            await FileSystemEntity.type(targetPath) !=
+            FileSystemEntityType.notFound;
+        if (targetExists) {
+          final action = await _resolveConflict(
+            context,
+            policy: conflictPolicy,
+            sourcePath: sourcePath,
+            targetPath: targetPath,
+            isUpload: false,
+          );
+          switch (action) {
+            case FileConflictAction.cancel:
+              showEditorSnackBar(context, "已取消移动");
+              return;
+            case FileConflictAction.skip:
+              skipped++;
+              continue;
+            case FileConflictAction.skipAll:
+              conflictPolicy = FileConflictAction.skipAll;
+              skipped++;
+              continue;
+            case FileConflictAction.overwriteAll:
+              conflictPolicy = FileConflictAction.overwriteAll;
+              break;
+            case FileConflictAction.overwrite:
+              break;
+          }
+          await _deleteLocalPath(targetPath);
+        }
+
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .startFile(
+              file: sourcePath,
+              index: i + 1,
+              totalFiles: movableNodes.length,
+              bytesTotal: 0,
+            );
+        if (node.data is FolderItem) {
+          await Directory(sourcePath).rename(targetPath);
+        } else {
+          await File(sourcePath).rename(targetPath);
+        }
+        moved++;
+      }
+
+      ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(message: '移动完成：$moved 个，跳过：$skipped 个');
+      showEditorSnackBar(context, "移动完成：$moved 个，跳过：$skipped 个");
+    } catch (error) {
+      ref.read(fileTransferProgressProvider.notifier).fail('移动失败：$error');
+      rethrow;
+    }
+  }
+
+  Future<void> _deleteLocalPath(String targetPath) async {
+    final type = await FileSystemEntity.type(targetPath);
+    if (type == FileSystemEntityType.directory) {
+      await Directory(targetPath).delete(recursive: true);
+    } else if (type != FileSystemEntityType.notFound) {
+      await File(targetPath).delete();
+    }
+  }
+
+  bool _isLocalPathInside(String childPath, String parentPath) {
+    final normalizedChild = path.normalize(path.absolute(childPath));
+    final normalizedParent = path.normalize(path.absolute(parentPath));
+    return path.isWithin(normalizedParent, normalizedChild) ||
+        path.equals(normalizedParent, normalizedChild);
+  }
+
+  bool _isLocalNodeAlreadyInTargetFolder(
+    TreeNode<FileSystemItem> node,
+    String targetFolder,
+  ) {
+    final sourceParent = path.normalize(path.absolute(path.dirname(node.id)));
+    final target = path.normalize(path.absolute(targetFolder));
+    return path.equals(sourceParent, target);
   }
 
   Future<void> _copyDirectory(Directory source, Directory target) async {
@@ -494,6 +655,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  Future<void> _deleteBoardPath(String targetPath, bool folder) async {
+    if (folder) {
+      await ref.read(boardProvider.notifier).deleteFolder(targetPath);
+    } else {
+      await ref.read(boardProvider.notifier).deleteFile(targetPath);
     }
   }
 

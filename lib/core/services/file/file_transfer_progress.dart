@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum FileTransferDirection { upload, download }
+enum FileTransferDirection { upload, download, move }
 
 enum FileTransferScope { file, folder }
 
@@ -39,6 +39,7 @@ class FileTransferProgressState {
   String get directionLabel => switch (direction) {
     FileTransferDirection.upload => '上传',
     FileTransferDirection.download => '下载',
+    FileTransferDirection.move => '移动',
     null => '传输',
   };
 
