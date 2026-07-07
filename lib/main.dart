@@ -154,6 +154,8 @@ void _applyData(PersistedData data) {
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
   container.read(desktopTerminalEnableUnderline.notifier).state =
       data.desktopTerminalEnableUnderline;
+  container.read(useMaterialContextMenu.notifier).state =
+      data.useMaterialContextMenu;
   container
       .read(androidUsbSerialProvider.notifier)
       .setBaudRate(data.serialDefaultBaudRate);

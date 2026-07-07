@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 
 const _fallbackAuthorName = 'Pyrite User';
@@ -2005,7 +2006,7 @@ class _StatusTile extends ConsumerWidget {
       ),
     );
 
-    return ContextMenuWidget(
+    return PyriteContextMenuWidget(
       child: tile,
       menuProvider: (request) {
         return Menu(

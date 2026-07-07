@@ -42,6 +42,7 @@ class SettingsPersistedData {
   final double terminalFontSize;
   final double terminalLineHeight;
   final bool desktopTerminalEnableUnderline;
+  final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -91,6 +92,7 @@ class SettingsPersistedData {
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.desktopTerminalEnableUnderline = false,
+    this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
@@ -141,6 +143,7 @@ class SettingsPersistedData {
     'terminalFontSize': terminalFontSize,
     'terminalLineHeight': terminalLineHeight,
     'desktopTerminalEnableUnderline': desktopTerminalEnableUnderline,
+    'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
@@ -199,6 +202,7 @@ class SettingsPersistedData {
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     desktopTerminalEnableUnderline:
         json['desktopTerminalEnableUnderline'] as bool? ?? false,
+    useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
     cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',

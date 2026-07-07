@@ -84,6 +84,7 @@ class PersistedData {
   final double terminalFontSize;
   final double terminalLineHeight;
   final bool desktopTerminalEnableUnderline;
+  final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
   final String cancelShortcut;
@@ -148,6 +149,7 @@ class PersistedData {
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.desktopTerminalEnableUnderline = false,
+    this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',

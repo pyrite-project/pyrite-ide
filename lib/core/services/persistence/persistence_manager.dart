@@ -86,6 +86,7 @@ class PersistenceManager {
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
       desktopTerminalEnableUnderline:
           settings?.desktopTerminalEnableUnderline ?? false,
+      useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
       cancelShortcut: settings?.cancelShortcut ?? 'Esc',
@@ -156,6 +157,7 @@ class PersistenceManager {
           desktopTerminalEnableUnderline: container.read(
             desktopTerminalEnableUnderline,
           ),
+          useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
           confirmShortcut: container.read(confirmShortcutProvider),
           cancelShortcut: container.read(cancelShortcutProvider),

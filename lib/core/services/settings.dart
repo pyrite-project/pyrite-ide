@@ -95,6 +95,10 @@ StateProvider<bool> desktopTerminalEnableUnderline = StateProvider<bool>(
   (ref) => false,
 );
 
+StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(
+  (ref) => false,
+);
+
 const Map<String, String> uploadConfirmStyles = {
   "浮动工具栏": "toolbar",
   "确认对话框": "dialog",

@@ -18,6 +18,7 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
@@ -1306,16 +1307,21 @@ class ProjectFiles extends ConsumerWidget {
                   node.id,
                   event.position,
                 ),
-                rowWrapperBuilder: (context, node, child) => ContextMenuWidget(
-                  menuProvider: (_) =>
-                      _buildLocalNodeMenu(context, ref, localWorkspace, node),
-                  child: _wrapFileDragSource(
-                    ref: ref,
-                    node: node,
-                    source: _FileDragSource.local,
-                    child: child,
-                  ),
-                ),
+                rowWrapperBuilder: (context, node, child) =>
+                    PyriteContextMenuWidget(
+                      menuProvider: (_) => _buildLocalNodeMenu(
+                        context,
+                        ref,
+                        localWorkspace,
+                        node,
+                      ),
+                      child: _wrapFileDragSource(
+                        ref: ref,
+                        node: node,
+                        source: _FileDragSource.local,
+                        child: child,
+                      ),
+                    ),
                 dragAndDrop: TreeDragAndDropConfig<FileSystemItem>(
                   onMoveNodes: (draggedNodes, targetNode, position) =>
                       _moveLocalNodesToFolder(
@@ -1483,15 +1489,17 @@ class ProjectFiles extends ConsumerWidget {
                   node.id,
                   event.position,
                 ),
-                rowWrapperBuilder: (context, node, child) => ContextMenuWidget(
-                  menuProvider: (_) => _buildBoardNodeMenu(context, ref, node),
-                  child: _wrapFileDragSource(
-                    ref: ref,
-                    node: node,
-                    source: _FileDragSource.board,
-                    child: child,
-                  ),
-                ),
+                rowWrapperBuilder: (context, node, child) =>
+                    PyriteContextMenuWidget(
+                      menuProvider: (_) =>
+                          _buildBoardNodeMenu(context, ref, node),
+                      child: _wrapFileDragSource(
+                        ref: ref,
+                        node: node,
+                        source: _FileDragSource.board,
+                        child: child,
+                      ),
+                    ),
                 dragAndDrop: TreeDragAndDropConfig<FileSystemItem>(
                   onMoveNodes: (draggedNodes, targetNode, position) =>
                       _moveBoardNodesToFolder(
