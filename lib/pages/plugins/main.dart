@@ -10,7 +10,7 @@ import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
-import 'package:pyrite_ide/pages/plugins/pyrite_material_widgets.dart';
+import 'package:pyrite_ide/pages/plugins/widgets/rfw_lib.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
 

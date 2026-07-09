@@ -1,151 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:markdown_widget/markdown_widget.dart' as markdown_widget;
 import 'package:rfw/rfw.dart' as rfw;
 
-rfw.LocalWidgetLibrary createPyriteMaterialWidgets() {
-  return rfw.LocalWidgetLibrary(<String, rfw.LocalWidgetBuilder>{
-    ...rfw.createMaterialWidgets().widgets,
-    'Markdown': _buildMarkdown,
-    'MarkdownWidget': _buildMarkdown,
-    'MarkdownBlock': _buildMarkdownBlock,
-    'TextField': _buildTextField,
-    'TextFormField': _buildTextField,
-  });
-}
-
-Widget _buildMarkdown(BuildContext context, rfw.DataSource source) {
-  return markdown_widget.MarkdownWidget(
-    data: source.v<String>(<Object>['data']) ?? '',
-    selectable: source.v<bool>(<Object>['selectable']) ?? true,
-    shrinkWrap: source.v<bool>(<Object>['shrinkWrap']) ?? false,
-    padding: rfw.ArgumentDecoders.edgeInsets(source, <Object>['padding']),
-    config: _decodeMarkdownConfig(source),
-  );
-}
-
-Widget _buildMarkdownBlock(BuildContext context, rfw.DataSource source) {
-  final padding = rfw.ArgumentDecoders.edgeInsets(source, <Object>['padding']);
-  final block = markdown_widget.MarkdownBlock(
-    data: source.v<String>(<Object>['data']) ?? '',
-    selectable: source.v<bool>(<Object>['selectable']) ?? true,
-    config: _decodeMarkdownConfig(source),
-  );
-
-  if (padding == null) {
-    return block;
-  }
-
-  return Padding(padding: padding, child: block);
-}
-
-Map<String, TextStyle> _mergeMarkdownCodeTheme(
-  Map<String, TextStyle> theme,
-  TextStyle style,
-) {
-  return theme.map(
-    (String key, TextStyle value) =>
-        MapEntry<String, TextStyle>(key, value.merge(style)),
-  );
-}
-
-Map<String, TextStyle>? _decodeMarkdownCodeTheme(
-  String? theme,
-  markdown_widget.MarkdownConfig baseConfig,
-) {
-  switch (theme) {
-    case 'dark':
-      return markdown_widget.PreConfig.darkConfig.theme;
-    case 'light':
-      return baseConfig.pre.theme;
-  }
-  return null;
-}
-
-markdown_widget.MarkdownConfig? _decodeMarkdownConfig(rfw.DataSource source) {
-  final onTapLink = source.handler<ValueChanged<String>>(
-    <Object>['onTapLink'],
-    (trigger) =>
-        (String url) => trigger(<String, Object?>{'url': url}),
-  );
-  final baseConfig = markdown_widget.MarkdownConfig.defaultConfig;
-  final configs = <markdown_widget.WidgetConfig>[];
-  final codeBlockPadding = rfw.ArgumentDecoders.edgeInsets(source, <Object>[
-    'codeBlockPadding',
-  ]);
-  final codeBlockMargin = rfw.ArgumentDecoders.edgeInsets(source, <Object>[
-    'codeBlockMargin',
-  ]);
-  final codeBlockDecoration = rfw.ArgumentDecoders.decoration(source, <Object>[
-    'codeBlockDecoration',
-  ]);
-  final codeBlockTextStyle = rfw.ArgumentDecoders.textStyle(source, <Object>[
-    'codeBlockTextStyle',
-  ]);
-  final codeBlockStyleNotMatched = rfw.ArgumentDecoders.textStyle(
-    source,
-    <Object>['codeBlockStyleNotMatched'],
-  );
-  final codeBlockLanguage = source.v<String>(<Object>['codeBlockLanguage']);
-  final codeBlockTheme = _decodeMarkdownCodeTheme(
-    source.v<String>(<Object>['codeBlockTheme']),
-    baseConfig,
-  );
-  final inlineCodeTextStyle = rfw.ArgumentDecoders.textStyle(source, <Object>[
-    'inlineCodeTextStyle',
-  ]);
-
-  if (codeBlockPadding != null ||
-      codeBlockMargin != null ||
-      codeBlockDecoration != null ||
-      codeBlockTextStyle != null ||
-      codeBlockStyleNotMatched != null ||
-      codeBlockLanguage != null ||
-      codeBlockTheme != null) {
-    final effectiveCodeTheme = codeBlockTheme ?? baseConfig.pre.theme;
-    final styleNotMatched =
-        (baseConfig.pre.styleNotMatched ?? const TextStyle())
-            .merge(codeBlockTextStyle)
-            .merge(codeBlockStyleNotMatched);
-    configs.add(
-      baseConfig.pre.copy(
-        padding: codeBlockPadding,
-        margin: codeBlockMargin,
-        decoration: codeBlockDecoration,
-        textStyle: codeBlockTextStyle == null
-            ? null
-            : baseConfig.pre.textStyle.merge(codeBlockTextStyle),
-        styleNotMatched:
-            (codeBlockTextStyle == null && codeBlockStyleNotMatched == null)
-            ? null
-            : styleNotMatched,
-        theme: codeBlockTextStyle == null
-            ? codeBlockTheme
-            : _mergeMarkdownCodeTheme(effectiveCodeTheme, codeBlockTextStyle),
-        language: codeBlockLanguage,
-      ),
-    );
-  }
-
-  if (inlineCodeTextStyle != null) {
-    configs.add(
-      markdown_widget.CodeConfig(
-        style: baseConfig.code.style.merge(inlineCodeTextStyle),
-      ),
-    );
-  }
-
-  if (onTapLink != null) {
-    configs.add(markdown_widget.LinkConfig(onTap: onTapLink));
-  }
-
-  if (configs.isEmpty) {
-    return null;
-  }
-
-  return baseConfig.copy(configs: configs);
-}
-
-Widget _buildTextField(BuildContext context, rfw.DataSource source) {
+Widget buildTextField(BuildContext context, rfw.DataSource source) {
   final onChanged = source.handler<ValueChanged<String>>(
     <Object>['onChanged'],
     (trigger) =>
@@ -157,7 +13,7 @@ Widget _buildTextField(BuildContext context, rfw.DataSource source) {
         (String value) => trigger(<String, Object?>{'value': value}),
   );
 
-  return _PyriteTextField(
+  return _TextField(
     value: source.v<String>(<Object>['value']),
     initialValue: source.v<String>(<Object>['initialValue']),
     decoration: _decodeInputDecoration(source),
@@ -249,8 +105,8 @@ TextInputAction? _decodeTextInputAction(String? value) {
   };
 }
 
-class _PyriteTextField extends StatefulWidget {
-  const _PyriteTextField({
+class _TextField extends StatefulWidget {
+  const _TextField({
     required this.value,
     required this.initialValue,
     required this.decoration,
@@ -293,10 +149,10 @@ class _PyriteTextField extends StatefulWidget {
   final VoidCallback? onTap;
 
   @override
-  State<_PyriteTextField> createState() => _PyriteTextFieldState();
+  State<_TextField> createState() => _TextFieldState();
 }
 
-class _PyriteTextFieldState extends State<_PyriteTextField> {
+class _TextFieldState extends State<_TextField> {
   late final TextEditingController _controller;
 
   @override
@@ -308,7 +164,7 @@ class _PyriteTextFieldState extends State<_PyriteTextField> {
   }
 
   @override
-  void didUpdateWidget(_PyriteTextField oldWidget) {
+  void didUpdateWidget(_TextField oldWidget) {
     super.didUpdateWidget(oldWidget);
     final value = widget.value;
     if (value != null && value != _controller.text) {

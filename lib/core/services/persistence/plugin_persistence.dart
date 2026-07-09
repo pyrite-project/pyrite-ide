@@ -48,24 +48,12 @@ class PluginPersistedData {
   };
 
   factory PluginPersistedData.fromJson(Map<String, dynamic> json) {
-    List<String> normalizeActions(String resource, List<String> actions) {
-      if (resource == 'dialog' &&
-          !actions.contains('show') &&
-          (actions.contains('read') || actions.contains('write'))) {
-        return ['show'];
-      }
-      return actions;
-    }
-
     Map<String, List<String>> parsePerms(dynamic raw) {
       if (raw is Map<String, dynamic>) {
         return raw.map(
           (k, v) => MapEntry(
             k,
-            normalizeActions(
-              k,
-              (v as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-            ),
+            (v as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
           ),
         );
       } else if (raw is List<dynamic>) {
