@@ -672,11 +672,15 @@ class _PluginBodyState extends ConsumerState<PluginBody>
         data: _data,
         onEvent: (String name, DynamicMap arguments) {
           debugPrint('user triggered event "$name" with data: $arguments');
-          ref
-              .read(pluginRunManagerProvider)[ref.read(
-                pluginManagerProvider,
-              )[widget.pluginId]]!
-              .sendCallback(name, arguments, ref.watch(page));
+          final runManager = ref.read(
+            pluginRunManagerProvider,
+          )[ref.read(pluginManagerProvider)[widget.pluginId]]!;
+          final binding = runManager.consumeCallbackBinding(name, arguments);
+          if (binding != null) {
+            _data.update(binding.key, binding.value);
+            setState(() {});
+          }
+          runManager.sendCallback(name, arguments, ref.watch(page));
         },
       ),
     );
