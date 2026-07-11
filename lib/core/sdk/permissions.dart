@@ -5,6 +5,7 @@ abstract class Permissions {
     'sdk.var.set': 'ui:view',
     'sdk.callback.register': 'ui:view',
     'sdk.callback.clear': 'ui:view',
+    'sdk.callback.set': 'ui:view',
     'sdk.router.push': 'ui:navigate',
     'sdk.router.pop': 'ui:navigate',
     'sdk.router.replace': 'ui:navigate',

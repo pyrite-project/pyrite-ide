@@ -29,6 +29,7 @@ abstract class SdkCommands {
   static const String varSet = 'sdk.var.set';
   static const String callbackRegister = 'sdk.callback.register';
   static const String callbackClear = 'sdk.callback.clear';
+  static const String callbackSet = 'sdk.callback.set';
   static const String pathRequest = 'sdk.path.request';
   static const String routerPush = 'sdk.router.push';
   static const String routerPop = 'sdk.router.pop';
@@ -103,6 +104,7 @@ class PluginRunManager {
   final Map<String, String> pages = {};
   final Map<String, dynamic> vars = {};
   final Map<String, String> callbackBindings = {};
+  final Set<String> requiredCallbacks = {};
   void Function()? onDataChanged;
   void Function(String scope, String path)? onPathRequest;
   void Function(String currentRoute, List<String> routeStack)? onRouteChanged;
@@ -155,6 +157,7 @@ class PluginRunManager {
     registerHandler(SdkCommands.varSet, _handleVarSet);
     registerHandler(SdkCommands.callbackRegister, _handleCallbackRegister);
     registerHandler(SdkCommands.callbackClear, _handleCallbackClear);
+    registerHandler(SdkCommands.callbackSet, _handleCallbackSet);
     registerHandler(SdkCommands.pathRequest, _handlePathRequest);
     registerHandler(SdkCommands.routerPush, _handleRouterPush);
     registerHandler(SdkCommands.routerPop, _handleRouterPop);
@@ -314,6 +317,24 @@ class PluginRunManager {
     void Function(Map<String, dynamic>) respond,
   ) {
     callbackBindings.clear();
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
+  }
+
+  void _handleCallbackSet(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final callbacks = payload['callbacks'] as List<dynamic>? ?? const [];
+    requiredCallbacks
+      ..clear()
+      ..addAll(callbacks.map((callback) => callback.toString()));
     respond(
       makeEnvelope(
         type: SdkCommands.responseOk,
@@ -563,6 +584,7 @@ class PluginRunManager {
   }
 
   Future<void> sendCallback(String name, DynamicMap args, String page) async {
+    if (!requiredCallbacks.contains(name)) return;
     await connect();
     sendJson(
       makeEnvelope(
@@ -608,6 +630,7 @@ class PluginRunManager {
     pages.clear();
     vars.clear();
     callbackBindings.clear();
+    requiredCallbacks.clear();
     routeStack.clear();
     currentRoute = 'home';
     _handlers.clear();
