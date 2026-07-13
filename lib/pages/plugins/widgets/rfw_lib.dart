@@ -12,6 +12,7 @@ rfw.LocalWidgetLibrary createPyriteMaterialWidgets() {
     'MarkdownBlock': buildMarkdownBlock,
     'TextField': buildTextField,
     'FilledButton': buildFilledButton,
+    'IconButton': buildIconButton,
     "Checkbox": buildCheckbox,
     "Switch": buildSwitch,
     "RadioGroup": buildRadioGroup,

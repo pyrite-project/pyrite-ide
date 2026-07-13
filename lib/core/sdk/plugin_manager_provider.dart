@@ -12,6 +12,22 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 
+/// Removes the previous plugin package while retaining user-owned directories.
+///
+/// Plugin packages are extracted in place so that `data` and `cache` survive
+/// upgrades. Every other top-level entry belongs to the package and must be
+/// removed before extraction; otherwise files deleted from a newer package can
+/// remain importable from the old installation.
+@visibleForTesting
+Future<void> preparePluginInstallDirectory(Directory target) async {
+  await target.create(recursive: true);
+  await for (final entity in target.list(followLinks: false)) {
+    final name = path.basename(entity.path).toLowerCase();
+    if (name == 'data' || name == 'cache') continue;
+    await entity.delete(recursive: true);
+  }
+}
+
 class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   final Ref ref;
   final PluginPersistence _persistence;
@@ -108,7 +124,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   Future<void> install(Plugin plugin, String packagePath) async {
     final existingPlugin = state[plugin.id];
     if (existingPlugin != null) {
-      unawaited(ref.read(pluginRunManagerProvider.notifier).stop(existingPlugin));
+      await ref.read(pluginRunManagerProvider.notifier).stop(existingPlugin);
     }
 
     final installingPlugin = plugin.copyWith(status: PluginStatus.installing);
@@ -123,6 +139,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       final InputFileStream stream = InputFileStream(packagePath);
       final Archive archive = ZipDecoder().decodeStream(stream);
 
+      await preparePluginInstallDirectory(target);
       await extractArchiveToDisk(archive, target.path);
 
       stream.close();

@@ -221,11 +221,12 @@ void _startAutoSave() {
 
 Future<void> _bootstrapPythonRuntime() async {
   try {
-    await SeriousPython.run(
+    await SeriousPython.runAsset(
       pythonRuntimeBootAsset,
       appFileName: "boot.py",
       targetPath: pythonRuntimeBootCachePath,
       checkHash: true,
+      sync: true,
     );
   } catch (error, stackTrace) {
     FlutterError.reportError(

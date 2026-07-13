@@ -1,6 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:rfw/rfw.dart' as rfw;
 
+Widget buildIconButton(BuildContext context, rfw.DataSource source) {
+  return Material(
+    type: MaterialType.transparency,
+    child: IconButton(
+      icon: source.child(<Object>['icon']),
+      selectedIcon: source.optionalChild(<Object>['selectedIcon']),
+      onPressed: source.voidHandler(<Object>['onPressed']),
+      onLongPress: source.voidHandler(<Object>['onLongPress']),
+      onHover: source.handler<ValueChanged<bool>>(
+        <Object>['onHover'],
+        (trigger) =>
+            (bool value) => trigger(<String, Object?>{'value': value}),
+      ),
+      tooltip: source.v<String>(<Object>['tooltip']),
+      iconSize: _double(source, <Object>['iconSize']),
+      visualDensity: rfw.ArgumentDecoders.visualDensity(source, <Object>[
+        'visualDensity',
+      ]),
+      padding: rfw.ArgumentDecoders.edgeInsets(source, <Object>['padding']),
+      alignment: rfw.ArgumentDecoders.alignment(source, <Object>['alignment']),
+      color: rfw.ArgumentDecoders.color(source, <Object>['color']),
+      disabledColor: rfw.ArgumentDecoders.color(source, <Object>[
+        'disabledColor',
+      ]),
+      focusColor: rfw.ArgumentDecoders.color(source, <Object>['focusColor']),
+      hoverColor: rfw.ArgumentDecoders.color(source, <Object>['hoverColor']),
+      highlightColor: rfw.ArgumentDecoders.color(source, <Object>[
+        'highlightColor',
+      ]),
+      splashColor: rfw.ArgumentDecoders.color(source, <Object>['splashColor']),
+      splashRadius: _double(source, <Object>['splashRadius']),
+      autofocus: source.v<bool>(<Object>['autofocus']) ?? false,
+      enableFeedback: source.v<bool>(<Object>['enableFeedback']),
+      constraints: rfw.ArgumentDecoders.boxConstraints(source, <Object>[
+        'constraints',
+      ]),
+      isSelected: source.v<bool>(<Object>['isSelected']),
+    ),
+  );
+}
+
 Widget buildFilledButton(BuildContext context, rfw.DataSource source) {
   return FilledButton(
     onPressed: source.voidHandler(<Object>['onPressed']),

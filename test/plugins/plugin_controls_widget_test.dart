@@ -5,6 +5,136 @@ import 'package:rfw/formats.dart' as formats;
 import 'package:rfw/rfw.dart' as rfw;
 
 void main() {
+  testWidgets('Pyrite RFW IconButton decodes values and emits press events', (
+    WidgetTester tester,
+  ) async {
+    final runtime = rfw.Runtime();
+    final data = rfw.DynamicContent();
+    final pageName = rfw.LibraryName(<String>['test']);
+    String? eventName;
+    formats.DynamicMap? eventArguments;
+
+    runtime.update(
+      rfw.LibraryName(<String>['core', 'widgets']),
+      rfw.createCoreWidgets(),
+    );
+    runtime.update(
+      rfw.LibraryName(<String>['core', 'material']),
+      createPyriteMaterialWidgets(),
+    );
+    runtime.update(
+      pageName,
+      formats.parseLibraryFile('''
+import core.widgets;
+import core.material;
+widget root = Column(children: [
+  IconButton(
+    icon: Icon(icon: 0xe491, fontFamily: "MaterialIcons"),
+    selectedIcon: Icon(icon: 0xe047, fontFamily: "MaterialIcons"),
+    onPressed: event "pressed" {},
+    onLongPress: event "longPressed" {},
+    onHover: event "hovered" {},
+    tooltip: "Profile",
+    iconSize: 28.0,
+    visualDensity: {"horizontal": 1.0, "vertical": -1.0},
+    padding: [4.0, 8.0],
+    alignment: {"x": 1.0, "y": 0.0},
+    color: 0xff1565c0,
+    disabledColor: 0xff9e9e9e,
+    focusColor: 0xff00838f,
+    hoverColor: 0xff2e7d32,
+    highlightColor: 0xfff9a825,
+    splashColor: 0xff6a1b9a,
+    splashRadius: 24.0,
+    autofocus: true,
+    enableFeedback: false,
+    constraints: {
+      "minWidth": 40.0,
+      "maxWidth": 60.0,
+      "minHeight": 42.0,
+      "maxHeight": 64.0
+    },
+    isSelected: true
+  ),
+  IconButton(
+    icon: Icon(icon: 0xe491, fontFamily: "MaterialIcons"),
+    disabledColor: 0xff9e9e9e
+  )
+]);
+'''),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: rfw.RemoteWidget(
+          runtime: runtime,
+          data: data,
+          widget: rfw.FullyQualifiedWidgetName(pageName, 'root'),
+          onEvent: (String name, formats.DynamicMap arguments) {
+            eventName = name;
+            eventArguments = arguments;
+          },
+        ),
+      ),
+    );
+
+    final buttons = tester
+        .widgetList<IconButton>(find.byType(IconButton))
+        .toList();
+    expect(buttons, hasLength(2));
+    expect(buttons.first.iconSize, 28.0);
+    expect(
+      buttons.first.visualDensity,
+      const VisualDensity(horizontal: 1, vertical: -1),
+    );
+    expect(
+      buttons.first.padding,
+      const EdgeInsetsDirectional.fromSTEB(4, 8, 4, 8),
+    );
+    expect(buttons.first.alignment, Alignment.centerRight);
+    expect(buttons.first.color, const Color(0xff1565c0));
+    expect(buttons.first.disabledColor, const Color(0xff9e9e9e));
+    expect(buttons.first.focusColor, const Color(0xff00838f));
+    expect(buttons.first.hoverColor, const Color(0xff2e7d32));
+    expect(buttons.first.highlightColor, const Color(0xfff9a825));
+    expect(buttons.first.splashColor, const Color(0xff6a1b9a));
+    expect(buttons.first.splashRadius, 24.0);
+    expect(buttons.first.autofocus, isTrue);
+    expect(buttons.first.enableFeedback, isFalse);
+    expect(
+      buttons.first.constraints,
+      const BoxConstraints(
+        minWidth: 40,
+        maxWidth: 60,
+        minHeight: 42,
+        maxHeight: 64,
+      ),
+    );
+    expect(buttons.first.isSelected, isTrue);
+    expect(buttons.first.tooltip, 'Profile');
+    expect(buttons.last.onPressed, isNull);
+
+    final icons = tester.widgetList<Icon>(find.byType(Icon)).toList();
+    expect(icons, hasLength(2));
+    expect(icons.first.icon?.codePoint, 0xe047);
+    expect(icons.first.icon?.fontFamily, 'MaterialIcons');
+    expect(icons.last.icon?.codePoint, 0xe491);
+
+    buttons.first.onHover?.call(true);
+    expect(eventName, 'hovered');
+    expect(eventArguments, <String, Object?>{'value': true});
+
+    buttons.first.onLongPress?.call();
+    expect(eventName, 'longPressed');
+    expect(eventArguments, <String, Object?>{});
+
+    await tester.tap(find.byType(IconButton).first);
+    await tester.pump();
+
+    expect(eventName, 'pressed');
+    expect(eventArguments, <String, Object?>{});
+  });
+
   testWidgets('Pyrite RFW FilledButton renders style and emits press events', (
     WidgetTester tester,
   ) async {
