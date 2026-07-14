@@ -255,7 +255,21 @@ void main() async {
   final PersistedData data = await persistenceManager.loadAll();
 
   final pluginPersistence = PluginPersistence();
-  final persistedPlugins = await pluginPersistence.load();
+  List<PluginPersistedData>? persistedPlugins;
+  var pluginMetadataLoaded = true;
+  try {
+    persistedPlugins = await pluginPersistence.load();
+  } catch (error, stackTrace) {
+    pluginMetadataLoaded = false;
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'pyrite_ide',
+        context: ErrorDescription('while loading plugin metadata'),
+      ),
+    );
+  }
 
   container = ProviderContainer();
   _installIdeOutputLogger();
@@ -263,10 +277,14 @@ void main() async {
 
   _applyData(data);
 
-  if (persistedPlugins != null && persistedPlugins.isNotEmpty) {
-    container
-        .read(pluginManagerProvider.notifier)
-        .loadPersisted(persistedPlugins);
+  final pluginManager = container.read(pluginManagerProvider.notifier);
+  if (pluginMetadataLoaded) {
+    if (persistedPlugins != null && persistedPlugins.isNotEmpty) {
+      pluginManager.loadPersisted(persistedPlugins);
+    }
+    await pluginManager.applyPendingChanges();
+  } else {
+    pluginManager.markMetadataUnavailable();
   }
 
   if (data.projectPath != null) {
