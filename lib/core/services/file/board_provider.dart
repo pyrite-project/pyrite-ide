@@ -82,8 +82,14 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     return 'SaveFileSuccessfully';
   }
 
-  Future<String> writeFileBytes(String targetPath, List<int> bytes) async {
-    await ref.read(boardFileBackendProvider).writeFileBytes(targetPath, bytes);
+  Future<String> writeFileBytes(
+    String targetPath,
+    List<int> bytes, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    await ref
+        .read(boardFileBackendProvider)
+        .writeFileBytes(targetPath, bytes, onProgress: onProgress);
     return 'SaveFileSuccessfully';
   }
 
@@ -102,7 +108,11 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       totalFiles: totalFiles,
       bytesTotal: bytes.length,
     );
-    await backend.writeFileBytes(targetPath, bytes);
+    await backend.writeFileBytes(
+      targetPath,
+      bytes,
+      onProgress: progress.updateBytes,
+    );
     progress.updateBytes(bytes.length, bytes.length);
     return 'SaveFileSuccessfully';
   }

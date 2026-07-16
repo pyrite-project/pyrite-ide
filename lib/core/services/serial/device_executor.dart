@@ -30,6 +30,44 @@ Future<String> runPythonOnDevice(
   String python, {
   Duration timeout = _defaultTimeout,
 }) async {
+  return _runPythonTransaction(
+    ref,
+    (session) => session.execute(python, timeout: timeout),
+  );
+}
+
+Future<void> runPythonOnDeviceWithRawInput(
+  Ref ref,
+  String python,
+  Uint8List data, {
+  Duration startupTimeout = _defaultTimeout,
+  Duration completionTimeout = const Duration(seconds: 60),
+  required List<int> readyMarker,
+  required List<int> doneMarker,
+  int chunkSize = 4096,
+  int ackEvery = 8,
+  void Function(int sent, int total)? onProgress,
+}) async {
+  await _runPythonTransaction(
+    ref,
+    (session) => session.executeWithRawInput(
+      python,
+      data,
+      startupTimeout: startupTimeout,
+      completionTimeout: completionTimeout,
+      readyMarker: readyMarker,
+      doneMarker: doneMarker,
+      chunkSize: chunkSize,
+      ackEvery: ackEvery,
+      onProgress: onProgress,
+    ),
+  );
+}
+
+Future<T> _runPythonTransaction<T>(
+  Ref ref,
+  Future<T> Function(RawPasteSession session) action,
+) async {
   final mutex = ref.read(replMutexProvider);
   return mutex.runExclusive(() async {
     _ensureConnected(ref);
@@ -50,7 +88,10 @@ Future<String> runPythonOnDevice(
       // --- Tier 1: Ctrl+C burst + Ctrl+A handshake. ---
       var entered = false;
       entered = await _tryInterruptAndHandshake(
-        session, writeBytes, queue, _handshakeTimeout,
+        session,
+        writeBytes,
+        queue,
+        _handshakeTimeout,
       );
 
       // --- Tier 1 fallback: Ctrl+D flush + Ctrl+C burst + Ctrl+A. ---
@@ -58,7 +99,10 @@ Future<String> runPythonOnDevice(
         writeBytes([0x04]); // Ctrl+D to flush half-parsed state
         await Future<void>.delayed(const Duration(milliseconds: 800));
         entered = await _tryInterruptAndHandshake(
-          session, writeBytes, queue, _retryHandshakeTimeout,
+          session,
+          writeBytes,
+          queue,
+          _retryHandshakeTimeout,
         );
       }
 
@@ -70,7 +114,7 @@ Future<String> runPythonOnDevice(
         );
       }
 
-      return await session.execute(python, timeout: timeout);
+      return await action(session);
     } finally {
       // --- Cleanup: always reset device to normal REPL state. ---
       try {

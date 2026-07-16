@@ -45,6 +45,38 @@ class SerialByteQueue {
     }
   }
 
+  Future<_SerialByteMatch> _readUntilAny(
+    List<List<int>> patterns,
+    Duration timeout,
+  ) async {
+    if (patterns.isEmpty || patterns.any((pattern) => pattern.isEmpty)) {
+      throw ArgumentError('Patterns must not be empty');
+    }
+
+    final stopwatch = Stopwatch()..start();
+    while (true) {
+      var matchedPattern = -1;
+      var matchedIndex = -1;
+      for (var i = 0; i < patterns.length; i++) {
+        final index = _indexOf(patterns[i]);
+        if (index >= 0 && (matchedIndex < 0 || index < matchedIndex)) {
+          matchedPattern = i;
+          matchedIndex = index;
+        }
+      }
+      if (matchedPattern >= 0) {
+        final end = matchedIndex + patterns[matchedPattern].length;
+        final result = _buffer.sublist(0, end);
+        _buffer.removeRange(0, end);
+        return _SerialByteMatch(
+          patternIndex: matchedPattern,
+          data: Uint8List.fromList(result),
+        );
+      }
+      await _waitForData(_remaining(timeout, stopwatch));
+    }
+  }
+
   Future<void> _waitForData(Duration timeout) async {
     _dataCompleter ??= Completer<void>();
     await _dataCompleter!.future.timeout(timeout);
@@ -72,6 +104,13 @@ class SerialByteQueue {
     }
     return -1;
   }
+}
+
+class _SerialByteMatch {
+  final int patternIndex;
+  final Uint8List data;
+
+  const _SerialByteMatch({required this.patternIndex, required this.data});
 }
 
 /// Result of a raw REPL Python execution.
@@ -107,8 +146,8 @@ class RawPasteSession {
   RawPasteSession({
     required void Function(List<int>) writeBytes,
     SerialByteQueue? queue,
-  })  : _writeBytes = writeBytes,
-        _queue = queue ?? SerialByteQueue();
+  }) : _writeBytes = writeBytes,
+       _queue = queue ?? SerialByteQueue();
 
   SerialByteQueue get queue => _queue;
 
@@ -153,6 +192,84 @@ class RawPasteSession {
       );
     }
     return utf8.decode(result.stdout, allowMalformed: true);
+  }
+
+  Future<void> executeWithRawInput(
+    String python,
+    Uint8List data, {
+    required Duration startupTimeout,
+    required Duration completionTimeout,
+    required List<int> readyMarker,
+    required List<int> doneMarker,
+    List<int> ackMarker = const [0x2b],
+    int chunkSize = 4096,
+    int ackEvery = 8,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    if (chunkSize <= 0) {
+      throw ArgumentError.value(chunkSize, 'chunkSize', 'Must be positive');
+    }
+    if (ackEvery <= 0) {
+      throw ArgumentError.value(ackEvery, 'ackEvery', 'Must be positive');
+    }
+    if (readyMarker.isEmpty || doneMarker.isEmpty || ackMarker.isEmpty) {
+      throw ArgumentError('Markers must not be empty');
+    }
+
+    _submitRawInputReceiver(Uint8List.fromList(utf8.encode(python)));
+    await _queue.readUntil(_ok, startupTimeout);
+    final startupResult = await _queue._readUntilAny([
+      readyMarker,
+      _eot,
+    ], startupTimeout);
+    if (startupResult.patternIndex == 1) {
+      final stderr = await _readPayloadUntilEot(startupTimeout);
+      await _queue.readUntil(_prompt, startupTimeout);
+      final stdoutText = utf8.decode(
+        startupResult.data.sublist(0, startupResult.data.length - 1),
+        allowMalformed: true,
+      );
+      final stderrText = utf8.decode(stderr, allowMalformed: true);
+      final error = stderrText.trim().isNotEmpty
+          ? stderrText.trim()
+          : stdoutText.trim();
+      throw RawPasteException(
+        error.isEmpty ? 'Receiver script exited before READY' : error,
+      );
+    }
+    var sent = 0;
+    var chunksSinceAck = 0;
+    while (sent < data.length) {
+      final end = math.min(sent + chunkSize, data.length);
+      _write(data.sublist(sent, end));
+      sent = end;
+      chunksSinceAck += 1;
+      onProgress?.call(sent, data.length);
+
+      if (chunksSinceAck >= ackEvery && sent < data.length) {
+        await _queue.readUntil(ackMarker, completionTimeout);
+        chunksSinceAck = 0;
+      }
+    }
+
+    final stdoutPrefix = await _queue.readUntil(doneMarker, completionTimeout);
+    final stdout = BytesBuilder(copy: false)..add(stdoutPrefix);
+    stdout.add(await _readPayloadUntilEot(completionTimeout));
+    final stderr = await _readPayloadUntilEot(completionTimeout);
+    await _queue.readUntil(_prompt, completionTimeout);
+
+    if (stderr.isNotEmpty) {
+      throw RawPasteException(utf8.decode(stderr, allowMalformed: true).trim());
+    }
+    final output = utf8.decode(stdout.takeBytes(), allowMalformed: true);
+    if (output.contains('PYRITE_WRITE_ERR:')) {
+      throw RawPasteException(output.trim());
+    }
+  }
+
+  void _submitRawInputReceiver(Uint8List code) {
+    _write(code);
+    _write(_eot);
   }
 
   Future<int?> _tryEnterRawPaste(Duration timeout) async {
