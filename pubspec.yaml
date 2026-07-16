@@ -75,6 +75,10 @@ dependencies:
   code_forge: 10.6.0
   extension_type_unions: 1.0.10
   rfw: 1.1.3
+  video_player: 2.13.0
+  video_player_media_kit: 2.0.0
+  media_kit_libs_windows_video: 1.0.11
+  media_kit_libs_linux: 1.2.1
   markdown_widget: 2.3.2+8
   freeport: 1.0.1
   super_context_menu: 0.9.1
@@ -91,6 +95,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  video_player_platform_interface: 6.9.0
   riverpod_generator: 2.6.5
 
   # The "flutter_lints" package below contains a set of recommended lints to

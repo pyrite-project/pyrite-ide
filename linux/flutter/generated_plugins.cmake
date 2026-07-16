@@ -7,6 +7,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
   git2dart_binaries
   irondash_engine_context
+  media_kit_libs_linux
+  media_kit_video
   open_file_linux
   screen_retriever_linux
   serious_python_linux

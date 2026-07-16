@@ -574,7 +574,7 @@ class _PluginBodyState extends ConsumerState<PluginBody>
     final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
     if (plugin == null) return;
 
-    _runtime.update(coreName, createCoreWidgets());
+    _runtime.update(coreName, createPyriteCoreWidgets());
     _runtime.update(materialName, createPyriteMaterialWidgets());
 
     final runManager = ref.read(pluginRunManagerProvider)[plugin];

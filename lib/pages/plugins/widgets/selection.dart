@@ -195,6 +195,90 @@ Widget buildSlider(BuildContext context, rfw.DataSource source) {
   );
 }
 
+Widget buildDropdownButton(BuildContext context, rfw.DataSource source) {
+  final onChanged = source.handler<ValueChanged<Object?>>(
+    <Object>['onChanged'],
+    (trigger) =>
+        (Object? value) => trigger(<String, Object?>{'value': value}),
+  );
+  final items =
+      rfw.ArgumentDecoders.list<_DropdownItem>(source, <Object>['items'], (
+        itemSource,
+        key,
+      ) {
+        final value = _scalar(itemSource, <Object>[...key, 'value']);
+        return _DropdownItem(
+          value: value,
+          label:
+              itemSource.optionalChild(<Object>[...key, 'child']) ??
+              Text(
+                itemSource.v<String>(<Object>[...key, 'label']) ??
+                    value?.toString() ??
+                    '',
+              ),
+          enabled: itemSource.v<bool>(<Object>[...key, 'enabled']) ?? true,
+        );
+      }) ??
+      <_DropdownItem>[];
+
+  return Material(
+    type: MaterialType.transparency,
+    child: DropdownButton<Object>(
+      items: items.map((item) {
+        return DropdownMenuItem<Object>(
+          value: item.value,
+          enabled: item.enabled,
+          child: item.label,
+        );
+      }).toList(),
+      value: _scalar(source, <Object>['value']),
+      hint: source.optionalChild(<Object>['hint']),
+      disabledHint: source.optionalChild(<Object>['disabledHint']),
+      onChanged: onChanged,
+      onTap: source.voidHandler(<Object>['onTap']),
+      elevation: source.v<int>(<Object>['elevation']) ?? 8,
+      style: rfw.ArgumentDecoders.textStyle(source, <Object>['style']),
+      underline: source.optionalChild(<Object>['underline']),
+      icon: source.optionalChild(<Object>['icon']),
+      iconDisabledColor: rfw.ArgumentDecoders.color(source, <Object>[
+        'iconDisabledColor',
+      ]),
+      iconEnabledColor: rfw.ArgumentDecoders.color(source, <Object>[
+        'iconEnabledColor',
+      ]),
+      iconSize: _double(source, <Object>['iconSize']) ?? 24.0,
+      isDense: source.v<bool>(<Object>['isDense']) ?? false,
+      isExpanded: source.v<bool>(<Object>['isExpanded']) ?? false,
+      itemHeight:
+          _double(source, <Object>['itemHeight']) ?? kMinInteractiveDimension,
+      menuWidth: _double(source, <Object>['menuWidth']),
+      focusColor: rfw.ArgumentDecoders.color(source, <Object>['focusColor']),
+      autofocus: source.v<bool>(<Object>['autofocus']) ?? false,
+      dropdownColor: rfw.ArgumentDecoders.color(source, <Object>[
+        'dropdownColor',
+      ]),
+      menuMaxHeight: _double(source, <Object>['menuMaxHeight']),
+      enableFeedback: source.v<bool>(<Object>['enableFeedback']),
+      alignment:
+          rfw.ArgumentDecoders.alignment(source, <Object>['alignment']) ??
+          AlignmentDirectional.centerStart,
+      borderRadius: rfw.ArgumentDecoders.borderRadius(source, <Object>[
+        'borderRadius',
+      ])?.resolve(Directionality.of(context)),
+      padding: rfw.ArgumentDecoders.edgeInsets(source, <Object>['padding']),
+      barrierDismissible:
+          source.v<bool>(<Object>['barrierDismissible']) ?? true,
+    ),
+  );
+}
+
+Object? _scalar(rfw.DataSource source, List<Object> key) {
+  return source.v<String>(key) ??
+      source.v<int>(key) ??
+      source.v<double>(key) ??
+      source.v<bool>(key);
+}
+
 double? _double(rfw.DataSource source, List<Object> key) {
   return source.v<double>(key) ?? source.v<int>(key)?.toDouble();
 }
@@ -211,4 +295,16 @@ class _RadioGroupItem {
   final String label;
   final String? subtitle;
   final bool? enabled;
+}
+
+class _DropdownItem {
+  const _DropdownItem({
+    required this.value,
+    required this.label,
+    required this.enabled,
+  });
+
+  final Object? value;
+  final Widget label;
+  final bool enabled;
 }

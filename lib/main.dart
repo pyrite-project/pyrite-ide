@@ -27,6 +27,7 @@ import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:serious_python/serious_python.dart';
+import 'package:video_player_media_kit/video_player_media_kit.dart';
 
 String? getPythonPath() {
   if (Platform.isAndroid) return "assets/android/python.zip";
@@ -245,6 +246,7 @@ void main() async {
   GitDebugLog.startSession();
   GitDebugLog.log('main start');
   WidgetsFlutterBinding.ensureInitialized();
+  VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
   GitDebugLog.log('WidgetsFlutterBinding initialized');
   await GitDebugLog.timeAsync(
     'git2dart PlatformSpecific.initialize',
