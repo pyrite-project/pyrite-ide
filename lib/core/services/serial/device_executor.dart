@@ -61,6 +61,34 @@ Future<void> runPythonOnDeviceStreaming(
   );
 }
 
+Future<void> runPythonOnDeviceWithRawInput(
+  Ref ref,
+  String python,
+  Uint8List data, {
+  Duration startupTimeout = _defaultTimeout,
+  Duration completionTimeout = const Duration(seconds: 60),
+  required List<int> readyMarker,
+  required List<int> doneMarker,
+  int chunkSize = 4096,
+  int ackEvery = 8,
+  void Function(int sent, int total)? onProgress,
+}) async {
+  await _runPythonTransaction(
+    ref.read,
+    (session) => session.executeWithRawInput(
+      python,
+      data,
+      startupTimeout: startupTimeout,
+      completionTimeout: completionTimeout,
+      readyMarker: readyMarker,
+      doneMarker: doneMarker,
+      chunkSize: chunkSize,
+      ackEvery: ackEvery,
+      onProgress: onProgress,
+    ),
+  );
+}
+
 Future<T> _runPythonTransaction<T>(
   _ProviderReader read,
   Future<T> Function(RawPasteSession session) action,

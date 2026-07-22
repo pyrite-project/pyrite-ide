@@ -45,7 +45,11 @@ abstract class BoardFileBackend {
   Future<void> writeTextFile(String path, String content);
 
   /// Writes raw file bytes through a temporary board-side file.
-  Future<void> writeFileBytes(String path, List<int> bytes);
+  Future<void> writeFileBytes(
+    String path,
+    List<int> bytes, {
+    void Function(int sent, int total)? onProgress,
+  });
 
   Future<void> beginWriteFile(String path);
 

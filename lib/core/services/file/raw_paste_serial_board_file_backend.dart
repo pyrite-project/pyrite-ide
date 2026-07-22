@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,8 +11,11 @@ import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
 /// existing serial provider and MicroPython raw-paste protocol.
 class RawPasteSerialBoardFileBackend implements BoardFileBackend {
   static const _resultMarker = '__PYRITE_BOARD_FILE_RESULT__';
+  static const _writeReadyMarker = 'PYRITE_WRITE_READY';
+  static const _writeDoneMarker = 'PYRITE_WRITE_DONE';
   static const _longTimeout = Duration(seconds: 60);
-  static const _writeChunkSize = 768;
+  static const _rawWriteChunkSize = 4096;
+  static const _rawWriteAckEvery = 8;
 
   static final _boardPath = path.Context(style: path.Style.posix);
 
@@ -141,49 +143,117 @@ _emit_ok(encoded)
   }
 
   @override
-  Future<void> writeFileBytes(String path, List<int> bytes) async {
-    final encoded = encodeBoardFileBytes(bytes);
-    final chunks = <String>[];
-    for (int i = 0; i < encoded.length; i += _writeChunkSize) {
-      final end = math.min(i + _writeChunkSize, encoded.length);
-      chunks.add(encoded.substring(i, end));
-    }
-
+  Future<void> writeFileBytes(
+    String path,
+    List<int> bytes, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
     final target = _pythonTextExpression(path);
     final tempPath = _temporaryPathFor(path);
     final temp = _pythonTextExpression(tempPath);
-    final chunkList = chunks.map(_pythonStringLiteral).join(', ');
+    final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    final timeoutSeconds = 60 + (payload.length / 20000).ceil();
 
-    await _runJsonValue(
-      _wrapPython('''
+    await runPythonOnDeviceWithRawInput(
+      ref,
+      '''
+import sys
+try:
+  import uos as os
+except ImportError:
+  import os
+import ubinascii
+try:
+  import micropython
+except ImportError:
+  micropython = None
+
+def _decode_text(value):
+  return ubinascii.a2b_base64(value).decode()
+
 target = $target
 tmp = $temp
-chunks = [$chunkList]
+remaining = ${payload.length}
+ack_every = $_rawWriteAckEvery
+ack_count = 0
+
 try:
-  os.remove(tmp)
-except OSError:
-  pass
-f = open(tmp, 'wb')
-try:
-  for chunk in chunks:
-    f.write(ubinascii.a2b_base64(chunk))
-finally:
-  f.close()
-try:
-  os.remove(target)
-except OSError:
-  pass
-try:
-  os.rename(tmp, target)
-except Exception:
+  if micropython is not None:
+    micropython.kbd_intr(-1)
+  usb = sys.stdin.buffer
+  sys.stdout.write('$_writeReadyMarker')
   try:
-    os.remove(tmp)
-  except OSError:
+    sys.stdout.flush()
+  except Exception:
     pass
-  raise
-_emit_ok('SaveFileSuccessfully')
-'''),
-      timeout: _longTimeout,
+  try:
+    try:
+      os.remove(tmp)
+    except OSError:
+      pass
+    f = open(tmp, 'wb')
+    try:
+      while remaining:
+        want = min($_rawWriteChunkSize, remaining)
+        data = b''
+        while len(data) < want:
+          chunk = usb.read(min(64, want - len(data)))
+          if chunk:
+            data += chunk
+        f.write(data)
+        remaining -= len(data)
+        ack_count += 1
+        if ack_every and ack_count % ack_every == 0:
+          f.flush()
+          if remaining:
+            sys.stdout.write('+')
+            try:
+              sys.stdout.flush()
+            except Exception:
+              pass
+      f.flush()
+    finally:
+      f.close()
+    try:
+      os.remove(target)
+    except OSError:
+      pass
+    try:
+      os.rename(tmp, target)
+    except Exception:
+      try:
+        os.remove(tmp)
+      except OSError:
+        pass
+      raise
+    sys.stdout.write('$_writeDoneMarker')
+    try:
+      sys.stdout.flush()
+    except Exception:
+      pass
+  except Exception as exc:
+    sys.stdout.write('PYRITE_WRITE_ERR:' + str(exc) + '\\n')
+    sys.stdout.write('$_writeDoneMarker')
+    try:
+      sys.stdout.flush()
+    except Exception:
+      pass
+    raise
+finally:
+  if micropython is not None:
+    try:
+      micropython.kbd_intr(3)
+    except Exception:
+      pass
+''',
+      payload,
+      startupTimeout: const Duration(seconds: 10),
+      completionTimeout: Duration(seconds: timeoutSeconds),
+      readyMarker: utf8.encode(_writeReadyMarker),
+      doneMarker: utf8.encode(_writeDoneMarker),
+      chunkSize: _rawWriteChunkSize,
+      ackEvery: _rawWriteAckEvery,
+      onProgress: onProgress,
     );
   }
 
