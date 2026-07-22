@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 
@@ -56,9 +55,12 @@ Future<bool> showDeviceNotReadyDialog(
         ],
       ),
       actions: [
-        TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text("取消"),
+        ),
         FilledButton.icon(
-          onPressed: () => ctx.pop(true),
+          onPressed: () => Navigator.pop(ctx, true),
           icon: const Icon(Icons.stop_circle_outlined, size: 18),
           label: const Text("发送 CTRL-C"),
         ),
@@ -108,9 +110,12 @@ Future<bool> showDiffConfirmDialog(
         ],
       ),
       actions: [
-        TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text("取消"),
+        ),
         FilledButton(
-          onPressed: () => ctx.pop(true),
+          onPressed: () => Navigator.pop(ctx, true),
           child: Text(isUpload ? "上传" : "下载"),
         ),
       ],
@@ -119,13 +124,21 @@ Future<bool> showDiffConfirmDialog(
   return result ?? false;
 }
 
-enum FileConflictAction { overwrite, skip, overwriteAll, skipAll, cancel }
+enum FileConflictAction {
+  overwrite,
+  skip,
+  overwriteAll,
+  skipAll,
+  showDiff,
+  cancel,
+}
 
 Future<FileConflictAction> showFileConflictDialog(
   BuildContext context, {
   required String sourcePath,
   required String targetPath,
   required bool isUpload,
+  bool canShowDiff = false,
 }) async {
   final result = await showDialog<FileConflictAction>(
     context: context,
@@ -144,23 +157,29 @@ Future<FileConflictAction> showFileConflictDialog(
       ),
       actions: [
         TextButton(
-          onPressed: () => ctx.pop(FileConflictAction.cancel),
+          onPressed: () => Navigator.pop(ctx, FileConflictAction.cancel),
           child: const Text("取消"),
         ),
         TextButton(
-          onPressed: () => ctx.pop(FileConflictAction.skip),
+          onPressed: () => Navigator.pop(ctx, FileConflictAction.skip),
           child: const Text("跳过"),
         ),
         TextButton(
-          onPressed: () => ctx.pop(FileConflictAction.skipAll),
+          onPressed: () => Navigator.pop(ctx, FileConflictAction.skipAll),
           child: const Text("跳过全部"),
         ),
+        if (canShowDiff)
+          TextButton.icon(
+            onPressed: () => Navigator.pop(ctx, FileConflictAction.showDiff),
+            icon: const Icon(Icons.difference, size: 18),
+            label: const Text("展示差异"),
+          ),
         TextButton(
-          onPressed: () => ctx.pop(FileConflictAction.overwriteAll),
+          onPressed: () => Navigator.pop(ctx, FileConflictAction.overwriteAll),
           child: const Text("覆盖全部"),
         ),
         FilledButton(
-          onPressed: () => ctx.pop(FileConflictAction.overwrite),
+          onPressed: () => Navigator.pop(ctx, FileConflictAction.overwrite),
           child: const Text("覆盖"),
         ),
       ],
@@ -178,7 +197,7 @@ Future<bool> confirmDelete(BuildContext context, String name) async {
       content: Text("确定要删除“$name”吗？此操作无法直接撤销。"),
       actions: [
         TextButton(
-          onPressed: () => context.pop(false),
+          onPressed: () => Navigator.pop(context, false),
           child: const Text("取消"),
         ),
         FilledButton(
@@ -186,7 +205,7 @@ Future<bool> confirmDelete(BuildContext context, String name) async {
             backgroundColor: Theme.of(context).colorScheme.error,
             foregroundColor: Theme.of(context).colorScheme.onError,
           ),
-          onPressed: () => context.pop(true),
+          onPressed: () => Navigator.pop(context, true),
           child: const Text("删除"),
         ),
       ],
