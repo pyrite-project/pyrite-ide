@@ -65,11 +65,12 @@ class PluginRunManagerNotifier
       ].map(escapeForPythonString).join("::");
       final pluginDirEnv = _toForwardSlashes(target.path);
 
-      await SeriousPython.run(
+      await SeriousPython.runAsset(
         pythonRuntimeBootAsset,
         appFileName: "setup_sys_path.py",
         targetPath: pythonRuntimeBootCachePath,
         checkHash: true,
+        sync: true,
         environmentVariables: {
           "RUNTIME_MODULE_PATHS": runtimeModulePaths,
           "RUNTIME_REPLACE_MODULE_PATHS": "1",
@@ -109,7 +110,6 @@ class PluginRunManagerNotifier
       // ignore: unawaited_futures
       SeriousPython.runProgram(
         path.join(target.path, "__main__.py"),
-        script: Platform.isWindows ? "" : null,
         environmentVariables: {
           "PYRITE_IDE_PLUGIN_PORT": "$port",
           "PYRITE_IDE_PLUGIN_ID": plugin.id,
@@ -157,11 +157,12 @@ class PluginRunManagerNotifier
       final int port = await freePort();
       final pluginDirEnv = _toForwardSlashes(target.path);
 
-      await SeriousPython.run(
+      await SeriousPython.runAsset(
         pythonRuntimeBootAsset,
         appFileName: "setup_sys_path.py",
         targetPath: pythonRuntimeBootCachePath,
         checkHash: true,
+        sync: true,
         environmentVariables: {
           "RUNTIME_MODULE_PATHS": [
             path.join(target.path, "__pypackages__"),
@@ -193,7 +194,6 @@ class PluginRunManagerNotifier
       // ignore: unawaited_futures
       SeriousPython.runProgram(
         path.join(target.path, "__main__.py"),
-        script: Platform.isWindows ? "" : null,
         environmentVariables: {
           "PYRITE_IDE_PLUGIN_PORT": "$port",
           "PYRITE_IDE_PLUGIN_ID": plugin.id,

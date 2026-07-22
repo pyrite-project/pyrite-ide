@@ -12,6 +12,8 @@ const _defaultTimeout = Duration(seconds: 20);
 const _handshakeTimeout = Duration(seconds: 2);
 const _retryHandshakeTimeout = Duration(seconds: 3);
 
+typedef _ProviderReader = T Function<T>(ProviderListenable<T> provider);
+
 /// Exception thrown when the device cannot be reached for a REPL operation.
 class DeviceNotReadyException implements Exception {
   final String message;
@@ -30,19 +32,80 @@ Future<String> runPythonOnDevice(
   String python, {
   Duration timeout = _defaultTimeout,
 }) async {
-  final mutex = ref.read(replMutexProvider);
+  return _runPythonTransaction(
+    ref.read,
+    (session) => session.execute(python, timeout: timeout),
+  );
+}
+
+/// Runs a Python script while forwarding stdout and stderr as the device emits
+/// them. The transaction remains active until the script exits or is
+/// interrupted.
+Future<void> runPythonOnDeviceStreaming(
+  WidgetRef ref,
+  String python, {
+  Duration startupTimeout = _defaultTimeout,
+  required void Function() onStarted,
+  required void Function(Uint8List data) onStdout,
+  required void Function(Uint8List data) onStderr,
+}) async {
+  await _runPythonTransaction(
+    ref.read,
+    (session) => session.executeStreaming(
+      python,
+      startupTimeout: startupTimeout,
+      onStarted: onStarted,
+      onStdout: onStdout,
+      onStderr: onStderr,
+    ),
+  );
+}
+
+Future<void> runPythonOnDeviceWithRawInput(
+  Ref ref,
+  String python,
+  Uint8List data, {
+  Duration startupTimeout = _defaultTimeout,
+  Duration completionTimeout = const Duration(seconds: 60),
+  required List<int> readyMarker,
+  required List<int> doneMarker,
+  int chunkSize = 4096,
+  int ackEvery = 8,
+  void Function(int sent, int total)? onProgress,
+}) async {
+  await _runPythonTransaction(
+    ref.read,
+    (session) => session.executeWithRawInput(
+      python,
+      data,
+      startupTimeout: startupTimeout,
+      completionTimeout: completionTimeout,
+      readyMarker: readyMarker,
+      doneMarker: doneMarker,
+      chunkSize: chunkSize,
+      ackEvery: ackEvery,
+      onProgress: onProgress,
+    ),
+  );
+}
+
+Future<T> _runPythonTransaction<T>(
+  _ProviderReader read,
+  Future<T> Function(RawPasteSession session) action,
+) async {
+  final mutex = read(replMutexProvider);
   return mutex.runExclusive(() async {
-    _ensureConnected(ref);
+    _ensureConnected(read);
 
     final queue = SerialByteQueue();
     void callback(Uint8List data) => queue.add(data);
 
-    ref.read(serialReplIoPausedProvider.notifier).state = true;
-    ref.read(serialDataCallbacksProvider.notifier).add(callback);
+    read(serialReplIoPausedProvider.notifier).state = true;
+    read(serialDataCallbacksProvider.notifier).add(callback);
 
     void writeBytes(List<int> bytes) {
       final serialProvider = getUsbSerialProvider();
-      ref.read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
+      read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
     }
 
     final session = RawPasteSession(writeBytes: writeBytes, queue: queue);
@@ -50,7 +113,10 @@ Future<String> runPythonOnDevice(
       // --- Tier 1: Ctrl+C burst + Ctrl+A handshake. ---
       var entered = false;
       entered = await _tryInterruptAndHandshake(
-        session, writeBytes, queue, _handshakeTimeout,
+        session,
+        writeBytes,
+        queue,
+        _handshakeTimeout,
       );
 
       // --- Tier 1 fallback: Ctrl+D flush + Ctrl+C burst + Ctrl+A. ---
@@ -58,7 +124,10 @@ Future<String> runPythonOnDevice(
         writeBytes([0x04]); // Ctrl+D to flush half-parsed state
         await Future<void>.delayed(const Duration(milliseconds: 800));
         entered = await _tryInterruptAndHandshake(
-          session, writeBytes, queue, _retryHandshakeTimeout,
+          session,
+          writeBytes,
+          queue,
+          _retryHandshakeTimeout,
         );
       }
 
@@ -70,7 +139,7 @@ Future<String> runPythonOnDevice(
         );
       }
 
-      return await session.execute(python, timeout: timeout);
+      return await action(session);
     } finally {
       // --- Cleanup: always reset device to normal REPL state. ---
       try {
@@ -79,8 +148,8 @@ Future<String> runPythonOnDevice(
       // Ensure device is back in normal REPL even if exitRawRepl failed.
       _resetDevice(writeBytes);
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
-      ref.read(serialReplIoPausedProvider.notifier).state = false;
+      read(serialDataCallbacksProvider.notifier).remove(callback);
+      read(serialReplIoPausedProvider.notifier).state = false;
     }
   });
 }
@@ -118,9 +187,9 @@ void _resetDevice(void Function(List<int>) writeBytes) {
   writeBytes([0x02]); // CTRL-B: exit raw REPL
 }
 
-void _ensureConnected(Ref ref) {
+void _ensureConnected(_ProviderReader read) {
   final serialProvider = getUsbSerialProvider();
-  final serialState = ref.read(serialProvider);
+  final serialState = read(serialProvider);
   if (serialState.isConnected != true) {
     throw const DeviceNotReadyException('设备未连接。请连接设备后重试。');
   }

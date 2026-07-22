@@ -67,8 +67,6 @@ jobs:
           - os: ubuntu-latest
             target: linux
             command: |
-              sudo apt-get update -y
-              sudo apt-get install -y ninja-build libgtk-3-dev
               export SERIOUS_PYTHON_SITE_PACKAGES="$GITHUB_WORKSPACE/assets/python_runtime_boot"
               dart run serious_python:main package "assets/python_runtime_boot" --platform Linux --asset "assets/python_runtime_boot.zip" --verbose
               flutter build linux --release --verbose
@@ -100,6 +98,12 @@ jobs:
       - name: Install automake and libtool
         if: matrix.target == 'macos'
         run: brew install automake libtool
+
+      - name: Install linux dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build libgtk-3-dev pkg-config libmpv-dev mpv
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

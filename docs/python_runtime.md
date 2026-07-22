@@ -335,7 +335,7 @@ setup_sys_path()
 
 ```dart
 // lib/core/sdk/plugin_run_manager_provider.dart
-await SeriousPython.run(
+await SeriousPython.runAsset(
     "assets/python_runtime_boot.zip",
     appFileName: "setup_sys_path.py",
     environmentVariables: {

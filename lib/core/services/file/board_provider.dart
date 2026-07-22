@@ -82,8 +82,14 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     return 'SaveFileSuccessfully';
   }
 
-  Future<String> writeFileBytes(String targetPath, List<int> bytes) async {
-    await ref.read(boardFileBackendProvider).writeFileBytes(targetPath, bytes);
+  Future<String> writeFileBytes(
+    String targetPath,
+    List<int> bytes, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    await ref
+        .read(boardFileBackendProvider)
+        .writeFileBytes(targetPath, bytes, onProgress: onProgress);
     return 'SaveFileSuccessfully';
   }
 
@@ -102,7 +108,11 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       totalFiles: totalFiles,
       bytesTotal: bytes.length,
     );
-    await backend.writeFileBytes(targetPath, bytes);
+    await backend.writeFileBytes(
+      targetPath,
+      bytes,
+      onProgress: progress.updateBytes,
+    );
     progress.updateBytes(bytes.length, bytes.length);
     return 'SaveFileSuccessfully';
   }
@@ -434,6 +444,9 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
             case FileConflictAction.cancel:
               showEditorSnackBar(context, "已取消移动");
               return;
+            case FileConflictAction.showDiff:
+              showEditorSnackBar(context, "无法展示移动差异");
+              return;
             case FileConflictAction.skip:
               skipped++;
               continue;
@@ -504,16 +517,32 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           ? await Directory(targetPath).exists()
           : await File(targetPath).exists();
       if (exists) {
+        final canShowDiff = node.data is! FolderItem;
         final action = await _resolveConflict(
           context,
           policy: conflictPolicy,
           sourcePath: node.id,
           targetPath: targetPath,
           isUpload: false,
+          canShowDiff: canShowDiff,
         );
         switch (action) {
           case FileConflictAction.cancel:
             showEditorSnackBar(context, "已取消下载");
+            return;
+          case FileConflictAction.showDiff:
+            if (!canShowDiff) {
+              showEditorSnackBar(context, "无法展示文件夹差异");
+              return;
+            }
+            final shown = await _showDownloadDiff(
+              context,
+              boardPath: node.id,
+              localPath: targetPath,
+            );
+            if (!shown) {
+              showEditorSnackBar(context, "无法展示差异");
+            }
             return;
           case FileConflictAction.skip:
             skipped++;
@@ -567,6 +596,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     required String sourcePath,
     required String targetPath,
     required bool isUpload,
+    bool canShowDiff = false,
   }) {
     if (policy == FileConflictAction.overwriteAll) {
       return Future.value(FileConflictAction.overwrite);
@@ -579,7 +609,55 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       sourcePath: sourcePath,
       targetPath: targetPath,
       isUpload: isUpload,
+      canShowDiff: canShowDiff,
     );
+  }
+
+  Future<bool> _showDownloadDiff(
+    BuildContext context, {
+    required String boardPath,
+    required String localPath,
+  }) async {
+    late final String content;
+    late final String originContent;
+    try {
+      content = await getFileContent(boardPath);
+      originContent = await File(localPath).readAsString();
+    } catch (_) {
+      return false;
+    }
+    if (originContent == content) return false;
+
+    final diff = computeDiff(originContent, content);
+    if (!context.mounted) return false;
+    final correspondingFile = await openFile(context, boardPath);
+    if (correspondingFile == null) return false;
+
+    final controller = ref
+        .read(editorControllerMapProvider.notifier)
+        .getSelectedController();
+    controller?.setGitDiffDecorations(
+      addedRanges: diff.addedRanges,
+      removedRanges: diff.removedRanges,
+    );
+
+    final correspondingFilePath = (await board.getLocalFile(boardPath)).path;
+    final provider = pendingDownloadProviderMap.putIfAbsent(
+      correspondingFilePath,
+      () => StateProvider<PendingDownload?>((ref) => null),
+    );
+    ref.read(provider.notifier).state = PendingDownload(
+      diff: diff,
+      boardPath: boardPath,
+      localPath: localPath,
+      correspondingPath: correspondingFile.path,
+      content: content,
+    );
+
+    if (context.mounted && !ResponsiveBreakpoints.of(context).isDesktop) {
+      context.go('/editor');
+    }
+    return true;
   }
 
   Future<File?> openFile(BuildContext context, String id) async {
@@ -677,41 +755,11 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
             return;
           }
         } else {
-          final correspondingFile = await openFile(
+          await _showDownloadDiff(
             context,
-            selected?.id ?? selectedTab?.value.filePath,
-          );
-
-          final controller = ref
-              .read(editorControllerMapProvider.notifier)
-              .getSelectedController();
-
-          controller!.setGitDiffDecorations(
-            addedRanges: diff.addedRanges,
-            removedRanges: diff.removedRanges,
-          );
-
-          final correspondingFilePath = (await board.getLocalFile(
-            selected?.id ?? selectedTab?.value.filePath,
-          )).path;
-
-          final pendingDownload = PendingDownload(
-            diff: diff,
-            boardPath: selected?.id ?? selectedTab?.value.filePath,
+            boardPath: selected?.id ?? selectedTab!.value.filePath,
             localPath: targetPath,
-            correspondingPath: correspondingFile!.path,
-            content: content,
           );
-          ref
-                  .read(
-                    pendingDownloadProviderMap[correspondingFilePath]!.notifier,
-                  )
-                  .state =
-              pendingDownload;
-
-          if (!ResponsiveBreakpoints.of(context).isDesktop) {
-            context.go('/editor');
-          }
           return;
         }
       }

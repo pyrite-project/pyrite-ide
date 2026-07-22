@@ -9,8 +9,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
-import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
-import 'package:pyrite_ide/pages/plugins/pyrite_material_widgets.dart';
+import 'package:pyrite_ide/pages/plugins/widgets/rfw_lib.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
 
@@ -199,32 +198,13 @@ class Plugins extends ConsumerWidget {
       if (result == null || result.files.isEmpty) return;
 
       final zipPath = result.files.single.path!;
-      final parsed = PluginTomlParser.parseFromZip(zipPath);
-
-      final pluginId = parsed?.id ?? 'unknown';
-      final pluginName = parsed?.name ?? 'Unknown Plugin';
-
-      await ref
+      showIdeSuccess(context, '正在安装插件...');
+      final updatePending = await ref
           .read(pluginManagerProvider.notifier)
-          .install(
-            Plugin(
-              id: pluginId,
-              name: pluginName,
-              version: parsed?.version ?? '0.0.0',
-              author: parsed?.author ?? '',
-              description: parsed?.description ?? '',
-              type: PluginType.values.firstWhere(
-                (e) => e.name == parsed?.type,
-                orElse: () => PluginType.ui,
-              ),
-              declaredPermissions: parsed?.permissions ?? {},
-              permissions: parsed?.permissions != null
-                  ? Map<String, List<String>>.from(parsed!.permissions)
-                  : {},
-              platforms: parsed?.platforms ?? [],
-            ),
-            zipPath,
-          );
+          .install(zipPath);
+      if (updatePending && context.mounted) {
+        showIdeSuccess(context, '插件更新将在重启 IDE 后生效');
+      }
     } catch (e) {
       if (context.mounted) {
         showIdeError(context, '安装失败: $e');
@@ -461,20 +441,26 @@ class Plugins extends ConsumerWidget {
   void _confirmDelete(BuildContext context, WidgetRef ref, Plugin plugin) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text('确认删除'),
         content: Text('确定要删除插件「${plugin.name}」吗？'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text('取消'),
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
-              await ref
-                  .read(pluginManagerProvider.notifier)
-                  .uninstall(plugin.id);
+              Navigator.pop(dialogContext);
+              try {
+                await ref
+                    .read(pluginManagerProvider.notifier)
+                    .uninstall(plugin.id);
+              } catch (error) {
+                if (context.mounted) {
+                  showIdeError(context, '卸载失败: $error');
+                }
+              }
             },
             child: Text('删除', style: TextStyle(color: Colors.red)),
           ),
@@ -588,7 +574,7 @@ class _PluginBodyState extends ConsumerState<PluginBody>
     final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
     if (plugin == null) return;
 
-    _runtime.update(coreName, createCoreWidgets());
+    _runtime.update(coreName, createPyriteCoreWidgets());
     _runtime.update(materialName, createPyriteMaterialWidgets());
 
     final runManager = ref.read(pluginRunManagerProvider)[plugin];
@@ -672,11 +658,15 @@ class _PluginBodyState extends ConsumerState<PluginBody>
         data: _data,
         onEvent: (String name, DynamicMap arguments) {
           debugPrint('user triggered event "$name" with data: $arguments');
-          ref
-              .read(pluginRunManagerProvider)[ref.read(
-                pluginManagerProvider,
-              )[widget.pluginId]]!
-              .sendCallback(name, arguments, ref.watch(page));
+          final runManager = ref.read(
+            pluginRunManagerProvider,
+          )[ref.read(pluginManagerProvider)[widget.pluginId]]!;
+          final binding = runManager.consumeCallbackBinding(name, arguments);
+          if (binding != null) {
+            _data.update(binding.key, binding.value);
+            setState(() {});
+          }
+          runManager.sendCallback(name, arguments, ref.watch(page));
         },
       ),
     );

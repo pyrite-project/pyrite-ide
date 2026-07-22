@@ -1,8 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
@@ -32,6 +35,101 @@ class _SettingEntry {
 
 class SettingsRegistry {
   static final List<_SettingEntry> _settings = [
+    _SettingEntry(
+      name: 'theme.mode',
+      type: 'string',
+      provider: themeMode,
+      getter: (ref) => ref.read(themeMode).name,
+      setter: (ref, v) {
+        final value = v?.toString();
+        final parsed = switch (value) {
+          'system' => ThemeMode.system,
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          _ => null,
+        };
+        if (parsed == null) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected system, light, or dark',
+          );
+        }
+        ref.read(themeMode.notifier).state = parsed;
+      },
+    ),
+    _SettingEntry(
+      name: 'theme.style',
+      type: 'string',
+      provider: themeStyle,
+      getter: (ref) => ref.read(themeStyle).value,
+      setter: (ref, v) {
+        final value = v?.toString();
+        final parsed = switch (value) {
+          'standard' => ThemeStyle.standard,
+          'compact' => ThemeStyle.compact,
+          'comfortable' => ThemeStyle.comfortable,
+          _ => null,
+        };
+        if (parsed == null) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected standard, compact, or comfortable',
+          );
+        }
+        ref.read(themeStyle.notifier).state = parsed;
+      },
+    ),
+    _SettingEntry(
+      name: 'theme.color',
+      type: 'int',
+      provider: themeColor,
+      getter: (ref) => ref.read(themeColor)?.toARGB32(),
+      setter: (ref, v) {
+        if (v == null) {
+          ref.read(themeColor.notifier).state = null;
+          return;
+        }
+        if (v is! int || v < 0 || v > 0xFFFFFFFF) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected an ARGB32 integer between 0 and 0xFFFFFFFF, or null',
+          );
+        }
+        ref.read(themeColor.notifier).state = Color(v);
+      },
+    ),
+    _SettingEntry(
+      name: 'theme.active_plugin_theme_id',
+      type: 'string',
+      provider: activePluginThemeId,
+      getter: (ref) => ref.read(activePluginThemeId),
+      setter: (ref, v) {
+        if (v == null) {
+          ref.read(activePluginThemeId.notifier).state = null;
+          return;
+        }
+        if (v is! String ||
+            ref.read(dataRegistryProvider).getThemeById(v) == null) {
+          throw ArgumentError.value(v, 'value', 'Unknown plugin theme');
+        }
+        ref.read(activePluginThemeId.notifier).state = v;
+      },
+    ),
+    _SettingEntry(
+      name: 'theme.use_material_context_menu',
+      type: 'bool',
+      provider: useMaterialContextMenu,
+      getter: (ref) => ref.read(useMaterialContextMenu),
+      setter: (ref, v) {
+        if (v is! bool) {
+          throw ArgumentError.value(v, 'value', 'Expected a boolean');
+        }
+        ref.read(useMaterialContextMenu.notifier).state = v;
+      },
+    ),
     _SettingEntry(
       name: 'editor.font_family',
       type: 'string',
