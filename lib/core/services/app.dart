@@ -30,13 +30,12 @@ late final ProviderContainer container;
 final StateProvider<ThemeMode> themeMode = StateProvider(
   (ref) => ThemeMode.system,
 );
-final StateProvider<String> editorThemeKey = StateProvider(
-  (ref) => "atom-one",
-);
+final StateProvider<String> editorThemeKey = StateProvider((ref) => "atom-one");
 final StateProvider<Color?> themeColor = StateProvider((ref) => null);
 final StateProvider<ThemeStyle> themeStyle = StateProvider(
   (ref) => ThemeStyle.standard,
 );
-final StateProvider<String?> activePluginThemeId = StateProvider(
-  (ref) => null,
+final StateProvider<String?> activePluginThemeId = StateProvider((ref) => null);
+final StateProvider<bool> welcomeCompletedProvider = StateProvider(
+  (ref) => false,
 );

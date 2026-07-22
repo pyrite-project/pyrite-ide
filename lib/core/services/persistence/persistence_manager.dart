@@ -38,6 +38,7 @@ class PersistenceManager {
       themeColorValue: app?.themeColorValue,
       editorThemeKey: app?.editorThemeKey ?? 'atom-one',
       activePluginThemeId: app?.activePluginThemeId,
+      welcomeCompleted: app?.welcomeCompleted ?? false,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
       editorWordWrap: settings?.editorWordWrap ?? false,
@@ -114,6 +115,7 @@ class PersistenceManager {
           themeColorValue: (container.read(themeColor))?.toARGB32(),
           editorThemeKey: container.read(editorThemeKey),
           activePluginThemeId: container.read(activePluginThemeId),
+          welcomeCompleted: container.read(welcomeCompletedProvider),
         ),
       ),
       settingsPersistence.save(

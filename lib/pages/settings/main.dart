@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -81,6 +82,17 @@ class Settings extends ConsumerWidget {
               value: ref.watch(expansionPageShow),
               onChanged: (value) {
                 ref.read(expansionPageShow.notifier).state = value;
+              },
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: const UseText("重新显示欢迎引导"),
+              subtitle: const UseText("用于测试首次启动 OOBE 覆盖层"),
+              trailing: const Icon(Icons.open_in_full),
+              onTap: () {
+                ref.read(welcomeCompletedProvider.notifier).state = false;
+                context.go('/welcome');
               },
             ),
 

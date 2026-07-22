@@ -104,6 +104,8 @@ void _applyData(PersistedData data) {
   );
   container.read(editorThemeKey.notifier).state = data.editorThemeKey;
   container.read(activePluginThemeId.notifier).state = data.activePluginThemeId;
+  container.read(welcomeCompletedProvider.notifier).state =
+      data.welcomeCompleted;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
