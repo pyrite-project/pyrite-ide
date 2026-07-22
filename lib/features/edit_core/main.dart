@@ -12,6 +12,8 @@ import 'package:go_router/go_router.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
@@ -124,13 +126,16 @@ class _EditCoreState extends ConsumerState<EditCore> {
                     actions: [
                       M3FloatingToolbarAction(
                         icon: Icons.close,
-                        label: '取消',
+                        label: translateForWidget(ref, I18nKey.commonCancel),
                         onPressed: () => _handleCancel(context, ref),
                         semanticLabel: '',
                       ),
                       M3FloatingToolbarAction(
                         icon: Icons.cloud_upload,
-                        label: '确认上传',
+                        label: translateForWidget(
+                          ref,
+                          I18nKey.editorConfirmUpload,
+                        ),
                         onPressed: () => _confirmUpload(ref, pending, context),
                         semanticLabel: '',
                       ),
@@ -148,13 +153,16 @@ class _EditCoreState extends ConsumerState<EditCore> {
                     actions: [
                       M3FloatingToolbarAction(
                         icon: Icons.close,
-                        label: '取消',
+                        label: translateForWidget(ref, I18nKey.commonCancel),
                         onPressed: () => _handleCancel(context, ref),
                         semanticLabel: '',
                       ),
                       M3FloatingToolbarAction(
                         icon: Icons.cloud_download,
-                        label: '确认下载',
+                        label: translateForWidget(
+                          ref,
+                          I18nKey.editorConfirmDownload,
+                        ),
                         onPressed: () =>
                             _confirmDownload(ref, pendingDownload, context),
                         semanticLabel: '',
@@ -254,9 +262,16 @@ class _EditCoreState extends ConsumerState<EditCore> {
 
       ref
           .read(ideMessageProvider.notifier)
-          .success("已上传到设备：${pending.targetPath}");
+          .success(
+            translateForWidget(
+              ref,
+              I18nKey.editorUploadedToDevice,
+            ).replaceAll('{path}', pending.targetPath),
+          );
     } catch (_) {
-      ref.read(ideMessageProvider.notifier).error("上传失败");
+      ref
+          .read(ideMessageProvider.notifier)
+          .error(translateForWidget(ref, I18nKey.editorUploadFailed));
     } finally {
       ref.read(pendingUploadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -280,9 +295,16 @@ class _EditCoreState extends ConsumerState<EditCore> {
 
       ref
           .read(ideMessageProvider.notifier)
-          .success("已下载到本地：${pending.localPath}");
+          .success(
+            translateForWidget(
+              ref,
+              I18nKey.editorDownloadedToLocal,
+            ).replaceAll('{path}', pending.localPath),
+          );
     } catch (_) {
-      ref.read(ideMessageProvider.notifier).error("下载失败");
+      ref
+          .read(ideMessageProvider.notifier)
+          .error(translateForWidget(ref, I18nKey.editorDownloadFailed));
     } finally {
       ref.read(pendingDownloadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -296,7 +318,9 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
       .read(editorControllerMapProvider.notifier)
       .getSelectedController();
   if (controller == null) {
-    ref.read(ideMessageProvider.notifier).error("没有可运行的文件");
+    ref
+        .read(ideMessageProvider.notifier)
+        .error(translateForWidget(ref, I18nKey.editorNoRunnableFile));
     return;
   }
 
@@ -320,16 +344,30 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
         started = true;
         ref
             .read(ideMessageProvider.notifier)
-            .success("正在运行：${controller.openedFile}");
+            .success(
+              translateForWidget(
+                ref,
+                I18nKey.editorRunningFile,
+              ).replaceAll('{path}', controller.openedFile ?? ''),
+            );
       },
       onStdout: stdoutDecoder.add,
       onStderr: stderrDecoder.add,
     );
   } catch (error) {
     if (!started) {
-      repl.write("\r\n[运行失败：$error]\r\n");
+      repl.write(
+        "\r\n${translateForWidget(ref, I18nKey.editorRunFailedTerminal).replaceAll('{error}', error.toString())}\r\n",
+      );
     }
-    ref.read(ideMessageProvider.notifier).error("运行失败：$error");
+    ref
+        .read(ideMessageProvider.notifier)
+        .error(
+          translateForWidget(
+            ref,
+            I18nKey.editorRunFailed,
+          ).replaceAll('{error}', error.toString()),
+        );
   } finally {
     stdoutDecoder.close();
     stderrDecoder.close();
@@ -370,6 +408,8 @@ Future<void> saveFile(
   await ref.read(fileProvider.notifier).saveCurrentFile();
 
   if (!quiet) {
-    ref.read(ideMessageProvider.notifier).success("已保存当前文件");
+    ref
+        .read(ideMessageProvider.notifier)
+        .success(translateForWidget(ref, I18nKey.statusSavedCurrentFile));
   }
 }

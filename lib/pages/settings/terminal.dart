@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 const List<int> kAvailableBaudRates = [
   9600,
@@ -28,12 +30,12 @@ class TerminalSettings extends ConsumerWidget {
       padding: const EdgeInsets.all(12),
       children: [
         SettingsSection(
-          title: "串口设置",
-          description: "配置开发板的串口连接参数。",
+          title: I18nKey.settingsTerminalSerialSection,
+          description: I18nKey.settingsTerminalSerialDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.speed),
-              title: const Text("波特率"),
+              title: const UseText(I18nKey.settingsTerminalBaudRate),
               subtitle: Text("${ref.watch(serialDefaultBaudRate)} baud"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showBaudRateDialog(
@@ -44,8 +46,10 @@ class TerminalSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("自动重连"),
-              subtitle: const Text("断开后自动尝试重新连接"),
+              title: const UseText(I18nKey.settingsTerminalAutoReconnect),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalAutoReconnectSubtitle,
+              ),
               value: ref.watch(serialAutoReconnect),
               onChanged: (value) {
                 ref.read(serialAutoReconnect.notifier).state = value;
@@ -62,8 +66,10 @@ class TerminalSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("信号检测断开"),
-              subtitle: const Text("通过串口信号线检测设备是否断开，兼容常见 USB 串口芯片"),
+              title: const UseText(I18nKey.settingsTerminalSignalDetection),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalSignalDetectionSubtitle,
+              ),
               value: ref.watch(enableSignalDetection),
               onChanged: (value) {
                 ref.read(enableSignalDetection.notifier).state = value;
@@ -71,8 +77,10 @@ class TerminalSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("连接时校验设备文件系统"),
-              subtitle: const Text("为部分 mPython 固件尝试挂载未就绪的根 VFS，默认关闭"),
+              title: const UseText(I18nKey.settingsTerminalEnsureFilesystem),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalEnsureFilesystemSubtitle,
+              ),
               value: ref.watch(ensureBoardFilesystemOnConnect),
               onChanged: (value) {
                 ref.read(ensureBoardFilesystemOnConnect.notifier).state = value;
@@ -80,8 +88,10 @@ class TerminalSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("中文转 Unicode"),
-              subtitle: const Text("输入中文时自动转为 \\uXXXX 转义序列"),
+              title: const UseText(I18nKey.settingsTerminalChineseToUnicode),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalChineseToUnicodeSubtitle,
+              ),
               value: ref.watch(chineseToUnicodeConversion),
               onChanged: (value) {
                 ref.read(chineseToUnicodeConversion.notifier).state = value;
@@ -90,12 +100,12 @@ class TerminalSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "终端显示",
-          description: "影响 REPL、输出和桌面终端的字体呈现。",
+          title: I18nKey.settingsTerminalDisplaySection,
+          description: I18nKey.settingsTerminalDisplayDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.font_download_outlined),
-              title: const Text("字体"),
+              title: const UseText(I18nKey.settingsTerminalFont),
               subtitle: Text(ref.watch(terminalFontFamily)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTerminalFontDialog(context, ref),
@@ -103,7 +113,7 @@ class TerminalSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.format_size),
-              title: const Text("字体大小"),
+              title: const UseText(I18nKey.settingsTerminalFontSize),
               subtitle: Text(
                 "${ref.watch(terminalFontSize).toStringAsFixed(0)} px",
               ),
@@ -113,7 +123,7 @@ class TerminalSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.format_line_spacing),
-              title: const Text("行高"),
+              title: const UseText(I18nKey.settingsTerminalLineHeight),
               subtitle: Text(ref.watch(terminalLineHeight).toStringAsFixed(1)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTerminalLineHeightDialog(context),
@@ -121,8 +131,10 @@ class TerminalSettings extends ConsumerWidget {
 
             SwitchListTile(
               secondary: const Icon(Icons.format_underlined),
-              title: const Text("桌面终端下划线"),
-              subtitle: const Text("开启后显示 ANSI 下划线；关闭可改善 Claude 等 TUI 的显示"),
+              title: const UseText(I18nKey.settingsTerminalUnderline),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalUnderlineSubtitle,
+              ),
               value: ref.watch(desktopTerminalEnableUnderline),
               onChanged: (value) {
                 ref.read(desktopTerminalEnableUnderline.notifier).state = value;
@@ -132,11 +144,13 @@ class TerminalSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "WebREPL",
-          description: "通过 WiFi WebSocket 连接 MicroPython 设备。",
+          description: I18nKey.settingsTerminalWebReplDescription,
           children: [
             SwitchListTile(
-              title: const Text("启用 WebREPL"),
-              subtitle: const Text("通过 WiFi 连接到设备的 WebREPL 服务"),
+              title: const UseText(I18nKey.settingsTerminalWebReplEnable),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalWebReplEnableSubtitle,
+              ),
               value:
                   ref.watch(webReplProvider).state != WebReplState.disconnected,
               onChanged: (value) {
@@ -150,16 +164,18 @@ class TerminalSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.wifi),
-              title: const Text("设备 IP 地址"),
+              title: const UseText(I18nKey.settingsTerminalDeviceIp),
               subtitle: Text(
-                ref.watch(webReplHost).isEmpty ? "未设置" : ref.watch(webReplHost),
+                ref.watch(webReplHost).isEmpty
+                    ? I18nKey.settingsTerminalUnset.fallback
+                    : ref.watch(webReplHost),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
                 context,
                 ref,
-                "设备 IP 地址",
-                "例如 192.168.1.100",
+                I18nKey.settingsTerminalDeviceIp,
+                I18nKey.settingsTerminalExampleIp,
                 ref.read(webReplHost),
                 (value) => ref.read(webReplHost.notifier).state = value.trim(),
               ),
@@ -167,7 +183,7 @@ class TerminalSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.numbers),
-              title: const Text("端口"),
+              title: const UseText(I18nKey.settingsTerminalPort),
               subtitle: Text("${ref.watch(webReplPort)}"),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showPortDialog(context, ref),
@@ -175,16 +191,18 @@ class TerminalSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.lock_outline),
-              title: const Text("密码"),
+              title: const UseText(I18nKey.settingsTerminalPassword),
               subtitle: Text(
-                ref.watch(webReplPassword).isEmpty ? "未设置" : "已设置",
+                ref.watch(webReplPassword).isEmpty
+                    ? I18nKey.settingsTerminalUnset.fallback
+                    : I18nKey.settingsTerminalSet.fallback,
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
                 context,
                 ref,
-                "WebREPL 密码",
-                "设备的 WebREPL 访问密码",
+                I18nKey.settingsTerminalWebReplPassword,
+                I18nKey.settingsTerminalWebReplPasswordHint,
                 ref.read(webReplPassword),
                 (value) =>
                     ref.read(webReplPassword.notifier).state = value.trim(),
@@ -196,7 +214,7 @@ class TerminalSettings extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text("调试与终端")),
+      appBar: AppBar(title: const UseText(I18nKey.settingsTerminalTitle)),
       body: body,
     );
   }
@@ -205,7 +223,7 @@ class TerminalSettings extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text("选择波特率"),
+        title: const UseText(I18nKey.settingsTerminalSelectBaudRate),
         children: [
           SizedBox(
             width: 360,
@@ -266,8 +284,10 @@ class TerminalSettings extends ConsumerWidget {
     });
     showDialog(
       context: context,
-      builder: (context) =>
-          SimpleDialog(title: const Text("选择终端字体"), children: children),
+      builder: (context) => SimpleDialog(
+        title: const UseText(I18nKey.settingsTerminalSelectFont),
+        children: children,
+      ),
     );
   }
 
@@ -278,7 +298,7 @@ class TerminalSettings extends ConsumerWidget {
         builder: (context, ref, _) {
           final size = ref.watch(terminalFontSize);
           return SimpleDialog(
-            title: const Text("终端字体大小"),
+            title: const UseText(I18nKey.settingsTerminalFontSize),
             children: [
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, 12),
@@ -316,7 +336,7 @@ class TerminalSettings extends ConsumerWidget {
         builder: (context, ref, _) {
           final lineHeight = ref.watch(terminalLineHeight);
           return SimpleDialog(
-            title: const Text("终端行高"),
+            title: const UseText(I18nKey.settingsTerminalLineHeight),
             children: [
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, 12),
@@ -351,8 +371,8 @@ class TerminalSettings extends ConsumerWidget {
   void _showInputDialog(
     BuildContext context,
     WidgetRef ref,
-    String title,
-    String hint,
+    Object title,
+    Object hint,
     String currentValue,
     void Function(String) onSaved,
   ) {
@@ -360,25 +380,25 @@ class TerminalSettings extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
+        title: UseText(title),
         content: TextField(
           controller: controller,
           decoration: InputDecoration(
-            hintText: hint,
+            hint: UseText(hint),
             border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("取消"),
+            child: const UseText(I18nKey.commonCancel),
           ),
           FilledButton(
             onPressed: () {
               onSaved(controller.text);
               Navigator.pop(context);
             },
-            child: const Text("保存"),
+            child: const UseText(I18nKey.commonSave),
           ),
         ],
       ),
@@ -392,19 +412,19 @@ class TerminalSettings extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("WebREPL 端口"),
+        title: const UseText(I18nKey.settingsTerminalPort),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            hintText: "默认 8266",
+            hint: UseText(I18nKey.settingsTerminalDefaultPortHint),
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("取消"),
+            child: const UseText(I18nKey.commonCancel),
           ),
           FilledButton(
             onPressed: () {
@@ -414,7 +434,7 @@ class TerminalSettings extends ConsumerWidget {
                 Navigator.pop(context);
               }
             },
-            child: const Text("保存"),
+            child: const UseText(I18nKey.commonSave),
           ),
         ],
       ),

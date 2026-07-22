@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
@@ -19,6 +21,7 @@ import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
@@ -504,14 +507,20 @@ class ProjectFiles extends ConsumerWidget {
   ) async {
     await Future<void>.delayed(Duration.zero);
     if (!context.mounted) return;
-    if (!await _confirmMoveItems(context, nodes, targetFolder)) return;
+    if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
       await ref
           .read(fileProvider.notifier)
           .moveLocalNodes(context, nodes, targetFolder);
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, "移动失败：$error");
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageMoveFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
     }
   }
 
@@ -540,7 +549,7 @@ class ProjectFiles extends ConsumerWidget {
   ) async {
     await Future<void>.delayed(Duration.zero);
     if (!context.mounted) return;
-    if (!await _confirmMoveItems(context, nodes, targetFolder)) return;
+    if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
       await ref
           .read(boardProvider.notifier)
@@ -549,35 +558,61 @@ class ProjectFiles extends ConsumerWidget {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
         context,
-        operation: "移动设备文件",
+        operation: translateForWidget(ref, I18nKey.fileOperationMoveBoardFile),
       );
       if (sendCtrlC) {
         ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, "移动失败：$error");
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageMoveFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
     }
   }
 
   Future<bool> _confirmMoveItems(
     BuildContext context,
+    WidgetRef ref,
     List<TreeNode<FileSystemItem>> nodes,
     String targetFolder,
   ) async {
+    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
+
     final sourceLabel = nodes.length == 1
         ? nodes.single.data.name
-        : "选中的 ${nodes.length} 个项目";
+        : tr(I18nKey.fileMoveSelectedCount, {'count': nodes.length.toString()});
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.drive_file_move_outline),
-        title: const Text("确认移动"),
-        content: Text("是否要将「$sourceLabel」移动到「$targetFolder」？"),
+        title: const UseText(I18nKey.fileMoveConfirmTitle),
+        content: Text(
+          tr(I18nKey.fileMoveConfirmMessage, {
+            'source': sourceLabel,
+            'target': targetFolder,
+          }),
+        ),
         actions: [
-          TextButton(onPressed: () => ctx.pop(false), child: const Text("取消")),
-          FilledButton(onPressed: () => ctx.pop(true), child: const Text("移动")),
+          TextButton(
+            onPressed: () => ctx.pop(false),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => ctx.pop(true),
+            child: const UseText(I18nKey.commonMove),
+          ),
         ],
       ),
     );
@@ -621,14 +656,23 @@ class ProjectFiles extends ConsumerWidget {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
         context,
-        operation: "下载设备文件",
+        operation: translateForWidget(
+          ref,
+          I18nKey.fileOperationDownloadBoardFile,
+        ),
       );
       if (sendCtrlC) {
         ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, "下载失败：$error");
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageDownloadFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
     }
   }
 
@@ -645,14 +689,20 @@ class ProjectFiles extends ConsumerWidget {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
         context,
-        operation: "上传文件到设备",
+        operation: translateForWidget(ref, I18nKey.fileOperationUploadToBoard),
       );
       if (sendCtrlC) {
         ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, "上传失败：$error");
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageUploadFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
     }
   }
 
@@ -672,7 +722,13 @@ class ProjectFiles extends ConsumerWidget {
           );
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, "导入失败：$error");
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageImportFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
     }
   }
 
@@ -690,14 +746,20 @@ class ProjectFiles extends ConsumerWidget {
       if (!context.mounted) return;
       final sendCtrlC = await showDeviceNotReadyDialog(
         context,
-        operation: "上传文件到设备",
+        operation: translateForWidget(ref, I18nKey.fileOperationUploadToBoard),
       );
       if (sendCtrlC) {
         ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, "上传失败：$error");
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageUploadFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
     }
   }
 
@@ -802,12 +864,16 @@ class ProjectFiles extends ConsumerWidget {
     );
   }
 
-  Widget _buildDragHandle(_FileDragSource source, String nodeId) {
+  Widget _buildDragHandle(
+    _FileDragSource source,
+    String nodeId,
+    WidgetRef ref,
+  ) {
     final handleId = _dragHandleId(source, nodeId);
     return DraggableWidget(
       hitTestBehavior: HitTestBehavior.opaque,
       child: Tooltip(
-        message: "拖拽选中项",
+        message: translateForWidget(ref, I18nKey.fileActionDragSelected),
         child: _DragHandleBounds(
           handleId: handleId,
           child: const SizedBox.square(
@@ -876,22 +942,37 @@ class ProjectFiles extends ConsumerWidget {
     final TreeNode<FileSystemItem>? localFolderTarget = ref
         .read(fileProvider.notifier)
         .getFocusFolderNode();
+    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
 
     return Menu(
       children: [
         MenuAction(
-          title: "重命名",
+          title: tr(I18nKey.fileActionRename),
           callback: () => ref
               .read(localFileTreeViewControllerProvider)
               .setRenamingNodeId(node.id),
           attributes: MenuActionAttributes(disabled: selectedCount != 1),
         ),
         MenuAction(
-          title: selectedCount > 1 ? "删除选中的 $selectedCount 个项目" : "删除",
+          title: selectedCount > 1
+              ? tr(I18nKey.fileActionDeleteSelectedCount, {
+                  'count': selectedCount.toString(),
+                })
+              : tr(I18nKey.fileActionDelete),
           callback: () async {
             if (await confirmDelete(
               context,
-              selectedCount > 1 ? "$selectedCount 个项目" : node.data.name,
+              selectedCount > 1
+                  ? tr(I18nKey.fileSelectedItemsName, {
+                      'count': selectedCount.toString(),
+                    })
+                  : node.data.name,
             )) {
               await ref
                   .read(fileProvider.notifier)
@@ -902,15 +983,22 @@ class ProjectFiles extends ConsumerWidget {
         MenuSeparator(),
         MenuAction(
           title: selectedCount > 1
-              ? "上传选中的 $selectedCount 个项目到设备文件夹 ${boardFolderTarget?.id ?? "/"}"
-              : "上传到设备文件夹 ${boardFolderTarget?.id ?? "/"}",
+              ? tr(I18nKey.fileActionUploadSelectedToBoardFolder, {
+                  'count': selectedCount.toString(),
+                  'folder': boardFolderTarget?.id ?? '/',
+                })
+              : tr(I18nKey.fileActionUploadToBoardFolder, {
+                  'folder': boardFolderTarget?.id ?? '/',
+                }),
           callback: () => _uploadSelectedLocalItems(context, ref),
           attributes: MenuActionAttributes(
             disabled: !ref.watch(getUsbSerialProvider()).isConnected,
           ),
         ),
         MenuAction(
-          title: "覆盖设备文件 ${boardFileTarget?.id ?? "（未选择设备文件）"}",
+          title: tr(I18nKey.fileActionOverwriteBoardFile, {
+            'path': boardFileTarget?.id ?? tr(I18nKey.fileNoBoardFileSelected),
+          }),
           callback: () async {
             try {
               final bytes = await File(node.id).readAsBytes();
@@ -922,12 +1010,17 @@ class ProjectFiles extends ConsumerWidget {
                   .buildRootFileListItems();
 
               if (!context.mounted) return;
-              showEditorSnackBar(context, "已覆盖设备文件：${boardFileTarget.id}");
+              showEditorSnackBar(
+                context,
+                tr(I18nKey.fileMessageOverwriteBoardFile, {
+                  'path': boardFileTarget.id,
+                }),
+              );
             } on DeviceNotReadyException catch (_) {
               if (!context.mounted) return;
               final sendCtrlC = await showDeviceNotReadyDialog(
                 context,
-                operation: "覆盖设备文件",
+                operation: tr(I18nKey.fileOperationOverwriteBoardFile),
               );
               if (sendCtrlC) {
                 ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
@@ -943,7 +1036,9 @@ class ProjectFiles extends ConsumerWidget {
         ),
         MenuSeparator(),
         MenuAction(
-          title: "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件",
+          title: tr(I18nKey.fileActionCreateFileInFolder, {
+            'folder': localFolderTarget?.id ?? localWorkspace.path,
+          }),
           callback: () async {
             final parentDir = localFolderTarget?.id ?? localWorkspace.path;
             final uniquePath = await local.getUniqueFilePath(
@@ -953,7 +1048,9 @@ class ProjectFiles extends ConsumerWidget {
           },
         ),
         MenuAction(
-          title: "在 ${localFolderTarget?.id ?? localWorkspace.path} 新建文件夹",
+          title: tr(I18nKey.fileActionCreateFolderInFolder, {
+            'folder': localFolderTarget?.id ?? localWorkspace.path,
+          }),
           callback: () async {
             final parentDir = localFolderTarget?.id ?? localWorkspace.path;
             final uniquePath = await local.getUniqueFolderPath(
@@ -984,22 +1081,37 @@ class ProjectFiles extends ConsumerWidget {
     final TreeNode<FileSystemItem>? localFolderTarget = ref
         .read(fileProvider.notifier)
         .getFocusFolderNode();
+    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
 
     return Menu(
       children: [
         MenuAction(
-          title: "重命名",
+          title: tr(I18nKey.fileActionRename),
           callback: () => ref
               .read(boardFileTreeViewControllerProvider)
               .setRenamingNodeId(node.id),
           attributes: MenuActionAttributes(disabled: selectedCount != 1),
         ),
         MenuAction(
-          title: selectedCount > 1 ? "删除选中的 $selectedCount 个项目" : "删除",
+          title: selectedCount > 1
+              ? tr(I18nKey.fileActionDeleteSelectedCount, {
+                  'count': selectedCount.toString(),
+                })
+              : tr(I18nKey.fileActionDelete),
           callback: () async {
             if (await confirmDelete(
               context,
-              selectedCount > 1 ? "$selectedCount 个项目" : node.data.name,
+              selectedCount > 1
+                  ? tr(I18nKey.fileSelectedItemsName, {
+                      'count': selectedCount.toString(),
+                    })
+                  : node.data.name,
             )) {
               try {
                 await ref
@@ -1009,7 +1121,7 @@ class ProjectFiles extends ConsumerWidget {
                 if (!context.mounted) return;
                 final sendCtrlC = await showDeviceNotReadyDialog(
                   context,
-                  operation: "删除设备文件",
+                  operation: tr(I18nKey.fileOperationDeleteBoardFile),
                 );
                 if (sendCtrlC) {
                   ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
@@ -1021,8 +1133,19 @@ class ProjectFiles extends ConsumerWidget {
         MenuSeparator(),
         MenuAction(
           title: selectedCount > 1
-              ? "下载选中的 $selectedCount 个项目到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}"
-              : "下载到本地文件夹 ${localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? "（未打开本地项目）"}",
+              ? tr(I18nKey.fileActionDownloadSelectedToLocalFolder, {
+                  'count': selectedCount.toString(),
+                  'folder':
+                      localFolderTarget?.id ??
+                      ref.watch(fileProvider)?.path ??
+                      tr(I18nKey.fileNoLocalProject),
+                })
+              : tr(I18nKey.fileActionDownloadToLocalFolder, {
+                  'folder':
+                      localFolderTarget?.id ??
+                      ref.watch(fileProvider)?.path ??
+                      tr(I18nKey.fileNoLocalProject),
+                }),
           callback: () => _downloadSelectedBoardItems(context, ref),
           attributes: MenuActionAttributes(
             disabled:
@@ -1031,7 +1154,9 @@ class ProjectFiles extends ConsumerWidget {
           ),
         ),
         MenuAction(
-          title: "覆盖本地文件 ${localFileTarget?.id ?? "（未选择本地文件）"}",
+          title: tr(I18nKey.fileActionOverwriteLocalFile, {
+            'path': localFileTarget?.id ?? tr(I18nKey.fileNoLocalFileSelected),
+          }),
           callback: () async {
             try {
               final bytes = await ref
@@ -1043,12 +1168,17 @@ class ProjectFiles extends ConsumerWidget {
                   .buildRootFileListItems();
 
               if (!context.mounted) return;
-              showEditorSnackBar(context, "已覆盖本地文件：${localFileTarget.id}");
+              showEditorSnackBar(
+                context,
+                tr(I18nKey.fileMessageOverwriteLocalFile, {
+                  'path': localFileTarget.id,
+                }),
+              );
             } on DeviceNotReadyException catch (_) {
               if (!context.mounted) return;
               final sendCtrlC = await showDeviceNotReadyDialog(
                 context,
-                operation: "读取设备文件",
+                operation: tr(I18nKey.fileOperationReadBoardFile),
               );
               if (sendCtrlC) {
                 ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
@@ -1081,26 +1211,40 @@ class ProjectFiles extends ConsumerWidget {
       builder: (context, _) {
         final selectedCount = controller.selectedNodeIds.length;
         return PaneHeader(
-          title: selectionMode ? "已选择 $selectedCount 项" : "本地项目",
+          title: selectionMode
+              ? translateForWidget(
+                  ref,
+                  I18nKey.fileSelectedCount,
+                ).replaceAll('{count}', selectedCount.toString())
+              : I18nKey.fileLocalProjectTitle,
           subtitle: localWorkspace.path,
           leadingIcon: selectionMode ? Icons.checklist : Icons.folder_outlined,
           compact: true,
           actions: selectionMode
               ? [
                   IconButton(
-                    tooltip: "上传选中项",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionUploadSelected,
+                    ),
                     onPressed: isConnected && selectedCount > 0
                         ? () => _uploadSelectedLocalItems(context, ref)
                         : null,
                     icon: const Icon(Icons.upload_outlined),
                   ),
                   IconButton(
-                    tooltip: "删除选中项",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionDeleteSelected,
+                    ),
                     onPressed: selectedCount > 0
                         ? () async {
                             if (await confirmDelete(
                               context,
-                              "$selectedCount 个项目",
+                              translateForWidget(
+                                ref,
+                                I18nKey.fileSelectedItemsName,
+                              ).replaceAll('{count}', selectedCount.toString()),
                             )) {
                               await ref
                                   .read(fileProvider.notifier)
@@ -1111,14 +1255,20 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.delete_outline),
                   ),
                   IconButton(
-                    tooltip: "清除选择",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionClearSelection,
+                    ),
                     onPressed: selectedCount > 0
                         ? () => controller.deselectAll()
                         : null,
                     icon: const Icon(Icons.deselect),
                   ),
                   IconButton(
-                    tooltip: "退出选择模式",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionExitSelection,
+                    ),
                     onPressed: () {
                       controller.deselectAll();
                       ref.read(localFileSelectionModeProvider.notifier).state =
@@ -1129,7 +1279,10 @@ class ProjectFiles extends ConsumerWidget {
                 ]
               : [
                   IconButton(
-                    tooltip: "选择项目",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionSelectItems,
+                    ),
                     onPressed: () {
                       ref.read(localFileSelectionModeProvider.notifier).state =
                           true;
@@ -1137,7 +1290,7 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.checklist),
                   ),
                   IconButton(
-                    tooltip: "新建文件",
+                    tooltip: translateForWidget(ref, I18nKey.fileActionNewFile),
                     onPressed: () async {
                       final parentPath = ref.read(fileProvider)?.path ?? '';
                       final uniquePath = await local.getUniqueFilePath(
@@ -1150,7 +1303,10 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.note_add_outlined),
                   ),
                   IconButton(
-                    tooltip: "新建文件夹",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionNewFolder,
+                    ),
                     onPressed: () async {
                       final parentPath = ref.read(fileProvider)?.path ?? '';
                       final uniquePath = await local.getUniqueFolderPath(
@@ -1163,7 +1319,10 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),
                   IconButton(
-                    tooltip: "刷新本地文件",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionRefreshLocal,
+                    ),
                     onPressed: () => ref
                         .read(localFileItemsProvider.notifier)
                         .buildRootFileListItems(),
@@ -1189,8 +1348,16 @@ class ProjectFiles extends ConsumerWidget {
       builder: (context, _) {
         final selectedCount = controller.selectedNodeIds.length;
         return PaneHeader(
-          title: selectionMode ? "已选择 $selectedCount 项" : "设备文件",
-          subtitle: "已连接：$selectedPortName",
+          title: selectionMode
+              ? translateForWidget(
+                  ref,
+                  I18nKey.fileSelectedCount,
+                ).replaceAll('{count}', selectedCount.toString())
+              : I18nKey.fileBoardTitle,
+          subtitle: translateForWidget(
+            ref,
+            I18nKey.fileConnectedPort,
+          ).replaceAll('{port}', selectedPortName ?? ''),
           leadingIcon: selectionMode
               ? Icons.checklist
               : Icons.developer_board_outlined,
@@ -1198,19 +1365,28 @@ class ProjectFiles extends ConsumerWidget {
           actions: selectionMode
               ? [
                   IconButton(
-                    tooltip: "下载选中项",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionDownloadSelected,
+                    ),
                     onPressed: hasLocalWorkspace && selectedCount > 0
                         ? () => _downloadSelectedBoardItems(context, ref)
                         : null,
                     icon: const Icon(Icons.download_outlined),
                   ),
                   IconButton(
-                    tooltip: "删除选中项",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionDeleteSelected,
+                    ),
                     onPressed: selectedCount > 0
                         ? () async {
                             if (await confirmDelete(
                               context,
-                              "$selectedCount 个项目",
+                              translateForWidget(
+                                ref,
+                                I18nKey.fileSelectedItemsName,
+                              ).replaceAll('{count}', selectedCount.toString()),
                             )) {
                               try {
                                 await ref
@@ -1221,7 +1397,10 @@ class ProjectFiles extends ConsumerWidget {
                                 final sendCtrlC =
                                     await showDeviceNotReadyDialog(
                                       context,
-                                      operation: "删除设备文件",
+                                      operation: translateForWidget(
+                                        ref,
+                                        I18nKey.fileOperationDeleteBoardFile,
+                                      ),
                                     );
                                 if (sendCtrlC) {
                                   ref
@@ -1235,14 +1414,20 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.delete_outline),
                   ),
                   IconButton(
-                    tooltip: "清除选择",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionClearSelection,
+                    ),
                     onPressed: selectedCount > 0
                         ? () => controller.deselectAll()
                         : null,
                     icon: const Icon(Icons.deselect),
                   ),
                   IconButton(
-                    tooltip: "退出选择模式",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionExitSelection,
+                    ),
                     onPressed: () {
                       controller.deselectAll();
                       ref.read(boardFileSelectionModeProvider.notifier).state =
@@ -1253,7 +1438,10 @@ class ProjectFiles extends ConsumerWidget {
                 ]
               : [
                   IconButton(
-                    tooltip: "选择项目",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionSelectItems,
+                    ),
                     onPressed: () {
                       ref.read(boardFileSelectionModeProvider.notifier).state =
                           true;
@@ -1261,7 +1449,10 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.checklist),
                   ),
                   IconButton(
-                    tooltip: "刷新设备文件",
+                    tooltip: translateForWidget(
+                      ref,
+                      I18nKey.fileActionRefreshBoard,
+                    ),
                     onPressed: () async {
                       try {
                         await ref
@@ -1271,7 +1462,10 @@ class ProjectFiles extends ConsumerWidget {
                         if (!context.mounted) return;
                         final sendCtrlC = await showDeviceNotReadyDialog(
                           context,
-                          operation: "刷新设备文件",
+                          operation: translateForWidget(
+                            ref,
+                            I18nKey.fileOperationRefreshBoardFile,
+                          ),
                         );
                         if (sendCtrlC) {
                           ref
@@ -1388,7 +1582,7 @@ class ProjectFiles extends ConsumerWidget {
                               ),
                             ),
                           ),
-                        _buildDragHandle(_FileDragSource.local, node.id),
+                        _buildDragHandle(_FileDragSource.local, node.id, ref),
                         const SizedBox(width: 4),
                         Expanded(child: label),
                       ],
@@ -1409,9 +1603,9 @@ class ProjectFiles extends ConsumerWidget {
     } else {
       return WorkspaceEmptyState(
         icon: Icons.folder_outlined,
-        title: "打开一个本地项目",
-        message: "选择保存 MicroPython 脚本的文件夹，然后就可以在本地和设备之间同步文件。",
-        actionLabel: "打开文件夹",
+        title: I18nKey.fileEmptyLocalTitle,
+        message: I18nKey.fileEmptyLocalMessage,
+        actionLabel: I18nKey.fileEmptyLocalAction,
         onAction: () => ref.read(localFileItemsProvider.notifier).openFolder(),
       );
     }
@@ -1442,7 +1636,10 @@ class ProjectFiles extends ConsumerWidget {
                         if (!context.mounted) return;
                         final sendCtrlC = await showDeviceNotReadyDialog(
                           context,
-                          operation: "上传文件到设备",
+                          operation: translateForWidget(
+                            ref,
+                            I18nKey.fileOperationUploadToBoard,
+                          ),
                         );
                         if (sendCtrlC) {
                           ref
@@ -1453,7 +1650,7 @@ class ProjectFiles extends ConsumerWidget {
                     }
                   : null,
               icon: const Icon(Icons.upload_outlined, size: 18),
-              label: Text("上传选中项"),
+              label: const UseText(I18nKey.fileActionUploadSelected),
             ),
             const SizedBox(width: 6),
             TextButton.icon(
@@ -1461,7 +1658,7 @@ class ProjectFiles extends ConsumerWidget {
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems(),
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text("刷新"),
+              label: const UseText(I18nKey.fileActionRefresh),
             ),
           ],
         ),
@@ -1559,7 +1756,7 @@ class ProjectFiles extends ConsumerWidget {
                               ),
                             ),
                           ),
-                        _buildDragHandle(_FileDragSource.board, node.id),
+                        _buildDragHandle(_FileDragSource.board, node.id, ref),
                         const SizedBox(width: 4),
                         Expanded(child: label),
                       ],
@@ -1580,18 +1777,18 @@ class ProjectFiles extends ConsumerWidget {
     } else if (ref.watch(getUsbSerialProvider()).isConnected) {
       return WorkspaceEmptyState(
         icon: Icons.developer_board_outlined,
-        title: "点击刷新按钮以获取设备文件列表",
-        message: "这里会显示板端文件，可以和本地项目互相同步。",
-        actionLabel: "刷新",
+        title: I18nKey.fileEmptyBoardRefreshTitle,
+        message: I18nKey.fileEmptyBoardRefreshMessage,
+        actionLabel: I18nKey.fileActionRefresh,
         onAction: () =>
             ref.watch(boardFileItemsProvider.notifier).buildRootFileListItems(),
       );
     } else {
       return WorkspaceEmptyState(
         icon: Icons.developer_board_outlined,
-        title: "连接 MicroPython 设备",
-        message: "连接后这里会显示板端文件，可以和本地项目互相同步。",
-        actionLabel: "打开设备管理",
+        title: I18nKey.fileEmptyBoardDisconnectedTitle,
+        message: I18nKey.fileEmptyBoardDisconnectedMessage,
+        actionLabel: I18nKey.fileEmptyBoardDisconnectedAction,
         onAction: () => context.go("/tools"),
       );
     }

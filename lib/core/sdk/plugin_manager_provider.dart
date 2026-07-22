@@ -199,6 +199,10 @@ Plugin _mergePluginUpdate(PluginPersistedData manifest, Plugin? current) {
   );
 }
 
+PluginStatus _persistablePluginStatus(PluginStatus status) {
+  return status == PluginStatus.installing ? PluginStatus.usable : status;
+}
+
 Future<Set<String>> _recoverPendingBackups(Directory updatesRoot) async {
   final backupsRoot = Directory(
     path.join(updatesRoot.path, _pendingBackupsDirectoryName),
@@ -385,7 +389,12 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
 
   void loadPersisted(List<PluginPersistedData> plugins) {
     _intendedStatuses.clear();
-    state = {for (final plugin in plugins) plugin.id: plugin.toPlugin()};
+    state = {
+      for (final plugin in plugins)
+        plugin.id: plugin.toPlugin().copyWith(
+          status: _persistablePluginStatus(plugin.toPlugin().status),
+        ),
+    };
   }
 
   Future<void> applyPendingChanges() => _runExclusive(_applyPendingChanges);
@@ -417,16 +426,6 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     final pendingBlocked = await _recoverPendingBackups(updatesRoot);
     final activeBlocked = await _recoverActiveBackups(root, updatesRoot);
     final blocked = {...pendingBlocked, ...activeBlocked};
-    for (final pluginId in activeBlocked) {
-      final plugin = state[pluginId];
-      if (plugin != null) {
-        _intendedStatuses[pluginId] = plugin.status;
-        state = {
-          ...state,
-          pluginId: plugin.copyWith(status: PluginStatus.installing),
-        };
-      }
-    }
     await _deleteDirectory(
       Directory(path.join(updatesRoot.path, _stagingDirectoryName)),
     );
@@ -511,10 +510,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           state = next;
         } catch (error) {
           if (metadataSaved) {
-            _intendedStatuses[pluginId] = updated.status;
             state = {
               ...state,
-              pluginId: updated.copyWith(status: PluginStatus.installing),
+              pluginId: updated.copyWith(
+                status: _persistablePluginStatus(updated.status),
+              ),
             };
           }
           debugPrint('PluginManager: Failed to apply $pluginId: $error');
@@ -670,7 +670,34 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           await pending.exists() ||
           removalPending;
 
-      await _replacePendingPackage(updatesRoot, manifest.id, staged);
+      final previousIntendedStatus = _intendedStatuses[manifest.id];
+      var showingUpdateInstall = false;
+      if (updatePending &&
+          existingPlugin != null &&
+          existingPlugin.status != PluginStatus.uninstalled) {
+        _intendedStatuses[manifest.id] = _persistablePluginStatus(
+          previousIntendedStatus ?? existingPlugin.status,
+        );
+        state = {
+          ...state,
+          manifest.id: existingPlugin.copyWith(status: PluginStatus.installing),
+        };
+        showingUpdateInstall = true;
+      }
+
+      try {
+        await _replacePendingPackage(updatesRoot, manifest.id, staged);
+      } catch (_) {
+        if (showingUpdateInstall) {
+          if (previousIntendedStatus == null) {
+            _intendedStatuses.remove(manifest.id);
+          } else {
+            _intendedStatuses[manifest.id] = previousIntendedStatus;
+          }
+          state = {...state, manifest.id: existingPlugin!};
+        }
+        rethrow;
+      }
       if (removalPending) {
         await removal.writeAsString('reinstall', flush: true);
       }

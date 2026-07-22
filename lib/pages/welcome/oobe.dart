@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 class WelcomeOobePage extends ConsumerStatefulWidget {
@@ -71,6 +74,7 @@ class _WelcomeOobePageState extends ConsumerState<WelcomeOobePage> {
         editorThemeKey: ref.read(editorThemeKey),
         activePluginThemeId: ref.read(activePluginThemeId),
         welcomeCompleted: true,
+        activeLocale: ref.read(activeLocaleProvider),
       ),
     );
     if (!mounted) return;
@@ -104,12 +108,20 @@ class _WelcomeOobePageState extends ConsumerState<WelcomeOobePage> {
                     height: 80,
                   ),
                   const SizedBox(height: 20),
-                  Text(
-                    '欢迎使用 PyriteIDE',
+                  UseText(
+                    I18nKey.welcomeTitle,
+                    color: scheme.onSurface,
                     textAlign: TextAlign.center,
                     style: textTheme.displaySmall?.copyWith(
                       fontWeight: FontWeight.w300,
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  UseText(
+                    I18nKey.welcomeDescription,
+                    color: scheme.onSurfaceVariant,
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyLarge,
                   ),
                   if (isAndroid) ...[
                     const SizedBox(height: 28),
@@ -128,7 +140,7 @@ class _WelcomeOobePageState extends ConsumerState<WelcomeOobePage> {
                   FilledButton.icon(
                     onPressed: _complete,
                     icon: const Icon(Icons.arrow_forward),
-                    label: const Text('开始'),
+                    label: const UseText(I18nKey.welcomeStart),
                   ),
                 ],
               ),
@@ -174,8 +186,8 @@ class _AndroidPermissionPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Android 权限',
+            UseText(
+              I18nKey.androidPermissionsTitle,
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -183,33 +195,33 @@ class _AndroidPermissionPanel extends StatelessWidget {
             const SizedBox(height: 8),
             _PermissionRow(
               icon: Icons.folder_outlined,
-              label: '文件读写',
+              label: I18nKey.androidPermissionStorage,
               status: storageStatus,
             ),
             _PermissionRow(
               icon: Icons.folder_special_outlined,
-              label: '所有文件访问',
+              label: I18nKey.androidPermissionManageStorage,
               status: manageStorageStatus,
             ),
             _PermissionRow(
               icon: Icons.music_note_outlined,
-              label: '音频媒体',
+              label: I18nKey.androidPermissionAudio,
               status: audioStatus,
             ),
             _PermissionRow(
               icon: Icons.movie_outlined,
-              label: '视频媒体',
+              label: I18nKey.androidPermissionVideo,
               status: videoStatus,
             ),
             const _StaticPermissionRow(
               icon: Icons.usb,
-              label: 'USB Host',
-              value: '连接设备时授权',
+              label: I18nKey.androidPermissionUsbHost,
+              value: I18nKey.androidPermissionUsbRuntime,
             ),
             const _StaticPermissionRow(
               icon: Icons.public,
-              label: '网络访问',
-              value: '已由系统声明',
+              label: I18nKey.androidPermissionInternet,
+              value: I18nKey.androidPermissionInternetDeclared,
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -224,12 +236,16 @@ class _AndroidPermissionPanel extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.verified_user_outlined),
-                  label: Text(requesting ? '正在请求权限' : '设置权限'),
+                  label: UseText(
+                    requesting
+                        ? I18nKey.androidPermissionRequesting
+                        : I18nKey.androidPermissionRequest,
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: checking ? null : onRefresh,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('刷新状态'),
+                  label: const UseText(I18nKey.androidPermissionRefresh),
                 ),
               ],
             ),
@@ -248,7 +264,7 @@ class _PermissionRow extends StatelessWidget {
   });
 
   final IconData icon;
-  final String label;
+  final Object label;
   final PermissionStatus? status;
 
   @override
@@ -257,7 +273,11 @@ class _PermissionRow extends StatelessWidget {
     return _StaticPermissionRow(
       icon: icon,
       label: label,
-      value: status == null ? '检查中' : (granted ? '已授权' : '未授权'),
+      value: status == null
+          ? I18nKey.androidPermissionChecking
+          : (granted
+                ? I18nKey.androidPermissionGranted
+                : I18nKey.androidPermissionDenied),
       valueColor: granted
           ? Theme.of(context).colorScheme.primary
           : Theme.of(context).colorScheme.error,
@@ -274,8 +294,8 @@ class _StaticPermissionRow extends StatelessWidget {
   });
 
   final IconData icon;
-  final String label;
-  final String value;
+  final Object label;
+  final Object value;
   final Color? valueColor;
 
   @override
@@ -287,9 +307,10 @@ class _StaticPermissionRow extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: scheme.primary),
           const SizedBox(width: 12),
-          Expanded(child: Text(label)),
-          Text(
+          Expanded(child: UseText(label)),
+          UseText(
             value,
+            color: valueColor ?? scheme.onSurfaceVariant,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: valueColor ?? scheme.onSurfaceVariant,
             ),

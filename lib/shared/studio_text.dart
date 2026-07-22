@@ -1,18 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
-class UseText extends StatelessWidget {
-  const UseText(this.data, {super.key, this.color});
-  final String data;
+class UseText extends ConsumerWidget {
+  const UseText(
+    this.data, {
+    super.key,
+    this.color,
+    this.style,
+    this.textAlign,
+    this.maxLines,
+    this.overflow,
+  });
+  final Object data;
   final Color? color;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final int? maxLines;
+  final TextOverflow? overflow;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textStyle = (style ?? const TextStyle()).copyWith(
+      color: color ?? style?.color,
+      fontFamily: style?.fontFamily ?? "HarmonyOS Sans SC",
+    );
     return Text(
-      data,
-      style: TextStyle(
-        color: color ?? Theme.of(context).colorScheme.onSurface,
-        fontFamily: "HarmonyOS Sans SC",
-      ),
+      resolveI18nText(ref, data),
+      textAlign: textAlign,
+      style: textStyle,
+      maxLines: maxLines,
+      overflow: overflow,
     );
   }
 }

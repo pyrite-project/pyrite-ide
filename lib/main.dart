@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
@@ -106,6 +107,7 @@ void _applyData(PersistedData data) {
   container.read(activePluginThemeId.notifier).state = data.activePluginThemeId;
   container.read(welcomeCompletedProvider.notifier).state =
       data.welcomeCompleted;
+  container.read(activeLocaleProvider.notifier).state = data.activeLocale;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;

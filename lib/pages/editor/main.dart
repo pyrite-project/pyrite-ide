@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
@@ -9,6 +11,7 @@ import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 
@@ -37,7 +40,7 @@ class Editor extends ConsumerWidget {
               FilledButton.tonalIcon(
                 onPressed: canSave ? () => saveFile(context, ref) : null,
                 icon: const Icon(Icons.save_outlined, size: 18),
-                label: const Text("保存"),
+                label: const UseText(I18nKey.commonSave),
               ),
               const SizedBox(width: 4),
               (ref
@@ -53,7 +56,7 @@ class Editor extends ConsumerWidget {
                                 .downloadSelectedBoardItem(context)
                           : null,
                       icon: const Icon(Icons.download_outlined, size: 18),
-                      label: const Text("下载"),
+                      label: const UseText(I18nKey.editorToolbarDownload),
                     )
                   : OutlinedButton.icon(
                       onPressed: canSave && isConnected
@@ -67,7 +70,7 @@ class Editor extends ConsumerWidget {
                                 )
                           : null,
                       icon: const Icon(Icons.upload_outlined, size: 18),
-                      label: const Text("上传"),
+                      label: const UseText(I18nKey.editorToolbarUpload),
                     ),
               const SizedBox(width: 4),
               FilledButton.icon(
@@ -75,11 +78,16 @@ class Editor extends ConsumerWidget {
                     ? () => runCurrentFile(context, ref)
                     : null,
                 icon: const Icon(Icons.play_arrow, size: 18),
-                label: const Text("运行"),
+                label: const UseText(I18nKey.editorToolbarRun),
               ),
               const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
               IconButton(
-                tooltip: isConnected ? "中断设备运行" : "连接设备后可中断运行",
+                tooltip: translateForWidget(
+                  ref,
+                  isConnected
+                      ? I18nKey.editorToolbarInterruptDevice
+                      : I18nKey.editorToolbarInterruptNeedsDevice,
+                ),
                 icon: const Icon(Icons.stop_circle_outlined, size: 20),
                 onPressed: isConnected
                     ? () {
@@ -90,7 +98,12 @@ class Editor extends ConsumerWidget {
                     : null,
               ),
               IconButton(
-                tooltip: isConnected ? "软重启设备" : "连接设备后可软重启",
+                tooltip: translateForWidget(
+                  ref,
+                  isConnected
+                      ? I18nKey.editorToolbarSoftReboot
+                      : I18nKey.editorToolbarSoftRebootNeedsDevice,
+                ),
                 icon: const Icon(Icons.restart_alt, size: 20),
                 onPressed: isConnected
                     ? () {
@@ -101,7 +114,10 @@ class Editor extends ConsumerWidget {
                     : null,
               ),
               PopupMenuButton<String>(
-                tooltip: "更多编辑操作",
+                tooltip: translateForWidget(
+                  ref,
+                  I18nKey.editorToolbarMoreActions,
+                ),
                 icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
                   switch (value) {
@@ -123,23 +139,23 @@ class Editor extends ConsumerWidget {
                   PopupMenuItem(
                     value: "saveAs",
                     enabled: canSave,
-                    child: const Text("另存为"),
+                    child: const UseText(I18nKey.menuSaveAs),
                   ),
                   const PopupMenuDivider(),
                   PopupMenuItem(
                     value: "cut",
                     enabled: canSave,
-                    child: const Text("剪切"),
+                    child: const UseText(I18nKey.menuCut),
                   ),
                   PopupMenuItem(
                     value: "copy",
                     enabled: canSave,
-                    child: const Text("复制"),
+                    child: const UseText(I18nKey.menuCopy),
                   ),
                   PopupMenuItem(
                     value: "paste",
                     enabled: canSave,
-                    child: const Text("粘贴"),
+                    child: const UseText(I18nKey.menuPaste),
                   ),
                 ],
               ),
@@ -190,11 +206,14 @@ class ExpansionPage extends ConsumerWidget {
       body: Column(
         children: [
           PaneHeader(
-            title: "拓展面板",
+            title: I18nKey.settingsExpansionPanelTitle,
             leadingIcon: Icons.expand_outlined,
             actions: [
               PopupMenuButton<String>(
-                tooltip: "更多编辑操作",
+                tooltip: translateForWidget(
+                  ref,
+                  I18nKey.editorToolbarMoreActions,
+                ),
                 icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
                   switch (value) {
@@ -216,23 +235,23 @@ class ExpansionPage extends ConsumerWidget {
                   PopupMenuItem(
                     value: "saveAs",
                     enabled: canSave,
-                    child: const Text("另存为"),
+                    child: const UseText(I18nKey.menuSaveAs),
                   ),
                   const PopupMenuDivider(),
                   PopupMenuItem(
                     value: "cut",
                     enabled: canSave,
-                    child: const Text("剪切"),
+                    child: const UseText(I18nKey.menuCut),
                   ),
                   PopupMenuItem(
                     value: "copy",
                     enabled: canSave,
-                    child: const Text("复制"),
+                    child: const UseText(I18nKey.menuCopy),
                   ),
                   PopupMenuItem(
                     value: "paste",
                     enabled: canSave,
-                    child: const Text("粘贴"),
+                    child: const UseText(I18nKey.menuPaste),
                   ),
                 ],
               ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
@@ -11,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:window_manager/window_manager.dart';
 
 class UseWindow with WindowListener {
@@ -131,7 +133,7 @@ class AppActionBar extends ConsumerWidget {
           menuChildren: [
             buildMenuItemButton(
               context,
-              "新建文件",
+              I18nKey.menuNewFile,
               () =>
                   ref.read(tabbedViewControllerProvider.notifier).createFile(),
               leadingIconData: Icons.add,
@@ -139,7 +141,7 @@ class AppActionBar extends ConsumerWidget {
             ),
             buildMenuItemButton(
               context,
-              "打开文件",
+              I18nKey.menuOpenFile,
               () => ref
                   .read(tabbedViewControllerProvider.notifier)
                   .openFile(context),
@@ -148,27 +150,27 @@ class AppActionBar extends ConsumerWidget {
             ),
             buildMenuItemButton(
               context,
-              "打开文件夹",
+              I18nKey.menuOpenFolder,
               () => ref.read(localFileItemsProvider.notifier).openFolder(),
               leadingIconData: Icons.folder_open,
             ),
             PopupMenuDivider(),
             buildMenuItemButton(
               context,
-              "保存当前文件",
+              I18nKey.menuSaveCurrentFile,
               () => ref.read(fileProvider.notifier).saveCurrentFile(),
               leadingIconData: Icons.save,
               shortcut: platformShortcut(LogicalKeyboardKey.keyS),
             ),
             buildMenuItemButton(
               context,
-              "将当前文件另存为",
+              I18nKey.menuSaveCurrentFileAs,
               () => ref.read(fileProvider.notifier).saveCurrentFileAs(),
               leadingIconData: Icons.save_as,
               shortcut: platformShortcut(LogicalKeyboardKey.keyS, shift: true),
             ),
           ],
-          child: Text("文件"),
+          child: const UseText(I18nKey.menuFile),
         ),
         SubmenuButton(
           style: ButtonStyle(
@@ -183,27 +185,27 @@ class AppActionBar extends ConsumerWidget {
           menuChildren: [
             buildMenuItemButton(
               context,
-              "剪切",
+              I18nKey.menuCut,
               ref.read(editorControllerMapProvider.notifier).cut,
               leadingIconData: Icons.cut,
               shortcut: platformShortcut(LogicalKeyboardKey.keyX),
             ),
             buildMenuItemButton(
               context,
-              "复制",
+              I18nKey.menuCopy,
               ref.read(editorControllerMapProvider.notifier).copy,
               leadingIconData: Icons.copy,
               shortcut: platformShortcut(LogicalKeyboardKey.keyC),
             ),
             buildMenuItemButton(
               context,
-              "粘贴",
+              I18nKey.menuPaste,
               ref.read(editorControllerMapProvider.notifier).paste,
               leadingIconData: Icons.paste,
               shortcut: platformShortcut(LogicalKeyboardKey.keyV),
             ),
           ],
-          child: Text("编辑"),
+          child: const UseText(I18nKey.menuEdit),
         ),
         SubmenuButton(
           style: ButtonStyle(
@@ -226,7 +228,7 @@ class AppActionBar extends ConsumerWidget {
                       functionPageShow,
                     ),
               ),
-              child: Text("功能"),
+              child: const UseText(I18nKey.menuFunctionPanel),
             ),
             MenuItemButton(
               onPressed: () {},
@@ -236,7 +238,7 @@ class AppActionBar extends ConsumerWidget {
                 onChanged: (value) => ref.read(consolePageShow.notifier).state =
                     !ref.read(consolePageShow),
               ),
-              child: Text("控制台"),
+              child: const UseText(I18nKey.menuConsolePanel),
             ),
             MenuItemButton(
               onPressed: () {},
@@ -248,10 +250,10 @@ class AppActionBar extends ConsumerWidget {
                       expansionPageShow,
                     ),
               ),
-              child: Text("拓展"),
+              child: const UseText(I18nKey.menuExpansionPanel),
             ),
           ],
-          child: Text("视图"),
+          child: const UseText(I18nKey.menuView),
         ),
       ],
     );
@@ -259,7 +261,7 @@ class AppActionBar extends ConsumerWidget {
 
   Widget buildMenuItemButton(
     BuildContext context,
-    String text,
+    Object text,
     Function()? onPressed, {
     IconData? leadingIconData,
     IconData? trailingIconData,
@@ -276,7 +278,7 @@ class AppActionBar extends ConsumerWidget {
           : SizedBox(width: 18),
       style: ButtonStyle(),
       shortcut: shortcut,
-      child: Text(text),
+      child: UseText(text),
     );
   }
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
@@ -9,6 +11,7 @@ import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 
 const _fallbackAuthorName = 'Pyrite User';
@@ -99,11 +102,13 @@ class _GitPageState extends ConsumerState<GitPage> {
       final hasWorkspace = workspacePath != null && workspacePath.isNotEmpty;
       return WorkspaceEmptyState(
         icon: Icons.account_tree_outlined,
-        title: '没有检测到 Git 仓库',
+        title: I18nKey.gitEmptyTitle,
         message: hasWorkspace
-            ? '当前文件夹没有 .git。可以初始化仓库后开始管理更改。'
-            : '打开一个本地项目后，这里会显示源代码管理工作台。',
-        actionLabel: hasWorkspace ? '初始化 Git 仓库' : '打开文件夹',
+            ? I18nKey.gitEmptyNoGitMessage
+            : I18nKey.gitEmptyNoWorkspaceMessage,
+        actionLabel: hasWorkspace
+            ? I18nKey.gitInitRepository
+            : I18nKey.gitOpenFolder,
         onAction: hasWorkspace
             ? () => ref.read(gitProvider.notifier).initRepository()
             : () => ref.read(localFileItemsProvider.notifier).openFolder(),
@@ -116,14 +121,14 @@ class _GitPageState extends ConsumerState<GitPage> {
               onPressed: () =>
                   ref.read(localFileItemsProvider.notifier).openFolder(),
               icon: const Icon(Icons.folder_open_outlined),
-              label: const Text('打开文件夹'),
+              label: const UseText(I18nKey.gitOpenFolder),
             ),
             OutlinedButton.icon(
               onPressed: state.isBusy
                   ? null
                   : () => ref.read(gitProvider.notifier).refresh(),
               icon: const Icon(Icons.refresh),
-              label: const Text('重新检测'),
+              label: const UseText(I18nKey.gitRedetect),
             ),
           ],
         ),
@@ -141,13 +146,13 @@ class _GitPageState extends ConsumerState<GitPage> {
           const TabBar(
             isScrollable: true,
             tabs: [
-              Tab(text: '更改'),
-              Tab(text: '分支'),
-              Tab(text: '远端'),
-              Tab(text: '冲突'),
-              Tab(text: '历史'),
-              Tab(text: '高级'),
-              Tab(text: '凭据'),
+              Tab(child: UseText(I18nKey.gitTabChanges)),
+              Tab(child: UseText(I18nKey.gitTabBranches)),
+              Tab(child: UseText(I18nKey.gitTabRemotes)),
+              Tab(child: UseText(I18nKey.gitTabConflicts)),
+              Tab(child: UseText(I18nKey.gitTabHistory)),
+              Tab(child: UseText(I18nKey.gitTabAdvanced)),
+              Tab(child: UseText(I18nKey.gitTabCredentials)),
             ],
           ),
           Expanded(
@@ -206,14 +211,14 @@ class _GitPageState extends ConsumerState<GitPage> {
                   ? null
                   : () => ref.read(gitProvider.notifier).stageAll(),
               icon: const Icon(Icons.add_task),
-              label: const Text('全部暂存'),
+              label: const UseText(I18nKey.gitStageAll),
             ),
             OutlinedButton.icon(
               onPressed: state.isBusy || snapshot.stagedCount == 0
                   ? null
                   : () => ref.read(gitProvider.notifier).unstageAll(),
               icon: const Icon(Icons.remove_done_outlined),
-              label: const Text('全部取消暂存'),
+              label: const UseText(I18nKey.gitUnstageAll),
             ),
           ],
         ),
@@ -221,12 +226,15 @@ class _GitPageState extends ConsumerState<GitPage> {
         if (snapshot.statusEntries.isEmpty)
           const _EmptyPanel(
             icon: Icons.check_circle_outline,
-            title: '工作区干净',
-            message: '没有暂存或未暂存的更改。',
+            title: I18nKey.gitCleanTitle,
+            message: I18nKey.gitCleanMessage,
           )
         else ...[
           if (stagedItems.isNotEmpty) ...[
-            _ChangeSectionHeader(title: '已暂存的更改', count: stagedItems.length),
+            _ChangeSectionHeader(
+              title: I18nKey.gitStagedChanges,
+              count: stagedItems.length,
+            ),
             for (final item in stagedItems)
               _StatusTile(
                 entry: item.entry,
@@ -237,7 +245,10 @@ class _GitPageState extends ConsumerState<GitPage> {
               ),
           ],
           if (unstagedItems.isNotEmpty) ...[
-            _ChangeSectionHeader(title: '更改', count: unstagedItems.length),
+            _ChangeSectionHeader(
+              title: I18nKey.gitChanges,
+              count: unstagedItems.length,
+            ),
             for (final item in unstagedItems)
               _StatusTile(
                 entry: item.entry,
@@ -324,12 +335,12 @@ class _GitPageState extends ConsumerState<GitPage> {
               onPressed: state.isBusy
                   ? null
                   : () => _textDialog(
-                      title: '创建分支',
-                      label: '分支名称',
+                      title: I18nKey.gitCreateBranch,
+                      label: I18nKey.gitBranchName,
                       onSubmit: ref.read(gitProvider.notifier).createBranch,
                     ),
               icon: const Icon(Icons.call_split),
-              label: const Text('创建分支'),
+              label: const UseText(I18nKey.gitCreateBranch),
             ),
           ],
         ),
@@ -350,12 +361,12 @@ class _GitPageState extends ConsumerState<GitPage> {
               overflow: TextOverflow.ellipsis,
             ),
             trailing: branch.isCurrent
-                ? const PillBadge(label: '当前')
+                ? const PillBadge(label: I18nKey.gitCurrentBranch)
                 : TextButton(
                     onPressed: state.isBusy
                         ? null
                         : () => _checkoutBranch(branch),
-                    child: const Text('切换'),
+                    child: const UseText(I18nKey.gitCheckout),
                   ),
           ),
       ],
@@ -366,7 +377,7 @@ class _GitPageState extends ConsumerState<GitPage> {
     final addRemoteButton = FilledButton.tonalIcon(
       onPressed: state.isBusy ? null : () => _remoteDialog(),
       icon: const Icon(Icons.add_link_outlined),
-      label: const Text('添加远端'),
+      label: const UseText(I18nKey.gitAddRemote),
     );
     if (snapshot.remotes.isEmpty) {
       return Column(
@@ -381,8 +392,8 @@ class _GitPageState extends ConsumerState<GitPage> {
           const Expanded(
             child: _EmptyPanel(
               icon: Icons.cloud_off_outlined,
-              title: '没有远端',
-              message: '当前仓库没有配置 remote。',
+              title: I18nKey.gitNoRemotesTitle,
+              message: I18nKey.gitNoRemotesMessage,
             ),
           ),
         ],
@@ -427,7 +438,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                   .read(gitProvider.notifier)
                                   .fetch(remote.name),
                         icon: const Icon(Icons.cloud_download_outlined),
-                        label: const Text('Fetch'),
+                        label: const UseText(I18nKey.gitFetch),
                       ),
                       FilledButton.tonalIcon(
                         onPressed: state.isBusy
@@ -436,7 +447,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                   .read(gitProvider.notifier)
                                   .pull(remote.name),
                         icon: const Icon(Icons.download_for_offline_outlined),
-                        label: const Text('Pull'),
+                        label: const UseText(I18nKey.gitPull),
                       ),
                       OutlinedButton.icon(
                         onPressed: state.isBusy
@@ -445,7 +456,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                   .read(gitProvider.notifier)
                                   .push(remote.name),
                         icon: const Icon(Icons.cloud_upload_outlined),
-                        label: const Text('Push'),
+                        label: const UseText(I18nKey.gitPush),
                       ),
                     ],
                   ),
@@ -470,22 +481,22 @@ class _GitPageState extends ConsumerState<GitPage> {
               FilledButton.tonalIcon(
                 onPressed: state.isBusy ? null : () => _continueRebase(),
                 icon: const Icon(Icons.play_arrow),
-                label: const Text('继续 rebase'),
+                label: const UseText(I18nKey.gitContinueRebase),
               ),
               OutlinedButton.icon(
                 onPressed: state.isBusy
                     ? null
                     : () => ref.read(gitProvider.notifier).abortRebase(),
                 icon: const Icon(Icons.cancel_outlined),
-                label: const Text('中止 rebase'),
+                label: const UseText(I18nKey.gitAbortRebase),
               ),
             ],
           ),
         if (conflicts.isEmpty)
           const _EmptyPanel(
             icon: Icons.merge_type_outlined,
-            title: '没有冲突',
-            message: 'merge、rebase、cherry-pick 的冲突会显示在这里。',
+            title: I18nKey.gitNoConflictsTitle,
+            message: I18nKey.gitNoConflictsMessage,
           )
         else
           for (final conflict in conflicts)
@@ -515,7 +526,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                       GitConflictSide.ours,
                                     ),
                           icon: const Icon(Icons.looks_one_outlined),
-                          label: const Text('采用 ours'),
+                          label: const UseText(I18nKey.gitAcceptOurs),
                         ),
                         FilledButton.tonalIcon(
                           onPressed: state.isBusy
@@ -527,7 +538,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                       GitConflictSide.theirs,
                                     ),
                           icon: const Icon(Icons.looks_two_outlined),
-                          label: const Text('采用 theirs'),
+                          label: const UseText(I18nKey.gitAcceptTheirs),
                         ),
                         OutlinedButton.icon(
                           onPressed: state.isBusy
@@ -536,7 +547,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                                     .read(gitProvider.notifier)
                                     .markResolved(conflict.path),
                           icon: const Icon(Icons.add_task),
-                          label: const Text('标记已解决'),
+                          label: const UseText(I18nKey.gitMarkResolved),
                         ),
                       ],
                     ),
@@ -567,28 +578,28 @@ class _GitPageState extends ConsumerState<GitPage> {
               onPressed: state.isBusy
                   ? null
                   : () => _textDialog(
-                      title: '创建标签',
-                      label: '标签名称',
+                      title: I18nKey.gitCreateTag,
+                      label: I18nKey.gitTagName,
                       onSubmit: ref.read(gitProvider.notifier).createTag,
                     ),
               icon: const Icon(Icons.sell_outlined),
-              label: const Text('Tag HEAD'),
+              label: const UseText(I18nKey.gitTagHead),
             ),
             OutlinedButton.icon(
               onPressed: state.isBusy
                   ? null
                   : () => _textDialog(
-                      title: 'Merge',
-                      label: '分支、标签或提交',
+                      title: I18nKey.gitMerge,
+                      label: I18nKey.gitRefLabel,
                       onSubmit: ref.read(gitProvider.notifier).merge,
                     ),
               icon: const Icon(Icons.merge_type),
-              label: const Text('Merge'),
+              label: const UseText(I18nKey.gitMerge),
             ),
             OutlinedButton.icon(
               onPressed: state.isBusy ? null : () => _rebaseDialog(),
               icon: const Icon(Icons.linear_scale),
-              label: const Text('Rebase'),
+              label: const UseText(I18nKey.gitRebase),
             ),
           ],
         ),
@@ -609,7 +620,7 @@ class _GitPageState extends ConsumerState<GitPage> {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _SectionTitle(title: '高级 Git 操作'),
+        _SectionTitle(title: I18nKey.gitAdvancedOperations),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -618,25 +629,25 @@ class _GitPageState extends ConsumerState<GitPage> {
               onPressed: state.isBusy
                   ? null
                   : () => _textDialog(
-                      title: 'Cherry-pick',
-                      label: '提交 SHA、标签或引用',
+                      title: I18nKey.gitCherryPick,
+                      label: I18nKey.gitShaTagOrRef,
                       onSubmit: ref.read(gitProvider.notifier).cherryPick,
                     ),
               icon: const Icon(Icons.control_point_duplicate_outlined),
-              label: const Text('Cherry-pick'),
+              label: const UseText(I18nKey.gitCherryPick),
             ),
             OutlinedButton.icon(
               onPressed: state.isBusy
                   ? null
                   : () => ref.read(gitProvider.notifier).writeCommitGraph(),
               icon: const Icon(Icons.hub_outlined),
-              label: const Text('写入 commit graph'),
+              label: const UseText(I18nKey.gitWriteCommitGraph),
             ),
           ],
         ),
         const SectionDivider(),
         _SectionTitle(
-          title: 'Stash',
+          title: I18nKey.gitStash,
           action: snapshot.stashes.isEmpty
               ? null
               : '${snapshot.stashes.length}',
@@ -650,7 +661,7 @@ class _GitPageState extends ConsumerState<GitPage> {
               spacing: 4,
               children: [
                 IconButton(
-                  tooltip: '应用',
+                  tooltip: translateForWidget(ref, I18nKey.gitApply),
                   onPressed: state.isBusy
                       ? null
                       : () => ref
@@ -659,7 +670,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                   icon: const Icon(Icons.file_download_outlined),
                 ),
                 IconButton(
-                  tooltip: '弹出',
+                  tooltip: translateForWidget(ref, I18nKey.gitPop),
                   onPressed: state.isBusy
                       ? null
                       : () => ref
@@ -668,7 +679,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                   icon: const Icon(Icons.unarchive_outlined),
                 ),
                 IconButton(
-                  tooltip: '删除',
+                  tooltip: translateForWidget(ref, I18nKey.gitDelete),
                   onPressed: state.isBusy
                       ? null
                       : () => ref
@@ -681,7 +692,7 @@ class _GitPageState extends ConsumerState<GitPage> {
           ),
         const SectionDivider(),
         _SectionTitle(
-          title: 'Submodule',
+          title: I18nKey.gitSubmodule,
           action: snapshot.submodules.isEmpty
               ? null
               : '${snapshot.submodules.length}',
@@ -697,12 +708,12 @@ class _GitPageState extends ConsumerState<GitPage> {
                   : () => ref
                         .read(gitProvider.notifier)
                         .updateSubmodule(submodule.name),
-              child: const Text('更新'),
+              child: const UseText(I18nKey.gitUpdate),
             ),
           ),
         const SectionDivider(),
         _SectionTitle(
-          title: 'Worktree',
+          title: I18nKey.gitWorktree,
           action: snapshot.worktrees.isEmpty
               ? null
               : '${snapshot.worktrees.length}',
@@ -714,7 +725,7 @@ class _GitPageState extends ConsumerState<GitPage> {
             OutlinedButton.icon(
               onPressed: state.isBusy ? null : () => _worktreeDialog(),
               icon: const Icon(Icons.library_add_outlined),
-              label: const Text('创建 worktree'),
+              label: const UseText(I18nKey.gitCreateWorktree),
             ),
           ],
         ),
@@ -724,7 +735,7 @@ class _GitPageState extends ConsumerState<GitPage> {
             title: Text(worktree.name, overflow: TextOverflow.ellipsis),
             subtitle: Text(worktree.path, overflow: TextOverflow.ellipsis),
             trailing: IconButton(
-              tooltip: '清理',
+              tooltip: translateForWidget(ref, I18nKey.gitPrune),
               onPressed: state.isBusy
                   ? null
                   : () => ref
@@ -735,7 +746,7 @@ class _GitPageState extends ConsumerState<GitPage> {
           ),
         const SectionDivider(),
         _SectionTitle(
-          title: 'Tag',
+          title: I18nKey.gitTag,
           action: snapshot.tags.isEmpty ? null : '${snapshot.tags.length}',
         ),
         for (final tag in snapshot.tags.take(50))
@@ -760,22 +771,22 @@ class _GitPageState extends ConsumerState<GitPage> {
             ButtonSegment(
               value: GitCredentialMode.none,
               icon: Icon(Icons.no_encryption_outlined),
-              label: Text('无'),
+              label: UseText(I18nKey.gitCredentialNone),
             ),
             ButtonSegment(
               value: GitCredentialMode.httpsToken,
               icon: Icon(Icons.token_outlined),
-              label: Text('HTTPS Token'),
+              label: UseText(I18nKey.gitHttpsToken),
             ),
             ButtonSegment(
               value: GitCredentialMode.sshAgent,
               icon: Icon(Icons.key_outlined),
-              label: Text('SSH Agent'),
+              label: UseText(I18nKey.gitSshAgent),
             ),
             ButtonSegment(
               value: GitCredentialMode.sshKey,
               icon: Icon(Icons.vpn_key_outlined),
-              label: Text('SSH Key'),
+              label: UseText(I18nKey.gitSshKey),
             ),
           ],
           selected: {draft.mode},
@@ -791,7 +802,7 @@ class _GitPageState extends ConsumerState<GitPage> {
         TextField(
           controller: _usernameController,
           decoration: const InputDecoration(
-            labelText: '用户名',
+            label: UseText(I18nKey.gitUsername),
             border: OutlineInputBorder(),
           ),
           onChanged: _updateCredentialDraft,
@@ -802,7 +813,7 @@ class _GitPageState extends ConsumerState<GitPage> {
             controller: _tokenController,
             obscureText: true,
             decoration: const InputDecoration(
-              labelText: 'Token',
+              label: UseText(I18nKey.gitToken),
               border: OutlineInputBorder(),
             ),
             onChanged: _updateCredentialDraft,
@@ -813,7 +824,7 @@ class _GitPageState extends ConsumerState<GitPage> {
           TextField(
             controller: _publicKeyController,
             decoration: const InputDecoration(
-              labelText: '公钥路径',
+              label: UseText(I18nKey.gitPublicKeyPath),
               border: OutlineInputBorder(),
             ),
             onChanged: _updateCredentialDraft,
@@ -822,7 +833,7 @@ class _GitPageState extends ConsumerState<GitPage> {
           TextField(
             controller: _privateKeyController,
             decoration: const InputDecoration(
-              labelText: '私钥路径',
+              label: UseText(I18nKey.gitPrivateKeyPath),
               border: OutlineInputBorder(),
             ),
             onChanged: _updateCredentialDraft,
@@ -832,7 +843,7 @@ class _GitPageState extends ConsumerState<GitPage> {
             controller: _passphraseController,
             obscureText: true,
             decoration: const InputDecoration(
-              labelText: 'Passphrase',
+              label: UseText(I18nKey.gitPassphrase),
               border: OutlineInputBorder(),
             ),
             onChanged: _updateCredentialDraft,
@@ -908,16 +919,21 @@ class _GitPageState extends ConsumerState<GitPage> {
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.warning_amber_outlined),
-        title: const Text('切换分支会覆盖本地更改'),
+        title: const UseText(I18nKey.gitCheckoutBlockedTitle),
         content: SizedBox(
           width: 520,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('目标分支：${blocked.branchName}'),
+              Text(
+                translateForWidget(
+                  ref,
+                  I18nKey.gitTargetBranch,
+                ).replaceAll('{branch}', blocked.branchName),
+              ),
               const SizedBox(height: 12),
-              Text('这些文件会被目标分支覆盖：'),
+              const UseText(I18nKey.gitCheckoutBlockedFiles),
               const SizedBox(height: 8),
               _BlockedPathList(paths: blocked.paths),
             ],
@@ -926,22 +942,22 @@ class _GitPageState extends ConsumerState<GitPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: const UseText(I18nKey.commonCancel),
           ),
           TextButton(
             onPressed: () =>
                 Navigator.of(context).pop(_CheckoutBlockedAction.force),
-            child: const Text('强制迁出'),
+            child: const UseText(I18nKey.gitForceCheckout),
           ),
           TextButton(
             onPressed: () =>
                 Navigator.of(context).pop(_CheckoutBlockedAction.merge),
-            child: const Text('迁移更改'),
+            child: const UseText(I18nKey.gitMergeChanges),
           ),
           FilledButton(
             onPressed: () =>
                 Navigator.of(context).pop(_CheckoutBlockedAction.stash),
-            child: const Text('储藏并迁出'),
+            child: const UseText(I18nKey.gitStashAndCheckout),
           ),
         ],
       ),
@@ -958,16 +974,16 @@ class _GitPageState extends ConsumerState<GitPage> {
           Icons.delete_sweep_outlined,
           color: Theme.of(context).colorScheme.error,
         ),
-        title: const Text('选择强制迁出范围'),
+        title: const UseText(I18nKey.gitForceCheckoutScopeTitle),
         content: SizedBox(
           width: 520,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('强制迁出会放弃本地更改。'),
+              const UseText(I18nKey.gitForceCheckoutWarning),
               const SizedBox(height: 12),
-              const Text('被 Git 阻止的文件：'),
+              const UseText(I18nKey.gitBlockedFiles),
               const SizedBox(height: 8),
               _BlockedPathList(paths: blocked.paths),
             ],
@@ -976,12 +992,12 @@ class _GitPageState extends ConsumerState<GitPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: const UseText(I18nKey.commonCancel),
           ),
           TextButton(
             onPressed: () =>
                 Navigator.of(context).pop(_ForceCheckoutAction.listedTracked),
-            child: const Text('放弃这些跟踪文件'),
+            child: const UseText(I18nKey.gitDiscardTrackedFiles),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -990,7 +1006,7 @@ class _GitPageState extends ConsumerState<GitPage> {
             ),
             onPressed: () =>
                 Navigator.of(context).pop(_ForceCheckoutAction.all),
-            child: const Text('放弃所有文件'),
+            child: const UseText(I18nKey.gitDiscardAllFiles),
           ),
         ],
       ),
@@ -1003,8 +1019,8 @@ class _GitPageState extends ConsumerState<GitPage> {
 
   Future<void> _rebaseDialog() async {
     await _textDialog(
-      title: 'Rebase',
-      label: '目标分支、标签或提交',
+      title: I18nKey.gitRebase,
+      label: I18nKey.gitTargetRef,
       onSubmit: (value) => ref
           .read(gitProvider.notifier)
           .rebase(value, _commitInput(message: 'rebase')),
@@ -1018,25 +1034,29 @@ class _GitPageState extends ConsumerState<GitPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('创建 worktree'),
+          title: const UseText(I18nKey.gitCreateWorktree),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: name,
-                decoration: const InputDecoration(labelText: '名称'),
+                decoration: const InputDecoration(
+                  label: UseText(I18nKey.gitName),
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: path,
-                decoration: const InputDecoration(labelText: '路径'),
+                decoration: const InputDecoration(
+                  label: UseText(I18nKey.gitPath),
+                ),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
+              child: const UseText(I18nKey.commonCancel),
             ),
             FilledButton(
               onPressed: () {
@@ -1045,7 +1065,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                     .createWorktree(name.text, path.text);
                 Navigator.of(context).pop();
               },
-              child: const Text('创建'),
+              child: const UseText(I18nKey.commonCreate),
             ),
           ],
         );
@@ -1062,33 +1082,37 @@ class _GitPageState extends ConsumerState<GitPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('添加远端'),
+          title: const UseText(I18nKey.gitAddRemote),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: name,
-                decoration: const InputDecoration(labelText: '远端名称'),
+                decoration: const InputDecoration(
+                  label: UseText(I18nKey.gitRemoteName),
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: url,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: '远端 URL'),
+                decoration: const InputDecoration(
+                  label: UseText(I18nKey.gitRemoteUrl),
+                ),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
+              child: const UseText(I18nKey.commonCancel),
             ),
             FilledButton(
               onPressed: () {
                 ref.read(gitProvider.notifier).addRemote(name.text, url.text);
                 Navigator.of(context).pop();
               },
-              child: const Text('添加'),
+              child: const UseText(I18nKey.commonAdd),
             ),
           ],
         );
@@ -1099,8 +1123,8 @@ class _GitPageState extends ConsumerState<GitPage> {
   }
 
   Future<void> _textDialog({
-    required String title,
-    required String label,
+    required Object title,
+    required Object label,
     required Future<void> Function(String value) onSubmit,
   }) async {
     final controller = TextEditingController();
@@ -1108,11 +1132,11 @@ class _GitPageState extends ConsumerState<GitPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(title),
+          title: UseText(title),
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration: InputDecoration(labelText: label),
+            decoration: InputDecoration(label: UseText(label)),
             onSubmitted: (value) {
               onSubmit(value);
               Navigator.of(context).pop();
@@ -1121,14 +1145,14 @@ class _GitPageState extends ConsumerState<GitPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
+              child: const UseText(I18nKey.commonCancel),
             ),
             FilledButton(
               onPressed: () {
                 onSubmit(controller.text);
                 Navigator.of(context).pop();
               },
-              child: const Text('确认'),
+              child: const UseText(I18nKey.commonConfirm),
             ),
           ],
         );
@@ -1191,7 +1215,7 @@ class _GitHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return PaneHeader(
-      title: '源代码管理',
+      title: I18nKey.gitSourceControl,
       subtitle:
           '${snapshot.branchLabel} · ${snapshot.stateLabel} · ${snapshot.rootPath}',
       leadingIcon: Icons.account_tree_outlined,
@@ -1199,7 +1223,7 @@ class _GitHeader extends ConsumerWidget {
         if (snapshot.ahead > 0 || snapshot.behind > 0)
           PillBadge(label: '↑${snapshot.ahead} ↓${snapshot.behind}'),
         IconButton(
-          tooltip: '刷新',
+          tooltip: translateForWidget(ref, I18nKey.commonRefresh),
           onPressed: isBusy
               ? null
               : () => ref.read(gitProvider.notifier).refresh(),
@@ -1277,7 +1301,7 @@ class _CommitBox extends StatelessWidget {
               minLines: 2,
               maxLines: 4,
               decoration: const InputDecoration(
-                labelText: '提交信息',
+                label: UseText(I18nKey.gitCommitMessage),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -1287,14 +1311,18 @@ class _CommitBox extends StatelessWidget {
                 Expanded(
                   child: TextField(
                     controller: authorController,
-                    decoration: const InputDecoration(labelText: '作者'),
+                    decoration: const InputDecoration(
+                      label: UseText(I18nKey.gitAuthor),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: emailController,
-                    decoration: const InputDecoration(labelText: '邮箱'),
+                    decoration: const InputDecoration(
+                      label: UseText(I18nKey.gitEmail),
+                    ),
                   ),
                 ),
               ],
@@ -1306,7 +1334,7 @@ class _CommitBox extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: isBusy ? null : onCommit,
                     icon: const Icon(Icons.check),
-                    label: const Text('提交'),
+                    label: const UseText(I18nKey.gitCommit),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1915,7 +1943,7 @@ class _CommitGraphPainter extends CustomPainter {
 class _ChangeSectionHeader extends StatelessWidget {
   const _ChangeSectionHeader({required this.title, required this.count});
 
-  final String title;
+  final Object title;
   final int count;
 
   @override
@@ -1926,7 +1954,7 @@ class _ChangeSectionHeader extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
+            child: UseText(
               title,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
@@ -1970,7 +1998,8 @@ class _StatusTile extends ConsumerWidget {
         : Colors.green.shade700;
     final removeColor = scheme.error;
     final canDiscard = !stagedSide && entry.isUnstaged && !entry.isConflicted;
-    final stageActionLabel = stagedSide ? '取消暂存' : '暂存';
+    final stageActionKey = stagedSide ? I18nKey.gitUnstage : I18nKey.gitStage;
+    final stageActionLabel = translateForWidget(ref, stageActionKey);
     final tile = ListTile(
       dense: true,
       leading: Icon(_statusIcon),
@@ -1991,7 +2020,7 @@ class _StatusTile extends ConsumerWidget {
             ),
           if (canDiscard)
             IconButton(
-              tooltip: '放弃更改',
+              tooltip: translateForWidget(ref, I18nKey.gitDiscardChanges),
               onPressed: isBusy ? null : () => _confirmDiscard(context, ref),
               icon: const Icon(Icons.restore_outlined),
             ),
@@ -2012,7 +2041,7 @@ class _StatusTile extends ConsumerWidget {
         return Menu(
           children: [
             MenuAction(
-              title: '查看 Diff',
+              title: translateForWidget(ref, I18nKey.gitViewDiff),
               callback: onOpenDiff,
               attributes: MenuActionAttributes(disabled: isBusy),
             ),
@@ -2023,7 +2052,7 @@ class _StatusTile extends ConsumerWidget {
               attributes: MenuActionAttributes(disabled: isBusy),
             ),
             MenuAction(
-              title: '放弃更改',
+              title: translateForWidget(ref, I18nKey.gitDiscardChanges),
               callback: () => _confirmDiscard(context, ref),
               attributes: MenuActionAttributes(disabled: isBusy || !canDiscard),
             ),
@@ -2053,16 +2082,21 @@ class _StatusTile extends ConsumerWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('放弃更改'),
-          content: Text('将丢弃 ${entry.path} 的工作区更改。此操作不可撤销。'),
+          title: const UseText(I18nKey.gitDiscardChanges),
+          content: Text(
+            translateForWidget(
+              ref,
+              I18nKey.gitDiscardChangesMessage,
+            ).replaceAll('{path}', entry.path),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: const UseText(I18nKey.commonCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('放弃'),
+              child: const UseText(I18nKey.gitDiscard),
             ),
           ],
         );
@@ -2094,7 +2128,7 @@ class _StatusTileSubtitle extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         _DiffInfoPill(
-          label: file.stageLabel,
+          label: file.stageLabelKey,
           color: file.staged ? scheme.primary : scheme.tertiary,
         ),
         if (entry.summary.isNotEmpty)
@@ -2166,7 +2200,7 @@ class _ChangeSummary extends StatelessWidget {
 class _DiffInfoPill extends StatelessWidget {
   const _DiffInfoPill({required this.label, required this.color});
 
-  final String label;
+  final Object label;
   final Color color;
 
   @override
@@ -2179,7 +2213,7 @@ class _DiffInfoPill extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(6, 2, 6, 3),
-        child: Text(
+        child: UseText(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -2210,7 +2244,8 @@ class _DiffFileItem {
   final int deletions;
   final bool isBinary;
 
-  String get stageLabel => staged ? '已暂存' : '未暂存';
+  I18nKey get stageLabelKey =>
+      staged ? I18nKey.gitStageStaged : I18nKey.gitStageUnstaged;
 
   String get changeSummary {
     if (isBinary) return 'Binary';
@@ -2499,7 +2534,7 @@ class _CodeBlock extends StatelessWidget {
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({required this.title, this.action});
 
-  final String title;
+  final Object title;
   final String? action;
 
   @override
@@ -2509,7 +2544,7 @@ class _SectionTitle extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
+            child: UseText(
               title,
               style: Theme.of(
                 context,
@@ -2531,8 +2566,8 @@ class _EmptyPanel extends StatelessWidget {
   });
 
   final IconData icon;
-  final String title;
-  final String message;
+  final Object title;
+  final Object message;
 
   @override
   Widget build(BuildContext context) {
@@ -2545,9 +2580,9 @@ class _EmptyPanel extends StatelessWidget {
           children: [
             Icon(icon, size: 36, color: scheme.secondary),
             const SizedBox(height: 10),
-            Text(title, style: Theme.of(context).textTheme.titleSmall),
+            UseText(title, style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 4),
-            Text(
+            UseText(
               message,
               textAlign: TextAlign.center,
               style: Theme.of(
