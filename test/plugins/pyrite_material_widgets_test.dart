@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:markdown_widget/markdown_widget.dart' as markdown_widget;
-import 'package:pyrite_ide/pages/plugins/pyrite_material_widgets.dart';
+import 'package:pyrite_ide/pages/plugins/widgets/rfw_lib.dart';
 import 'package:rfw/formats.dart' as formats;
 import 'package:rfw/rfw.dart' as rfw;
 

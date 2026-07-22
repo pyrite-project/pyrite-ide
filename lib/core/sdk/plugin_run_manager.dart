@@ -6,7 +6,7 @@ import 'dart:math';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/permissions.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
-import 'package:rfw/formats.dart' show DynamicMap, Missing;
+import 'package:rfw/formats.dart' show DynamicMap, Missing, missing;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +27,9 @@ abstract class SdkCommands {
   static const String outputAppend = 'sdk.output.append';
   static const String pagePush = 'sdk.page.push';
   static const String varSet = 'sdk.var.set';
+  static const String callbackRegister = 'sdk.callback.register';
+  static const String callbackClear = 'sdk.callback.clear';
+  static const String callbackSet = 'sdk.callback.set';
   static const String pathRequest = 'sdk.path.request';
   static const String routerPush = 'sdk.router.push';
   static const String routerPop = 'sdk.router.pop';
@@ -100,6 +103,8 @@ class PluginRunManager {
   bool _connecting = false;
   final Map<String, String> pages = {};
   final Map<String, dynamic> vars = {};
+  final Map<String, String> callbackBindings = {};
+  final Set<String> requiredCallbacks = {};
   void Function()? onDataChanged;
   void Function(String scope, String path)? onPathRequest;
   void Function(String currentRoute, List<String> routeStack)? onRouteChanged;
@@ -150,6 +155,9 @@ class PluginRunManager {
     registerHandler(SdkCommands.outputAppend, _handleOutputAppend);
     registerHandler(SdkCommands.pagePush, _handlePagePush);
     registerHandler(SdkCommands.varSet, _handleVarSet);
+    registerHandler(SdkCommands.callbackRegister, _handleCallbackRegister);
+    registerHandler(SdkCommands.callbackClear, _handleCallbackClear);
+    registerHandler(SdkCommands.callbackSet, _handleCallbackSet);
     registerHandler(SdkCommands.pathRequest, _handlePathRequest);
     registerHandler(SdkCommands.routerPush, _handleRouterPush);
     registerHandler(SdkCommands.routerPop, _handleRouterPop);
@@ -283,6 +291,57 @@ class PluginRunManager {
       ),
     );
     onDataChanged?.call();
+  }
+
+  void _handleCallbackRegister(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final name = payload['name']?.toString();
+    final varName = payload['var']?.toString();
+    if (name != null && varName != null) {
+      callbackBindings[name] = varName;
+    }
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
+  }
+
+  void _handleCallbackClear(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    callbackBindings.clear();
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
+  }
+
+  void _handleCallbackSet(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final callbacks = payload['callbacks'] as List<dynamic>? ?? const [];
+    requiredCallbacks
+      ..clear()
+      ..addAll(callbacks.map((callback) => callback.toString()));
+    respond(
+      makeEnvelope(
+        type: SdkCommands.responseOk,
+        payload: {'data': null},
+        replyTo: envelope['id'],
+      ),
+    );
   }
 
   void _handlePathRequest(
@@ -496,7 +555,36 @@ class PluginRunManager {
     return value.toString();
   }
 
+  MapEntry<String, dynamic>? consumeCallbackBinding(
+    String name,
+    DynamicMap args,
+  ) {
+    final varName = callbackBindings[name];
+    if (varName == null) return null;
+    final value = _callbackValue(args);
+    if (value is Missing) return null;
+    final serializableValue = _convertToSerializable(value);
+    vars[varName] = serializableValue;
+    return MapEntry(varName, serializableValue);
+  }
+
+  dynamic _callbackValue(DynamicMap args) {
+    if (args.containsKey('value')) {
+      return args['value'];
+    }
+    final presentValues = <dynamic>[];
+    args.forEach((_, value) {
+      if (value is! Missing) {
+        presentValues.add(value);
+      }
+    });
+    if (presentValues.isEmpty) return missing;
+    if (presentValues.length == 1) return presentValues.single;
+    return args;
+  }
+
   Future<void> sendCallback(String name, DynamicMap args, String page) async {
+    if (!requiredCallbacks.contains(name)) return;
     await connect();
     sendJson(
       makeEnvelope(
@@ -541,6 +629,8 @@ class PluginRunManager {
     _channel = null;
     pages.clear();
     vars.clear();
+    callbackBindings.clear();
+    requiredCallbacks.clear();
     routeStack.clear();
     currentRoute = 'home';
     _handlers.clear();

@@ -45,6 +45,38 @@ class SerialByteQueue {
     }
   }
 
+  Future<void> readUntilStreaming(
+    List<int> pattern, {
+    Duration? timeout,
+    required void Function(Uint8List data) onData,
+  }) async {
+    if (pattern.isEmpty) {
+      throw ArgumentError.value(pattern, 'pattern', 'Must not be empty');
+    }
+
+    final stopwatch = timeout == null ? null : (Stopwatch()..start());
+    while (true) {
+      final index = _indexOf(pattern);
+      if (index >= 0) {
+        if (index > 0) {
+          onData(Uint8List.fromList(_buffer.sublist(0, index)));
+        }
+        _buffer.removeRange(0, index + pattern.length);
+        return;
+      }
+
+      final safeLength = _buffer.length - pattern.length + 1;
+      if (safeLength > 0) {
+        onData(Uint8List.fromList(_buffer.sublist(0, safeLength)));
+        _buffer.removeRange(0, safeLength);
+      }
+
+      await _waitForData(
+        timeout == null ? null : _remaining(timeout, stopwatch!),
+      );
+    }
+  }
+
   Future<_SerialByteMatch> _readUntilAny(
     List<List<int>> patterns,
     Duration timeout,
@@ -77,9 +109,13 @@ class SerialByteQueue {
     }
   }
 
-  Future<void> _waitForData(Duration timeout) async {
+  Future<void> _waitForData(Duration? timeout) async {
     _dataCompleter ??= Completer<void>();
-    await _dataCompleter!.future.timeout(timeout);
+    if (timeout == null) {
+      await _dataCompleter!.future;
+    } else {
+      await _dataCompleter!.future.timeout(timeout);
+    }
   }
 
   Duration _remaining(Duration timeout, Stopwatch stopwatch) {
@@ -194,6 +230,45 @@ class RawPasteSession {
     return utf8.decode(result.stdout, allowMalformed: true);
   }
 
+  Future<void> executeStreaming(
+    String python, {
+    required Duration startupTimeout,
+    required void Function() onStarted,
+    required void Function(Uint8List data) onStdout,
+    required void Function(Uint8List data) onStderr,
+  }) async {
+    final code = Uint8List.fromList(utf8.encode(python));
+    final windowIncrement = await _tryEnterRawPaste(startupTimeout);
+
+    if (windowIncrement == null) {
+      await _writeChunksWithoutFlowControl(code);
+      _write(_eot);
+      await _queue.readUntil(_ok, startupTimeout);
+    } else {
+      await _writeRawPasteCode(code, windowIncrement, startupTimeout);
+      await _queue.readUntil(_eot, startupTimeout);
+    }
+
+    onStarted();
+    await _queue.readUntilStreaming(_eot, onData: onStdout);
+
+    final stderr = BytesBuilder(copy: false);
+    await _queue.readUntilStreaming(
+      _eot,
+      onData: (data) {
+        stderr.add(data);
+        onStderr(data);
+      },
+    );
+    await _queue.readUntil(_prompt, startupTimeout);
+
+    if (stderr.length > 0) {
+      throw RawPasteException(
+        utf8.decode(stderr.takeBytes(), allowMalformed: true).trim(),
+      );
+    }
+  }
+
   Future<void> executeWithRawInput(
     String python,
     Uint8List data, {
@@ -296,6 +371,19 @@ class RawPasteSession {
     int windowIncrement,
     Duration timeout,
   ) async {
+    await _writeRawPasteCode(code, windowIncrement, timeout);
+    await _queue.readUntil(_eot, timeout);
+    final stdout = await _readPayloadUntilEot(timeout);
+    final stderr = await _readPayloadUntilEot(timeout);
+    await _queue.readUntil(_prompt, timeout);
+    return RawExecutionResult(stdout: stdout, stderr: stderr);
+  }
+
+  Future<void> _writeRawPasteCode(
+    Uint8List code,
+    int windowIncrement,
+    Duration timeout,
+  ) async {
     var remainingWindow = windowIncrement;
     var offset = 0;
     var sentEndOfData = false;
@@ -337,11 +425,6 @@ class RawPasteSession {
     if (!sentEndOfData) {
       _write(_eot);
     }
-    await _queue.readUntil(_eot, timeout);
-    final stdout = await _readPayloadUntilEot(timeout);
-    final stderr = await _readPayloadUntilEot(timeout);
-    await _queue.readUntil(_prompt, timeout);
-    return RawExecutionResult(stdout: stdout, stderr: stderr);
   }
 
   Future<RawExecutionResult> _executeStandardRaw(

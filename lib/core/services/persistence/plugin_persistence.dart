@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
@@ -48,26 +47,16 @@ class PluginPersistedData {
   };
 
   factory PluginPersistedData.fromJson(Map<String, dynamic> json) {
-    List<String> normalizeActions(String resource, List<String> actions) {
-      if (resource == 'dialog' &&
-          !actions.contains('show') &&
-          (actions.contains('read') || actions.contains('write'))) {
-        return ['show'];
-      }
-      return actions;
-    }
-
     Map<String, List<String>> parsePerms(dynamic raw) {
       if (raw is Map<String, dynamic>) {
-        return raw.map(
-          (k, v) => MapEntry(
+        return raw.map((k, v) {
+          final actions =
+              (v as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+          return MapEntry(
             k,
-            normalizeActions(
-              k,
-              (v as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-            ),
-          ),
-        );
+            k == 'dialog' && actions.isNotEmpty ? ['show'] : actions,
+          );
+        });
       } else if (raw is List<dynamic>) {
         return {
           for (final p in raw) p.toString(): ['*'],
@@ -146,31 +135,24 @@ class PluginPersistence {
   }
 
   Future<List<PluginPersistedData>?> load() async {
-    try {
-      final file = await _file;
-      if (!await file.exists()) return null;
-      final json =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      final list = json['plugins'] as List<dynamic>? ?? [];
-      return list
-          .map((e) => PluginPersistedData.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      debugPrint('PluginPersistence: Failed to load: $e');
-      return null;
-    }
+    final file = await _file;
+    if (!await file.exists()) return null;
+    final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    final list = json['plugins'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => PluginPersistedData.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> save(List<Plugin> plugins) async {
-    try {
-      final file = await _file;
-      final data = plugins.map(PluginPersistedData.fromPlugin).toList();
-      await file.writeAsString(
-        jsonEncode({'plugins': data.map((e) => e.toJson()).toList()}),
-      );
-    } catch (e) {
-      debugPrint('PluginPersistence: Failed to save: $e');
-    }
+    final file = await _file;
+    final temp = File('${file.path}.tmp');
+    final data = plugins.map(PluginPersistedData.fromPlugin).toList();
+    await temp.writeAsString(
+      jsonEncode({'plugins': data.map((e) => e.toJson()).toList()}),
+      flush: true,
+    );
+    await temp.rename(file.path);
   }
 }
 
@@ -189,22 +171,6 @@ class PluginTomlParser {
   };
 
   static const List<String> _allActions = ['read', 'write'];
-
-  static PluginPersistedData? parseFromZip(String zipPath) {
-    try {
-      final archive = ZipDecoder().decodeStream(InputFileStream(zipPath));
-      for (final file in archive) {
-        if (file.isFile && file.name.endsWith('plugin.toml')) {
-          final content = String.fromCharCodes(file.content as List<int>);
-          return _parseTomlString(content);
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('PluginTomlParser: Failed to parse zip: $e');
-      return null;
-    }
-  }
 
   static PluginPersistedData? parseFromDirectory(Directory pluginDir) {
     try {

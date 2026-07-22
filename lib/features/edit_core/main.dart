@@ -13,8 +13,8 @@ import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
@@ -23,6 +23,7 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:re_highlight/languages/python.dart';
@@ -291,28 +292,81 @@ class _EditCoreState extends ConsumerState<EditCore> {
 }
 
 Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
-  saveFile(context, ref, quiet: true);
-
   final controller = ref
       .read(editorControllerMapProvider.notifier)
       .getSelectedController();
+  if (controller == null) {
+    ref.read(ideMessageProvider.notifier).error("没有可运行的文件");
+    return;
+  }
 
-  ref.read(consolePageShow.notifier).state = true;
-  ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
-  await Future.delayed(const Duration(milliseconds: 160));
-
-  final b64 = base64.encode(utf8.encode(controller!.text));
-  ref
-      .read(getUsbSerialProvider().notifier)
-      .sendCommand(
-        "exec(__import__('ubinascii').a2b_base64('$b64').decode())\r",
+  final stdoutDecoder = const Utf8Decoder(allowMalformed: true)
+      .startChunkedConversion(
+        StringConversionSink.fromStringSink(_TerminalStringSink(repl.write)),
       );
-  ref
-      .read(ideMessageProvider.notifier)
-      .success("正在运行：${controller.openedFile}");
+  final stderrDecoder = const Utf8Decoder(allowMalformed: true)
+      .startChunkedConversion(
+        StringConversionSink.fromStringSink(_TerminalStringSink(repl.write)),
+      );
+  var started = false;
+
+  try {
+    await saveFile(context, ref, quiet: true);
+    ref.read(consolePageShow.notifier).state = true;
+    await runPythonOnDeviceStreaming(
+      ref,
+      controller.text,
+      onStarted: () {
+        started = true;
+        ref
+            .read(ideMessageProvider.notifier)
+            .success("正在运行：${controller.openedFile}");
+      },
+      onStdout: stdoutDecoder.add,
+      onStderr: stderrDecoder.add,
+    );
+  } catch (error) {
+    if (!started) {
+      repl.write("\r\n[运行失败：$error]\r\n");
+    }
+    ref.read(ideMessageProvider.notifier).error("运行失败：$error");
+  } finally {
+    stdoutDecoder.close();
+    stderrDecoder.close();
+  }
 }
 
-Future saveFile(BuildContext context, WidgetRef ref, {quiet = false}) async {
+class _TerminalStringSink implements StringSink {
+  const _TerminalStringSink(this.writeText);
+
+  final void Function(String text) writeText;
+
+  @override
+  void write(Object? object) {
+    writeText(object?.toString() ?? '');
+  }
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) {
+    writeText(objects.join(separator));
+  }
+
+  @override
+  void writeCharCode(int charCode) {
+    writeText(String.fromCharCode(charCode));
+  }
+
+  @override
+  void writeln([Object? object = '']) {
+    writeText('${object ?? ''}\n');
+  }
+}
+
+Future<void> saveFile(
+  BuildContext context,
+  WidgetRef ref, {
+  quiet = false,
+}) async {
   await ref.read(fileProvider.notifier).saveCurrentFile();
 
   if (!quiet) {

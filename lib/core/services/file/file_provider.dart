@@ -256,16 +256,32 @@ class FileNotifier extends StateNotifier<Directory?> {
           node.data is FolderItem,
         );
         if (exists) {
+          final canShowDiff = node.data is! FolderItem;
           final action = await _resolveConflict(
             context,
             policy: conflictPolicy,
             sourcePath: node.id,
             targetPath: targetPath,
             isUpload: true,
+            canShowDiff: canShowDiff,
           );
           switch (action) {
             case FileConflictAction.cancel:
               showEditorSnackBar(context, "已取消上传");
+              return;
+            case FileConflictAction.showDiff:
+              if (!canShowDiff) {
+                showEditorSnackBar(context, "无法展示文件夹差异");
+                return;
+              }
+              final shown = await _showUploadDiff(
+                context,
+                sourcePath: node.id,
+                targetPath: targetPath,
+              );
+              if (!shown) {
+                showEditorSnackBar(context, "无法展示差异");
+              }
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -355,6 +371,9 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               showEditorSnackBar(context, "已取消上传");
+              return;
+            case FileConflictAction.showDiff:
+              showEditorSnackBar(context, "无法展示差异");
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -457,6 +476,9 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               showEditorSnackBar(context, "已取消导入");
+              return;
+            case FileConflictAction.showDiff:
+              showEditorSnackBar(context, "无法展示差异");
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -561,6 +583,9 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               showEditorSnackBar(context, "已取消移动");
+              return;
+            case FileConflictAction.showDiff:
+              showEditorSnackBar(context, "无法展示移动差异");
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -672,6 +697,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     required String sourcePath,
     required String targetPath,
     required bool isUpload,
+    bool canShowDiff = false,
   }) {
     if (policy == FileConflictAction.overwriteAll) {
       return Future.value(FileConflictAction.overwrite);
@@ -684,7 +710,55 @@ class FileNotifier extends StateNotifier<Directory?> {
       sourcePath: sourcePath,
       targetPath: targetPath,
       isUpload: isUpload,
+      canShowDiff: canShowDiff,
     );
+  }
+
+  Future<bool> _showUploadDiff(
+    BuildContext context, {
+    required String sourcePath,
+    required String targetPath,
+  }) async {
+    late final String content;
+    late final String originContent;
+    try {
+      content = await local.getFileContent(sourcePath);
+      originContent = await ref
+          .read(boardProvider.notifier)
+          .getFileContent(targetPath);
+    } catch (_) {
+      return false;
+    }
+    if (originContent == content) return false;
+
+    final diff = computeDiff(originContent, content);
+    if (!context.mounted) return false;
+    final openedFile = await openFile(context, sourcePath);
+    if (openedFile == null) return false;
+
+    final controller = ref
+        .read(editorControllerMapProvider.notifier)
+        .getSelectedController();
+    controller?.setGitDiffDecorations(
+      addedRanges: diff.addedRanges,
+      removedRanges: diff.removedRanges,
+    );
+
+    final provider = pendingUploadProviderMap.putIfAbsent(
+      sourcePath,
+      () => StateProvider<PendingUpload?>((ref) => null),
+    );
+    ref.read(provider.notifier).state = PendingUpload(
+      diff: diff,
+      localPath: sourcePath,
+      targetPath: targetPath,
+      content: content,
+    );
+
+    if (context.mounted && !ResponsiveBreakpoints.of(context).isDesktop) {
+      context.go('/editor');
+    }
+    return true;
   }
 
   Future<File?> openFile(BuildContext context, String id) async {
@@ -759,35 +833,11 @@ class FileNotifier extends StateNotifier<Directory?> {
             return;
           }
         } else {
-          await openFile(context, selected?.id ?? selectedTab?.value.filePath);
-
-          // 得益于 openFile 的行为，此时可以保证选中的标签页已经是所需的标签页
-          final controller = ref
-              .read(editorControllerMapProvider.notifier)
-              .getSelectedController();
-          controller?.setGitDiffDecorations(
-            addedRanges: diff.addedRanges,
-            removedRanges: diff.removedRanges,
-          );
-
-          final pendingUpload = PendingUpload(
-            diff: diff,
-            localPath: selected?.id ?? selectedTab?.value.filePath,
+          await _showUploadDiff(
+            context,
+            sourcePath: selected?.id ?? selectedTab!.value.filePath,
             targetPath: targetPath,
-            content: content,
           );
-          ref
-                  .read(
-                    pendingUploadProviderMap[selected?.id ??
-                            selectedTab?.value.filePath]!
-                        .notifier,
-                  )
-                  .state =
-              pendingUpload;
-
-          if (!ResponsiveBreakpoints.of(context).isDesktop) {
-            context.go('/editor');
-          }
           return;
         }
       }
