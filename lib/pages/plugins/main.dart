@@ -4,12 +4,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/plugins/widgets/rfw_lib.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:rfw/formats.dart';
 import 'package:rfw/rfw.dart';
 
@@ -25,16 +28,16 @@ class Plugins extends ConsumerWidget {
         .toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text('插件'),
+        title: const UseText(I18nKey.pluginsTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_box_outlined),
-            tooltip: '注册并安装插件',
+            tooltip: translateForWidget(ref, I18nKey.pluginsInstall),
             onPressed: () => _installPlugin(context, ref),
           ),
           IconButton(
             icon: const Icon(Icons.monitor),
-            tooltip: '权限监控',
+            tooltip: translateForWidget(ref, I18nKey.pluginsPermissionMonitor),
             onPressed: () => context.push('/plugins/monitor'),
           ),
         ],
@@ -48,18 +51,8 @@ class Plugins extends ConsumerWidget {
                 final plugin = showPlugins[index];
                 final isUsable = plugin.status == PluginStatus.usable;
 
-                final statusText = switch (plugin.status) {
-                  PluginStatus.usable => '可用',
-                  PluginStatus.installing => '安装中',
-                  PluginStatus.disabled => '已禁用',
-                  PluginStatus.uninstalled => '已卸载',
-                };
-
-                final typeText = switch (plugin.type) {
-                  PluginType.ui => 'UI',
-                  PluginType.service => '服务',
-                  PluginType.data => '数据',
-                };
+                final statusText = _pluginStatusText(ref, plugin.status);
+                final typeText = _pluginTypeText(ref, plugin.type);
 
                 final isUi = plugin.type == PluginType.ui;
                 final isService = plugin.type == PluginType.service;
@@ -96,7 +89,7 @@ class Plugins extends ConsumerWidget {
                           children: [
                             Icon(Icons.info_outline, size: 20),
                             SizedBox(width: 8),
-                            Text('详细信息'),
+                            UseText(I18nKey.pluginsActionDetails),
                           ],
                         ),
                       ),
@@ -107,7 +100,7 @@ class Plugins extends ConsumerWidget {
                             children: [
                               Icon(Icons.refresh, size: 20),
                               SizedBox(width: 8),
-                              Text('停止运行'),
+                              UseText(I18nKey.pluginsActionRestart),
                             ],
                           ),
                         ),
@@ -122,7 +115,10 @@ class Plugins extends ConsumerWidget {
                                 color: Colors.green,
                               ),
                               SizedBox(width: 8),
-                              Text('启动', style: TextStyle(color: Colors.green)),
+                              UseText(
+                                I18nKey.pluginsActionStart,
+                                color: Colors.green,
+                              ),
                             ],
                           ),
                         ),
@@ -133,8 +129,9 @@ class Plugins extends ConsumerWidget {
                             children: [
                               Icon(Icons.stop, size: 20, color: Colors.orange),
                               SizedBox(width: 8),
-                              Text(
-                                '停止',
+                              UseText(
+                                I18nKey.pluginsActionStop,
+                                color: Colors.orange,
                                 style: TextStyle(color: Colors.orange),
                               ),
                             ],
@@ -147,7 +144,7 @@ class Plugins extends ConsumerWidget {
                             children: [
                               Icon(Icons.pause_circle_outline, size: 20),
                               SizedBox(width: 8),
-                              Text('禁用'),
+                              UseText(I18nKey.pluginsActionDisable),
                             ],
                           ),
                         ),
@@ -162,7 +159,10 @@ class Plugins extends ConsumerWidget {
                                 color: Colors.green,
                               ),
                               SizedBox(width: 8),
-                              Text('启用', style: TextStyle(color: Colors.green)),
+                              UseText(
+                                I18nKey.pluginsActionEnable,
+                                color: Colors.green,
+                              ),
                             ],
                           ),
                         ),
@@ -177,7 +177,10 @@ class Plugins extends ConsumerWidget {
                                 color: Colors.red,
                               ),
                               SizedBox(width: 8),
-                              Text('删除', style: TextStyle(color: Colors.red)),
+                              UseText(
+                                I18nKey.pluginsActionDelete,
+                                color: Colors.red,
+                              ),
                             ],
                           ),
                         ),
@@ -198,16 +201,26 @@ class Plugins extends ConsumerWidget {
       if (result == null || result.files.isEmpty) return;
 
       final zipPath = result.files.single.path!;
-      showIdeSuccess(context, '正在安装插件...');
+      if (!context.mounted) return;
+      showIdeSuccess(
+        context,
+        translateForWidget(ref, I18nKey.pluginsInstalling),
+      );
       final updatePending = await ref
           .read(pluginManagerProvider.notifier)
           .install(zipPath);
       if (updatePending && context.mounted) {
-        showIdeSuccess(context, '插件更新将在重启 IDE 后生效');
+        showIdeSuccess(
+          context,
+          translateForWidget(ref, I18nKey.pluginsUpdateAfterRestart),
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        showIdeError(context, '安装失败: $e');
+        showIdeError(
+          context,
+          '${translateForWidget(ref, I18nKey.pluginsInstallFailed)}: $e',
+        );
       }
     }
   }
@@ -248,20 +261,11 @@ class Plugins extends ConsumerWidget {
   }
 
   void _showDetailsDialog(BuildContext context, WidgetRef ref, Plugin plugin) {
-    final statusText = switch (plugin.status) {
-      PluginStatus.usable => '可用',
-      PluginStatus.installing => '安装中',
-      PluginStatus.disabled => '已禁用',
-      PluginStatus.uninstalled => '已卸载',
-    };
+    final statusText = _pluginStatusText(ref, plugin.status);
 
     final isRunning = ref.read(pluginRunManagerProvider)[plugin] != null;
 
-    final typeText = switch (plugin.type) {
-      PluginType.ui => 'UI',
-      PluginType.service => '服务',
-      PluginType.data => '数据',
-    };
+    final typeText = _pluginTypeText(ref, plugin.type);
 
     const permLabels = {
       'ui': '界面',
@@ -385,19 +389,30 @@ class Plugins extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _detailRow('ID', plugin.id),
-                    _detailRow('版本', plugin.version),
-                    _detailRow('类型', typeText),
+                    _detailRow(I18nKey.pluginsDetailVersion, plugin.version),
+                    _detailRow(I18nKey.pluginsDetailType, typeText),
                     if (plugin.author.isNotEmpty)
-                      _detailRow('作者', plugin.author),
+                      _detailRow(I18nKey.pluginsDetailAuthor, plugin.author),
                     if (plugin.description.isNotEmpty)
-                      _detailRow('描述', plugin.description),
-                    _detailRow('状态', statusText),
-                    _detailRow('运行中', isRunning ? '是' : '否'),
+                      _detailRow(
+                        I18nKey.pluginsDetailDescription,
+                        plugin.description,
+                      ),
+                    _detailRow(I18nKey.pluginsDetailStatus, statusText),
+                    _detailRow(
+                      I18nKey.pluginsDetailRunning,
+                      isRunning
+                          ? translateForWidget(ref, I18nKey.commonYes)
+                          : translateForWidget(ref, I18nKey.commonNo),
+                    ),
                     if (plugin.platforms.isNotEmpty)
-                      _detailRow('支持平台', plugin.platforms.join(', ')),
+                      _detailRow(
+                        I18nKey.pluginsDetailPlatforms,
+                        plugin.platforms.join(', '),
+                      ),
                     const SizedBox(height: 12),
                     Text(
-                      '权限配置',
+                      translateForWidget(ref, I18nKey.pluginsDetailPermissions),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.grey[700],
@@ -413,7 +428,7 @@ class Plugins extends ConsumerWidget {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text('关闭'),
+                child: const UseText(I18nKey.commonClose),
               ),
             ],
           );
@@ -422,16 +437,13 @@ class Plugins extends ConsumerWidget {
     );
   }
 
-  Widget _detailRow(String label, String value) {
+  Widget _detailRow(Object label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 72,
-            child: Text(label, style: TextStyle(color: Colors.grey)),
-          ),
+          SizedBox(width: 72, child: UseText(label, color: Colors.grey)),
           Expanded(child: Text(value)),
         ],
       ),
@@ -442,12 +454,17 @@ class Plugins extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('确认删除'),
-        content: Text('确定要删除插件「${plugin.name}」吗？'),
+        title: const UseText(I18nKey.pluginsConfirmDeleteTitle),
+        content: Text(
+          translateForWidget(
+            ref,
+            I18nKey.pluginsConfirmDeleteMessage,
+          ).replaceAll('{name}', plugin.name),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text('取消'),
+            child: const UseText(I18nKey.commonCancel),
           ),
           TextButton(
             onPressed: () async {
@@ -458,15 +475,40 @@ class Plugins extends ConsumerWidget {
                     .uninstall(plugin.id);
               } catch (error) {
                 if (context.mounted) {
-                  showIdeError(context, '卸载失败: $error');
+                  showIdeError(
+                    context,
+                    '${translateForWidget(ref, I18nKey.pluginsUninstallFailed)}: $error',
+                  );
                 }
               }
             },
-            child: Text('删除', style: TextStyle(color: Colors.red)),
+            child: const UseText(
+              I18nKey.pluginsActionDelete,
+              color: Colors.red,
+            ),
           ),
         ],
       ),
     );
+  }
+
+  String _pluginStatusText(WidgetRef ref, PluginStatus status) {
+    final key = switch (status) {
+      PluginStatus.usable => I18nKey.pluginsStatusUsable,
+      PluginStatus.installing => I18nKey.pluginsStatusInstalling,
+      PluginStatus.disabled => I18nKey.pluginsStatusDisabled,
+      PluginStatus.uninstalled => I18nKey.pluginsStatusUninstalled,
+    };
+    return translateForWidget(ref, key);
+  }
+
+  String _pluginTypeText(WidgetRef ref, PluginType type) {
+    final key = switch (type) {
+      PluginType.ui => I18nKey.pluginsTypeUi,
+      PluginType.service => I18nKey.pluginsTypeService,
+      PluginType.data => I18nKey.pluginsTypeData,
+    };
+    return translateForWidget(ref, key);
   }
 }
 
@@ -488,10 +530,13 @@ class _PluginsEmptyState extends StatelessWidget {
             children: [
               Icon(Icons.extension_outlined, size: 56, color: scheme.primary),
               const SizedBox(height: 18),
-              Text('尚未安装插件', style: Theme.of(context).textTheme.titleLarge),
+              UseText(
+                I18nKey.pluginsEmptyTitle,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 8),
-              Text(
-                '从本地 ZIP 包注册插件后，它们会显示在这里。',
+              UseText(
+                I18nKey.pluginsEmptyMessage,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
@@ -501,7 +546,7 @@ class _PluginsEmptyState extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onInstall,
                 icon: const Icon(Icons.add_box_outlined),
-                label: const Text('注册并安装插件'),
+                label: const UseText(I18nKey.pluginsInstall),
               ),
             ],
           ),

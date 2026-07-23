@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -38,6 +39,8 @@ class PersistenceManager {
       themeColorValue: app?.themeColorValue,
       editorThemeKey: app?.editorThemeKey ?? 'atom-one',
       activePluginThemeId: app?.activePluginThemeId,
+      welcomeCompleted: app?.welcomeCompleted ?? false,
+      activeLocale: app?.activeLocale ?? defaultLocale,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
       editorWordWrap: settings?.editorWordWrap ?? false,
@@ -114,6 +117,8 @@ class PersistenceManager {
           themeColorValue: (container.read(themeColor))?.toARGB32(),
           editorThemeKey: container.read(editorThemeKey),
           activePluginThemeId: container.read(activePluginThemeId),
+          welcomeCompleted: container.read(welcomeCompletedProvider),
+          activeLocale: container.read(activeLocaleProvider),
         ),
       ),
       settingsPersistence.save(

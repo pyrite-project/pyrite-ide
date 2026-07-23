@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 extension BuildContextRadius on BuildContext {
   BorderRadius get effectiveRadius {
@@ -20,8 +23,8 @@ class PaneHeader extends StatelessWidget {
     this.compact = false,
   });
 
-  final String title;
-  final String? subtitle;
+  final Object title;
+  final Object? subtitle;
   final IconData? leadingIcon;
   final List<Widget> actions;
   final bool compact;
@@ -47,7 +50,7 @@ class PaneHeader extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  UseText(
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -56,7 +59,7 @@ class PaneHeader extends StatelessWidget {
                     ),
                   ),
                   if (subtitle != null && !compact)
-                    Text(
+                    UseText(
                       subtitle!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -90,9 +93,9 @@ class WorkspaceEmptyState extends StatelessWidget {
   });
 
   final IconData icon;
-  final String title;
-  final String message;
-  final String actionLabel;
+  final Object title;
+  final Object message;
+  final Object actionLabel;
   final VoidCallback onAction;
   final Widget? secondaryAction;
 
@@ -109,13 +112,13 @@ class WorkspaceEmptyState extends StatelessWidget {
             children: [
               Icon(icon, size: 48, color: scheme.secondary),
               const SizedBox(height: 16),
-              Text(
+              UseText(
                 title,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 6),
-              Text(
+              UseText(
                 message,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -123,7 +126,7 @@ class WorkspaceEmptyState extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
-              FilledButton(onPressed: onAction, child: Text(actionLabel)),
+              FilledButton(onPressed: onAction, child: UseText(actionLabel)),
               if (secondaryAction != null) ...[
                 const SizedBox(height: 8),
                 secondaryAction!,
@@ -145,7 +148,7 @@ class PillBadge extends StatelessWidget {
     this.foregroundColor,
   });
 
-  final String label;
+  final Object label;
   final IconData? icon;
   final Color? containerColor;
   final Color? foregroundColor;
@@ -168,7 +171,7 @@ class PillBadge extends StatelessWidget {
               Icon(icon, size: 14, color: foreground),
               const SizedBox(width: 4),
             ],
-            Text(
+            UseText(
               label,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: foreground,
@@ -193,7 +196,7 @@ class StatusBarButton extends StatelessWidget {
     this.compact = false,
   });
 
-  final String label;
+  final Object label;
   final IconData icon;
   final VoidCallback onPressed;
   final Color? statusColor;
@@ -239,14 +242,14 @@ class StatusBarButton extends StatelessWidget {
             SizedBox(width: compact ? 4 : 6),
             if (hasBoundedWidth)
               Flexible(
-                child: Text(
+                child: UseText(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               )
             else
-              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+              UseText(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         );
         return TextButton(
@@ -274,7 +277,7 @@ class StatusBarButton extends StatelessWidget {
   }
 }
 
-class SettingsSection extends StatelessWidget {
+class SettingsSection extends ConsumerWidget {
   const SettingsSection({
     super.key,
     required this.title,
@@ -282,12 +285,12 @@ class SettingsSection extends StatelessWidget {
     required this.children,
   });
 
-  final String title;
-  final String? description;
+  final Object title;
+  final Object? description;
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -300,7 +303,7 @@ class SettingsSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  resolveI18nText(ref, title),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: scheme.primary,
                     fontWeight: FontWeight.w600,
@@ -309,7 +312,7 @@ class SettingsSection extends StatelessWidget {
                 if (description != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    description!,
+                    resolveI18nText(ref, description!),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),

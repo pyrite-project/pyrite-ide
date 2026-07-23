@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -18,6 +20,7 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
 import 'package:tabbed_view/tabbed_view.dart';
@@ -29,6 +32,14 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   final Ref ref;
 
   BoardNotifier(this.ref) : super(const []);
+
+  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+    var value = translate(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
+    }
+    return value;
+  }
 
   Future<List<Map<String, String>>> getFileList({String path = "/"}) async {
     final entries = await ref
@@ -160,7 +171,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           direction: FileTransferDirection.upload,
           scope: FileTransferScope.folder,
           totalFiles: files.length,
-          message: '准备上传文件夹',
+          message: _tr(I18nKey.fileTransferPrepareUploadFolder),
         );
 
     await _ensureBoardFolder(remotePath, createdDirs);
@@ -286,7 +297,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           direction: FileTransferDirection.download,
           scope: FileTransferScope.folder,
           totalFiles: files.length,
-          message: '准备下载文件夹',
+          message: _tr(I18nKey.fileTransferPrepareDownloadFolder),
         );
 
     final localDir = io.Directory(localPath);
@@ -367,7 +378,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   Future<void> deleteSelectedBoardItems(BuildContext context) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectBoardItem));
       return;
     }
 
@@ -379,7 +390,10 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       }
     }
     ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
-    showEditorSnackBar(context, "已从设备删除 ${nodes.length} 个项目");
+    showEditorSnackBar(
+      context,
+      _tr(I18nKey.fileMessageDeletedBoardItems, {'count': '${nodes.length}'}),
+    );
   }
 
   Future<void> moveBoardNodes(
@@ -407,7 +421,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
               ? FileTransferScope.folder
               : FileTransferScope.file,
           totalFiles: movableNodes.length,
-          message: '准备移动设备文件',
+          message: _tr(I18nKey.fileTransferPrepareMoveBoardFile),
         );
 
     try {
@@ -426,7 +440,10 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
         }
         if (node.data is FolderItem &&
             _isBoardPathInside(normalizedTargetFolder, sourcePath)) {
-          showEditorSnackBar(context, "不能将文件夹移动到自身或子文件夹中");
+          showEditorSnackBar(
+            context,
+            _tr(I18nKey.fileMessageCannotMoveFolderIntoSelf),
+          );
           skipped++;
           continue;
         }
@@ -442,10 +459,13 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, "已取消移动");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledMove));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, "无法展示移动差异");
+              showEditorSnackBar(
+                context,
+                _tr(I18nKey.fileMessageCannotShowMoveDiff),
+              );
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -478,10 +498,23 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '移动完成：$moved 个，跳过：$skipped 个');
-      showEditorSnackBar(context, "移动完成：$moved 个，跳过：$skipped 个");
+          .complete(
+            message: _tr(I18nKey.fileMessageMoveComplete, {
+              'done': '$moved',
+              'skipped': '$skipped',
+            }),
+          );
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageMoveComplete, {
+          'done': '$moved',
+          'skipped': '$skipped',
+        }),
+      );
     } catch (error) {
-      ref.read(fileTransferProgressProvider.notifier).fail('移动失败：$error');
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .fail(_tr(I18nKey.fileMessageMoveFailed, {'error': '$error'}));
       rethrow;
     }
   }
@@ -492,13 +525,13 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectBoardItem));
       return;
     }
 
     final localWorkspace = ref.read(fileProvider);
     if (localWorkspace == null) {
-      showEditorSnackBar(context, "先打开一个本地项目");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageOpenLocalProject));
       return;
     }
 
@@ -528,11 +561,17 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
         );
         switch (action) {
           case FileConflictAction.cancel:
-            showEditorSnackBar(context, "已取消下载");
+            showEditorSnackBar(
+              context,
+              _tr(I18nKey.fileMessageCanceledDownload),
+            );
             return;
           case FileConflictAction.showDiff:
             if (!canShowDiff) {
-              showEditorSnackBar(context, "无法展示文件夹差异");
+              showEditorSnackBar(
+                context,
+                _tr(I18nKey.fileMessageCannotShowFolderDiff),
+              );
               return;
             }
             final shown = await _showDownloadDiff(
@@ -541,7 +580,10 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
               localPath: targetPath,
             );
             if (!shown) {
-              showEditorSnackBar(context, "无法展示差异");
+              showEditorSnackBar(
+                context,
+                _tr(I18nKey.fileMessageCannotShowDiff),
+              );
             }
             return;
           case FileConflictAction.skip:
@@ -568,7 +610,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
               direction: FileTransferDirection.download,
               scope: FileTransferScope.file,
               totalFiles: nodes.length,
-              message: '准备下载文件',
+              message: _tr(I18nKey.fileTransferPrepareDownloadFile),
             );
         final bytes = await getFileBytesWithProgress(
           node.id,
@@ -586,8 +628,19 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     ref
         .read(fileTransferProgressProvider.notifier)
-        .complete(message: '下载完成：$downloaded 个，跳过：$skipped 个');
-    showEditorSnackBar(context, "下载完成：$downloaded 个，跳过：$skipped 个");
+        .complete(
+          message: _tr(I18nKey.fileMessageDownloadComplete, {
+            'done': '$downloaded',
+            'skipped': '$skipped',
+          }),
+        );
+    showEditorSnackBar(
+      context,
+      _tr(I18nKey.fileMessageDownloadComplete, {
+        'done': '$downloaded',
+        'skipped': '$skipped',
+      }),
+    );
   }
 
   Future<FileConflictAction> _resolveConflict(
@@ -704,11 +757,11 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     final selected = selectedFile ?? selectedFolder;
     final localWorkspace = ref.read(fileProvider);
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectBoardItem));
       return;
     }
     if (localWorkspace == null) {
-      showEditorSnackBar(context, "先打开一个本地项目");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageOpenLocalProject));
       return;
     }
 
@@ -751,7 +804,10 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
             isUpload: false,
           );
           if (!confirmed) {
-            showEditorSnackBar(context, "已取消下载");
+            showEditorSnackBar(
+              context,
+              _tr(I18nKey.fileMessageCanceledDownload),
+            );
             return;
           }
         } else {
@@ -770,7 +826,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
             direction: FileTransferDirection.download,
             scope: FileTransferScope.file,
             totalFiles: 1,
-            message: '准备下载文件',
+            message: _tr(I18nKey.fileTransferPrepareDownloadFile),
           );
       final bytes = await getFileBytesWithProgress(
         selected?.id ?? selectedTab?.value.filePath,
@@ -783,9 +839,16 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
       await file.writeAsBytes(bytes);
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '已下载到本地：$targetPath');
+          .complete(
+            message: _tr(I18nKey.fileMessageDownloadedToLocal, {
+              'path': targetPath,
+            }),
+          );
 
-      showEditorSnackBar(context, "已下载到本地：$targetPath");
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageDownloadedToLocal, {'path': targetPath}),
+      );
     } else {
       try {
         await ref
@@ -796,13 +859,22 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
             );
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: '已下载文件夹到本地：$targetPath');
+            .complete(
+              message: _tr(I18nKey.fileMessageDownloadedFolderToLocal, {
+                'path': targetPath,
+              }),
+            );
       } catch (error) {
-        ref.read(fileTransferProgressProvider.notifier).fail('下载失败：$error');
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(_tr(I18nKey.fileMessageDownloadFailed, {'error': '$error'}));
         rethrow;
       }
 
-      showEditorSnackBar(context, "已下载文件夹到本地：$targetPath");
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageDownloadedFolderToLocal, {'path': targetPath}),
+      );
     }
 
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
@@ -822,11 +894,11 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
     final selected = selectedFile ?? selectedFolder;
     final localWorkspace = ref.read(fileProvider);
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, "先选择一个设备文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectBoardItem));
       return;
     }
     if (localWorkspace == null) {
-      showEditorSnackBar(context, "先打开一个本地项目");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageOpenLocalProject));
       return;
     }
 
@@ -849,14 +921,17 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
           context: context,
           builder: (context) => AlertDialog(
             icon: const Icon(Icons.file_download_outlined),
-            title: const Text("设备文件内容不一致或编辑器内的更改未保存"),
+            title: const UseText(I18nKey.dialogBoardContentMismatchTitle),
             content: Text(
-              "设备文件“${selected?.id ?? selectedTab?.value.filePath}”在编辑器中的内容与实际文件内容不一致，可能你做出了更改但没有保存或被外部程序所更改\n为了确保正确展示本地文件与板载文件间的差异，必须选择其一覆盖：",
+              translate(ref, I18nKey.dialogContentMismatchMessage).replaceAll(
+                '{path}',
+                selected?.id ?? selectedTab?.value.filePath ?? '',
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => context.pop(false),
-                child: const Text("取消上传"),
+                child: const UseText(I18nKey.dialogCancelUpload),
               ),
               TextButton(
                 onPressed: () {
@@ -864,7 +939,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
                   _downloadSelectedBoardItem(context, selectedTab: selectedTab);
                   context.pop();
                 },
-                child: const Text("编辑器中内容"),
+                child: const UseText(I18nKey.dialogEditorContent),
               ),
               FilledButton(
                 style: FilledButton.styleFrom(
@@ -882,7 +957,7 @@ class BoardNotifier extends StateNotifier<List<TreeNode<FileSystemItem>>> {
                   _downloadSelectedBoardItem(context, selectedTab: selectedTab);
                   context.pop();
                 },
-                child: const Text("实际内容"),
+                child: const UseText(I18nKey.dialogActualContent),
               ),
             ],
           ),

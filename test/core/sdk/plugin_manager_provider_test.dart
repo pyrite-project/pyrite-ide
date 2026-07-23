@@ -307,6 +307,15 @@ void main() {
       final runningMetadata = first.read(pluginManagerProvider)['example'];
 
       expect(await manager.install(v2.path), isTrue);
+      expect(
+        first.read(pluginManagerProvider)['example']?.status,
+        PluginStatus.installing,
+      );
+      await manager.persist();
+      expect(
+        (await PluginPersistence().load())?.single.status,
+        PluginStatus.usable.name,
+      );
       expect(firstStarts.map((plugin) => plugin.version), ['1.0.0']);
       expect(runManager.stopped, isEmpty);
       expect(
@@ -319,7 +328,7 @@ void main() {
           first.read(pluginManagerProvider)['example'],
           runningMetadata,
         ),
-        isTrue,
+        isFalse,
       );
       closeContainer(first);
 
@@ -358,6 +367,27 @@ void main() {
       await third.read(pluginManagerProvider.notifier).autoStart();
       expect(thirdStarts.map((plugin) => plugin.version), ['2.0.0']);
       expect(third.read(pluginManagerProvider)['example']?.version, '2.0.0');
+    },
+  );
+
+  test(
+    'legacy persisted installing status is normalized on cold start',
+    () async {
+      await PluginPersistence().save([
+        const Plugin(
+          id: 'example',
+          name: 'Example',
+          version: '1.0.0',
+          status: PluginStatus.installing,
+        ),
+      ]);
+
+      final container = await coldStart();
+
+      expect(
+        container.read(pluginManagerProvider)['example']?.status,
+        PluginStatus.usable,
+      );
     },
   );
 
@@ -430,6 +460,32 @@ void main() {
     },
   );
 
+  test('failed update staging restores the running plugin status', () async {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    await manager.install((await _writePackage(root, version: '1.0.0')).path);
+    final pendingBlocker = File(
+      path.join(root.path, 'plugin_updates', 'pending', 'example'),
+    );
+    await pendingBlocker.parent.create(recursive: true);
+    await pendingBlocker.writeAsString('block pending directory');
+
+    await expectLater(
+      manager.install((await _writePackage(root, version: '2.0.0')).path),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    expect(
+      container.read(pluginManagerProvider)['example']?.status,
+      PluginStatus.usable,
+    );
+    await manager.persist();
+    expect(
+      (await PluginPersistence().load())?.single.status,
+      PluginStatus.usable.name,
+    );
+  });
+
   test(
     'metadata failure leaves active and pending packages retryable',
     () async {
@@ -470,49 +526,52 @@ void main() {
     },
   );
 
-  test('activation failure does not persist its temporary status', () async {
-    final first = createContainer(PluginPersistence());
-    final manager = first.read(pluginManagerProvider.notifier);
-    await manager.install((await _writePackage(root, version: '1.0.0')).path);
-    await manager.changeStatus('example', PluginStatus.disabled);
-    await manager.persist();
-    await manager.install((await _writePackage(root, version: '2.0.0')).path);
-    closeContainer(first);
+  test(
+    'activation failure does not display installing after restart',
+    () async {
+      final first = createContainer(PluginPersistence());
+      final manager = first.read(pluginManagerProvider.notifier);
+      await manager.install((await _writePackage(root, version: '1.0.0')).path);
+      await manager.changeStatus('example', PluginStatus.disabled);
+      await manager.persist();
+      await manager.install((await _writePackage(root, version: '2.0.0')).path);
+      closeContainer(first);
 
-    final trash = File(path.join(root.path, 'plugin_updates', 'trash'));
-    await trash.writeAsString('block trash directory');
-    final second = await coldStart();
+      final trash = File(path.join(root.path, 'plugin_updates', 'trash'));
+      await trash.writeAsString('block trash directory');
+      final second = await coldStart();
 
-    final plugin = second.read(pluginManagerProvider)['example'];
-    expect(plugin?.version, '2.0.0');
-    expect(plugin?.status, PluginStatus.installing);
-    await second.read(pluginManagerProvider.notifier).persist();
-    final persisted = (await PluginPersistence().load())?.single;
-    expect(persisted?.version, '2.0.0');
-    expect(persisted?.status, PluginStatus.disabled.name);
-    expect(
-      File(
-        path.join(_active(root, 'example').path, '__main__.py'),
-      ).readAsStringSync(),
-      '1.0.0',
-    );
-    expect(
-      File(
-        path.join(_pending(root, 'example').path, '__main__.py'),
-      ).readAsStringSync(),
-      '2.0.0',
-    );
-    closeContainer(second);
+      final plugin = second.read(pluginManagerProvider)['example'];
+      expect(plugin?.version, '2.0.0');
+      expect(plugin?.status, PluginStatus.disabled);
+      await second.read(pluginManagerProvider.notifier).persist();
+      final persisted = (await PluginPersistence().load())?.single;
+      expect(persisted?.version, '2.0.0');
+      expect(persisted?.status, PluginStatus.disabled.name);
+      expect(
+        File(
+          path.join(_active(root, 'example').path, '__main__.py'),
+        ).readAsStringSync(),
+        '1.0.0',
+      );
+      expect(
+        File(
+          path.join(_pending(root, 'example').path, '__main__.py'),
+        ).readAsStringSync(),
+        '2.0.0',
+      );
+      closeContainer(second);
 
-    await trash.delete();
-    final third = await coldStart();
-    expect(third.read(pluginManagerProvider)['example']?.version, '2.0.0');
-    expect(
-      third.read(pluginManagerProvider)['example']?.status,
-      PluginStatus.disabled,
-    );
-    expect(await _pending(root, 'example').exists(), isFalse);
-  });
+      await trash.delete();
+      final third = await coldStart();
+      expect(third.read(pluginManagerProvider)['example']?.version, '2.0.0');
+      expect(
+        third.read(pluginManagerProvider)['example']?.status,
+        PluginStatus.disabled,
+      );
+      expect(await _pending(root, 'example').exists(), isFalse);
+    },
+  );
 
   test('first install rolls back when metadata cannot be saved', () async {
     final persistence = _FailOncePluginPersistence()..failNextSave = true;
@@ -631,7 +690,7 @@ void main() {
     );
   });
 
-  test('active recovery block does not persist its temporary status', () async {
+  test('active recovery block preserves visible plugin status', () async {
     final first = createContainer(PluginPersistence());
     final manager = first.read(pluginManagerProvider.notifier);
     await manager.install((await _writePackage(root, version: '1.0.0')).path);
@@ -647,7 +706,7 @@ void main() {
     final secondManager = second.read(pluginManagerProvider.notifier);
     expect(
       second.read(pluginManagerProvider)['example']?.status,
-      PluginStatus.installing,
+      PluginStatus.disabled,
     );
     await secondManager.persist();
     expect(

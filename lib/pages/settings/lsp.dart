@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 class LspSettings extends ConsumerWidget {
   const LspSettings({super.key});
@@ -17,12 +20,12 @@ class LspSettings extends ConsumerWidget {
       padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
-          title: "语言服务",
-          description: "设置会在新打开的编辑器标签页中生效。",
+          title: I18nKey.settingsLspServiceSection,
+          description: I18nKey.settingsLspServiceDescription,
           children: [
             SwitchListTile(
-              title: const Text("启用语言服务器"),
-              subtitle: const Text("提供补全、诊断和跳转等编辑能力"),
+              title: const UseText(I18nKey.settingsLspEnable),
+              subtitle: const UseText(I18nKey.settingsLspEnableSubtitle),
               value: ref.watch(useLsp),
               onChanged: (value) {
                 ref.read(useLsp.notifier).state = value;
@@ -30,11 +33,11 @@ class LspSettings extends ConsumerWidget {
             ),
 
             ListTile(
-              title: const Text("连接方式"),
+              title: const UseText(I18nKey.settingsLspConnectionType),
               subtitle: Text(
                 ref.watch(lspType) == LspType.webSocket
                     ? "WebSocket"
-                    : "stdio (本地进程)",
+                    : I18nKey.settingsLspStdioLocal.fallback,
               ),
             ),
             RadioGroup<LspType>(
@@ -48,13 +51,15 @@ class LspSettings extends ConsumerWidget {
                   children: [
                     RadioListTile<LspType>(
                       title: const Text("WebSocket"),
-                      subtitle: const Text("连接到远程 WebSocket 服务器"),
+                      subtitle: const UseText(
+                        I18nKey.settingsLspWebSocketSubtitle,
+                      ),
                       value: LspType.webSocket,
                       contentPadding: EdgeInsets.zero,
                     ),
                     RadioListTile<LspType>(
                       title: const Text("stdio"),
-                      subtitle: const Text("启动本地语言服务器进程"),
+                      subtitle: const UseText(I18nKey.settingsLspStdioSubtitle),
                       value: LspType.stdio,
                       contentPadding: EdgeInsets.zero,
                     ),
@@ -64,7 +69,7 @@ class LspSettings extends ConsumerWidget {
             ),
             if (ref.watch(lspType) == LspType.webSocket) ...[
               ListTile(
-                title: const Text("WebSocket 地址"),
+                title: const UseText(I18nKey.settingsLspWebSocketAddress),
                 subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showPathDialog(context, ref),
@@ -77,8 +82,8 @@ class LspSettings extends ConsumerWidget {
                     TextFormField(
                       initialValue: ref.read(lspStdioExecutable),
                       decoration: const InputDecoration(
-                        labelText: "可执行文件路径",
-                        helperText: "例如 python、node 或完整路径",
+                        label: UseText(I18nKey.settingsLspExecutablePath),
+                        helper: UseText(I18nKey.settingsLspExecutablePathHint),
                         border: OutlineInputBorder(),
                       ),
                       onChanged: (value) {
@@ -87,15 +92,21 @@ class LspSettings extends ConsumerWidget {
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioExecutable.notifier).state = value
                             .trim();
-                        showIdeSuccess(context, "可执行文件路径已更新");
+                        showIdeSuccess(
+                          context,
+                          translateForWidget(
+                            ref,
+                            I18nKey.settingsLspExecutableUpdated,
+                          ),
+                        );
                       },
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       initialValue: ref.read(lspStdioArgs),
                       decoration: const InputDecoration(
-                        labelText: "启动参数",
-                        helperText: "空格分隔，例如 --stdio",
+                        label: UseText(I18nKey.settingsLspArgs),
+                        helper: UseText(I18nKey.settingsLspArgsHint),
                         border: OutlineInputBorder(),
                       ),
                       onChanged: (value) {
@@ -103,7 +114,13 @@ class LspSettings extends ConsumerWidget {
                       },
                       onFieldSubmitted: (value) {
                         ref.read(lspStdioArgs.notifier).state = value.trim();
-                        showIdeSuccess(context, "启动参数已更新");
+                        showIdeSuccess(
+                          context,
+                          translateForWidget(
+                            ref,
+                            I18nKey.settingsLspArgsUpdated,
+                          ),
+                        );
                       },
                     ),
                   ],
@@ -113,12 +130,14 @@ class LspSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "诊断显示",
-          description: "控制编辑器是否显示语言服务器返回的问题标记。",
+          title: I18nKey.settingsLspDiagnosticsSection,
+          description: I18nKey.settingsLspDiagnosticsDescription,
           children: [
             SwitchListTile(
-              title: const Text("显示警告诊断"),
-              subtitle: const Text("开启后，警告会以下划线标识"),
+              title: const UseText(I18nKey.settingsLspWarningDiagnostics),
+              subtitle: const UseText(
+                I18nKey.settingsLspWarningDiagnosticsSubtitle,
+              ),
               value: !ref.watch(disableWarning),
               onChanged: (value) {
                 ref.read(disableWarning.notifier).state = !value;
@@ -126,8 +145,10 @@ class LspSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("显示错误诊断"),
-              subtitle: const Text("开启后，错误会以下划线标识"),
+              title: const UseText(I18nKey.settingsLspErrorDiagnostics),
+              subtitle: const UseText(
+                I18nKey.settingsLspErrorDiagnosticsSubtitle,
+              ),
               value: !ref.watch(disableError),
               onChanged: (value) {
                 ref.read(disableError.notifier).state = !value;
@@ -137,11 +158,11 @@ class LspSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "MicroPython Stubs",
-          description: "配置 pylsp 等语言服务使用的 MicroPython 类型存根。",
+          description: I18nKey.settingsLspStubsDescription,
           children: [
             SwitchListTile(
-              title: const Text("启用 Stubs"),
-              subtitle: const Text("启用后语言服务可读取配置的 stubs layer"),
+              title: const UseText(I18nKey.settingsLspEnableStubs),
+              subtitle: const UseText(I18nKey.settingsLspEnableStubsSubtitle),
               value: ref.watch(microPythonStubsEnabled),
               onChanged: (value) {
                 ref.read(microPythonStubsEnabled.notifier).state = value;
@@ -149,8 +170,10 @@ class LspSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("自动检测 Layer"),
-              subtitle: const Text("后续可根据连接设备推荐 generic/port/board stubs"),
+              title: const UseText(I18nKey.settingsLspAutoDetectLayer),
+              subtitle: const UseText(
+                I18nKey.settingsLspAutoDetectLayerSubtitle,
+              ),
               value: ref.watch(microPythonStubsAutoDetectLayers),
               onChanged: (value) {
                 ref.read(microPythonStubsAutoDetectLayers.notifier).state =
@@ -168,7 +191,7 @@ class LspSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.folder_outlined),
-              title: const Text("额外路径"),
+              title: const UseText(I18nKey.settingsLspExtraPaths),
               subtitle: Text(
                 _pathsSummary(ref.watch(microPythonStubsExtraPaths)),
               ),
@@ -178,51 +201,89 @@ class LspSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "LSP 功能",
-          description: "控制 CodeForge 向语言服务器声明和使用的能力。设置会在新打开的编辑器标签页中生效。",
+          title: I18nKey.settingsLspFeaturesSection,
+          description: I18nKey.settingsLspFeaturesDescription,
           children: [
-            _CapabilitySwitch(title: "语义高亮", provider: lspSemanticHighlighting),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspSemanticHighlighting,
+              provider: lspSemanticHighlighting,
+            ),
 
-            _CapabilitySwitch(title: "代码补全", provider: lspCodeCompletion),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspCodeCompletion,
+              provider: lspCodeCompletion,
+            ),
 
-            _CapabilitySwitch(title: "悬浮提示", provider: lspHoverInfo),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspHoverInfo,
+              provider: lspHoverInfo,
+            ),
 
-            _CapabilitySwitch(title: "代码操作", provider: lspCodeAction),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspCodeAction,
+              provider: lspCodeAction,
+            ),
 
-            _CapabilitySwitch(title: "签名帮助", provider: lspSignatureHelp),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspSignatureHelp,
+              provider: lspSignatureHelp,
+            ),
 
-            _CapabilitySwitch(title: "文档颜色", provider: lspDocumentColor),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspDocumentColor,
+              provider: lspDocumentColor,
+            ),
 
-            _CapabilitySwitch(title: "文档高亮", provider: lspDocumentHighlight),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspDocumentHighlight,
+              provider: lspDocumentHighlight,
+            ),
 
-            _CapabilitySwitch(title: "代码折叠", provider: lspCodeFolding),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspCodeFolding,
+              provider: lspCodeFolding,
+            ),
 
-            _CapabilitySwitch(title: "内联提示", provider: lspInlayHint),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspInlayHint,
+              provider: lspInlayHint,
+            ),
 
-            _CapabilitySwitch(title: "跳转定义", provider: lspGoToDefinition),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspGoToDefinition,
+              provider: lspGoToDefinition,
+            ),
 
-            _CapabilitySwitch(title: "重命名符号", provider: lspRename),
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspRename,
+              provider: lspRename,
+            ),
           ],
         ),
       ],
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text("语言服务器设置")),
+      appBar: AppBar(title: const UseText(I18nKey.settingsLspPageTitle)),
       body: body,
     );
   }
 
   String _layersSummary(List<MicroPythonStubsLayer> layers) {
-    if (layers.isEmpty) return "未配置";
+    if (layers.isEmpty) return I18nKey.settingsLspNotConfigured.fallback;
     return layers
         .map((layer) => '${layer.provider}/${layer.profile}')
         .join(', ');
   }
 
   String _pathsSummary(List<String> paths) {
-    if (paths.isEmpty) return "未配置";
-    return paths.length == 1 ? paths.first : "${paths.length} 个路径";
+    if (paths.isEmpty) return I18nKey.settingsLspNotConfigured.fallback;
+    return paths.length == 1
+        ? paths.first
+        : I18nKey.settingsLspPathCount.fallback.replaceAll(
+            '{count}',
+            paths.length.toString(),
+          );
   }
 
   void _showLayersDialog(BuildContext context, WidgetRef ref) async {
@@ -244,8 +305,10 @@ class LspSettings extends ConsumerWidget {
                   if (layers.isEmpty)
                     const ListTile(
                       leading: Icon(Icons.layers_clear_outlined),
-                      title: Text("未配置 Layer"),
-                      subtitle: Text("添加 generic、port 或 board stubs layer"),
+                      title: UseText(I18nKey.settingsLspNoLayerConfigured),
+                      subtitle: UseText(
+                        I18nKey.settingsLspNoLayerConfiguredSubtitle,
+                      ),
                     )
                   else
                     ConstrainedBox(
@@ -289,13 +352,13 @@ class LspSettings extends ConsumerWidget {
                               setDialogState(() => layers.add(layer));
                             },
                       icon: const Icon(Icons.add),
-                      label: const Text("添加 Layer"),
+                      label: const UseText(I18nKey.settingsLspAddLayer),
                     ),
                   ),
                   if (providers.isEmpty)
                     const Padding(
                       padding: EdgeInsets.only(top: 8),
-                      child: Text("未找到 stubs provider，请先安装并启用 stubs 插件。"),
+                      child: UseText(I18nKey.settingsLspNoStubsProvider),
                     ),
                 ],
               ),
@@ -303,7 +366,7 @@ class LspSettings extends ConsumerWidget {
             actions: [
               TextButton(
                 onPressed: () => context.pop(),
-                child: const Text("取消"),
+                child: const UseText(I18nKey.commonCancel),
               ),
               FilledButton(
                 onPressed: () {
@@ -311,9 +374,12 @@ class LspSettings extends ConsumerWidget {
                       List.unmodifiable(layers);
                   refreshOpenLspStubsConfiguration(ref);
                   context.pop();
-                  showIdeSuccess(context, "Stubs Layers 已更新");
+                  showIdeSuccess(
+                    context,
+                    translateForWidget(ref, I18nKey.settingsLspLayersUpdated),
+                  );
                 },
-                child: const Text("保存"),
+                child: const UseText(I18nKey.commonSave),
               ),
             ],
           );
@@ -337,7 +403,7 @@ class LspSettings extends ConsumerWidget {
     return showDialog<MicroPythonStubsLayer>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("添加 Stubs Layer"),
+        title: const UseText(I18nKey.settingsLspAddStubsLayer),
         content: SizedBox(
           width: 560,
           child: ConstrainedBox(
@@ -373,7 +439,7 @@ class LspSettings extends ConsumerWidget {
                             ),
                             isThreeLine: true,
                             trailing: alreadySelected
-                                ? const Text("已添加")
+                                ? const UseText(I18nKey.settingsLspAlreadyAdded)
                                 : const Icon(Icons.add),
                             onTap: alreadySelected
                                 ? null
@@ -393,7 +459,10 @@ class LspSettings extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          TextButton(
+            onPressed: () => context.pop(),
+            child: const UseText(I18nKey.commonCancel),
+          ),
         ],
       ),
     );
@@ -406,7 +475,7 @@ class LspSettings extends ConsumerWidget {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("额外 Stubs 路径"),
+        title: const UseText(I18nKey.settingsLspExtraPathsDialog),
         content: SizedBox(
           width: 460,
           child: TextField(
@@ -414,13 +483,16 @@ class LspSettings extends ConsumerWidget {
             minLines: 6,
             maxLines: 12,
             decoration: const InputDecoration(
-              helperText: "每行一个本地路径，会追加给语言服务使用。",
+              helper: UseText(I18nKey.settingsLspExtraPathsHelper),
               border: OutlineInputBorder(),
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          TextButton(
+            onPressed: () => context.pop(),
+            child: const UseText(I18nKey.commonCancel),
+          ),
           FilledButton(
             onPressed: () {
               ref.read(microPythonStubsExtraPaths.notifier).state = controller
@@ -431,7 +503,7 @@ class LspSettings extends ConsumerWidget {
                   .toList();
               context.pop();
             },
-            child: const Text("保存"),
+            child: const UseText(I18nKey.commonSave),
           ),
         ],
       ),
@@ -444,18 +516,21 @@ class LspSettings extends ConsumerWidget {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("WebSocket 地址"),
+        title: const UseText(I18nKey.settingsLspWebSocketAddress),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.url,
           decoration: const InputDecoration(
-            labelText: "地址",
-            helperText: "例如 127.0.0.1:8765",
+            label: UseText(I18nKey.settingsLspAddress),
+            helper: UseText(I18nKey.settingsLspAddressHint),
             prefixText: "ws://",
           ),
         ),
         actions: [
-          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          TextButton(
+            onPressed: () => context.pop(),
+            child: const UseText(I18nKey.commonCancel),
+          ),
           FilledButton(
             onPressed: () {
               final value = controller.text.trim().replaceFirst(
@@ -474,14 +549,20 @@ class LspSettings extends ConsumerWidget {
                   throw const FormatException("Invalid WebSocket address");
                 }
               } on FormatException {
-                showIdeError(context, "请输入有效的 WebSocket 地址");
+                showIdeError(
+                  context,
+                  translateForWidget(ref, I18nKey.settingsLspInvalidAddress),
+                );
                 return;
               }
               ref.read(lspWebSocketPath.notifier).state = value;
               context.pop();
-              showIdeSuccess(context, "语言服务器地址已更新");
+              showIdeSuccess(
+                context,
+                translateForWidget(ref, I18nKey.settingsLspAddressUpdated),
+              );
             },
-            child: const Text("保存"),
+            child: const UseText(I18nKey.commonSave),
           ),
         ],
       ),
@@ -492,13 +573,13 @@ class LspSettings extends ConsumerWidget {
 class _CapabilitySwitch extends ConsumerWidget {
   const _CapabilitySwitch({required this.title, required this.provider});
 
-  final String title;
+  final Object title;
   final StateProvider<bool> provider;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SwitchListTile(
-      title: Text(title),
+      title: UseText(title),
       value: ref.watch(provider),
       onChanged: (value) => ref.read(provider.notifier).state = value,
     );
@@ -528,7 +609,10 @@ class _StubsLayerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = profile?.label ?? '${layer.provider}/${layer.profile}';
     final subtitle = profile == null
-        ? '未找到 profile: ${layer.provider}/${layer.profile}'
+        ? I18nKey.settingsLspMissingProfile.fallback.replaceAll(
+            '{profile}',
+            '${layer.provider}/${layer.profile}',
+          )
         : '${layer.provider}/${layer.profile}\n${profile!.path}';
     return ListTile(
       leading: Icon(
@@ -541,17 +625,17 @@ class _StubsLayerTile extends StatelessWidget {
         spacing: 4,
         children: [
           IconButton(
-            tooltip: '上移',
+            tooltip: I18nKey.commonMoveUp.fallback,
             onPressed: canMoveUp ? onMoveUp : null,
             icon: const Icon(Icons.keyboard_arrow_up),
           ),
           IconButton(
-            tooltip: '下移',
+            tooltip: I18nKey.commonMoveDown.fallback,
             onPressed: canMoveDown ? onMoveDown : null,
             icon: const Icon(Icons.keyboard_arrow_down),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: I18nKey.gitDelete.fallback,
             onPressed: onDelete,
             icon: const Icon(Icons.delete_outline),
           ),

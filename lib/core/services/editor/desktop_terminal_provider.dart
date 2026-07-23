@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_pty/flutter_pty.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:xterm/xterm.dart';
 
@@ -70,7 +72,9 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
   Future<void> createSession() async {
     if (!isSupported) {
-      state = state.copyWith(error: '当前平台不支持桌面终端');
+      state = state.copyWith(
+        error: translate(ref, I18nKey.terminalUnsupportedPlatform),
+      );
       return;
     }
 
@@ -82,7 +86,10 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     try {
       final session = _startSessionProcess(
         id: id,
-        title: '终端 $id',
+        title: translate(
+          ref,
+          I18nKey.terminalSessionTitle,
+        ).replaceAll('{id}', id.toString()),
         terminal: terminal,
         controller: controller,
         shell: shell,
@@ -96,13 +103,19 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
           .read(ideOutputLogProvider.notifier)
           .add(
             IdeOutputSource.terminal,
-            '启动 ${session.title}: ${shell.executable}',
+            translate(ref, I18nKey.terminalStarted)
+                .replaceAll('{title}', session.title)
+                .replaceAll('{executable}', shell.executable),
           );
     } catch (error) {
-      state = state.copyWith(error: '启动终端失败: $error');
+      final message = translate(
+        ref,
+        I18nKey.terminalStartFailed,
+      ).replaceAll('{error}', error.toString());
+      state = state.copyWith(error: message);
       ref
           .read(ideOutputLogProvider.notifier)
-          .add(IdeOutputSource.terminal, '启动终端失败: $error');
+          .add(IdeOutputSource.terminal, message);
     }
   }
 
@@ -165,7 +178,10 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     if (current == null || current.pty != pty) return;
 
     final hexCode = (code & 0xffffffff).toRadixString(16).padLeft(8, '0');
-    final message = '进程已退出，代码 $code (0x$hexCode)';
+    final message = translate(
+      ref,
+      I18nKey.terminalProcessExited,
+    ).replaceAll('{code}', code.toString()).replaceAll('{hexCode}', hexCode);
     terminal.write('\r\n[$message]\r\n');
     ref
         .read(ideOutputLogProvider.notifier)
@@ -187,16 +203,27 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
           if (session.id == id) restarted else session,
       ];
       state = state.copyWith(sessions: sessions, clearError: true);
-      terminal.write('[已重新启动终端进程]\r\n');
+      terminal.write(
+        '[${translate(ref, I18nKey.terminalRestartedProcess)}]\r\n',
+      );
       ref
           .read(ideOutputLogProvider.notifier)
-          .add(IdeOutputSource.terminal, '重新启动 $title: ${shell.executable}');
+          .add(
+            IdeOutputSource.terminal,
+            translate(ref, I18nKey.terminalRestarted)
+                .replaceAll('{title}', title)
+                .replaceAll('{executable}', shell.executable),
+          );
     } catch (error) {
-      state = state.copyWith(error: '重新启动终端失败: $error');
-      terminal.write('[重新启动终端失败: $error]\r\n');
+      final message = translate(
+        ref,
+        I18nKey.terminalRestartFailed,
+      ).replaceAll('{error}', error.toString());
+      state = state.copyWith(error: message);
+      terminal.write('[$message]\r\n');
       ref
           .read(ideOutputLogProvider.notifier)
-          .add(IdeOutputSource.terminal, '重新启动终端失败: $error');
+          .add(IdeOutputSource.terminal, message);
     }
   }
 

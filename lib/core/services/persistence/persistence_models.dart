@@ -41,6 +41,8 @@ class PersistedData {
   final int? themeColorValue;
   final String editorThemeKey;
   final String? activePluginThemeId;
+  final bool welcomeCompleted;
+  final String activeLocale;
   final String editorTextFont;
   final double editorFontSize;
   final bool editorWordWrap;
@@ -107,6 +109,8 @@ class PersistedData {
     this.themeColorValue,
     this.editorThemeKey = 'atom-one',
     this.activePluginThemeId,
+    this.welcomeCompleted = false,
+    this.activeLocale = 'zh-CN',
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,
     this.editorWordWrap = false,

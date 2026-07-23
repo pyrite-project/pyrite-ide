@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
@@ -14,6 +15,7 @@ import 'package:pyrite_ide/features/function_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
 import 'package:pyrite_ide/pages/device_tools/main.dart';
+import 'package:pyrite_ide/pages/welcome/oobe.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 CustomTransitionPage topCustomTransitionPage({
@@ -36,6 +38,14 @@ GoRouter routes = GoRouter(
   observers: [routeObserver],
   redirect: (context, state) {
     final isDesktop = ResponsiveBreakpoints.of(context).isDesktop;
+    final isWelcome = state.matchedLocation == welcome;
+    final welcomeCompleted = container.read(welcomeCompletedProvider);
+    if (!welcomeCompleted && !isWelcome) {
+      return welcome;
+    }
+    if (welcomeCompleted && isWelcome) {
+      return isDesktop ? file : edit;
+    }
     if (state.matchedLocation == "/") {
       if (isDesktop) {
         return "/file";
@@ -49,6 +59,11 @@ GoRouter routes = GoRouter(
     return null;
   },
   routes: [
+    GoRoute(
+      path: welcome,
+      pageBuilder: (context, state) =>
+          topCustomTransitionPage(child: const WelcomeOobePage(), state: state),
+    ),
     ShellRoute(
       routes: [
         GoRoute(
@@ -190,6 +205,7 @@ const String git = '/git';
 const String plugins = '/plugins';
 const String settings = '/settings';
 const String edit = '/editor';
+const String welcome = '/welcome';
 
 // 为 NavigationBar 提供
 const List<String> routesName = [file, tools, git, plugins, settings, edit];

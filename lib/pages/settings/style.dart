@@ -1,10 +1,13 @@
 import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 class StyleSettings extends ConsumerWidget {
   const StyleSettings({super.key});
@@ -26,10 +29,12 @@ class StyleSettings extends ConsumerWidget {
       padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
-          title: "主题模式",
+          title: I18nKey.settingsStyleThemeMode,
           description: themeModeDisabled
-              ? "当前插件主题已锁定为${pluginTheme?.mode == 'dark' ? '暗色' : '亮色'}模式。"
-              : "决定界面跟随系统、常亮或常暗。",
+              ? pluginTheme?.mode == 'dark'
+                    ? I18nKey.settingsStyleThemeModePluginLockedDark
+                    : I18nKey.settingsStyleThemeModePluginLockedLight
+              : I18nKey.settingsStyleThemeModeDescription,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -38,17 +43,17 @@ class StyleSettings extends ConsumerWidget {
                   ButtonSegment(
                     value: ThemeMode.system,
                     icon: Icon(Icons.auto_mode),
-                    label: Text("自动"),
+                    label: UseText(I18nKey.settingsStyleModeAuto),
                   ),
                   ButtonSegment(
                     value: ThemeMode.light,
                     icon: Icon(Icons.light_mode),
-                    label: Text("日光"),
+                    label: UseText(I18nKey.settingsStyleModeLight),
                   ),
                   ButtonSegment(
                     value: ThemeMode.dark,
                     icon: Icon(Icons.dark_mode),
-                    label: Text("黑夜"),
+                    label: UseText(I18nKey.settingsStyleModeDark),
                   ),
                 ],
                 selected: {ref.watch(themeMode)},
@@ -62,8 +67,10 @@ class StyleSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "主题风格",
-          description: hasPluginTheme ? "插件主题启用时此项不可用。" : "切换不同风格的组件样式与布局密度。",
+          title: I18nKey.settingsStyleThemeStyle,
+          description: hasPluginTheme
+              ? I18nKey.settingsStylePluginThemeDisabledDescription
+              : I18nKey.settingsStyleThemeStyleDescription,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -72,17 +79,17 @@ class StyleSettings extends ConsumerWidget {
                   ButtonSegment(
                     value: ThemeStyle.standard,
                     icon: Icon(Icons.lan),
-                    label: Text("标准"),
+                    label: UseText(I18nKey.settingsStyleStandard),
                   ),
                   ButtonSegment(
                     value: ThemeStyle.compact,
                     icon: Icon(Icons.window),
-                    label: Text("紧凑"),
+                    label: UseText(I18nKey.settingsStyleCompact),
                   ),
                   ButtonSegment(
                     value: ThemeStyle.comfortable,
                     icon: Icon(Icons.space_dashboard),
-                    label: Text("舒适"),
+                    label: UseText(I18nKey.settingsStyleComfortable),
                   ),
                 ],
                 selected: {ref.watch(themeStyle)},
@@ -97,8 +104,8 @@ class StyleSettings extends ConsumerWidget {
         ),
         if (!hasPluginTheme)
           SettingsSection(
-            title: "主题颜色",
-            description: "保留 MD3 动态颜色，也可以选择固定种子色。",
+            title: I18nKey.settingsStyleThemeColor,
+            description: I18nKey.settingsStyleThemeColorDescription,
             children: [
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -107,7 +114,7 @@ class StyleSettings extends ConsumerWidget {
                   children: [
                     ChoiceChip(
                       avatar: const Icon(Icons.auto_awesome),
-                      label: const Text("跟随系统"),
+                      label: const UseText(I18nKey.settingsStyleFollowSystem),
                       selected: themeColorValue == null,
                       onSelected: (v) {
                         if (v) {
@@ -146,8 +153,8 @@ class StyleSettings extends ConsumerWidget {
             ],
           ),
         SettingsSection(
-          title: "插件主题",
-          description: "使用插件提供的主题配色方案。选中后将覆盖上方的主题风格和主题颜色设置。",
+          title: I18nKey.settingsStylePluginTheme,
+          description: I18nKey.settingsStylePluginThemeDescription,
           children: [
             RadioGroup<String?>(
               groupValue: activePluginThemeIdValue,
@@ -157,8 +164,10 @@ class StyleSettings extends ConsumerWidget {
               child: Column(
                 children: [
                   RadioListTile<String?>(
-                    title: Text("内置"),
-                    subtitle: Text("使用系统动态色或自定义种子色"),
+                    title: const UseText(I18nKey.settingsStyleBuiltin),
+                    subtitle: const UseText(
+                      I18nKey.settingsStyleBuiltinSubtitle,
+                    ),
                     value: null,
                   ),
                   for (final theme in dataRegistry.allThemes)
@@ -168,7 +177,7 @@ class StyleSettings extends ConsumerWidget {
                         [
                           'by ${theme.pluginId}',
                           if (theme.mode != null)
-                            '· ${theme.mode == 'dark' ? '仅暗色' : '仅亮色'}',
+                            '· ${translateForWidget(ref, theme.mode == 'dark' ? I18nKey.settingsStyleDarkOnly : I18nKey.settingsStyleLightOnly)}',
                         ].join(' '),
                       ),
                       value: theme.id,
@@ -179,13 +188,15 @@ class StyleSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "菜单样式",
-          description: "控制桌面右键菜单的视觉样式。",
+          title: I18nKey.settingsStyleMenuStyle,
+          description: I18nKey.settingsStyleMenuStyleDescription,
           children: [
             SwitchListTile(
               secondary: const Icon(Icons.menu_open_outlined),
-              title: const Text("Material Design 3 右键菜单"),
-              subtitle: const Text("使用自绘菜单样式替代默认桌面菜单 fallback"),
+              title: const UseText(I18nKey.settingsStyleMd3ContextMenu),
+              subtitle: const UseText(
+                I18nKey.settingsStyleMd3ContextMenuSubtitle,
+              ),
               value: ref.watch(useMaterialContextMenu),
               onChanged: (value) {
                 ref.read(useMaterialContextMenu.notifier).state = value;
@@ -197,7 +208,7 @@ class StyleSettings extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text("外观与风格")),
+      appBar: AppBar(title: const UseText(I18nKey.settingsStyleTitle)),
       body: body,
     );
   }

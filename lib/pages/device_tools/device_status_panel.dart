@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 class DeviceStatusPanel extends ConsumerWidget {
   const DeviceStatusPanel({super.key});
@@ -16,12 +19,19 @@ class DeviceStatusPanel extends ConsumerWidget {
     return Column(
       children: [
         PaneHeader(
-          title: "设备状态",
-          subtitle: isConnected ? "已连接 · 点击刷新设备信息" : "请先连接设备",
+          title: I18nKey.devicesStatusTitle,
+          subtitle: isConnected
+              ? I18nKey.devicesStatusConnectedSubtitle
+              : I18nKey.devicesStatusDisconnectedSubtitle,
           leadingIcon: Icons.memory,
           actions: [
             IconButton(
-              tooltip: isConnected ? "刷新设备状态" : "请先连接设备",
+              tooltip: translateForWidget(
+                ref,
+                isConnected
+                    ? I18nKey.devicesStatusRefresh
+                    : I18nKey.devicesStatusDisconnectedSubtitle,
+              ),
               onPressed: isConnected
                   ? () => ref.read(deviceStatusProvider.notifier).refresh()
                   : null,
@@ -37,7 +47,7 @@ class DeviceStatusPanel extends ConsumerWidget {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 12),
-                  Text("正在查询设备状态..."),
+                  UseText(I18nKey.devicesStatusLoading),
                 ],
               ),
             ),
@@ -53,7 +63,10 @@ class DeviceStatusPanel extends ConsumerWidget {
                       color: Theme.of(context).colorScheme.error,
                     ),
                     const SizedBox(height: 8),
-                    Text("查询失败", style: Theme.of(context).textTheme.titleSmall),
+                    UseText(
+                      I18nKey.devicesStatusFailed,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       err.toString(),
@@ -66,7 +79,7 @@ class DeviceStatusPanel extends ConsumerWidget {
                     FilledButton.tonal(
                       onPressed: () =>
                           ref.read(deviceStatusProvider.notifier).refresh(),
-                      child: const Text("重试"),
+                      child: const UseText(I18nKey.devicesStatusRetry),
                     ),
                   ],
                 ),
@@ -101,8 +114,10 @@ class DeviceStatusPanel extends ConsumerWidget {
               color: Theme.of(context).colorScheme.secondary,
             ),
             const SizedBox(height: 12),
-            Text(
-              isConnected ? "点击上方刷新按钮查询设备状态" : "请先在设备管理中连接设备",
+            UseText(
+              isConnected
+                  ? I18nKey.devicesStatusEmptyConnected
+                  : I18nKey.devicesStatusEmptyDisconnected,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -113,7 +128,7 @@ class DeviceStatusPanel extends ConsumerWidget {
               FilledButton.tonal(
                 onPressed: () =>
                     ref.read(deviceStatusProvider.notifier).refresh(),
-                child: const Text("查询设备状态"),
+                child: const UseText(I18nKey.devicesStatusQuery),
               ),
             ],
           ],
@@ -151,14 +166,14 @@ class DeviceStatusPanel extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildInfoRow(
             context,
-            label: "固件版本",
+            label: I18nKey.devicesStatusFirmware,
             value: status.firmwareVersion,
             icon: Icons.code,
           ),
           const SizedBox(height: 8),
           _buildInfoRow(
             context,
-            label: "平台型号",
+            label: I18nKey.devicesStatusPlatform,
             value: status.platformModel,
             icon: Icons.developer_board_outlined,
           ),
@@ -231,7 +246,7 @@ class DeviceStatusPanel extends ConsumerWidget {
 
   Widget _buildInfoRow(
     BuildContext context, {
-    required String label,
+    required Object label,
     required String value,
     required IconData icon,
   }) {
@@ -240,7 +255,7 @@ class DeviceStatusPanel extends ConsumerWidget {
       children: [
         Icon(icon, size: 16, color: scheme.onSurfaceVariant),
         const SizedBox(width: 6),
-        Text(
+        UseText(
           label,
           style: Theme.of(
             context,

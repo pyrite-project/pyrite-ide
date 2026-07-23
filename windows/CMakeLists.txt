@@ -57,6 +57,18 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# permission_handler_windows 0.2.1 enables legacy /await while also requiring
+# C++20. MSVC 14.51 rejects the resulting <experimental/coroutine> include.
+if(MSVC AND TARGET permission_handler_windows_plugin)
+  get_target_property(PERMISSION_HANDLER_WINDOWS_COMPILE_OPTIONS
+    permission_handler_windows_plugin COMPILE_OPTIONS)
+  if(PERMISSION_HANDLER_WINDOWS_COMPILE_OPTIONS)
+    list(REMOVE_ITEM PERMISSION_HANDLER_WINDOWS_COMPILE_OPTIONS "/await")
+    set_target_properties(permission_handler_windows_plugin PROPERTIES
+      COMPILE_OPTIONS "${PERMISSION_HANDLER_WINDOWS_COMPILE_OPTIONS}")
+  endif()
+endif()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

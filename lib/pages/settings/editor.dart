@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 class EditorSettings extends ConsumerWidget {
   const EditorSettings({super.key});
@@ -17,18 +19,18 @@ class EditorSettings extends ConsumerWidget {
       padding: EdgeInsets.all(12),
       children: [
         SettingsSection(
-          title: "字体",
-          description: "影响代码编辑区域的阅读和输入体验。",
+          title: I18nKey.settingsEditorFontSection,
+          description: I18nKey.settingsEditorFontDescription,
           children: [
             ListTile(
-              title: const Text("字体"),
+              title: const UseText(I18nKey.settingsTerminalFont),
               subtitle: Text(ref.watch(editorTextFontProvider)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => showTextFontDialog(context, ref),
             ),
 
             ListTile(
-              title: const Text("字体大小"),
+              title: const UseText(I18nKey.settingsTerminalFontSize),
               subtitle: Text(
                 "${ref.watch(editorFontSize).toStringAsFixed(0)} px",
               ),
@@ -38,11 +40,11 @@ class EditorSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "编辑器主题",
-          description: "选择代码高亮配色方案，亮色/暗色随应用主题自动切换。",
+          title: I18nKey.settingsEditorThemeSection,
+          description: I18nKey.settingsEditorThemeDescription,
           children: [
             ListTile(
-              title: const Text("配色方案"),
+              title: const UseText(I18nKey.settingsEditorColorScheme),
               subtitle: Text(
                 findEditorThemeByKey(ref.watch(editorThemeKey))?.label ??
                     "Atom One",
@@ -53,8 +55,8 @@ class EditorSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "上传确认",
-          description: "上传文件存在差异时的确认方式。",
+          title: I18nKey.settingsEditorUploadConfirmSection,
+          description: I18nKey.settingsEditorUploadConfirmDescription,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -63,12 +65,12 @@ class EditorSettings extends ConsumerWidget {
                   ButtonSegment(
                     value: 'toolbar',
                     icon: Icon(Icons.open_in_full),
-                    label: Text("浮动工具栏"),
+                    label: UseText(I18nKey.settingsEditorFloatingToolbar),
                   ),
                   ButtonSegment(
                     value: 'dialog',
                     icon: Icon(Icons.chat_bubble_outline),
-                    label: Text("确认对话框"),
+                    label: UseText(I18nKey.settingsEditorConfirmDialog),
                   ),
                 ],
                 selected: {ref.watch(uploadConfirmStyleProvider)},
@@ -81,18 +83,18 @@ class EditorSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "快捷键",
-          description: "上传/下载确认的快捷键。",
+          title: I18nKey.settingsEditorShortcutsSection,
+          description: I18nKey.settingsEditorShortcutsDescription,
           children: [
             ShortcutRecorderTile(
-              title: "确认操作",
+              title: I18nKey.settingsEditorConfirmAction,
               value: ref.watch(confirmShortcutProvider),
               onChanged: (v) =>
                   ref.read(confirmShortcutProvider.notifier).state = v,
             ),
 
             ShortcutRecorderTile(
-              title: "取消操作",
+              title: I18nKey.settingsEditorCancelAction,
               value: ref.watch(cancelShortcutProvider),
               onChanged: (v) =>
                   ref.read(cancelShortcutProvider.notifier).state = v,
@@ -100,11 +102,11 @@ class EditorSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: "编辑行为",
+          title: I18nKey.settingsEditorBehaviorSection,
           children: [
             SwitchListTile(
-              title: const Text("自动折行"),
-              subtitle: const Text("长行在可视区域内换行显示"),
+              title: const UseText(I18nKey.settingsEditorWordWrap),
+              subtitle: const UseText(I18nKey.settingsEditorWordWrapSubtitle),
               value: ref.watch(editorWordWrap),
               onChanged: (value) {
                 ref.read(editorWordWrap.notifier).state = value;
@@ -112,56 +114,64 @@ class EditorSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const Text("显示行号"),
-              subtitle: const Text("显示左侧 gutter 行号区域"),
+              title: const UseText(I18nKey.settingsEditorLineNumber),
+              subtitle: const UseText(I18nKey.settingsEditorLineNumberSubtitle),
               value: ref.watch(editorLineNumber),
               onChanged: (value) =>
                   ref.read(editorLineNumber.notifier).state = value,
             ),
 
             SwitchListTile(
-              title: const Text("显示 gutter 分隔线"),
-              subtitle: const Text("在行号区域和代码之间显示分隔线"),
+              title: const UseText(I18nKey.settingsEditorGutterDivider),
+              subtitle: const UseText(
+                I18nKey.settingsEditorGutterDividerSubtitle,
+              ),
               value: ref.watch(editorGutterDivider),
               onChanged: (value) =>
                   ref.read(editorGutterDivider.notifier).state = value,
             ),
 
             SwitchListTile(
-              title: const Text("代码折叠"),
-              subtitle: const Text("显示折叠图标并允许折叠代码块"),
+              title: const UseText(I18nKey.settingsEditorCodeFolding),
+              subtitle: const UseText(
+                I18nKey.settingsEditorCodeFoldingSubtitle,
+              ),
               value: ref.watch(editorCodeFolding),
               onChanged: (value) =>
                   ref.read(editorCodeFolding.notifier).state = value,
             ),
 
             SwitchListTile(
-              title: const Text("缩进参考线"),
-              subtitle: const Text("显示每级缩进的纵向参考线"),
+              title: const UseText(I18nKey.settingsEditorGuideLines),
+              subtitle: const UseText(I18nKey.settingsEditorGuideLinesSubtitle),
               value: ref.watch(editorGuideLines),
               onChanged: (value) =>
                   ref.read(editorGuideLines.notifier).state = value,
             ),
 
             SwitchListTile(
-              title: const Text("本地补全"),
-              subtitle: const Text("启用非 LSP 的本地补全建议，较大文件可能有额外开销"),
+              title: const UseText(I18nKey.settingsEditorLocalSuggestions),
+              subtitle: const UseText(
+                I18nKey.settingsEditorLocalSuggestionsSubtitle,
+              ),
               value: ref.watch(editorLocalSuggestions),
               onChanged: (value) =>
                   ref.read(editorLocalSuggestions.notifier).state = value,
             ),
 
             SwitchListTile(
-              title: const Text("键盘补全建议"),
-              subtitle: const Text("允许系统虚拟键盘显示输入建议"),
+              title: const UseText(I18nKey.settingsEditorKeyboardSuggestions),
+              subtitle: const UseText(
+                I18nKey.settingsEditorKeyboardSuggestionsSubtitle,
+              ),
               value: ref.watch(editorKeyboardSuggestions),
               onChanged: (value) =>
                   ref.read(editorKeyboardSuggestions.notifier).state = value,
             ),
 
             SwitchListTile(
-              title: const Text("Tab 输入空格"),
-              subtitle: const Text("按 Tab 时插入空格而不是制表符"),
+              title: const UseText(I18nKey.settingsEditorSpaceAsTab),
+              subtitle: const UseText(I18nKey.settingsEditorSpaceAsTabSubtitle),
               value: ref.watch(editorUseSpaceAsTab),
               onChanged: (value) =>
                   ref.read(editorUseSpaceAsTab.notifier).state = value,
@@ -169,12 +179,17 @@ class EditorSettings extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.keyboard_tab),
-              title: const Text("Tab 大小"),
-              subtitle: Text("${ref.watch(editorTabSize)} 个字符"),
+              title: const UseText(I18nKey.settingsEditorTabSize),
+              subtitle: Text(
+                I18nKey.settingsEditorTabSizeValue.fallback.replaceAll(
+                  '{count}',
+                  ref.watch(editorTabSize).toString(),
+                ),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => showIntSliderDialog(
                 context,
-                title: "Tab 大小",
+                title: I18nKey.settingsEditorTabSize,
                 value: ref.read(editorTabSize),
                 min: 1,
                 max: 8,
@@ -188,14 +203,14 @@ class EditorSettings extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text("编辑器设置")),
+      appBar: AppBar(title: const UseText(I18nKey.settingsEditorTitle)),
       body: body,
     );
   }
 
   void showIntSliderDialog(
     BuildContext context, {
-    required String title,
+    required Object title,
     required int value,
     required int min,
     required int max,
@@ -207,7 +222,7 @@ class EditorSettings extends ConsumerWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           return SimpleDialog(
-            title: Text(title),
+            title: UseText(title),
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
@@ -259,8 +274,10 @@ class EditorSettings extends ConsumerWidget {
     });
     await showDialog(
       context: context,
-      builder: (context) =>
-          SimpleDialog(title: const Text("选择编辑器字体"), children: children),
+      builder: (context) => SimpleDialog(
+        title: const UseText(I18nKey.settingsEditorSelectFont),
+        children: children,
+      ),
     );
   }
 
@@ -271,7 +288,7 @@ class EditorSettings extends ConsumerWidget {
         builder: (context, ref, _) {
           final size = ref.watch(editorFontSize);
           return SimpleDialog(
-            title: const Text("字体大小"),
+            title: const UseText(I18nKey.settingsTerminalFontSize),
             children: [
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, 12),
@@ -309,7 +326,7 @@ class EditorSettings extends ConsumerWidget {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("选择编辑器主题"),
+        title: const UseText(I18nKey.settingsEditorSelectTheme),
         content: SizedBox(
           width: 360,
           child: ListView.builder(
@@ -354,7 +371,10 @@ class EditorSettings extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => context.pop(), child: const Text("取消")),
+          TextButton(
+            onPressed: () => context.pop(),
+            child: const UseText(I18nKey.commonCancel),
+          ),
         ],
       ),
     );
@@ -362,7 +382,7 @@ class EditorSettings extends ConsumerWidget {
 }
 
 class ShortcutRecorderTile extends StatefulWidget {
-  final String title;
+  final Object title;
   final String value;
   final ValueChanged<String> onChanged;
 
@@ -453,9 +473,9 @@ class _ShortcutRecorderTileState extends State<ShortcutRecorderTile> {
       onKeyEvent: _onKeyEvent,
       child: ListTile(
         leading: Icon(_recording ? Icons.keyboard : Icons.keyboard_command_key),
-        title: Text(widget.title),
-        subtitle: Text(
-          _recording ? "按下快捷键（Esc 取消）..." : widget.value,
+        title: UseText(widget.title),
+        subtitle: UseText(
+          _recording ? I18nKey.settingsEditorShortcutRecording : widget.value,
           style: TextStyle(
             fontFamily: 'monospace',
             color: _recording ? Theme.of(context).colorScheme.primary : null,

@@ -6,6 +6,8 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
@@ -83,7 +85,7 @@ class ConsolePage extends ConsumerWidget {
       case 1:
         return [
           IconButton(
-            tooltip: '清空输出',
+            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
             onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
             icon: const Icon(Icons.cleaning_services_outlined),
           ),
@@ -94,21 +96,29 @@ class ConsolePage extends ConsumerWidget {
         return [
           if (!isConnected && !webReplConnected)
             IconButton(
-              tooltip: "连接 WebREPL",
+              tooltip: translateForWidget(
+                ref,
+                I18nKey.bottomPanelConnectWebRepl,
+              ),
               onPressed: () {
                 ref.read(webReplProvider.notifier).connect();
               },
               icon: const Icon(Icons.wifi),
             ),
           IconButton(
-            tooltip: "清空终端",
+            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
             onPressed: () => repl.write('\x1b[2J\x1b[H'),
             icon: const Icon(Icons.cleaning_services_outlined),
           ),
           IconButton(
             tooltip: useWebRepl
-                ? "中断设备运行"
-                : (isConnected ? "中断设备运行" : "连接设备后可中断运行"),
+                ? translateForWidget(ref, I18nKey.editorToolbarInterruptDevice)
+                : translateForWidget(
+                    ref,
+                    isConnected
+                        ? I18nKey.editorToolbarInterruptDevice
+                        : I18nKey.editorToolbarInterruptNeedsDevice,
+                  ),
             onPressed: (useWebRepl || isConnected)
                 ? () {
                     if (useWebRepl) {
@@ -124,8 +134,13 @@ class ConsolePage extends ConsumerWidget {
           ),
           IconButton(
             tooltip: useWebRepl
-                ? "软重启设备"
-                : (isConnected ? "软重启设备" : "连接设备后可软重启"),
+                ? translateForWidget(ref, I18nKey.editorToolbarSoftReboot)
+                : translateForWidget(
+                    ref,
+                    isConnected
+                        ? I18nKey.editorToolbarSoftReboot
+                        : I18nKey.editorToolbarSoftRebootNeedsDevice,
+                  ),
             onPressed: (useWebRepl || isConnected)
                 ? () {
                     if (useWebRepl) {
@@ -165,13 +180,13 @@ class _BottomPanelTabs extends ConsumerWidget {
             selectedIndex: selectedIndex,
           ),
           _BottomPanelTab(
-            label: '输出',
+            label: I18nKey.bottomPanelOutputTab,
             icon: Icons.article_outlined,
             index: 1,
             selectedIndex: selectedIndex,
           ),
           _BottomPanelTab(
-            label: '终端',
+            label: I18nKey.bottomPanelTerminalTab,
             icon: Icons.terminal_outlined,
             index: 2,
             selectedIndex: selectedIndex,
@@ -214,7 +229,7 @@ class _BottomPanelTab extends ConsumerWidget {
     required this.selectedIndex,
   });
 
-  final String label;
+  final Object label;
   final IconData icon;
   final int index;
   final int selectedIndex;
@@ -245,7 +260,7 @@ class _BottomPanelTab extends ConsumerWidget {
               color: selected ? scheme.primary : scheme.onSurfaceVariant,
             ),
             const SizedBox(width: 6),
-            Text(
+            UseText(
               label,
               style: TextStyle(
                 color: selected ? scheme.primary : scheme.onSurfaceVariant,
@@ -332,7 +347,14 @@ class ConsoleToggle extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final consoleVisible = ref.watch(consolePageShow);
     return IconButton(
-      tooltip: isMobile ? "打开控制台" : (consoleVisible ? "隐藏控制台" : "显示 REPL"),
+      tooltip: translateForWidget(
+        ref,
+        isMobile
+            ? I18nKey.statusOpenConsole
+            : (consoleVisible
+                  ? I18nKey.statusHideConsole
+                  : I18nKey.statusShowRepl),
+      ),
       onPressed: () {
         if (isMobile) {
           showMobileConsoleSheet(context);
@@ -352,7 +374,12 @@ class FunctionPaneToggle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final visible = ref.watch(functionPageShow);
     return IconButton(
-      tooltip: visible ? "隐藏功能面板" : "显示功能面板",
+      tooltip: translateForWidget(
+        ref,
+        visible
+            ? I18nKey.bottomPanelHideFunctionPanel
+            : I18nKey.bottomPanelShowFunctionPanel,
+      ),
       onPressed: () {
         ref.read(functionPageShow.notifier).state = !visible;
       },
@@ -370,7 +397,12 @@ class ExpansionPaneToggle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final visible = ref.watch(expansionPageShow);
     return IconButton(
-      tooltip: visible ? "隐藏扩展面板" : "显示扩展面板",
+      tooltip: translateForWidget(
+        ref,
+        visible
+            ? I18nKey.bottomPanelHideExpansionPanel
+            : I18nKey.bottomPanelShowExpansionPanel,
+      ),
       onPressed: () {
         ref.read(expansionPageShow.notifier).state = !visible;
       },
@@ -763,7 +795,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
         child: FilledButton.tonalIcon(
           onPressed: null,
           icon: const Icon(Icons.terminal_outlined),
-          label: const Text('Android 暂不支持桌面终端'),
+          label: const UseText(I18nKey.bottomPanelAndroidTerminalUnsupported),
         ),
       );
     }
@@ -779,7 +811,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                         .read(desktopTerminalProvider.notifier)
                         .createSession(),
                     icon: const Icon(Icons.add),
-                    label: const Text('新建终端'),
+                    label: const UseText(I18nKey.bottomPanelNewTerminal),
                   ),
                 )
               : TerminalView(
@@ -809,9 +841,14 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                 child: Row(
                   children: [
                     const SizedBox(width: 12),
-                    const Expanded(child: Text('终端')),
+                    const Expanded(
+                      child: UseText(I18nKey.bottomPanelTerminalTab),
+                    ),
                     IconButton(
-                      tooltip: '新建终端',
+                      tooltip: translateForWidget(
+                        ref,
+                        I18nKey.bottomPanelNewTerminal,
+                      ),
                       onPressed: () => ref
                           .read(desktopTerminalProvider.notifier)
                           .createSession(),
@@ -887,7 +924,10 @@ class _TerminalSessionTile extends ConsumerWidget {
                 ),
               ),
               IconButton(
-                tooltip: '关闭终端',
+                tooltip: translateForWidget(
+                  ref,
+                  I18nKey.bottomPanelCloseTerminal,
+                ),
                 onPressed: () => ref
                     .read(desktopTerminalProvider.notifier)
                     .closeSession(session.id),
@@ -1024,32 +1064,43 @@ class EditorToolsBar extends ConsumerWidget {
     final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
     if (value is! TabDataValue || value.type != "file") {
       return StatusBarButton(
-        label: "欢迎页",
+        label: I18nKey.statusWelcomePage,
         icon: Icons.home_outlined,
         compact: isMobile,
-        tooltip: "当前未打开代码文件",
+        tooltip: translateForWidget(ref, I18nKey.statusNoCodeFile),
         onPressed: () {},
       );
     }
 
     final fileName = path.basename(value.filePath);
-    final source = value.isBoardFile == true ? "设备" : "本地";
+    final source = translateForWidget(
+      ref,
+      value.isBoardFile == true ? I18nKey.statusBoard : I18nKey.statusLocal,
+    );
     final saved = value.isSaved;
+    final savedLabel = translateForWidget(
+      ref,
+      saved ? I18nKey.statusSaved : I18nKey.statusUnsaved,
+    );
     return StatusBarButton(
-      label: isMobile
-          ? (saved ? "已保存" : "未保存")
-          : "$source · ${saved ? "已保存" : "未保存"} · $fileName",
+      label: isMobile ? savedLabel : "$source · $savedLabel · $fileName",
       icon: value.isBoardFile == true
           ? Icons.developer_board_outlined
           : Icons.description_outlined,
       statusColor: saved ? scheme.primary : scheme.tertiary,
       compact: isMobile,
-      tooltip: saved ? "再次保存当前文件" : "保存当前文件",
+      tooltip: translateForWidget(
+        ref,
+        saved ? I18nKey.statusSaveAgain : I18nKey.statusSaveCurrent,
+      ),
       onPressed: () async {
         await ref.read(fileProvider.notifier).saveCurrentFile();
         if (!context.mounted) return;
 
-        showIdeSuccess(context, "已保存当前文件");
+        showIdeSuccess(
+          context,
+          translateForWidget(ref, I18nKey.statusSavedCurrentFile),
+        );
       },
     );
   }
@@ -1121,12 +1172,12 @@ class EditorToolsBar extends ConsumerWidget {
     final isLoading = state?.isLoading == true;
     final hasError = state?.hasError == true;
     final label = initialized
-        ? "LSP 正常"
+        ? translateForWidget(ref, I18nKey.statusLspReady)
         : isLoading
-        ? "LSP 启动中"
+        ? translateForWidget(ref, I18nKey.statusLspStarting)
         : hasError
-        ? "LSP 异常"
-        : "LSP 未就绪";
+        ? translateForWidget(ref, I18nKey.statusLspError)
+        : translateForWidget(ref, I18nKey.statusLspNotReady);
     final color = initialized
         ? scheme.primary
         : isLoading
@@ -1138,7 +1189,7 @@ class EditorToolsBar extends ConsumerWidget {
       label: label,
       icon: Icons.data_object,
       statusColor: color,
-      tooltip: "语言服务器设置",
+      tooltip: translateForWidget(ref, I18nKey.settingsLspPageTitle),
       onPressed: () => context.go("/settings/lsp"),
     );
   }
@@ -1148,8 +1199,15 @@ class EditorToolsBar extends ConsumerWidget {
     final isConnected = usb.isConnected;
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final label = isMobile
-        ? (isConnected ? usb.selectedPortName! : "设备")
-        : (isConnected ? "设备：${usb.selectedPortName!}" : "未连接设备");
+        ? (isConnected
+              ? usb.selectedPortName!
+              : translateForWidget(ref, I18nKey.statusDeviceShort))
+        : (isConnected
+              ? translateForWidget(
+                  ref,
+                  I18nKey.statusDevicePort,
+                ).replaceAll('{port}', usb.selectedPortName!)
+              : translateForWidget(ref, I18nKey.statusDeviceDisconnected));
     return StatusBarButton(
       label: label,
       icon: Icons.usb,
@@ -1157,7 +1215,12 @@ class EditorToolsBar extends ConsumerWidget {
       statusColor: isConnected
           ? Theme.of(context).colorScheme.primary
           : Theme.of(context).colorScheme.outline,
-      tooltip: isConnected ? "打开设备管理" : "连接 MicroPython 设备",
+      tooltip: translateForWidget(
+        ref,
+        isConnected
+            ? I18nKey.statusOpenDeviceManager
+            : I18nKey.statusConnectDevice,
+      ),
       onPressed: () => context.go("/tools"),
     );
   }
@@ -1172,7 +1235,7 @@ class EditorToolsBar extends ConsumerWidget {
         icon: Icons.account_tree_outlined,
         compact: isMobile,
         statusColor: scheme.outline,
-        tooltip: '打开源代码管理',
+        tooltip: translateForWidget(ref, I18nKey.statusOpenSourceControl),
         onPressed: () => context.go('/git'),
       );
     }
@@ -1185,7 +1248,7 @@ class EditorToolsBar extends ConsumerWidget {
       icon: Icons.account_tree_outlined,
       compact: isMobile,
       statusColor: scheme.primary,
-      tooltip: '打开源代码管理',
+      tooltip: translateForWidget(ref, I18nKey.statusOpenSourceControl),
       onPressed: () => context.go('/git'),
     );
   }
@@ -1194,10 +1257,17 @@ class EditorToolsBar extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final visible = ref.watch(consolePageShow);
     return StatusBarButton(
-      label: isMobile ? "REPL" : (visible ? "显示控制台" : "隐藏控制台"),
+      label: isMobile
+          ? "REPL"
+          : (visible ? I18nKey.statusShowConsole : I18nKey.statusHideConsole),
       icon: Icons.terminal,
       compact: isMobile,
-      tooltip: isMobile ? "打开控制台" : (visible ? "隐藏控制台" : "显示 REPL"),
+      tooltip: translateForWidget(
+        ref,
+        isMobile
+            ? I18nKey.statusOpenConsole
+            : (visible ? I18nKey.statusHideConsole : I18nKey.statusShowRepl),
+      ),
       onPressed: () {
         if (isMobile) {
           showMobileConsoleSheet(context);
@@ -1209,13 +1279,13 @@ class EditorToolsBar extends ConsumerWidget {
   }
 }
 
-class MobileNavigationDrawerButton extends StatelessWidget {
+class MobileNavigationDrawerButton extends ConsumerWidget {
   const MobileNavigationDrawerButton({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return IconButton(
-      tooltip: "打开菜单",
+      tooltip: translateForWidget(ref, I18nKey.statusOpenMenu),
       style: IconButton.styleFrom(
         minimumSize: const Size(36, 32),
         fixedSize: const Size(36, 32),

@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 
 class Tools extends ConsumerStatefulWidget {
   const Tools({super.key, this.compact = false});
@@ -23,7 +26,7 @@ class _ToolsState extends ConsumerState<Tools> {
     final body = buildBoardManager(context);
     if (widget.compact) return body;
     return Scaffold(
-      appBar: AppBar(title: const Text("设备管理")),
+      appBar: AppBar(title: const UseText(I18nKey.devicesTitle)),
       body: body,
     );
   }
@@ -56,8 +59,8 @@ class _ToolsState extends ConsumerState<Tools> {
             ),
           SliverToBoxAdapter(
             child: PaneHeader(
-              title: "可用设备",
-              subtitle: "选择一个 USB 串口设备连接到 REPL",
+              title: I18nKey.devicesAvailableUsbTitle,
+              subtitle: I18nKey.devicesAvailableUsbSubtitle,
               leadingIcon: Icons.usb,
               compact: widget.compact,
             ),
@@ -67,9 +70,9 @@ class _ToolsState extends ConsumerState<Tools> {
               hasScrollBody: false,
               child: WorkspaceEmptyState(
                 icon: Icons.usb_outlined,
-                title: "未发现 USB 设备",
-                message: "插入 MicroPython 开发板后，Pyrite IDE 会自动刷新设备列表。",
-                actionLabel: "刷新设备列表",
+                title: I18nKey.devicesEmptyUsbTitle,
+                message: I18nKey.devicesEmptyUsbMessage,
+                actionLabel: I18nKey.devicesRefreshUsb,
                 onAction: () =>
                     ref.read(androidUsbSerialProvider.notifier).refresh(),
               ),
@@ -99,7 +102,7 @@ class _ToolsState extends ConsumerState<Tools> {
                               .connectPort(port);
                         },
                         icon: const Icon(Icons.power_settings_new),
-                        label: const Text("连接此设备"),
+                        label: const UseText(I18nKey.devicesConnectUsb),
                       ),
                     ),
                     buildDetailListTile(
@@ -161,8 +164,8 @@ class _ToolsState extends ConsumerState<Tools> {
             ),
           SliverToBoxAdapter(
             child: PaneHeader(
-              title: "可用串口",
-              subtitle: "选择开发板对应的串口连接到 REPL",
+              title: I18nKey.devicesAvailableSerialTitle,
+              subtitle: I18nKey.devicesAvailableSerialSubtitle,
               leadingIcon: Icons.usb,
               compact: widget.compact,
             ),
@@ -172,9 +175,9 @@ class _ToolsState extends ConsumerState<Tools> {
               hasScrollBody: false,
               child: WorkspaceEmptyState(
                 icon: Icons.usb_outlined,
-                title: "未发现串口",
-                message: "插入 MicroPython 开发板，或检查系统串口权限后再试。",
-                actionLabel: "刷新串口列表",
+                title: I18nKey.devicesEmptySerialTitle,
+                message: I18nKey.devicesEmptySerialMessage,
+                actionLabel: I18nKey.devicesRefreshSerial,
                 onAction: () =>
                     ref.read(desktopUsbSerialProvider.notifier).refresh(),
               ),
@@ -204,7 +207,7 @@ class _ToolsState extends ConsumerState<Tools> {
                               .connectPort(portInfo.path);
                         },
                         icon: const Icon(Icons.power_settings_new),
-                        label: const Text("连接此串口"),
+                        label: const UseText(I18nKey.devicesConnectSerial),
                       ),
                     ),
                     buildDetailListTile(
@@ -259,14 +262,16 @@ class _ToolsState extends ConsumerState<Tools> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      isConnected ? "设备已连接" : "暂未连接设备",
+                    UseText(
+                      isConnected
+                          ? I18nKey.devicesConnected
+                          : I18nKey.devicesDisconnected,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    Text(
+                    UseText(
                       isConnected
-                          ? selectedPortName ?? "已建立串口连接"
-                          : "选择下方串口后，REPL 与文件同步会使用该设备。",
+                          ? selectedPortName ?? I18nKey.devicesSerialConnected
+                          : I18nKey.devicesConnectionHint,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: isConnected
                             ? scheme.onPrimaryContainer
@@ -280,7 +285,12 @@ class _ToolsState extends ConsumerState<Tools> {
                 Padding(
                   padding: const EdgeInsetsDirectional.only(end: 4),
                   child: Tooltip(
-                    message: showDeviceStatus ? "收起设备状态" : "查看设备状态",
+                    message: translateForWidget(
+                      ref,
+                      showDeviceStatus
+                          ? I18nKey.devicesHideStatus
+                          : I18nKey.devicesShowStatus,
+                    ),
                     child: IconButton(
                       onPressed: onDeviceStatus,
                       icon: Icon(
@@ -301,7 +311,7 @@ class _ToolsState extends ConsumerState<Tools> {
                 TextButton.icon(
                   onPressed: onDisconnect,
                   icon: const Icon(Icons.link_off, size: 18),
-                  label: const Text("断开"),
+                  label: const UseText(I18nKey.devicesDisconnect),
                 ),
             ],
           ),
@@ -314,7 +324,7 @@ class _ToolsState extends ConsumerState<Tools> {
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
-      title: Text(value ?? "未知"),
+      title: UseText(value ?? I18nKey.devicesUnknown),
       subtitle: Text(name),
     );
   }

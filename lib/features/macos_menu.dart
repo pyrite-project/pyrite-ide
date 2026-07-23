@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
@@ -19,6 +21,7 @@ class MacOSMenu extends ConsumerWidget {
   }
 
   List<PlatformMenuItem> _build(BuildContext context, WidgetRef ref) {
+    String t(I18nKey key) => translateForWidget(ref, key);
     return [
       PlatformMenu(
         label: appName,
@@ -38,12 +41,12 @@ class MacOSMenu extends ConsumerWidget {
         ],
       ),
       PlatformMenu(
-        label: '文件',
+        label: t(I18nKey.menuFile),
         menus: [
           PlatformMenuItemGroup(
             members: [
               PlatformMenuItem(
-                label: '新建文件',
+                label: t(I18nKey.menuNewFile),
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyN,
                   meta: true,
@@ -53,7 +56,7 @@ class MacOSMenu extends ConsumerWidget {
                     .createFile(),
               ),
               PlatformMenuItem(
-                label: '打开文件',
+                label: t(I18nKey.menuOpenFile),
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyO,
                   meta: true,
@@ -63,12 +66,12 @@ class MacOSMenu extends ConsumerWidget {
                     .openFile(context),
               ),
               PlatformMenuItem(
-                label: '打开文件夹',
+                label: t(I18nKey.menuOpenFolder),
                 onSelected: () =>
                     ref.read(localFileItemsProvider.notifier).openFolder(),
               ),
               PlatformMenuItem(
-                label: "保存当前文件",
+                label: t(I18nKey.menuSaveCurrentFile),
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyS,
                   meta: true,
@@ -77,7 +80,7 @@ class MacOSMenu extends ConsumerWidget {
                     ref.read(fileProvider.notifier).saveCurrentFile(),
               ),
               PlatformMenuItem(
-                label: "另存为",
+                label: t(I18nKey.menuSaveAs),
                 shortcut: const SingleActivator(
                   LogicalKeyboardKey.keyS,
                   meta: true,
@@ -91,10 +94,10 @@ class MacOSMenu extends ConsumerWidget {
         ],
       ),
       PlatformMenu(
-        label: '编辑',
+        label: t(I18nKey.menuEdit),
         menus: [
           PlatformMenuItem(
-            label: "剪切",
+            label: t(I18nKey.menuCut),
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyX,
               meta: true,
@@ -102,7 +105,7 @@ class MacOSMenu extends ConsumerWidget {
             onSelected: ref.read(editorControllerMapProvider.notifier).cut,
           ),
           PlatformMenuItem(
-            label: "复制",
+            label: t(I18nKey.menuCopy),
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyC,
               meta: true,
@@ -110,7 +113,7 @@ class MacOSMenu extends ConsumerWidget {
             onSelected: ref.read(editorControllerMapProvider.notifier).copy,
           ),
           PlatformMenuItem(
-            label: "粘贴",
+            label: t(I18nKey.menuPaste),
             shortcut: const SingleActivator(
               LogicalKeyboardKey.keyV,
               meta: true,
@@ -120,27 +123,27 @@ class MacOSMenu extends ConsumerWidget {
         ],
       ),
       PlatformMenu(
-        label: '视图',
+        label: t(I18nKey.menuView),
         menus: [
           PlatformMenuItem(
-            label: "切换“功能”开启状态",
+            label: t(I18nKey.menuToggleFunctionPanel),
             onSelected: () => ref.read(functionPageShow.notifier).state = !ref
                 .read(functionPageShow),
           ),
           PlatformMenuItem(
-            label: "切换“控制台”开启状态",
+            label: t(I18nKey.menuToggleConsolePanel),
             onSelected: () => ref.read(consolePageShow.notifier).state = !ref
                 .read(consolePageShow),
           ),
           PlatformMenuItem(
-            label: "切换“拓展”开启状态",
+            label: t(I18nKey.menuToggleExpansionPanel),
             onSelected: () => ref.read(expansionPageShow.notifier).state = !ref
                 .read(expansionPageShow),
           ),
         ],
       ),
       PlatformMenu(
-        label: '窗口',
+        label: t(I18nKey.menuWindow),
         menus: const [
           PlatformProvidedMenuItem(
             type: PlatformProvidedMenuItemType.minimizeWindow,

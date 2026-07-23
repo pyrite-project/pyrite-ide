@@ -2,8 +2,11 @@ import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
@@ -19,14 +22,15 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   final Ref ref;
   VoidCallback? onUnsavedChange;
 
-  TabbedViewControllerNotifier(this.ref) : super(_buildTabbedViewController());
+  TabbedViewControllerNotifier(this.ref)
+    : super(_buildTabbedViewController(ref));
 
-  static TabbedViewController _buildTabbedViewController() {
+  static TabbedViewController _buildTabbedViewController(Ref ref) {
     return TabbedViewController([
       TabData(
         closable: false,
         value: TabDataValue(type: "page", filePath: "welcome"),
-        text: "欢迎   ",
+        text: "${translate(ref, I18nKey.editorWelcomeTab)}   ",
         content: EditorWelcome(),
         leading: (context, status) => Padding(
           padding: EdgeInsetsGeometry.directional(
@@ -156,6 +160,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
+      refreshFileTabTitles(state.tabs);
       state = TabbedViewController(List.from(state.tabs));
       state.selectTab(newTab);
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
@@ -203,6 +208,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
+      refreshFileTabTitles(state.tabs);
 
       pendingUploadProviderMap[file.path] = StateProvider((ref) => null);
       pendingDownloadProviderMap[file.path] = StateProvider((ref) => null);
@@ -228,7 +234,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     required String patch,
   }) {
     final tabId = 'git-diff:${staged ? 'staged' : 'unstaged'}:$filePath';
-    final tabTitle = _gitDiffTabTitle(filePath, staged);
+    final tabTitle = _gitDiffTabTitle(ref, filePath, staged);
 
     for (final tab in state.tabs) {
       final value = tab.value;
@@ -286,6 +292,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void afterTabClose(int index, TabData tabData) async {
     final value = tabData.value;
+    refreshFileTabTitles(state.tabs);
     TabbedViewController newController = TabbedViewController(
       List.from(state.tabs),
     );
@@ -332,7 +339,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   ) async {
     final List<TabData> tabs = [];
 
-    tabs.addAll(_buildTabbedViewController().tabs);
+    tabs.addAll(_buildTabbedViewController(ref).tabs);
 
     for (final persisted in persistedTabs) {
       final file = File(persisted.filePath);
@@ -380,6 +387,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
     }
 
+    refreshFileTabTitles(tabs);
     final newController = TabbedViewController(tabs);
     if (selectedIndex > 0 && selectedIndex < tabs.length) {
       newController.selectedIndex = selectedIndex;
@@ -388,9 +396,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   }
 }
 
-String _gitDiffTabTitle(String filePath, bool staged) {
+String _gitDiffTabTitle(Ref ref, String filePath, bool staged) {
   final fileName = filePath.split(RegExp(r'[\\/]')).last;
-  final sideLabel = staged ? '已暂存' : '更改';
+  final sideLabel = staged
+      ? translate(ref, I18nKey.gitStageStaged)
+      : translate(ref, I18nKey.gitChanges);
   return '$fileName · $sideLabel';
 }
 

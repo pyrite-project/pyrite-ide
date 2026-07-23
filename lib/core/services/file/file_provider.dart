@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -18,6 +20,7 @@ import 'package:pyrite_ide/core/services/file/local_utils.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
 import 'package:tabbed_view/tabbed_view.dart';
@@ -48,6 +51,14 @@ String _localSourceBasename(String sourcePath) {
 class FileNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   FileNotifier(this.ref) : super(null);
+
+  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+    var value = translate(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
+    }
+    return value;
+  }
 
   void setDirectory(Directory dir) {
     state = dir;
@@ -212,7 +223,7 @@ class FileNotifier extends StateNotifier<Directory?> {
   Future<void> deleteSelectedLocalItems(BuildContext context) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, "先选择一个本地文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
@@ -224,7 +235,12 @@ class FileNotifier extends StateNotifier<Directory?> {
       }
     }
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-    showEditorSnackBar(context, "已删除 ${nodes.length} 个本地项目");
+    showEditorSnackBar(
+      context,
+      _tr(I18nKey.fileMessageDeletedLocalItems, {
+        'count': nodes.length.toString(),
+      }),
+    );
   }
 
   Future<void> uploadSelectedLocalItems(
@@ -233,7 +249,7 @@ class FileNotifier extends StateNotifier<Directory?> {
   }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, "先选择一个本地文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
@@ -267,11 +283,14 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, "已取消上传");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledUpload));
               return;
             case FileConflictAction.showDiff:
               if (!canShowDiff) {
-                showEditorSnackBar(context, "无法展示文件夹差异");
+                showEditorSnackBar(
+                  context,
+                  _tr(I18nKey.fileMessageCannotShowFolderDiff),
+                );
                 return;
               }
               final shown = await _showUploadDiff(
@@ -280,7 +299,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 targetPath: targetPath,
               );
               if (!shown) {
-                showEditorSnackBar(context, "无法展示差异");
+                showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowDiff));
               }
               return;
             case FileConflictAction.skip:
@@ -311,7 +330,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 direction: FileTransferDirection.upload,
                 scope: FileTransferScope.file,
                 totalFiles: nodes.length,
-                message: '准备上传文件',
+                message: _tr(I18nKey.fileTransferPrepareUploadFile),
               );
           await ref
               .read(boardProvider.notifier)
@@ -329,10 +348,23 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '上传完成：$uploaded 个，跳过：$skipped 个');
-      showEditorSnackBar(context, "上传完成：$uploaded 个，跳过：$skipped 个");
+          .complete(
+            message: _tr(I18nKey.fileMessageUploadComplete, {
+              'done': uploaded.toString(),
+              'skipped': skipped.toString(),
+            }),
+          );
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageUploadComplete, {
+          'done': uploaded.toString(),
+          'skipped': skipped.toString(),
+        }),
+      );
     } catch (error) {
-      ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -370,10 +402,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, "已取消上传");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledUpload));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, "无法展示差异");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowDiff));
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -403,7 +435,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 direction: FileTransferDirection.upload,
                 scope: FileTransferScope.file,
                 totalFiles: sourcePaths.length,
-                message: '准备上传文件',
+                message: _tr(I18nKey.fileTransferPrepareUploadFile),
               );
           await ref
               .read(boardProvider.notifier)
@@ -421,10 +453,23 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '上传完成：$uploaded 个，跳过：$skipped 个');
-      showEditorSnackBar(context, "上传完成：$uploaded 个，跳过：$skipped 个");
+          .complete(
+            message: _tr(I18nKey.fileMessageUploadComplete, {
+              'done': uploaded.toString(),
+              'skipped': skipped.toString(),
+            }),
+          );
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageUploadComplete, {
+          'done': uploaded.toString(),
+          'skipped': skipped.toString(),
+        }),
+      );
     } catch (error) {
-      ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -437,7 +482,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     if (sourcePaths.isEmpty) return;
     final localWorkspace = state;
     if (localWorkspace == null) {
-      showEditorSnackBar(context, "先打开一个本地项目");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageOpenLocalProject));
       return;
     }
 
@@ -453,7 +498,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           direction: FileTransferDirection.download,
           scope: FileTransferScope.folder,
           totalFiles: sourcePaths.length,
-          message: '准备导入文件',
+          message: _tr(I18nKey.fileTransferPrepareImportFile),
         );
 
     try {
@@ -475,10 +520,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, "已取消导入");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledImport));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, "无法展示差异");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowDiff));
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -517,10 +562,23 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '导入完成：$imported 个，跳过：$skipped 个');
-      showEditorSnackBar(context, "导入完成：$imported 个，跳过：$skipped 个");
+          .complete(
+            message: _tr(I18nKey.fileMessageImportComplete, {
+              'done': imported.toString(),
+              'skipped': skipped.toString(),
+            }),
+          );
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageImportComplete, {
+          'done': imported.toString(),
+          'skipped': skipped.toString(),
+        }),
+      );
     } catch (error) {
-      ref.read(fileTransferProgressProvider.notifier).fail('导入失败：$error');
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .fail(_tr(I18nKey.fileMessageImportFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -535,7 +593,10 @@ class FileNotifier extends StateNotifier<Directory?> {
         .toList(growable: false);
     if (movableNodes.isEmpty) return;
     if (!await Directory(targetFolder).exists()) {
-      showEditorSnackBar(context, "目标文件夹不存在：$targetFolder");
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageTargetFolderMissing, {'path': targetFolder}),
+      );
       return;
     }
 
@@ -550,7 +611,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               ? FileTransferScope.folder
               : FileTransferScope.file,
           totalFiles: movableNodes.length,
-          message: '准备移动文件',
+          message: _tr(I18nKey.fileTransferPrepareMoveFile),
         );
 
     try {
@@ -564,7 +625,10 @@ class FileNotifier extends StateNotifier<Directory?> {
         }
         if (node.data is FolderItem &&
             _isLocalPathInside(targetFolder, sourcePath)) {
-          showEditorSnackBar(context, "不能将文件夹移动到自身或子文件夹中");
+          showEditorSnackBar(
+            context,
+            _tr(I18nKey.fileMessageCannotMoveFolderIntoSelf),
+          );
           skipped++;
           continue;
         }
@@ -582,10 +646,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, "已取消移动");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledMove));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, "无法展示移动差异");
+              showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowMoveDiff));
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -622,10 +686,23 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '移动完成：$moved 个，跳过：$skipped 个');
-      showEditorSnackBar(context, "移动完成：$moved 个，跳过：$skipped 个");
+          .complete(
+            message: _tr(I18nKey.fileMessageMoveComplete, {
+              'done': moved.toString(),
+              'skipped': skipped.toString(),
+            }),
+          );
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageMoveComplete, {
+          'done': moved.toString(),
+          'skipped': skipped.toString(),
+        }),
+      );
     } catch (error) {
-      ref.read(fileTransferProgressProvider.notifier).fail('移动失败：$error');
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .fail(_tr(I18nKey.fileMessageMoveFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -787,7 +864,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final selected = selectedFile ?? selectedFolder;
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, "先选择一个本地文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
@@ -808,7 +885,10 @@ class FileNotifier extends StateNotifier<Directory?> {
       } on FileSystemException {
         await _uploadLocalFileBytes(sourcePath, targetPath);
         if (!context.mounted) return;
-        showEditorSnackBar(context, "已上传到设备：$targetPath");
+        showEditorSnackBar(
+          context,
+          _tr(I18nKey.fileMessageUploadedToDevice, {'path': targetPath}),
+        );
         return;
       }
 
@@ -829,7 +909,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             isUpload: true,
           );
           if (!confirmed) {
-            showEditorSnackBar(context, "已取消上传");
+            showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledUpload));
             return;
           }
         } else {
@@ -849,7 +929,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               direction: FileTransferDirection.upload,
               scope: FileTransferScope.file,
               totalFiles: 1,
-              message: '准备上传文件',
+              message: _tr(I18nKey.fileTransferPrepareUploadFile),
             );
         await ref
             .read(boardProvider.notifier)
@@ -863,13 +943,22 @@ class FileNotifier extends StateNotifier<Directory?> {
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: '已上传到设备：$targetPath');
+            .complete(
+              message: _tr(I18nKey.fileMessageUploadedToDevice, {
+                'path': targetPath,
+              }),
+            );
       } catch (error) {
-        ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
         rethrow;
       }
 
-      showEditorSnackBar(context, "已上传到设备：$targetPath");
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageUploadedToDevice, {'path': targetPath}),
+      );
     } else if (selected?.data is FolderItem) {
       final targetPath = buildBoardUploadTargetPath(
         sourcePath: selected!.id,
@@ -882,13 +971,22 @@ class FileNotifier extends StateNotifier<Directory?> {
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: '已上传文件夹到设备：$targetPath');
+            .complete(
+              message: _tr(I18nKey.fileMessageUploadedFolderToDevice, {
+                'path': targetPath,
+              }),
+            );
       } catch (error) {
-        ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
         rethrow;
       }
 
-      showEditorSnackBar(context, "已上传文件夹到设备：$targetPath");
+      showEditorSnackBar(
+        context,
+        _tr(I18nKey.fileMessageUploadedFolderToDevice, {'path': targetPath}),
+      );
     }
   }
 
@@ -905,7 +1003,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final selected = selectedFile ?? selectedFolder;
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, "先选择一个本地文件或文件夹");
+      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
@@ -933,14 +1031,17 @@ class FileNotifier extends StateNotifier<Directory?> {
           context: context,
           builder: (context) => AlertDialog(
             icon: const Icon(Icons.file_upload_outlined),
-            title: const Text("本地文件内容不一致或编辑器内的更改未保存"),
+            title: const UseText(I18nKey.dialogLocalContentMismatchTitle),
             content: Text(
-              "文件“${selected?.id ?? selectedTab?.value.filePath}”在编辑器中的内容与实际文件内容不一致，可能你做出了更改但没有保存或被外部程序所更改\n为了确保正确展示本地文件与板载文件间的差异，必须选择其一覆盖：",
+              translate(ref, I18nKey.dialogContentMismatchMessage).replaceAll(
+                '{path}',
+                selected?.id ?? selectedTab?.value.filePath ?? '',
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => context.pop(false),
-                child: const Text("取消上传"),
+                child: const UseText(I18nKey.dialogCancelUpload),
               ),
               TextButton(
                 onPressed: () {
@@ -948,7 +1049,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                   _uploadSelectedLocalItem(context, selectedTab: selectedTab);
                   context.pop();
                 },
-                child: const Text("编辑器中内容"),
+                child: const UseText(I18nKey.dialogEditorContent),
               ),
               FilledButton(
                 style: FilledButton.styleFrom(
@@ -965,7 +1066,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                   _uploadSelectedLocalItem(context, selectedTab: selectedTab);
                   context.pop();
                 },
-                child: const Text("实际内容"),
+                child: const UseText(I18nKey.dialogActualContent),
               ),
             ],
           ),
@@ -990,7 +1091,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             direction: FileTransferDirection.upload,
             scope: FileTransferScope.file,
             totalFiles: 1,
-            message: '准备上传文件',
+            message: _tr(I18nKey.fileTransferPrepareUploadFile),
           );
       await ref
           .read(boardProvider.notifier)
@@ -1004,9 +1105,15 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
-          .complete(message: '已上传到设备：$targetPath');
+          .complete(
+            message: _tr(I18nKey.fileMessageUploadedToDevice, {
+              'path': targetPath,
+            }),
+          );
     } catch (error) {
-      ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$error');
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
       rethrow;
     }
   }
