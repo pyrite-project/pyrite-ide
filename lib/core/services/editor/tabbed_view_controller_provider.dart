@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
@@ -159,6 +160,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
+      refreshFileTabTitles(state.tabs);
       state = TabbedViewController(List.from(state.tabs));
       state.selectTab(newTab);
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
@@ -206,6 +208,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
+      refreshFileTabTitles(state.tabs);
 
       pendingUploadProviderMap[file.path] = StateProvider((ref) => null);
       pendingDownloadProviderMap[file.path] = StateProvider((ref) => null);
@@ -289,6 +292,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void afterTabClose(int index, TabData tabData) async {
     final value = tabData.value;
+    refreshFileTabTitles(state.tabs);
     TabbedViewController newController = TabbedViewController(
       List.from(state.tabs),
     );
@@ -383,6 +387,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
     }
 
+    refreshFileTabTitles(tabs);
     final newController = TabbedViewController(tabs);
     if (selectedIndex > 0 && selectedIndex < tabs.length) {
       newController.selectedIndex = selectedIndex;
