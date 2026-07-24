@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
@@ -8,8 +9,15 @@ import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 const Map<String, String> editorTextFonts = {
   "JetBrains Mono": "JetBrainsMono",
   "JetBrains Maple Mono": "JetBrainsMapleMono",
-  "自定义": "",
+  "custom": "",
 };
+
+String getFontDisplayName(String name) {
+  if (name == "custom") {
+    return I18nKey.settingsFontCustom.fallback;
+  }
+  return name;
+}
 
 final StateProvider<String> editorTextFontProvider = StateProvider<String>(
   (ref) => "JetBrains Mono",
@@ -32,10 +40,10 @@ void customizationEditorTextFont() async {
   ByteData data0 = await data;
 
   if (data0 != _null) {
-    final FontLoader font = FontLoader("自定义");
+    final FontLoader font = FontLoader("custom");
     font.addFont(data);
     await font.load();
-    container.read(editorTextFontProvider.notifier).state = "自定义";
+    container.read(editorTextFontProvider.notifier).state = "custom";
   }
 }
 
@@ -103,9 +111,20 @@ StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(
 );
 
 const Map<String, String> uploadConfirmStyles = {
-  "浮动工具栏": "toolbar",
-  "确认对话框": "dialog",
+  "toolbar": "toolbar",
+  "dialog": "dialog",
 };
+
+String getUploadConfirmStyleDisplayName(String key) {
+  switch (key) {
+    case "toolbar":
+      return I18nKey.settingsUploadConfirmToolbar.fallback;
+    case "dialog":
+      return I18nKey.settingsUploadConfirmDialog.fallback;
+    default:
+      return key;
+  }
+}
 
 StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
   (ref) => "toolbar",

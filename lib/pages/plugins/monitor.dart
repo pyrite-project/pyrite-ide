@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 
@@ -13,11 +15,11 @@ class PermissionMonitor extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('权限监控'),
+        title: Text(translateForWidget(ref, I18nKey.pluginsMonitorTitle)),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),
-            tooltip: '清除日志',
+            tooltip: translateForWidget(ref, I18nKey.pluginsMonitorClearLog),
             onPressed: () => log.clear(),
           ),
         ],
@@ -38,7 +40,9 @@ class _PermissionLogList extends ConsumerWidget {
     final entries = ref.watch(permissionLogServiceProvider).entries;
 
     if (entries.isEmpty) {
-      return const Center(child: Text('暂无权限日志'));
+      return Center(
+        child: Text(translateForWidget(ref, I18nKey.pluginsMonitorEmpty)),
+      );
     }
 
     return ListView.builder(
@@ -55,7 +59,12 @@ class _PermissionLogList extends ConsumerWidget {
             entry.command,
             style: const TextStyle(fontFamily: 'monospace'),
           ),
-          subtitle: Text('需要: ${entry.required}'),
+          subtitle: Text(
+            translateForWidget(
+              ref,
+              I18nKey.pluginsMonitorRequired,
+            ).replaceAll('{resource}', entry.required),
+          ),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,

@@ -252,14 +252,14 @@ class EditorSettings extends ConsumerWidget {
       children.add(
         SimpleDialogOption(
           child: ListTile(
-            title: Text(name),
+            title: Text(getFontDisplayName(name)),
             subtitle: Text(
               "print('Pyrite IDE')",
               style: TextStyle(fontFamily: value.isEmpty ? null : value),
             ),
             trailing: selected ? const Icon(Icons.check) : null,
             minTileHeight: 0,
-            onTap: (name == "自定义")
+            onTap: (name == "custom")
                 ? () {
                     customizationEditorTextFont();
                     context.pop(name);

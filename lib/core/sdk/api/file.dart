@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
@@ -41,6 +43,14 @@ abstract class SdkFileCommands {
 class SdkFile extends StateNotifier<PluginRunManager?> {
   final Ref ref;
   SdkFile(this.ref) : super(null);
+
+  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+    var value = translate(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
+    }
+    return value;
+  }
 
   void bind(PluginRunManager runManager) {
     state = runManager;
@@ -471,10 +481,10 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
         await backend.finishWriteFile(boardPath);
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: '已上传到设备：$boardPath');
+            .complete(message: _tr(I18nKey.fileMessageUploadedToDevice, {'path': boardPath}));
         _respondOk(envelope, respond, data: true);
       } catch (e) {
-        ref.read(fileTransferProgressProvider.notifier).fail('上传失败：$e');
+        ref.read(fileTransferProgressProvider.notifier).fail(_tr(I18nKey.fileMessageUploadFailed, {'error': e.toString()}));
         _respondOk(envelope, respond, data: false);
       }
     } else {

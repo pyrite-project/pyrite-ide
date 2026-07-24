@@ -1270,7 +1270,32 @@ enum I18nKey {
     'settings.lsp.stubs.missing_profile',
     '未找到 profile: {profile}',
   ),
-  fileActionDragSelected('file.action.drag_selected', '拖拽选中项');
+  fileActionDragSelected('file.action.drag_selected', '拖拽选中项'),
+  tabUnsavedDialogTitle('tab.unsaved_dialog.title', '提示'),
+  tabUnsavedDialogContent('tab.unsaved_dialog.content', '当前文件已经修改，是否保存更改？'),
+  tabUnsavedDialogDiscard('tab.unsaved_dialog.discard', '不保存'),
+  tabUnsavedDialogSave('tab.unsaved_dialog.save', '保存'),
+  tabUnsavedDialogCancel('tab.unsaved_dialog.cancel', '取消'),
+  tabSavedCurrentFile('tab.message.saved_current_file', '已保存当前文件'),
+  pluginsPermUi('plugins.permission.ui', '界面'),
+  pluginsPermFile('plugins.permission.file', '文件'),
+  pluginsPermBoard('plugins.permission.board', '开发板'),
+  pluginsPermSerial('plugins.permission.serial', '串口'),
+  pluginsPermEditor('plugins.permission.editor', '编辑器'),
+  pluginsPermPersistence('plugins.permission.persistence', '持久化'),
+  pluginsPermTab('plugins.permission.tab', '标签页'),
+  pluginsPermSettings('plugins.permission.settings', '设置'),
+  pluginsPermData('plugins.permission.data', '数据'),
+  pluginsPermDialog('plugins.permission.dialog', '对话框'),
+  pluginsMonitorTitle('plugins.monitor.title', '权限监控'),
+  pluginsMonitorClearLog('plugins.monitor.clear_log', '清除日志'),
+  pluginsMonitorEmpty('plugins.monitor.empty', '暂无权限日志'),
+  pluginsMonitorRequired('plugins.monitor.required', '需要：{resource}'),
+  settingsFontCustom('settings.font.custom', '自定义'),
+  settingsUploadConfirmToolbar('settings.upload_confirm.toolbar', '浮动工具栏'),
+  settingsUploadConfirmDialog('settings.upload_confirm.dialog', '确认对话框'),
+  expansionWelcomeTab('expansion.welcome.tab', '欢迎'),
+  expansionWelcomeContent('expansion.welcome.content', '欢迎使用拓展页');
 
   const I18nKey(this.key, this.fallback);
 
