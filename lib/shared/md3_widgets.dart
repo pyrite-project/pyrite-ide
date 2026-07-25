@@ -32,50 +32,46 @@ class PaneHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      child: Container(
-        constraints: BoxConstraints(
-          minHeight: compact ? 44 : (subtitle == null ? 44 : 56),
-        ),
-        padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
-
-        child: Row(
-          children: [
-            if (leadingIcon != null) ...[
-              Icon(leadingIcon, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+    return Container(
+      constraints: BoxConstraints(
+        minHeight: 40,
+      ),
+      padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
+    
+      child: Row(
+        children: [
+          if (leadingIcon != null) ...[
+            Icon(leadingIcon, size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                UseText(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  
+                ),
+                if (subtitle != null && !compact)
                   UseText(
-                    title,
+                    subtitle!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
-                  if (subtitle != null && !compact)
-                    UseText(
-                      subtitle!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-            if (actions.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Wrap(spacing: 2, children: actions),
-            ],
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Wrap(spacing: 2, children: actions),
           ],
-        ),
+        ],
       ),
     );
   }
