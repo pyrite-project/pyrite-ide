@@ -457,13 +457,15 @@ class MobileView extends ConsumerWidget {
         ref.read(mobileSelectedIndex.notifier).state = routeIndex;
       }
     });
-    return Scaffold(
-      drawer: mobileNavigationDrawer(context, ref),
-      body: Column(
-        children: [
-          Expanded(child: child),
-          EditorToolsBar(showNavigationDrawerButton: true),
-        ],
+    return SafeArea(
+      child: Scaffold(
+        drawer: mobileNavigationDrawer(context, ref),
+        body: Column(
+          children: [
+            Expanded(child: child),
+            EditorToolsBar(showNavigationDrawerButton: true),
+          ],
+        ),
       ),
     );
   }
@@ -547,19 +549,21 @@ class TabletView extends ConsumerWidget {
         ref.read(tabletSelectedIndex.notifier).state = routeIndex;
       }
     });
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                railNavigationBar(context, ref),
-                Expanded(child: buildVerticalWorkspace(context, ref, child)),
-              ],
+    return SafeArea(
+      child: Scaffold(
+        body: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  railNavigationBar(context, ref),
+                  Expanded(child: buildVerticalWorkspace(context, ref, child)),
+                ],
+              ),
             ),
-          ),
-          const EditorToolsBar(),
-        ],
+            const EditorToolsBar(),
+          ],
+        ),
       ),
     );
   }
@@ -607,19 +611,21 @@ class DesktopView extends ConsumerWidget {
       }
       ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
     });
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                railNavigationBar(context, ref),
-                Expanded(child: pageStructure(context, ref)),
-              ],
+    return SafeArea(
+      child: Scaffold(
+        body: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  railNavigationBar(context, ref),
+                  Expanded(child: pageStructure(context, ref)),
+                ],
+              ),
             ),
-          ),
-          const EditorToolsBar(),
-        ],
+            const EditorToolsBar(),
+          ],
+        ),
       ),
     );
   }
