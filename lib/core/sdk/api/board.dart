@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
@@ -35,6 +37,14 @@ abstract class SdkBoardCommands {
 class SdkBoard extends StateNotifier<PluginRunManager?> {
   final Ref ref;
   SdkBoard(this.ref) : super(null);
+
+  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+    var value = translate(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
+    }
+    return value;
+  }
 
   void bind(PluginRunManager runManager) {
     state = runManager;
@@ -457,10 +467,10 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
         await file.writeAsBytes(bytes);
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: '已下载到本地：$localPath');
+            .complete(message: _tr(I18nKey.fileMessageDownloadedToLocal, {'path': localPath}));
         _respondOk(envelope, respond, data: true);
       } catch (e) {
-        ref.read(fileTransferProgressProvider.notifier).fail('下载失败：$e');
+        ref.read(fileTransferProgressProvider.notifier).fail(_tr(I18nKey.fileMessageDownloadFailed, {'error': e.toString()}));
         _respondOk(envelope, respond, data: false);
       }
     } else {

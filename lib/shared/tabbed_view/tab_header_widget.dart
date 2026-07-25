@@ -1,9 +1,12 @@
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
@@ -204,51 +207,65 @@ class TabHeaderWidget extends StatelessWidget {
           if (isUnsaved) {
             showDialog(
               context: context,
-              builder: (context) => AlertDialog(
-                title: Text("提示"),
-                content: Text("当前文件已经修改，是否保存更改？"),
-                actions: [
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                      foregroundColor: Theme.of(context).colorScheme.onError,
+              builder: (dialogContext) {
+                final container = ProviderScope.containerOf(dialogContext);
+                final registry = container.read(dataRegistryProvider);
+                final locale = container.read(activeLocaleProvider);
+                String tr(I18nKey key) =>
+                    translateFromRegistry(registry, locale, key);
+                return AlertDialog(
+                  title: Text(tr(I18nKey.tabUnsavedDialogTitle)),
+                  content: Text(tr(I18nKey.tabUnsavedDialogContent)),
+                  actions: [
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Theme.of(
+                          dialogContext,
+                        ).colorScheme.error,
+                        foregroundColor: Theme.of(
+                          dialogContext,
+                        ).colorScheme.onError,
+                      ),
+                      onPressed: () async {
+                        if (!dialogContext.mounted) return;
+                        dialogContext.pop();
+                        await _onClose(dialogContext, index);
+                      },
+                      child: Text(tr(I18nKey.tabUnsavedDialogDiscard)),
                     ),
-                    onPressed: () async {
-                      if (!context.mounted) return;
-                      context.pop();
-                      await _onClose(context, index);
-                    },
-                    child: Text("不保存"),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      await container
-                          .read(fileProvider.notifier)
-                          .saveCurrentFile();
+                    TextButton(
+                      onPressed: () async {
+                        await container
+                            .read(fileProvider.notifier)
+                            .saveCurrentFile();
 
-                      container
-                          .read(ideMessageProvider.notifier)
-                          .success("已保存当前文件");
-
-                      if (identical(
-                        provider.controller,
-                        container.read(tabbedViewControllerProvider),
-                      )) {
                         container
-                            .read(tabbedViewControllerProvider.notifier)
-                            .afterFileSave();
-                      }
-                      if (!context.mounted) return;
-                      // ignore: use_build_context_synchronously
-                      context.pop();
-                      // ignore: use_build_context_synchronously
-                      await _onClose(context, index);
-                    },
-                    child: Text("保存"),
-                  ),
-                  TextButton(onPressed: () => context.pop(), child: Text("取消")),
-                ],
-              ),
+                            .read(ideMessageProvider.notifier)
+                            .success(tr(I18nKey.tabSavedCurrentFile));
+
+                        if (identical(
+                          provider.controller,
+                          container.read(tabbedViewControllerProvider),
+                        )) {
+                          container
+                              .read(tabbedViewControllerProvider.notifier)
+                              .afterFileSave();
+                        }
+                        if (!dialogContext.mounted) return;
+                        // ignore: use_build_context_synchronously
+                        dialogContext.pop();
+                        // ignore: use_build_context_synchronously
+                        await _onClose(dialogContext, index);
+                      },
+                      child: Text(tr(I18nKey.tabUnsavedDialogSave)),
+                    ),
+                    TextButton(
+                      onPressed: () => dialogContext.pop(),
+                      child: Text(tr(I18nKey.tabUnsavedDialogCancel)),
+                    ),
+                  ],
+                );
+              },
             );
           } else {
             await _onClose(context, index);
@@ -283,11 +300,13 @@ class TabHeaderWidget extends StatelessWidget {
     if (provider.tabRemoveInterceptor == null ||
         (await provider.tabRemoveInterceptor!(context, index, tabData))) {
       onClose();
+      if (!context.mounted) return;
       // Check if the tab still exists and/or update with new index
       // if another tab has been removed
       index = provider.controller.tabs.indexOf(tabData);
       if (index != -1) {
         provider.controller.removeTab(index);
+        final container = ProviderScope.containerOf(context);
         if (identical(
           provider.controller,
           container.read(tabbedViewControllerProvider),

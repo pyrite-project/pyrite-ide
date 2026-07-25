@@ -267,17 +267,17 @@ class Plugins extends ConsumerWidget {
 
     final typeText = _pluginTypeText(ref, plugin.type);
 
-    const permLabels = {
-      'ui': '界面',
-      'file': '文件',
-      'board': '开发板',
-      'serial': '串口',
-      'editor': '编辑器',
-      'persistence': '持久化',
-      'tab': '标签页',
-      'settings': '设置',
-      'data': '数据',
-      'dialog': '对话框',
+    final permLabels = {
+      'ui': translateForWidget(ref, I18nKey.pluginsPermUi),
+      'file': translateForWidget(ref, I18nKey.pluginsPermFile),
+      'board': translateForWidget(ref, I18nKey.pluginsPermBoard),
+      'serial': translateForWidget(ref, I18nKey.pluginsPermSerial),
+      'editor': translateForWidget(ref, I18nKey.pluginsPermEditor),
+      'persistence': translateForWidget(ref, I18nKey.pluginsPermPersistence),
+      'tab': translateForWidget(ref, I18nKey.pluginsPermTab),
+      'settings': translateForWidget(ref, I18nKey.pluginsPermSettings),
+      'data': translateForWidget(ref, I18nKey.pluginsPermData),
+      'dialog': translateForWidget(ref, I18nKey.pluginsPermDialog),
     };
 
     const allResourceActions = {

@@ -93,6 +93,8 @@ class DeviceStatusPanel extends ConsumerWidget {
             },
           ),
         ),
+        SizedBox(height: 8),
+        Divider(),
       ],
     );
   }
@@ -152,7 +154,7 @@ class DeviceStatusPanel extends ConsumerWidget {
             total: status.ramTotalDisplay,
             usage: status.ramUsage,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 5),
           _buildResourceSection(
             context,
             title: "Flash",
@@ -161,16 +163,16 @@ class DeviceStatusPanel extends ConsumerWidget {
             total: status.flashTotalDisplay,
             usage: status.flashUsage,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 5),
           Divider(color: scheme.outlineVariant),
-          const SizedBox(height: 12),
+          const SizedBox(height: 5),
           _buildInfoRow(
             context,
             label: I18nKey.devicesStatusFirmware,
             value: status.firmwareVersion,
             icon: Icons.code,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           _buildInfoRow(
             context,
             label: I18nKey.devicesStatusPlatform,
@@ -209,11 +211,11 @@ class DeviceStatusPanel extends ConsumerWidget {
               title,
               style: Theme.of(
                 context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ).textTheme.titleSmall?.copyWith(),
             ),
             const Spacer(),
             Text(
-              "$used / $total",
+              "${(clamped * 100).toStringAsFixed(1)}%, $used / $total",
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
@@ -228,16 +230,6 @@ class DeviceStatusPanel extends ConsumerWidget {
             minHeight: 8,
             backgroundColor: scheme.surfaceContainerHighest,
             valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: Text(
-            "${(clamped * 100).toStringAsFixed(1)}%",
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
           ),
         ),
       ],
@@ -261,16 +253,16 @@ class DeviceStatusPanel extends ConsumerWidget {
             context,
           ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
         ),
-        const Spacer(),
+        const SizedBox(width: 6),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.end,
-            maxLines: 2,
+            maxLines: 10,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+            ).textTheme.bodyMedium?.copyWith(),
           ),
         ),
       ],

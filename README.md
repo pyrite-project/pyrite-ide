@@ -48,6 +48,14 @@ PyriteIDE 将本地项目、MicroPython 开发板与日常开发工具整合进�
 | Linux | tar.gz | 桌面终端、USB 串口、完整工作区 |
 | Android | 分 ABI APK | 移动布局、USB 串口、开发板文件 |
 
+普通用户下载对应的文件解压或安装即可使用。
+
+Linux 平台需提前安装 libmpv-dev 和 mpv：
+
+```bash
+sudo apt install libmpv-dev mpv
+```
+
 ## 快速开始
 
 ### 下载发行版
@@ -64,7 +72,7 @@ cd pyrite-ide
 flutter pub get
 ```
 
-将 `windows` 替换为 `linux`、`macos` 或可用的 Android 设备 ID。若仓库不是通过 `--recursive` 克隆，请先执行：
+若仓库不是通过 `--recursive` 克隆，请先执行：
 
 ```bash
 git submodule update --init --recursive
@@ -80,6 +88,12 @@ export SERIOUS_PYTHON_SITE_PACKAGES=".../assets/python_runtime_boot"
 
 ```bash
 dart run serious_python:main package "assets/python_runtime_boot" --platform Linux --asset "assets/python_runtime_boot.zip" --verbose
+```
+
+Linux 平台需提前安装 libmpv-dev 和 mpv：
+
+```bash
+sudo apt install libmpv-dev mpv
 ```
 
 运行命令开始编译：

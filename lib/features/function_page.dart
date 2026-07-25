@@ -180,7 +180,7 @@ class _BottomPanelTabs extends ConsumerWidget {
             selectedIndex: selectedIndex,
           ),
           _BottomPanelTab(
-            label: I18nKey.bottomPanelOutputTab,
+            label: I18nKey.bottomPanelLogTab,
             icon: Icons.article_outlined,
             index: 1,
             selectedIndex: selectedIndex,
@@ -457,13 +457,15 @@ class MobileView extends ConsumerWidget {
         ref.read(mobileSelectedIndex.notifier).state = routeIndex;
       }
     });
-    return Scaffold(
-      drawer: mobileNavigationDrawer(context, ref),
-      body: Column(
-        children: [
-          Expanded(child: child),
-          EditorToolsBar(showNavigationDrawerButton: true),
-        ],
+    return SafeArea(
+      child: Scaffold(
+        drawer: mobileNavigationDrawer(context, ref),
+        body: Column(
+          children: [
+            Expanded(child: child),
+            EditorToolsBar(showNavigationDrawerButton: true),
+          ],
+        ),
       ),
     );
   }
@@ -547,19 +549,21 @@ class TabletView extends ConsumerWidget {
         ref.read(tabletSelectedIndex.notifier).state = routeIndex;
       }
     });
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                railNavigationBar(context, ref),
-                Expanded(child: buildVerticalWorkspace(context, ref, child)),
-              ],
+    return SafeArea(
+      child: Scaffold(
+        body: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  railNavigationBar(context, ref),
+                  Expanded(child: buildVerticalWorkspace(context, ref, child)),
+                ],
+              ),
             ),
-          ),
-          const EditorToolsBar(),
-        ],
+            const EditorToolsBar(),
+          ],
+        ),
       ),
     );
   }
@@ -607,19 +611,21 @@ class DesktopView extends ConsumerWidget {
       }
       ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
     });
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                railNavigationBar(context, ref),
-                Expanded(child: pageStructure(context, ref)),
-              ],
+    return SafeArea(
+      child: Scaffold(
+        body: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  railNavigationBar(context, ref),
+                  Expanded(child: pageStructure(context, ref)),
+                ],
+              ),
             ),
-          ),
-          const EditorToolsBar(),
-        ],
+            const EditorToolsBar(),
+          ],
+        ),
       ),
     );
   }
@@ -1117,8 +1123,15 @@ class EditorToolsBar extends ConsumerWidget {
     final percent = transfer.progress == null
         ? ''
         : ' ${(transfer.progress! * 100).round()}%';
+    final dirKey = switch (transfer.direction) {
+      FileTransferDirection.upload => I18nKey.editorToolbarUpload,
+      FileTransferDirection.download => I18nKey.editorToolbarDownload,
+      FileTransferDirection.move => I18nKey.commonMove,
+      null => I18nKey.editorToolbarUpload,
+    };
     final label =
-        transfer.message ?? '${transfer.directionLabel}$index · $file$percent';
+        transfer.message ??
+        '${translateForWidget(ref, dirKey)}$index · $file$percent';
     final color = transfer.failed ? scheme.error : scheme.primary;
 
     return Tooltip(

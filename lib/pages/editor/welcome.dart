@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
@@ -85,9 +87,16 @@ class EditorWelcome extends ConsumerWidget {
                       label: const UseText(I18nKey.editorWelcomeConnectDevice),
                     ),
                     OutlinedButton.icon(
-                      onPressed: () => ref
-                          .read(tabbedViewControllerProvider.notifier)
-                          .createFile(),
+                      onPressed: () async {
+                      final parentPath = ref.read(fileProvider)?.path ?? '';
+                      final uniquePath = await local.getUniqueFilePath(
+                        path.join(parentPath, "new_file"),
+                      );
+                      await ref
+                          .read(fileProvider.notifier)
+                          .createFile(uniquePath);
+                      context.go("/file");
+                    } ,
                       icon: const Icon(Icons.add),
                       label: const UseText(I18nKey.menuNewFile),
                     ),

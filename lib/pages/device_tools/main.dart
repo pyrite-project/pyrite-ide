@@ -55,7 +55,7 @@ class _ToolsState extends ConsumerState<Tools> {
           ),
           if (_showDeviceStatus && state.isConnected)
             SliverToBoxAdapter(
-              child: SizedBox(height: 260, child: const DeviceStatusPanel()),
+              child: SizedBox(height: 270, child: const DeviceStatusPanel()),
             ),
           SliverToBoxAdapter(
             child: PaneHeader(
@@ -160,7 +160,7 @@ class _ToolsState extends ConsumerState<Tools> {
           ),
           if (_showDeviceStatus && state.isConnected)
             SliverToBoxAdapter(
-              child: SizedBox(height: 260, child: const DeviceStatusPanel()),
+              child: SizedBox(height: 270, child: const DeviceStatusPanel()),
             ),
           SliverToBoxAdapter(
             child: PaneHeader(
