@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
@@ -90,6 +91,14 @@ class PyriteIDE extends ConsumerWidget {
       seedColor: seedColor,
       brightness: brightness,
     );
+
+    if (Platform.isAndroid) {
+    SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: scheme.surfaceContainer); 
+    SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
     return FlexColorScheme(
       colorScheme: scheme,
       useMaterial3: true,
