@@ -983,7 +983,7 @@ enum I18nKey {
   bottomPanelClearOutput('bottom_panel.output.clear', '清空输出'),
   bottomPanelConnectWebRepl('bottom_panel.repl.connect_webrepl', '连接 WebREPL'),
   bottomPanelClearTerminal('bottom_panel.repl.clear_terminal', '清空终端'),
-  bottomPanelOutputTab('bottom_panel.output.tab', '输出'),
+  bottomPanelLogTab('bottom_panel.log.tab', '日志'),
   bottomPanelTerminalTab('bottom_panel.terminal.tab', '终端'),
   bottomPanelShowFunctionPanel('bottom_panel.function.show', '显示功能面板'),
   bottomPanelHideFunctionPanel('bottom_panel.function.hide', '隐藏功能面板'),

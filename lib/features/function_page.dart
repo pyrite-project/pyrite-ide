@@ -180,7 +180,7 @@ class _BottomPanelTabs extends ConsumerWidget {
             selectedIndex: selectedIndex,
           ),
           _BottomPanelTab(
-            label: I18nKey.bottomPanelOutputTab,
+            label: I18nKey.bottomPanelLogTab,
             icon: Icons.article_outlined,
             index: 1,
             selectedIndex: selectedIndex,
