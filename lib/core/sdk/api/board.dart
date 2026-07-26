@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
@@ -37,14 +36,6 @@ abstract class SdkBoardCommands {
 class SdkBoard extends StateNotifier<PluginRunManager?> {
   final Ref ref;
   SdkBoard(this.ref) : super(null);
-
-  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
-    var value = translate(ref, key);
-    for (final entry in replacements.entries) {
-      value = value.replaceAll('{${entry.key}}', entry.value);
-    }
-    return value;
-  }
 
   void bind(PluginRunManager runManager) {
     state = runManager;
@@ -156,7 +147,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final node = ref.read(boardProvider.notifier).getFocusFileNode();
+    final node = ref.read(boardProvider).getFocusFileNode();
     _respondOk(
       envelope,
       respond,
@@ -168,7 +159,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final node = ref.read(boardProvider.notifier).getFocusFolderNode();
+    final node = ref.read(boardProvider).getFocusFolderNode();
     _respondOk(
       envelope,
       respond,
@@ -193,7 +184,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
 
     final context = appContext;
     if (context != null && context.mounted) {
-      await ref.read(boardProvider.notifier).openFile(context, filePath);
+      await ref.read(boardProvider).openFile(context, filePath);
     }
 
     _respondOk(envelope, respond);
@@ -209,7 +200,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     }
     final context = appContext;
     if (context != null && context.mounted) {
-      await ref.read(boardProvider.notifier).downloadSelectedBoardItem(context);
+      await ref.read(boardProvider).downloadSelectedBoardItem(context);
     }
     _respondOk(envelope, respond);
   }
@@ -227,7 +218,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     final newName = payload['new_name']?.toString();
 
     if (filePath != null && newName != null) {
-      await ref.read(boardProvider.notifier).rename(filePath, newName);
+      await ref.read(boardProvider).ops.rename(filePath, newName);
     }
     _respondOk(envelope, respond);
   }
@@ -244,7 +235,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     final filePath = payload['path']?.toString();
 
     if (filePath != null) {
-      await ref.read(boardProvider.notifier).deleteFile(filePath);
+      await ref.read(boardProvider).ops.deleteFile(filePath);
     }
     _respondOk(envelope, respond);
   }
@@ -261,7 +252,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     final filePath = payload['path']?.toString();
 
     if (filePath != null) {
-      await ref.read(boardProvider.notifier).deleteFolder(filePath);
+      await ref.read(boardProvider).ops.deleteFolder(filePath);
     }
     _respondOk(envelope, respond);
   }
@@ -431,46 +422,31 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
 
     if (boardPath != null && localPath != null) {
       try {
-        final backend = ref.read(boardFileBackendProvider);
         ref
             .read(fileTransferProgressProvider.notifier)
             .start(
               direction: FileTransferDirection.download,
               scope: FileTransferScope.file,
               totalFiles: 1,
-              message: '准备下载文件',
+              message: translateWithReplacements(ref,I18nKey.fileTransferPrepareDownloadFile),
             );
-        final size = await backend.getFileSize(boardPath);
-        ref
-            .read(fileTransferProgressProvider.notifier)
-            .startFile(
-              file: boardPath,
+        final bytes = await ref
+            .read(boardProvider)
+            .ops.getFileBytesWithProgress(
+              boardPath,
+              currentFile: boardPath,
               index: 1,
               totalFiles: 1,
-              bytesTotal: size,
             );
-        final builder = BytesBuilder(copy: false);
-        var offset = 0;
-        while (offset < size) {
-          final length = (size - offset) < 768 ? size - offset : 768;
-          final chunk = await backend.readFileChunk(boardPath, offset, length);
-          builder.add(chunk);
-          offset += chunk.length;
-          ref
-              .read(fileTransferProgressProvider.notifier)
-              .updateBytes(offset, size);
-          if (chunk.isEmpty && length > 0) break;
-        }
-        final bytes = builder.takeBytes();
         final file = File(localPath);
         await file.parent.create(recursive: true);
         await file.writeAsBytes(bytes);
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: _tr(I18nKey.fileMessageDownloadedToLocal, {'path': localPath}));
+            .complete(message: translateWithReplacements(ref,I18nKey.fileMessageDownloadedToLocal, {'path': localPath}));
         _respondOk(envelope, respond, data: true);
       } catch (e) {
-        ref.read(fileTransferProgressProvider.notifier).fail(_tr(I18nKey.fileMessageDownloadFailed, {'error': e.toString()}));
+        ref.read(fileTransferProgressProvider.notifier).fail(translateWithReplacements(ref,I18nKey.fileMessageDownloadFailed, {'error': e.toString()}));
         _respondOk(envelope, respond, data: false);
       }
     } else {

@@ -45,7 +45,7 @@ class _ToolsState extends ConsumerState<Tools> {
               onDisconnect: state.isConnected
                   ? () => ref
                         .read(androidUsbSerialProvider.notifier)
-                        .dicconnectPort()
+                        .disconnectPort()
                   : null,
               onDeviceStatus: state.isConnected
                   ? () => setState(() => _showDeviceStatus = !_showDeviceStatus)
@@ -99,7 +99,7 @@ class _ToolsState extends ConsumerState<Tools> {
                         onPressed: () {
                           ref
                               .read(androidUsbSerialProvider.notifier)
-                              .connectPort(port);
+                              .connectPort(port.deviceName);
                         },
                         icon: const Icon(Icons.power_settings_new),
                         label: const UseText(I18nKey.devicesConnectUsb),
@@ -150,7 +150,7 @@ class _ToolsState extends ConsumerState<Tools> {
               onDisconnect: state.isConnected
                   ? () => ref
                         .read(desktopUsbSerialProvider.notifier)
-                        .dicconnectPort()
+                        .disconnectPort()
                   : null,
               onDeviceStatus: state.isConnected
                   ? () => setState(() => _showDeviceStatus = !_showDeviceStatus)

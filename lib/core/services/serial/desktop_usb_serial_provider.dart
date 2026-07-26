@@ -1,23 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
-import 'package:pyrite_ide/core/services/serial/repl_io.dart';
-import 'package:pyrite_ide/core/services/serial/serial_repl_gate_provider.dart';
-import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
-import 'package:pyrite_ide/core/services/editor/terminal.dart';
-import 'package:pyrite_ide/core/services/file/board_filesystem_mount.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
 
 final DynamicLibrary? _kernel32 = Platform.isWindows
     ? DynamicLibrary.open('kernel32.dll')
@@ -43,27 +34,15 @@ final _closeHandle = _kernel32
 final _getLastError = _kernel32
     ?.lookupFunction<Uint32 Function(), int Function()>('GetLastError');
 
-class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
-  final Ref ref;
+class DesktopUsbSerialNotifier
+    extends BaseUsbSerialNotifier<DesktopUsbSerialState> {
   FlSerial? _serial;
   StreamSubscription<SerialEvent>? _eventSub;
-  Timer? _reconnectTimer;
 
-  DesktopUsbSerialNotifier(this.ref) : super(const DesktopUsbSerialState());
+  DesktopUsbSerialNotifier(Ref ref) : super(ref, const DesktopUsbSerialState());
 
-  void registerUpdateTask() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(periodicTaskManagerProvider)
-          .registerTask(
-            name: "port_message_update",
-            interval: const Duration(seconds: 1),
-            callback: () => _update(),
-          );
-    });
-  }
-
-  Future<void> _update() async {
+  @override
+  Future<void> performUpdate() async {
     try {
       final ports = await FlSerial.availablePorts();
       final isOpen = _serial != null;
@@ -113,6 +92,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     }
   }
 
+  @override
   Future<void> refresh() async {
     try {
       final ports = await FlSerial.availablePorts();
@@ -120,8 +100,9 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     } catch (_) {}
   }
 
+  @override
   Future<void> connectPort(String path) async {
-    await dicconnectPort();
+    await disconnectPort();
     ref.read(boardFileItemsProvider.notifier).clear();
     ref.read(deviceStatusProvider.notifier).clear();
 
@@ -139,7 +120,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     if (ok) {
       _serial = serial;
       state = state.copyWith(selectedPortName: path, isConnected: true);
-      _ensureFilesystemMountedIfEnabled();
+      ensureFilesystemMountedIfEnabled();
     } else {
       await _eventSub?.cancel();
       _eventSub = null;
@@ -155,16 +136,7 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
         _autoDisconnect();
       case SerialEventType.data:
         final data = event.data as Uint8List;
-        if (!ref.read(serialReplIoPausedProvider)) {
-          try {
-            repl.write(utf8.decode(data));
-          } catch (_) {}
-        }
-        for (final cb in ref.read(serialDataCallbacksProvider)) {
-          try {
-            cb(data);
-          } catch (_) {}
-        }
+        handleData(data);
       case SerialEventType.lineStatusChanged:
       case SerialEventType.error:
         break;
@@ -187,13 +159,13 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
       }
     });
     if (state.autoReconnect && portName != null) {
-      _scheduleReconnect(portName);
+      scheduleReconnect(portName);
     }
   }
 
-  Future<void> dicconnectPort() async {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
+  @override
+  Future<void> disconnectPort() async {
+    cancelReconnect();
     await _eventSub?.cancel();
     _eventSub = null;
     if (_serial != null) {
@@ -204,60 +176,9 @@ class DesktopUsbSerialNotifier extends StateNotifier<DesktopUsbSerialState> {
     state = state.copyWith(selectedPortName: null, isConnected: false);
   }
 
-  void _scheduleReconnect(String path) {
-    _reconnectTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (_serial != null) {
-        _reconnectTimer?.cancel();
-        _reconnectTimer = null;
-        return;
-      }
-      connectPort(path);
-    });
-  }
-
-  void setBaudRate(int value) {
-    state = state.copyWith(baudRate: value);
-  }
-
-  void setAutoReconnect(bool value) {
-    state = state.copyWith(autoReconnect: value);
-  }
-
-  void _ensureFilesystemMountedIfEnabled() {
-    if (!ref.read(ensureBoardFilesystemOnConnect)) return;
-    unawaited(ensureBoardFilesystemMountedOnce(ref));
-  }
-
+  @override
   void sendBytes(Uint8List bytes) {
     _serial?.write(bytes);
-  }
-
-  void sendCommand(String command, {bool chunked = true}) {
-    if (_serial == null) return;
-    final data = utf8.encode(command);
-    if (chunked && data.length > 64) {
-      _sendChunked(Uint8List.fromList(data));
-    } else {
-      _serial!.write(Uint8List.fromList(data));
-    }
-  }
-
-  void _sendChunked(Uint8List data) async {
-    const chunkSize = 32;
-    for (int i = 0; i < data.length; i += chunkSize) {
-      if (_serial == null) return;
-      final end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
-      _serial!.write(data.sublist(i, end));
-      await Future.delayed(const Duration(milliseconds: 1));
-    }
-  }
-
-  void bindReplOnOutputCallback() {
-    repl.onOutput = (String data) {
-      if (ref.read(serialReplIoPausedProvider)) return;
-      final encode = ref.read(chineseToUnicodeConversion);
-      sendCommand(encode ? ReplInputEncoder.encode(data) : data);
-    };
   }
 }
 

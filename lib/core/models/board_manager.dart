@@ -1,24 +1,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:flserial/serial_scanner.dart';
 import 'package:usb_serial/usb_serial.dart';
+import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 
-class DesktopUsbSerialState {
+class DesktopUsbSerialState extends UsbSerialState {
   const DesktopUsbSerialState({
     this.portInfos = const [],
-    this.selectedPortName,
-    this.isConnected = false,
-    this.baudRate = 115200,
-    this.autoReconnect = false,
+    super.selectedPortName,
+    super.isConnected,
+    super.baudRate,
+    super.autoReconnect,
   });
 
   List<String> get portNames => portInfos.map((p) => p.path).toList();
 
   final List<SerialPortInfo> portInfos;
-  final String? selectedPortName;
-  final bool isConnected;
-  final int baudRate;
-  final bool autoReconnect;
 
+  @override
   DesktopUsbSerialState copyWith({
     List<SerialPortInfo>? portInfos,
     String? selectedPortName,
@@ -36,21 +34,18 @@ class DesktopUsbSerialState {
   }
 }
 
-class AndroidUsbSerialState {
+class AndroidUsbSerialState extends UsbSerialState {
   const AndroidUsbSerialState({
     this.devices = const [],
-    this.selectedPortName,
-    this.isConnected = false,
-    this.baudRate = 115200,
-    this.autoReconnect = false,
+    super.selectedPortName,
+    super.isConnected,
+    super.baudRate,
+    super.autoReconnect,
   });
 
   final List<UsbDevice> devices;
-  final String? selectedPortName;
-  final bool isConnected;
-  final int baudRate;
-  final bool autoReconnect;
 
+  @override
   AndroidUsbSerialState copyWith({
     List<UsbDevice>? devices,
     String? selectedPortName,

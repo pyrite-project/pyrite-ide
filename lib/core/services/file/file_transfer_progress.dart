@@ -36,19 +36,6 @@ class FileTransferProgressState {
     return (bytesDone / bytesTotal).clamp(0, 1).toDouble();
   }
 
-  String get directionLabel => switch (direction) {
-    FileTransferDirection.upload => '上传',
-    FileTransferDirection.download => '下载',
-    FileTransferDirection.move => '移动',
-    null => '传输',
-  };
-
-  String get scopeLabel => switch (scope) {
-    FileTransferScope.file => '文件',
-    FileTransferScope.folder => '文件夹',
-    null => '',
-  };
-
   FileTransferProgressState copyWith({
     bool? isActive,
     FileTransferDirection? direction,
@@ -121,11 +108,11 @@ class FileTransferProgressNotifier
     state = state.copyWith(bytesDone: done, bytesTotal: total);
   }
 
-  void complete({String? message}) {
+  void complete({required String message}) {
     state = state.copyWith(
       isActive: true,
       bytesDone: state.bytesTotal,
-      message: message ?? '${state.directionLabel}完成',
+      message: message,
       failed: false,
     );
     _scheduleClear();

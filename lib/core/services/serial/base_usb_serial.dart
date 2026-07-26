@@ -1,0 +1,139 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/serial/repl_io.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
+import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/file/board_filesystem_mount.dart';
+import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
+
+class UsbSerialState {
+  const UsbSerialState({
+    this.selectedPortName,
+    this.isConnected = false,
+    this.baudRate = 115200,
+    this.autoReconnect = false,
+  });
+
+  final String? selectedPortName;
+  final bool isConnected;
+  final int baudRate;
+  final bool autoReconnect;
+
+  UsbSerialState copyWith({
+    String? selectedPortName,
+    bool? isConnected,
+    int? baudRate,
+    bool? autoReconnect,
+  }) {
+    return UsbSerialState(
+      selectedPortName: selectedPortName ?? this.selectedPortName,
+      isConnected: isConnected ?? this.isConnected,
+      baudRate: baudRate ?? this.baudRate,
+      autoReconnect: autoReconnect ?? this.autoReconnect,
+    );
+  }
+}
+
+abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
+    extends StateNotifier<T> {
+  final Ref ref;
+  Timer? _reconnectTimer;
+
+  BaseUsbSerialNotifier(this.ref, T initialState) : super(initialState);
+
+  void registerUpdateTask() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(periodicTaskManagerProvider)
+          .registerTask(
+            name: "port_message_update",
+            interval: const Duration(seconds: 3),
+            callback: () => performUpdate(),
+          );
+    });
+  }
+
+  Future<void> performUpdate();
+
+  Future<void> refresh();
+
+  Future<void> connectPort(String path);
+
+  Future<void> disconnectPort();
+
+  void scheduleReconnect(String path) {
+    _reconnectTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (state.isConnected) {
+        _reconnectTimer?.cancel();
+        _reconnectTimer = null;
+        return;
+      }
+      connectPort(path);
+    });
+  }
+
+  void cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+  }
+
+  void setBaudRate(int value) {
+    state = state.copyWith(baudRate: value) as T;
+  }
+
+  void setAutoReconnect(bool value) {
+    state = state.copyWith(autoReconnect: value) as T;
+  }
+
+  void ensureFilesystemMountedIfEnabled() {
+    if (!ref.read(ensureBoardFilesystemOnConnect)) return;
+    unawaited(ensureBoardFilesystemMountedOnce(ref));
+  }
+
+  void sendBytes(Uint8List bytes);
+
+  void sendCommand(String command, {bool chunked = true}) {
+    final data = utf8.encode(command);
+    if (chunked && data.length > 256) {
+      _sendChunked(Uint8List.fromList(data));
+    } else {
+      sendBytes(Uint8List.fromList(data));
+    }
+  }
+
+  void _sendChunked(Uint8List data) async {
+    const chunkSize = 256;
+    for (int i = 0; i < data.length; i += chunkSize) {
+      if (!state.isConnected) return;
+      final end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
+      sendBytes(data.sublist(i, end));
+    }
+  }
+
+  void bindReplOnOutputCallback() {
+    repl.onOutput = (String data) {
+      if (ref.read(serialReplIoPausedProvider)) return;
+      final encode = ref.read(chineseToUnicodeConversion);
+      sendCommand(encode ? ReplInputEncoder.encode(data) : data);
+    };
+  }
+
+  void handleData(Uint8List data) {
+    if (!ref.read(serialReplIoPausedProvider)) {
+      try {
+        repl.write(utf8.decode(data));
+      } catch (_) {}
+    }
+    for (final cb in ref.read(serialDataCallbacksProvider)) {
+      try {
+        cb(data);
+      } catch (_) {}
+    }
+  }
+}

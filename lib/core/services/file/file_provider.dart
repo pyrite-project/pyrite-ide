@@ -11,6 +11,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/ui_utils.dart';
+import 'package:pyrite_ide/core/services/file/file_ops_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
@@ -52,14 +53,6 @@ class FileNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   FileNotifier(this.ref) : super(null);
 
-  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
-    var value = translate(ref, key);
-    for (final entry in replacements.entries) {
-      value = value.replaceAll('{${entry.key}}', entry.value);
-    }
-    return value;
-  }
-
   void setDirectory(Directory dir) {
     state = dir;
   }
@@ -96,8 +89,8 @@ class FileNotifier extends StateNotifier<Directory?> {
     if (value is TabDataValue && value.type == "file") {
       if (value.isBoardFile == true && value.boardFilePath != null) {
         await ref
-            .read(boardProvider.notifier)
-            .writeFile(value.boardFilePath!, value.editorController!.text);
+            .read(boardProvider)
+            .ops.writeFile(value.boardFilePath!, value.editorController!.text);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } else {
         await value.file!.writeAsString(value.editorController!.text);
@@ -179,51 +172,21 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   TreeNode<FileSystemItem>? getFocusFileNode() {
-    String focusNodeId =
-        ref.read(localFileTreeViewControllerProvider).selectedNodeId ?? "/";
-    TreeNode<FileSystemItem>? focusNode = ref
-        .read(localFileTreeViewControllerProvider)
-        .findNodeById(focusNodeId);
-    if (focusNode?.data is FileItem) {
-      return focusNode;
-    } else {
-      return null;
-    }
+    return getFocusFileNodeFromProvider(ref, localFileTreeViewControllerProvider);
   }
 
   TreeNode<FileSystemItem>? getFocusFolderNode() {
-    String focusNodeId =
-        ref.read(localFileTreeViewControllerProvider).selectedNodeId ?? "/";
-    TreeNode<FileSystemItem>? focusNode = ref
-        .read(localFileTreeViewControllerProvider)
-        .findNodeById(focusNodeId);
-    if (focusNode?.data is FolderItem) {
-      return focusNode;
-    } else {
-      return ref
-          .read(localFileTreeViewControllerProvider)
-          .findNodeById(path.dirname(focusNodeId));
-    }
+    return getFocusFolderNodeFromProvider(ref, localFileTreeViewControllerProvider);
   }
 
   List<TreeNode<FileSystemItem>> getSelectedNodes({bool topLevelOnly = true}) {
-    final controller = ref.read(localFileTreeViewControllerProvider);
-    final selected = controller.getSelectedNodesInVisibleOrder(
-      topLevelOnly: topLevelOnly,
-    );
-    if (selected.isNotEmpty) return selected;
-
-    final focusNodeId = controller.selectedNodeId;
-    final focusNode = focusNodeId == null
-        ? null
-        : controller.findNodeById(focusNodeId);
-    return focusNode == null ? const [] : [focusNode];
+    return getSelectedNodesFromProvider(ref, localFileTreeViewControllerProvider, topLevelOnly: topLevelOnly);
   }
 
   Future<void> deleteSelectedLocalItems(BuildContext context) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
+      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
@@ -237,7 +200,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     showEditorSnackBar(
       context,
-      _tr(I18nKey.fileMessageDeletedLocalItems, {
+      translateWithReplacements(ref,I18nKey.fileMessageDeletedLocalItems, {
         'count': nodes.length.toString(),
       }),
     );
@@ -249,13 +212,13 @@ class FileNotifier extends StateNotifier<Directory?> {
   }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
+      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
     final boardFolderTarget =
         boardFolderPath ??
-        ref.read(boardProvider.notifier).getFocusFolderNode()?.id;
+        ref.read(boardProvider).getFocusFolderNode()?.id;
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -283,13 +246,13 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledUpload));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCanceledUpload));
               return;
             case FileConflictAction.showDiff:
               if (!canShowDiff) {
                 showEditorSnackBar(
                   context,
-                  _tr(I18nKey.fileMessageCannotShowFolderDiff),
+                  translateWithReplacements(ref,I18nKey.fileMessageCannotShowFolderDiff),
                 );
                 return;
               }
@@ -299,7 +262,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 targetPath: targetPath,
               );
               if (!shown) {
-                showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowDiff));
+                showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCannotShowDiff));
               }
               return;
             case FileConflictAction.skip:
@@ -320,8 +283,8 @@ class FileNotifier extends StateNotifier<Directory?> {
 
         if (node.data is FolderItem) {
           await ref
-              .read(boardProvider.notifier)
-              .uploadFolder(node.id, targetPath);
+              .read(boardProvider)
+              .transfer.uploadFolder(node.id, targetPath);
         } else {
           final bytes = await File(node.id).readAsBytes();
           ref
@@ -330,11 +293,11 @@ class FileNotifier extends StateNotifier<Directory?> {
                 direction: FileTransferDirection.upload,
                 scope: FileTransferScope.file,
                 totalFiles: nodes.length,
-                message: _tr(I18nKey.fileTransferPrepareUploadFile),
+                message: translateWithReplacements(ref,I18nKey.fileTransferPrepareUploadFile),
               );
           await ref
-              .read(boardProvider.notifier)
-              .writeFileBytesWithProgress(
+              .read(boardProvider)
+              .ops.writeFileBytesWithProgress(
                 targetPath,
                 bytes,
                 currentFile: node.id,
@@ -349,14 +312,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
-            message: _tr(I18nKey.fileMessageUploadComplete, {
+            message: translateWithReplacements(ref,I18nKey.fileMessageUploadComplete, {
               'done': uploaded.toString(),
               'skipped': skipped.toString(),
             }),
           );
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageUploadComplete, {
+        translateWithReplacements(ref,I18nKey.fileMessageUploadComplete, {
           'done': uploaded.toString(),
           'skipped': skipped.toString(),
         }),
@@ -364,7 +327,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
-          .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
+          .fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -378,7 +341,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final boardFolderTarget =
         boardFolderPath ??
-        ref.read(boardProvider.notifier).getFocusFolderNode()?.id;
+        ref.read(boardProvider).getFocusFolderNode()?.id;
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -402,10 +365,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledUpload));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCanceledUpload));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowDiff));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCannotShowDiff));
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -425,8 +388,8 @@ class FileNotifier extends StateNotifier<Directory?> {
 
         if (isFolder) {
           await ref
-              .read(boardProvider.notifier)
-              .uploadFolder(sourcePath, targetPath);
+              .read(boardProvider)
+              .transfer.uploadFolder(sourcePath, targetPath);
         } else {
           final bytes = await File(sourcePath).readAsBytes();
           ref
@@ -435,11 +398,11 @@ class FileNotifier extends StateNotifier<Directory?> {
                 direction: FileTransferDirection.upload,
                 scope: FileTransferScope.file,
                 totalFiles: sourcePaths.length,
-                message: _tr(I18nKey.fileTransferPrepareUploadFile),
+                message: translateWithReplacements(ref,I18nKey.fileTransferPrepareUploadFile),
               );
           await ref
-              .read(boardProvider.notifier)
-              .writeFileBytesWithProgress(
+              .read(boardProvider)
+              .ops.writeFileBytesWithProgress(
                 targetPath,
                 bytes,
                 currentFile: sourcePath,
@@ -454,14 +417,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
-            message: _tr(I18nKey.fileMessageUploadComplete, {
+            message: translateWithReplacements(ref,I18nKey.fileMessageUploadComplete, {
               'done': uploaded.toString(),
               'skipped': skipped.toString(),
             }),
           );
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageUploadComplete, {
+        translateWithReplacements(ref,I18nKey.fileMessageUploadComplete, {
           'done': uploaded.toString(),
           'skipped': skipped.toString(),
         }),
@@ -469,7 +432,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
-          .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
+          .fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -482,7 +445,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     if (sourcePaths.isEmpty) return;
     final localWorkspace = state;
     if (localWorkspace == null) {
-      showEditorSnackBar(context, _tr(I18nKey.fileMessageOpenLocalProject));
+      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageOpenLocalProject));
       return;
     }
 
@@ -498,7 +461,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           direction: FileTransferDirection.download,
           scope: FileTransferScope.folder,
           totalFiles: sourcePaths.length,
-          message: _tr(I18nKey.fileTransferPrepareImportFile),
+          message: translateWithReplacements(ref,I18nKey.fileTransferPrepareImportFile),
         );
 
     try {
@@ -520,10 +483,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledImport));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCanceledImport));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowDiff));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCannotShowDiff));
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -563,14 +526,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
-            message: _tr(I18nKey.fileMessageImportComplete, {
+            message: translateWithReplacements(ref,I18nKey.fileMessageImportComplete, {
               'done': imported.toString(),
               'skipped': skipped.toString(),
             }),
           );
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageImportComplete, {
+        translateWithReplacements(ref,I18nKey.fileMessageImportComplete, {
           'done': imported.toString(),
           'skipped': skipped.toString(),
         }),
@@ -578,7 +541,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
-          .fail(_tr(I18nKey.fileMessageImportFailed, {'error': error.toString()}));
+          .fail(translateWithReplacements(ref,I18nKey.fileMessageImportFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -595,7 +558,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     if (!await Directory(targetFolder).exists()) {
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageTargetFolderMissing, {'path': targetFolder}),
+        translateWithReplacements(ref,I18nKey.fileMessageTargetFolderMissing, {'path': targetFolder}),
       );
       return;
     }
@@ -611,7 +574,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               ? FileTransferScope.folder
               : FileTransferScope.file,
           totalFiles: movableNodes.length,
-          message: _tr(I18nKey.fileTransferPrepareMoveFile),
+          message: translateWithReplacements(ref,I18nKey.fileTransferPrepareMoveFile),
         );
 
     try {
@@ -627,7 +590,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             _isLocalPathInside(targetFolder, sourcePath)) {
           showEditorSnackBar(
             context,
-            _tr(I18nKey.fileMessageCannotMoveFolderIntoSelf),
+            translateWithReplacements(ref,I18nKey.fileMessageCannotMoveFolderIntoSelf),
           );
           skipped++;
           continue;
@@ -646,10 +609,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledMove));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCanceledMove));
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(context, _tr(I18nKey.fileMessageCannotShowMoveDiff));
+              showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCannotShowMoveDiff));
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -687,14 +650,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
-            message: _tr(I18nKey.fileMessageMoveComplete, {
+            message: translateWithReplacements(ref,I18nKey.fileMessageMoveComplete, {
               'done': moved.toString(),
               'skipped': skipped.toString(),
             }),
           );
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageMoveComplete, {
+        translateWithReplacements(ref,I18nKey.fileMessageMoveComplete, {
           'done': moved.toString(),
           'skipped': skipped.toString(),
         }),
@@ -702,7 +665,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
-          .fail(_tr(I18nKey.fileMessageMoveFailed, {'error': error.toString()}));
+          .fail(translateWithReplacements(ref,I18nKey.fileMessageMoveFailed, {'error': error.toString()}));
       rethrow;
     }
   }
@@ -750,9 +713,9 @@ class FileNotifier extends StateNotifier<Directory?> {
   Future<bool> _boardPathExists(String targetPath, bool folder) async {
     try {
       if (folder) {
-        await ref.read(boardProvider.notifier).getFileList(path: targetPath);
+        await ref.read(boardProvider).ops.getFileList(path: targetPath);
       } else {
-        await ref.read(boardProvider.notifier).getFileBytes(targetPath);
+        await ref.read(boardProvider).ops.getFileBytes(targetPath);
       }
       return true;
     } catch (_) {
@@ -762,9 +725,9 @@ class FileNotifier extends StateNotifier<Directory?> {
 
   Future<void> _deleteBoardPath(String targetPath, bool folder) async {
     if (folder) {
-      await ref.read(boardProvider.notifier).deleteFolder(targetPath);
+      await ref.read(boardProvider).ops.deleteFolder(targetPath);
     } else {
-      await ref.read(boardProvider.notifier).deleteFile(targetPath);
+      await ref.read(boardProvider).ops.deleteFile(targetPath);
     }
   }
 
@@ -776,14 +739,9 @@ class FileNotifier extends StateNotifier<Directory?> {
     required bool isUpload,
     bool canShowDiff = false,
   }) {
-    if (policy == FileConflictAction.overwriteAll) {
-      return Future.value(FileConflictAction.overwrite);
-    }
-    if (policy == FileConflictAction.skipAll) {
-      return Future.value(FileConflictAction.skip);
-    }
-    return showFileConflictDialog(
+    return resolveConflict(
       context,
+      policy: policy,
       sourcePath: sourcePath,
       targetPath: targetPath,
       isUpload: isUpload,
@@ -801,8 +759,8 @@ class FileNotifier extends StateNotifier<Directory?> {
     try {
       content = await local.getFileContent(sourcePath);
       originContent = await ref
-          .read(boardProvider.notifier)
-          .getFileContent(targetPath);
+          .read(boardProvider)
+          .ops.getFileContent(targetPath);
     } catch (_) {
       return false;
     }
@@ -864,12 +822,12 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final selected = selectedFile ?? selectedFolder;
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
+      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
     final TreeNode<FileSystemItem>? boardFolderTarget = ref
-        .read(boardProvider.notifier)
+        .read(boardProvider)
         .getFocusFolderNode();
 
     if (selected?.data is FileItem || selectedTab != null) {
@@ -887,7 +845,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         if (!context.mounted) return;
         showEditorSnackBar(
           context,
-          _tr(I18nKey.fileMessageUploadedToDevice, {'path': targetPath}),
+          translateWithReplacements(ref,I18nKey.fileMessageUploadedToDevice, {'path': targetPath}),
         );
         return;
       }
@@ -895,8 +853,8 @@ class FileNotifier extends StateNotifier<Directory?> {
       String? originContent;
       try {
         originContent = await ref
-            .read(boardProvider.notifier)
-            .getFileContent(targetPath);
+            .read(boardProvider)
+            .ops.getFileContent(targetPath);
       } catch (_) {}
       if (originContent != null && originContent != content) {
         final diff = computeDiff(originContent, content);
@@ -909,7 +867,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             isUpload: true,
           );
           if (!confirmed) {
-            showEditorSnackBar(context, _tr(I18nKey.fileMessageCanceledUpload));
+            showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCanceledUpload));
             return;
           }
         } else {
@@ -929,11 +887,11 @@ class FileNotifier extends StateNotifier<Directory?> {
               direction: FileTransferDirection.upload,
               scope: FileTransferScope.file,
               totalFiles: 1,
-              message: _tr(I18nKey.fileTransferPrepareUploadFile),
+              message: translateWithReplacements(ref,I18nKey.fileTransferPrepareUploadFile),
             );
         await ref
-            .read(boardProvider.notifier)
-            .writeFileBytesWithProgress(
+            .read(boardProvider)
+            .ops.writeFileBytesWithProgress(
               targetPath,
               utf8.encode(content),
               currentFile: sourcePath,
@@ -944,20 +902,20 @@ class FileNotifier extends StateNotifier<Directory?> {
         ref
             .read(fileTransferProgressProvider.notifier)
             .complete(
-              message: _tr(I18nKey.fileMessageUploadedToDevice, {
+              message: translateWithReplacements(ref,I18nKey.fileMessageUploadedToDevice, {
                 'path': targetPath,
               }),
             );
       } catch (error) {
         ref
             .read(fileTransferProgressProvider.notifier)
-            .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
+            .fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
         rethrow;
       }
 
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageUploadedToDevice, {'path': targetPath}),
+        translateWithReplacements(ref,I18nKey.fileMessageUploadedToDevice, {'path': targetPath}),
       );
     } else if (selected?.data is FolderItem) {
       final targetPath = buildBoardUploadTargetPath(
@@ -966,26 +924,26 @@ class FileNotifier extends StateNotifier<Directory?> {
       );
       try {
         await ref
-            .read(boardProvider.notifier)
-            .uploadFolder(selected.id, targetPath);
+            .read(boardProvider)
+            .transfer.uploadFolder(selected.id, targetPath);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
             .complete(
-              message: _tr(I18nKey.fileMessageUploadedFolderToDevice, {
+              message: translateWithReplacements(ref,I18nKey.fileMessageUploadedFolderToDevice, {
                 'path': targetPath,
               }),
             );
       } catch (error) {
         ref
             .read(fileTransferProgressProvider.notifier)
-            .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
+            .fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
         rethrow;
       }
 
       showEditorSnackBar(
         context,
-        _tr(I18nKey.fileMessageUploadedFolderToDevice, {'path': targetPath}),
+        translateWithReplacements(ref,I18nKey.fileMessageUploadedFolderToDevice, {'path': targetPath}),
       );
     }
   }
@@ -1003,7 +961,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final selected = selectedFile ?? selectedFolder;
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, _tr(I18nKey.fileMessageSelectLocalItem));
+      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectLocalItem));
       return;
     }
 
@@ -1091,11 +1049,11 @@ class FileNotifier extends StateNotifier<Directory?> {
             direction: FileTransferDirection.upload,
             scope: FileTransferScope.file,
             totalFiles: 1,
-            message: _tr(I18nKey.fileTransferPrepareUploadFile),
+            message: translateWithReplacements(ref,I18nKey.fileTransferPrepareUploadFile),
           );
       await ref
-          .read(boardProvider.notifier)
-          .writeFileBytesWithProgress(
+          .read(boardProvider)
+          .ops.writeFileBytesWithProgress(
             targetPath,
             bytes,
             currentFile: sourcePath,
@@ -1106,14 +1064,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
-            message: _tr(I18nKey.fileMessageUploadedToDevice, {
+            message: translateWithReplacements(ref,I18nKey.fileMessageUploadedToDevice, {
               'path': targetPath,
             }),
           );
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
-          .fail(_tr(I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
+          .fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': error.toString()}));
       rethrow;
     }
   }

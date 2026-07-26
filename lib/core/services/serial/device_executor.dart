@@ -3,14 +3,24 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/serial/raw_paste_session.dart';
+import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mutex_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
-import 'package:pyrite_ide/core/services/serial/serial_repl_gate_provider.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
+
+/// Pauses user-facing REPL input/output while a protocol transaction owns the
+/// serial stream.
+final serialReplIoPausedProvider = StateProvider<bool>((ref) => false);
 
 const _defaultTimeout = Duration(seconds: 20);
 const _handshakeTimeout = Duration(seconds: 2);
 const _retryHandshakeTimeout = Duration(seconds: 3);
+
+const int _ctrlCBurstCount = 2;
+const Duration _ctrlCBurstInterval = Duration(milliseconds: 5);
+const Duration _postBurstDelay = Duration(milliseconds: 30);
+const Duration _fallbackFlushDelay = Duration(milliseconds: 200);
+const Duration _postExitDelay = Duration(milliseconds: 10);
 
 typedef _ProviderReader = T Function<T>(ProviderListenable<T> provider);
 
@@ -122,7 +132,7 @@ Future<T> _runPythonTransaction<T>(
       // --- Tier 1 fallback: Ctrl+D flush + Ctrl+C burst + Ctrl+A. ---
       if (!entered) {
         writeBytes([0x04]); // Ctrl+D to flush half-parsed state
-        await Future<void>.delayed(const Duration(milliseconds: 800));
+        await Future<void>.delayed(_fallbackFlushDelay);
         entered = await _tryInterruptAndHandshake(
           session,
           writeBytes,
@@ -139,6 +149,7 @@ Future<T> _runPythonTransaction<T>(
         );
       }
 
+      queue.clear();
       return await action(session);
     } finally {
       // --- Cleanup: always reset device to normal REPL state. ---
@@ -146,8 +157,9 @@ Future<T> _runPythonTransaction<T>(
         await session.exitRawRepl();
       } catch (_) {}
       // Ensure device is back in normal REPL even if exitRawRepl failed.
+      queue.clear();
       _resetDevice(writeBytes);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(_postExitDelay);
       read(serialDataCallbacksProvider.notifier).remove(callback);
       read(serialReplIoPausedProvider.notifier).state = false;
     }
@@ -163,11 +175,11 @@ Future<bool> _tryInterruptAndHandshake(
   Duration timeout,
 ) async {
   // Send CTRL-C one by one, 30ms apart — 12 times total (~360ms).
-  for (var i = 0; i < 12; i++) {
+  for (var i = 0; i < _ctrlCBurstCount; i++) {
     writeBytes([0x03]);
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await Future<void>.delayed(_ctrlCBurstInterval);
   }
-  await Future<void>.delayed(const Duration(milliseconds: 150));
+  await Future<void>.delayed(_postBurstDelay);
   queue.clear();
 
   try {

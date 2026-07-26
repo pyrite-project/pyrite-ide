@@ -26,8 +26,8 @@ class RawPasteSerialBoardFileBackend implements BoardFileBackend {
   @override
   Future<List<BoardFileEntry>> listDirectory({String path = '/'}) async {
     final value = await _runJsonValue(
-      _wrapPython('''
-base = ${_pythonTextExpression(path)}
+      _wrapSimplePython('''
+base = ${boardFileTextExpression(path)}
 if base != '/' and base.endswith('/'):
   base = base[:-1]
 items = []
@@ -35,7 +35,7 @@ for entry in os.ilistdir(base):
   name = entry[0]
   mode = entry[1] if len(entry) > 1 else 0
   item_path = '/' + name if base == '/' else base + '/' + name
-  is_dir = _is_dir(item_path, mode)
+  is_dir = bool(mode & 0x4000) if mode else False
   items.append({
     'path_b64': _encode_text(item_path),
     'name_b64': _encode_text(name),
@@ -50,8 +50,8 @@ _emit_ok(items)
   @override
   Future<List<BoardFileEntry>> listTree({String path = '/'}) async {
     final value = await _runJsonValue(
-      _wrapPython('''
-base = ${_pythonTextExpression(path)}
+      _wrapSimplePython('''
+base = ${boardFileTextExpression(path)}
 if base != '/' and base.endswith('/'):
   base = base[:-1]
 
@@ -61,7 +61,7 @@ def walk(base_path):
     name = entry[0]
     mode = entry[1] if len(entry) > 1 else 0
     item_path = '/' + name if base_path == '/' else base_path + '/' + name
-    is_dir = _is_dir(item_path, mode)
+    is_dir = bool(mode & 0x4000) if mode else False
     result.append({
       'path_b64': _encode_text(item_path),
       'name_b64': _encode_text(name),
@@ -86,8 +86,8 @@ _emit_ok(walk(base))
   @override
   Future<Uint8List> readFileBytes(String path) async {
     final value = await _runJsonValue(
-      _wrapPython('''
-target = ${_pythonTextExpression(path)}
+      _wrapSimplePython('''
+target = ${boardFileTextExpression(path)}
 with open(target, 'rb') as f:
   data = f.read()
 encoded = ubinascii.b2a_base64(data).decode().strip()
@@ -104,8 +104,8 @@ _emit_ok(encoded)
   @override
   Future<int> getFileSize(String path) async {
     final value = await _runJsonValue(
-      _wrapPython('''
-target = ${_pythonTextExpression(path)}
+      _wrapSimplePython('''
+target = ${boardFileTextExpression(path)}
 _emit_ok(os.stat(target)[6])
 '''),
     );
@@ -119,8 +119,8 @@ _emit_ok(os.stat(target)[6])
   @override
   Future<Uint8List> readFileChunk(String path, int offset, int length) async {
     final value = await _runJsonValue(
-      _wrapPython('''
-target = ${_pythonTextExpression(path)}
+      _wrapSimplePython('''
+target = ${boardFileTextExpression(path)}
 with open(target, 'rb') as f:
   f.seek($offset)
   data = f.read($length)
@@ -148,15 +148,36 @@ _emit_ok(encoded)
     List<int> bytes, {
     void Function(int sent, int total)? onProgress,
   }) async {
-    final target = _pythonTextExpression(path);
+    final target = boardFileTextExpression(path);
     final tempPath = _temporaryPathFor(path);
-    final temp = _pythonTextExpression(tempPath);
+    final temp = boardFileTextExpression(tempPath);
     final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
     final timeoutSeconds = 60 + (payload.length / 20000).ceil();
 
     await runPythonOnDeviceWithRawInput(
       ref,
-      '''
+      _buildWriteFileScript(
+        target: target,
+        temp: temp,
+        remaining: payload.length,
+      ),
+      payload,
+      startupTimeout: const Duration(seconds: 10),
+      completionTimeout: Duration(seconds: timeoutSeconds),
+      readyMarker: utf8.encode(_writeReadyMarker),
+      doneMarker: utf8.encode(_writeDoneMarker),
+      chunkSize: _rawWriteChunkSize,
+      ackEvery: _rawWriteAckEvery,
+      onProgress: onProgress,
+    );
+  }
+
+  static String _buildWriteFileScript({
+    required String target,
+    required String temp,
+    required int remaining,
+  }) {
+    return '''
 import sys
 try:
   import uos as os
@@ -173,7 +194,7 @@ def _decode_text(value):
 
 target = $target
 tmp = $temp
-remaining = ${payload.length}
+remaining = $remaining
 ack_every = $_rawWriteAckEvery
 ack_count = 0
 
@@ -245,75 +266,14 @@ finally:
       micropython.kbd_intr(3)
     except Exception:
       pass
-''',
-      payload,
-      startupTimeout: const Duration(seconds: 10),
-      completionTimeout: Duration(seconds: timeoutSeconds),
-      readyMarker: utf8.encode(_writeReadyMarker),
-      doneMarker: utf8.encode(_writeDoneMarker),
-      chunkSize: _rawWriteChunkSize,
-      ackEvery: _rawWriteAckEvery,
-      onProgress: onProgress,
-    );
-  }
-
-  @override
-  Future<void> beginWriteFile(String path) async {
-    final temp = _pythonTextExpression(_temporaryPathFor(path));
-    await _runJsonValue(
-      _wrapPython('''
-tmp = $temp
-try:
-  os.remove(tmp)
-except OSError:
-  pass
-open(tmp, 'wb').close()
-_emit_ok('BeginWriteSuccessfully')
-'''),
-      timeout: _longTimeout,
-    );
-  }
-
-  @override
-  Future<void> appendWriteFileChunk(String path, List<int> bytes) async {
-    final encoded = _pythonStringLiteral(encodeBoardFileBytes(bytes));
-    final temp = _pythonTextExpression(_temporaryPathFor(path));
-    await _runJsonValue(
-      _wrapPython('''
-tmp = $temp
-data = ubinascii.a2b_base64($encoded)
-with open(tmp, 'ab') as f:
-  f.write(data)
-_emit_ok('AppendWriteSuccessfully')
-'''),
-      timeout: _longTimeout,
-    );
-  }
-
-  @override
-  Future<void> finishWriteFile(String path) async {
-    final target = _pythonTextExpression(path);
-    final temp = _pythonTextExpression(_temporaryPathFor(path));
-    await _runJsonValue(
-      _wrapPython('''
-target = $target
-tmp = $temp
-try:
-  os.remove(target)
-except OSError:
-  pass
-os.rename(tmp, target)
-_emit_ok('FinishWriteSuccessfully')
-'''),
-      timeout: _longTimeout,
-    );
+''';
   }
 
   @override
   Future<void> deleteFile(String path) async {
     await _runJsonValue(
-      _wrapPython('''
-os.remove(${_pythonTextExpression(path)})
+      _wrapSimplePython('''
+os.remove(${boardFileTextExpression(path)})
 _emit_ok('DeleteFileSuccessfully')
 '''),
     );
@@ -322,15 +282,16 @@ _emit_ok('DeleteFileSuccessfully')
   @override
   Future<void> deleteFolder(String path) async {
     await _runJsonValue(
-      _wrapPython('''
-target = ${_pythonTextExpression(path)}
+      _wrapSimplePython('''
+target = ${boardFileTextExpression(path)}
 
 def delete_recursive(folder):
   for entry in os.ilistdir(folder):
     name = entry[0]
     mode = entry[1] if len(entry) > 1 else 0
     entry_path = folder.rstrip('/') + '/' + name
-    if _is_dir(entry_path, mode):
+    is_dir = bool(mode & 0x4000) if mode else False
+    if is_dir:
       delete_recursive(entry_path)
     else:
       os.remove(entry_path)
@@ -350,8 +311,8 @@ _emit_ok('DeleteDirSuccessfully')
         ? '/$newName'
         : _boardPath.join(parent, newName);
     await _runJsonValue(
-      _wrapPython('''
-os.rename(${_pythonTextExpression(path)}, ${_pythonTextExpression(target)})
+      _wrapSimplePython('''
+os.rename(${boardFileTextExpression(path)}, ${boardFileTextExpression(target)})
 _emit_ok('RenameSuccessfully')
 '''),
     );
@@ -360,8 +321,8 @@ _emit_ok('RenameSuccessfully')
   @override
   Future<void> move(String oldPath, String newPath) async {
     await _runJsonValue(
-      _wrapPython('''
-os.rename(${_pythonTextExpression(oldPath)}, ${_pythonTextExpression(newPath)})
+      _wrapSimplePython('''
+os.rename(${boardFileTextExpression(oldPath)}, ${boardFileTextExpression(newPath)})
 _emit_ok('MoveSuccessfully')
 '''),
     );
@@ -370,15 +331,25 @@ _emit_ok('MoveSuccessfully')
   @override
   Future<void> createFolder(String path) async {
     await _runJsonValue(
-      _wrapPython('''
+      _wrapSimplePython('''
 try:
-  os.mkdir(${_pythonTextExpression(path)})
+  os.mkdir(${boardFileTextExpression(path)})
   _emit_ok('MkdirSuccessfully')
 except OSError as exc:
   if len(exc.args) > 0 and exc.args[0] == 17:
     _emit_ok('DirExists')
   else:
     raise
+'''),
+    );
+  }
+
+  @override
+  Future<void> pathExists(String path) async {
+    await _runJsonValue(
+      _wrapSimplePython('''
+os.stat(${boardFileTextExpression(path)})
+_emit_ok(True)
 '''),
     );
   }
@@ -396,7 +367,7 @@ except OSError as exc:
     }
     if (line == null) {
       throw BoardFileProtocolException(
-        'Missing board file result marker. Output: ${_preview(output)}',
+        'Missing board file result marker. Output: ${output.length <= 240 ? output : '${output.substring(0, 240)}...'}',
       );
     }
 
@@ -411,14 +382,7 @@ except OSError as exc:
     return decoded['value'];
   }
 
-  String _wrapPython(String body) {
-    final indentedBody = body
-        .trim()
-        .split('\n')
-        .map((line) => line.isEmpty ? line : '  $line')
-        .join('\n');
-
-    return '''
+  static const _simpleBoilerplate = '''
 try:
   import ujson as json
 except ImportError:
@@ -428,8 +392,6 @@ try:
 except ImportError:
   import os
 import ubinascii
-
-_PYRITE_MARKER = ${_pythonStringLiteral(_resultMarker)}
 
 def _decode_text(value):
   return ubinascii.a2b_base64(value).decode()
@@ -442,27 +404,36 @@ def _encode_text(value):
   return ubinascii.b2a_base64(data).decode().strip()
 
 def _emit_ok(value):
-  print(_PYRITE_MARKER + json.dumps({'ok': True, 'value': value}))
+  print(__PYRITE_MARKER__ + json.dumps({'ok': True, 'value': value}))
 
 def _emit_error(exc):
   try:
     name = type(exc).__name__
   except Exception:
     name = 'Exception'
-  print(_PYRITE_MARKER + json.dumps({
+  print(__PYRITE_MARKER__ + json.dumps({
     'ok': False,
     'error_b64': _encode_text(name + ': ' + str(exc)),
   }))
+''';
 
-def _is_dir(item_path, mode):
-  try:
-    if mode & 0x4000:
-      return True
-    if mode & 0x8000:
-      return False
-  except Exception:
-    pass
-  return bool(os.stat(item_path)[0] & 0x4000)
+  String _wrapSimplePython(String body) {
+    final indentedBody = body
+        .trim()
+        .split('\n')
+        .map((line) => line.isEmpty ? line : '  $line')
+        .join('\n');
+
+    final marker = jsonEncode(_resultMarker);
+    final boilerplate = _simpleBoilerplate.replaceAll(
+      '__PYRITE_MARKER__',
+      marker,
+    );
+
+    return '''
+$boilerplate
+
+_PYRITE_MARKER = $marker
 
 try:
 $indentedBody
@@ -528,14 +499,5 @@ except Exception as _pyrite_exc:
     final basename = _boardPath.basename(targetPath);
     final tempName = '.$basename.pyrite.tmp';
     return parent == '/' ? '/$tempName' : _boardPath.join(parent, tempName);
-  }
-
-  String _pythonStringLiteral(String value) => jsonEncode(value);
-
-  String _pythonTextExpression(String value) => boardFileTextExpression(value);
-
-  String _preview(String value) {
-    if (value.length <= 240) return value;
-    return '${value.substring(0, 240)}...';
   }
 }

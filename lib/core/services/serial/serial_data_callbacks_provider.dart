@@ -12,7 +12,10 @@ class SerialDataCallbacksNotifier
   }
 
   void remove(SerialDataCallback callback) {
-    state = state.where((cb) => cb != callback).toList();
+    state = [
+      for (final c in state)
+        if (c != callback) c,
+    ];
   }
 }
 

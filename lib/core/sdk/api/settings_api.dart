@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
@@ -7,8 +5,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
-import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 abstract class SdkSettingsCommands {
@@ -421,11 +418,7 @@ class SettingsRegistry {
       setter: (ref, v) {
         final value = (v as num).toInt();
         ref.read(serialDefaultBaudRate.notifier).state = value;
-        if (Platform.isAndroid) {
-          ref.read(androidUsbSerialProvider.notifier).setBaudRate(value);
-        } else {
-          ref.read(desktopUsbSerialProvider.notifier).setBaudRate(value);
-        }
+        ref.read(getUsbSerialProvider().notifier).setBaudRate(value);
       },
     ),
     _SettingEntry(
@@ -436,11 +429,7 @@ class SettingsRegistry {
       setter: (ref, v) {
         final value = v == true;
         ref.read(serialAutoReconnect.notifier).state = value;
-        if (Platform.isAndroid) {
-          ref.read(androidUsbSerialProvider.notifier).setAutoReconnect(value);
-        } else {
-          ref.read(desktopUsbSerialProvider.notifier).setAutoReconnect(value);
-        }
+        ref.read(getUsbSerialProvider().notifier).setAutoReconnect(value);
       },
     ),
     _SettingEntry(

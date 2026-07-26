@@ -160,14 +160,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
 
     try {
       if (Platform.isAndroid) {
-        await ref.read(androidUsbSerialProvider.notifier).refresh();
-        final devices = ref.read(androidUsbSerialProvider).devices;
-        final device = devices.where((d) => d.deviceName == port).firstOrNull;
-        if (device == null) {
-          _respondError(envelope, respond, 'Serial port not found: $port');
-          return;
-        }
-        await ref.read(androidUsbSerialProvider.notifier).connectPort(device);
+        await ref.read(androidUsbSerialProvider.notifier).connectPort(port);
       } else {
         await ref.read(desktopUsbSerialProvider.notifier).connectPort(port);
       }
@@ -182,7 +175,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     void Function(Map<String, dynamic>) respond,
   ) async {
     try {
-      await ref.read(_serialProvider.notifier).dicconnectPort();
+      await ref.read(_serialProvider.notifier).disconnectPort();
       _respondOk(envelope, respond);
     } catch (e) {
       _respondError(envelope, respond, e.toString());

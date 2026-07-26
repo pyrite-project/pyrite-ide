@@ -1,27 +1,24 @@
-import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
 import 'package:super_tree/super_tree.dart';
 
 Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
-  List<Map<String, String>> datas,
+  List<BoardFileEntry> entries,
 ) async {
   List<TreeNode<FileSystemItem>> items = [];
-  // print("debug: buildFileListItems with datas $datas");
-  for (Map<String, String> data in datas) {
-    if (data["type"] == "folder") {
+  for (final entry in entries) {
+    if (entry.isFolder) {
       items.add(
         TreeNode(
-          id: data["path"]!,
-          data: FolderItem(data["name"]!),
+          id: entry.path,
+          data: FolderItem(entry.name),
           canLoadChildren: true,
         ),
       );
-      // print(data.path);
     } else {
-      items.add(TreeNode(id: data["path"]!, data: FileItem(data["name"]!)));
+      items.add(TreeNode(id: entry.path, data: FileItem(entry.name)));
     }
   }
 
@@ -33,15 +30,8 @@ Future<File> getLocalFile(String boardFilePath) async {
     (await getApplicationSupportDirectory()).path,
     "temporary_board_files",
   );
-  debugPrint("debug: appSupportDir $supportDir");
-  List<String> fileNameList = boardFilePath.split("/");
-  String fileNameResult = "";
-  for (int i = 1; i < fileNameList.length; i++) {
-    fileNameResult = path.join(fileNameResult, fileNameList[i]);
-  }
-  File file = File(path.join(supportDir, fileNameResult));
+  final relativePath = boardFilePath.split("/").skip(1).join("/");
+  final file = File(path.join(supportDir, relativePath));
   await file.create(recursive: true, exclusive: false);
-  debugPrint("debug: open board file ${file.path}");
-
   return file;
 }

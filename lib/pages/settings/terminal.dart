@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -53,15 +51,9 @@ class TerminalSettings extends ConsumerWidget {
               value: ref.watch(serialAutoReconnect),
               onChanged: (value) {
                 ref.read(serialAutoReconnect.notifier).state = value;
-                if (Platform.isAndroid) {
-                  ref
-                      .read(androidUsbSerialProvider.notifier)
-                      .setAutoReconnect(value);
-                } else {
-                  ref
-                      .read(desktopUsbSerialProvider.notifier)
-                      .setAutoReconnect(value);
-                }
+                ref
+                    .read(getUsbSerialProvider().notifier)
+                    .setAutoReconnect(value);
               },
             ),
 
@@ -238,15 +230,9 @@ class TerminalSettings extends ConsumerWidget {
                     trailing: selected ? const Icon(Icons.check) : null,
                     minTileHeight: 0,
                     onTap: () {
-                      if (Platform.isAndroid) {
-                        ref
-                            .read(androidUsbSerialProvider.notifier)
-                            .setBaudRate(rate);
-                      } else {
-                        ref
-                            .read(desktopUsbSerialProvider.notifier)
-                            .setBaudRate(rate);
-                      }
+                      ref
+                          .read(getUsbSerialProvider().notifier)
+                          .setBaudRate(rate);
                       ref.read(serialDefaultBaudRate.notifier).state = rate;
                       Navigator.pop(context);
                     },

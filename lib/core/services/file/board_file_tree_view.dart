@@ -11,9 +11,9 @@ final boardFileTreeViewControllerProvider = StateProvider(
     onNodeDeleted: (node) async {
       try {
         if (node.data is FolderItem) {
-          await ref.read(boardProvider.notifier).deleteFolder(node.id);
+          await ref.read(boardProvider).ops.deleteFolder(node.id);
         } else {
-          await ref.read(boardProvider.notifier).deleteFile(node.id);
+          await ref.read(boardProvider).ops.deleteFile(node.id);
         }
       } on DeviceNotReadyException {
         // Error handled by UI layer
@@ -22,7 +22,7 @@ final boardFileTreeViewControllerProvider = StateProvider(
     onNodeRenamed: (node, newName) async {
       node.data.name = newName;
       try {
-        await ref.read(boardProvider.notifier).rename(node.id, newName);
+        await ref.read(boardProvider).ops.rename(node.id, newName);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } on DeviceNotReadyException {
         // Error handled by UI layer
@@ -31,7 +31,7 @@ final boardFileTreeViewControllerProvider = StateProvider(
     loadChildren: (node) async {
       if (node.canLoadChildren == true) {
         return await board.buildFileListItems(
-          await ref.read(boardProvider.notifier).getFileList(path: node.id),
+          await ref.read(boardProvider).ops.getFileList(path: node.id),
         );
       } else {
         return [];

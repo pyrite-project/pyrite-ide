@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/file/diff_info.dart';
 
@@ -10,7 +8,6 @@ class PendingUpload {
   final String localPath;
   final String targetPath;
   final String content;
-  final Completer<bool> completer = Completer<bool>();
 
   PendingUpload({
     required this.diff,

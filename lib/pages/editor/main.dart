@@ -52,7 +52,7 @@ class Editor extends ConsumerWidget {
                   ? OutlinedButton.icon(
                       onPressed: canSave && isConnected
                           ? () => ref
-                                .read(boardProvider.notifier)
+                                .read(boardProvider)
                                 .downloadSelectedBoardItem(context)
                           : null,
                       icon: const Icon(Icons.download_outlined, size: 18),

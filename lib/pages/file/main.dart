@@ -393,7 +393,7 @@ class ProjectFiles extends ConsumerWidget {
       return path.posix.dirname(targetNode.id);
     }
 
-    return ref.read(boardProvider.notifier).getFocusFolderNode()?.id ?? '/';
+    return ref.read(boardProvider).getFocusFolderNode()?.id ?? '/';
   }
 
   String _localMoveTargetFolder(
@@ -552,7 +552,7 @@ class ProjectFiles extends ConsumerWidget {
     if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
       await ref
-          .read(boardProvider.notifier)
+          .read(boardProvider)
           .moveBoardNodes(context, nodes, targetFolder);
     } on DeviceNotReadyException catch (_) {
       if (!context.mounted) return;
@@ -647,7 +647,7 @@ class ProjectFiles extends ConsumerWidget {
   }) async {
     try {
       await ref
-          .read(boardProvider.notifier)
+          .read(boardProvider)
           .downloadSelectedBoardItems(
             context,
             localFolderPath: localFolderPath,
@@ -914,7 +914,7 @@ class ProjectFiles extends ConsumerWidget {
     final controller = ref.read(boardFileTreeViewControllerProvider);
     if (!controller.selectedNodeIds.contains(node.id)) return [node.id];
     return ref
-        .read(boardProvider.notifier)
+        .read(boardProvider)
         .getSelectedNodes()
         .map((node) => node.id)
         .toList(growable: false);
@@ -934,10 +934,10 @@ class ProjectFiles extends ConsumerWidget {
     final selectedCount = selectedNodes.length;
 
     final TreeNode<FileSystemItem>? boardFileTarget = ref
-        .read(boardProvider.notifier)
+        .read(boardProvider)
         .getFocusFileNode();
     final TreeNode<FileSystemItem>? boardFolderTarget = ref
-        .read(boardProvider.notifier)
+        .read(boardProvider)
         .getFocusFolderNode();
     final TreeNode<FileSystemItem>? localFolderTarget = ref
         .read(fileProvider.notifier)
@@ -1003,8 +1003,8 @@ class ProjectFiles extends ConsumerWidget {
             try {
               final bytes = await File(node.id).readAsBytes();
               await ref
-                  .read(boardProvider.notifier)
-                  .writeFileBytes(boardFileTarget!.id, bytes);
+                  .read(boardProvider)
+                  .ops.writeFileBytes(boardFileTarget!.id, bytes);
               ref
                   .read(boardFileItemsProvider.notifier)
                   .buildRootFileListItems();
@@ -1072,7 +1072,7 @@ class ProjectFiles extends ConsumerWidget {
     if (!boardController.selectedNodeIds.contains(node.id)) {
       boardController.setSelectedNodeId(node.id);
     }
-    final selectedNodes = ref.read(boardProvider.notifier).getSelectedNodes();
+    final selectedNodes = ref.read(boardProvider).getSelectedNodes();
     final selectedCount = selectedNodes.length;
 
     final TreeNode<FileSystemItem>? localFileTarget = ref
@@ -1115,7 +1115,7 @@ class ProjectFiles extends ConsumerWidget {
             )) {
               try {
                 await ref
-                    .read(boardProvider.notifier)
+                    .read(boardProvider)
                     .deleteSelectedBoardItems(context);
               } on DeviceNotReadyException catch (_) {
                 if (!context.mounted) return;
@@ -1160,8 +1160,8 @@ class ProjectFiles extends ConsumerWidget {
           callback: () async {
             try {
               final bytes = await ref
-                  .read(boardProvider.notifier)
-                  .getFileBytes(node.id);
+                  .read(boardProvider)
+                  .ops.getFileBytes(node.id);
               await File(localFileTarget!.id).writeAsBytes(bytes);
               ref
                   .read(localFileItemsProvider.notifier)
@@ -1390,7 +1390,7 @@ class ProjectFiles extends ConsumerWidget {
                             )) {
                               try {
                                 await ref
-                                    .read(boardProvider.notifier)
+                                    .read(boardProvider)
                                     .deleteSelectedBoardItems(context);
                               } on DeviceNotReadyException catch (_) {
                                 if (!context.mounted) return;
@@ -1448,33 +1448,49 @@ class ProjectFiles extends ConsumerWidget {
                     },
                     icon: const Icon(Icons.checklist),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
-                      ref,
-                      I18nKey.fileActionRefreshBoard,
-                    ),
-                    onPressed: () async {
-                      try {
-                        await ref
-                            .watch(boardFileItemsProvider.notifier)
-                            .buildRootFileListItems();
-                      } on DeviceNotReadyException catch (_) {
-                        if (!context.mounted) return;
-                        final sendCtrlC = await showDeviceNotReadyDialog(
-                          context,
-                          operation: translateForWidget(
-                            ref,
-                            I18nKey.fileOperationRefreshBoardFile,
-                          ),
-                        );
-                        if (sendCtrlC) {
-                          ref
-                              .read(getUsbSerialProvider().notifier)
-                              .sendCommand("\x03");
-                        }
-                      }
+                  Builder(
+                    builder: (context) {
+                      final isLoading = ref.watch(boardFileListLoadingProvider);
+                      return IconButton(
+                        tooltip: translateForWidget(
+                          ref,
+                          I18nKey.fileActionRefreshBoard,
+                        ),
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                                try {
+                                  await ref
+                                      .watch(boardFileItemsProvider.notifier)
+                                      .buildRootFileListItems();
+                                } on DeviceNotReadyException catch (_) {
+                                  if (!context.mounted) return;
+                                  final sendCtrlC =
+                                      await showDeviceNotReadyDialog(
+                                    context,
+                                    operation: translateForWidget(
+                                      ref,
+                                      I18nKey.fileOperationRefreshBoardFile,
+                                    ),
+                                  );
+                                  if (sendCtrlC) {
+                                    ref
+                                        .read(getUsbSerialProvider().notifier)
+                                        .sendCommand("\x03");
+                                  }
+                                }
+                              },
+                        icon: isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh),
+                      );
                     },
-                    icon: const Icon(Icons.refresh),
                   ),
                 ],
         );
@@ -1714,7 +1730,7 @@ class ProjectFiles extends ConsumerWidget {
                 onNodeDoubleTap: selectionMode
                     ? null
                     : (id) => ref
-                          .read(boardProvider.notifier)
+                          .read(boardProvider)
                           .openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
@@ -1775,13 +1791,16 @@ class ProjectFiles extends ConsumerWidget {
         ],
       );
     } else if (ref.watch(getUsbSerialProvider()).isConnected) {
+      final isLoading = ref.watch(boardFileListLoadingProvider);
       return WorkspaceEmptyState(
         icon: Icons.developer_board_outlined,
         title: I18nKey.fileEmptyBoardRefreshTitle,
         message: I18nKey.fileEmptyBoardRefreshMessage,
         actionLabel: I18nKey.fileActionRefresh,
-        onAction: () =>
-            ref.watch(boardFileItemsProvider.notifier).buildRootFileListItems(),
+        onAction: isLoading
+            ? null
+            : () =>
+                ref.watch(boardFileItemsProvider.notifier).buildRootFileListItems(),
       );
     } else {
       return WorkspaceEmptyState(

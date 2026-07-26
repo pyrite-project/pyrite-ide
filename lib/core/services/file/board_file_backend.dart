@@ -14,10 +14,6 @@ class BoardFileEntry {
   });
 
   bool get isFolder => type == BoardFileEntryType.folder;
-
-  Map<String, String> toLegacyMap() {
-    return {'path': path, 'name': name, 'type': isFolder ? 'folder' : 'file'};
-  }
 }
 
 /// Filesystem operations for a connected MicroPython board.
@@ -51,12 +47,6 @@ abstract class BoardFileBackend {
     void Function(int sent, int total)? onProgress,
   });
 
-  Future<void> beginWriteFile(String path);
-
-  Future<void> appendWriteFileChunk(String path, List<int> bytes);
-
-  Future<void> finishWriteFile(String path);
-
   Future<void> deleteFile(String path);
 
   Future<void> deleteFolder(String path);
@@ -66,6 +56,8 @@ abstract class BoardFileBackend {
   Future<void> move(String oldPath, String newPath);
 
   Future<void> createFolder(String path);
+
+  Future<void> pathExists(String path);
 }
 
 class BoardFileBackendException implements Exception {

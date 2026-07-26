@@ -84,7 +84,7 @@ class WorkspaceEmptyState extends StatelessWidget {
     required this.title,
     required this.message,
     required this.actionLabel,
-    required this.onAction,
+    this.onAction,
     this.secondaryAction,
   });
 
@@ -92,7 +92,7 @@ class WorkspaceEmptyState extends StatelessWidget {
   final Object title;
   final Object message;
   final Object actionLabel;
-  final VoidCallback onAction;
+  final VoidCallback? onAction;
   final Widget? secondaryAction;
 
   @override

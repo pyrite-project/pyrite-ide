@@ -12,8 +12,6 @@ import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
 
-const _transferChunkSize = 768;
-
 abstract class SdkFileCommands {
   static const String getDirList = 'sdk.file.get_dir_list';
   static const String getRootDir = 'sdk.file.get_root_dir';
@@ -43,14 +41,6 @@ abstract class SdkFileCommands {
 class SdkFile extends StateNotifier<PluginRunManager?> {
   final Ref ref;
   SdkFile(this.ref) : super(null);
-
-  String _tr(I18nKey key, [Map<String, String> replacements = const {}]) {
-    var value = translate(ref, key);
-    for (final entry in replacements.entries) {
-      value = value.replaceAll('{${entry.key}}', entry.value);
-    }
-    return value;
-  }
 
   void bind(PluginRunManager runManager) {
     state = runManager;
@@ -446,45 +436,30 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
     if (localPath != null && boardPath != null) {
       try {
         final bytes = await File(localPath).readAsBytes();
-        ref
-            .read(fileTransferProgressProvider.notifier)
-            .start(
-              direction: FileTransferDirection.upload,
-              scope: FileTransferScope.file,
-              totalFiles: 1,
-              message: '准备上传文件',
-            );
-        ref
-            .read(fileTransferProgressProvider.notifier)
-            .startFile(
-              file: localPath,
-              index: 1,
-              totalFiles: 1,
-              bytesTotal: bytes.length,
-            );
+        final progress = ref.read(fileTransferProgressProvider.notifier);
+        progress.start(
+          direction: FileTransferDirection.upload,
+          scope: FileTransferScope.file,
+          totalFiles: 1,
+          message: translateWithReplacements(ref,I18nKey.fileTransferPrepareUploadFile),
+        );
+        progress.startFile(
+          file: localPath,
+          index: 1,
+          totalFiles: 1,
+          bytesTotal: bytes.length,
+        );
         final backend = ref.read(boardFileBackendProvider);
-        await backend.beginWriteFile(boardPath);
-        var offset = 0;
-        while (offset < bytes.length) {
-          final end = (offset + _transferChunkSize) < bytes.length
-              ? offset + _transferChunkSize
-              : bytes.length;
-          await backend.appendWriteFileChunk(
-            boardPath,
-            bytes.sublist(offset, end),
-          );
-          offset = end;
-          ref
-              .read(fileTransferProgressProvider.notifier)
-              .updateBytes(offset, bytes.length);
-        }
-        await backend.finishWriteFile(boardPath);
-        ref
-            .read(fileTransferProgressProvider.notifier)
-            .complete(message: _tr(I18nKey.fileMessageUploadedToDevice, {'path': boardPath}));
+        await backend.writeFileBytes(
+          boardPath,
+          bytes,
+          onProgress: progress.updateBytes,
+        );
+        progress.updateBytes(bytes.length, bytes.length);
+        progress.complete(message: translateWithReplacements(ref,I18nKey.fileMessageUploadedToDevice, {'path': boardPath}));
         _respondOk(envelope, respond, data: true);
       } catch (e) {
-        ref.read(fileTransferProgressProvider.notifier).fail(_tr(I18nKey.fileMessageUploadFailed, {'error': e.toString()}));
+        ref.read(fileTransferProgressProvider.notifier).fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': e.toString()}));
         _respondOk(envelope, respond, data: false);
       }
     } else {

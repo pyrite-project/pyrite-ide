@@ -19,8 +19,7 @@ import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
-import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
@@ -164,16 +163,10 @@ void _applyData(PersistedData data) {
   container.read(useMaterialContextMenu.notifier).state =
       data.useMaterialContextMenu;
   container
-      .read(androidUsbSerialProvider.notifier)
+      .read(getUsbSerialProvider().notifier)
       .setBaudRate(data.serialDefaultBaudRate);
   container
-      .read(androidUsbSerialProvider.notifier)
-      .setAutoReconnect(data.serialAutoReconnect);
-  container
-      .read(desktopUsbSerialProvider.notifier)
-      .setBaudRate(data.serialDefaultBaudRate);
-  container
-      .read(desktopUsbSerialProvider.notifier)
+      .read(getUsbSerialProvider().notifier)
       .setAutoReconnect(data.serialAutoReconnect);
   container.read(uploadConfirmStyleProvider.notifier).state =
       data.uploadConfirmStyle;

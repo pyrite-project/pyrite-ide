@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/serial/raw_paste_session.dart';
+import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 
 void main() {
   group('RawPasteSession.executeStreaming', () {

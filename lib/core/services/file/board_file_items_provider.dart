@@ -4,6 +4,8 @@ import 'package:pyrite_ide/core/services/file/board_utils.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:super_tree/super_tree.dart';
 
+final boardFileListLoadingProvider = StateProvider<bool>((ref) => false);
+
 class BoardFileItemsNotifier
     extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   final Ref ref;
@@ -11,10 +13,15 @@ class BoardFileItemsNotifier
   BoardFileItemsNotifier(this.ref) : super(const []);
 
   Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
-    final entries = await ref.read(boardProvider.notifier).getFileList();
-    List<TreeNode<FileSystemItem>> items = await buildFileListItems(entries);
-    state = items;
-    return items;
+    ref.read(boardFileListLoadingProvider.notifier).state = true;
+    try {
+      final entries = await ref.read(boardProvider).ops.getFileList();
+      List<TreeNode<FileSystemItem>> items = await buildFileListItems(entries);
+      state = items;
+      return items;
+    } finally {
+      ref.read(boardFileListLoadingProvider.notifier).state = false;
+    }
   }
 
   void clear() {

@@ -20,6 +20,18 @@ String translate(Ref ref, I18nKey key) {
   return translateFromRegistry(registry, locale, key);
 }
 
+String translateWithReplacements(
+  Ref ref,
+  I18nKey key, [
+  Map<String, String> replacements = const {},
+]) {
+  var value = translate(ref, key);
+  for (final entry in replacements.entries) {
+    value = value.replaceAll('{${entry.key}}', entry.value);
+  }
+  return value;
+}
+
 String translateForWidget(WidgetRef ref, I18nKey key) {
   final locale = ref.watch(activeLocaleProvider);
   final registry = ref.watch(dataRegistryProvider);
