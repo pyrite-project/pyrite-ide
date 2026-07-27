@@ -4,9 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/serial/repl_io.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/board_filesystem_mount.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
@@ -120,7 +118,7 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
     repl.onOutput = (String data) {
       if (ref.read(serialReplIoPausedProvider)) return;
       final encode = ref.read(chineseToUnicodeConversion);
-      sendCommand(encode ? ReplInputEncoder.encode(data) : data);
+      sendCommand(encode ? _encodeForRepl(data) : data);
     };
   }
 
@@ -136,4 +134,19 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
       } catch (_) {}
     }
   }
+}
+
+/// Encodes non-ASCII characters for MicroPython REPL input.
+String _encodeForRepl(String input) {
+  final buffer = StringBuffer();
+  for (final rune in input.runes) {
+    if (rune < 0x80) {
+      buffer.writeCharCode(rune);
+    } else if (rune <= 0xFFFF) {
+      buffer.write('\\u${rune.toRadixString(16).padLeft(4, '0')}');
+    } else {
+      buffer.write('\\U${rune.toRadixString(16).padLeft(8, '0')}');
+    }
+  }
+  return buffer.toString();
 }

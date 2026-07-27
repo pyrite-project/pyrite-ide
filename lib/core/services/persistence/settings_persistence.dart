@@ -54,6 +54,7 @@ class SettingsPersistedData {
   final bool microPythonStubsAutoDetectLayers;
   final List<MicroPythonStubsLayer> microPythonStubsLayers;
   final List<String> microPythonStubsExtraPaths;
+  final String replMode;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -105,6 +106,7 @@ class SettingsPersistedData {
     this.microPythonStubsAutoDetectLayers = false,
     this.microPythonStubsLayers = const [],
     this.microPythonStubsExtraPaths = const [],
+    this.replMode = 'rawPaste',
   });
 
   Map<String, dynamic> toJson() => {
@@ -159,6 +161,7 @@ class SettingsPersistedData {
         .map((layer) => layer.toJson())
         .toList(),
     'microPythonStubsExtraPaths': microPythonStubsExtraPaths,
+    'replMode': replMode,
   };
 
   factory SettingsPersistedData.fromJson(
@@ -228,6 +231,7 @@ class SettingsPersistedData {
         (json['microPythonStubsExtraPaths'] as List? ?? [])
             .map((item) => item.toString())
             .toList(),
+    replMode: json['replMode'] as String? ?? 'rawPaste',
   );
 }
 

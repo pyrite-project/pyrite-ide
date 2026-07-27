@@ -374,6 +374,14 @@ enum I18nKey {
   devicesStatusQuery('devices.status.query', '查询设备状态'),
   devicesStatusFirmware('devices.status.firmware', '固件版本'),
   devicesStatusPlatform('devices.status.platform', '平台型号'),
+  devicesStatusNotConnected(
+    'devices.status.not_connected',
+    '设备未连接',
+  ),
+  devicesStatusParseError(
+    'devices.status.parse_error',
+    '未能从设备响应中解析到状态数据',
+  ),
   settingsStyleThemeMode('settings.style.theme_mode.title', '主题模式'),
   settingsStyleThemeModeDescription(
     'settings.style.theme_mode.description',
@@ -471,6 +479,26 @@ enum I18nKey {
     'settings.terminal.chinese_to_unicode.subtitle',
     '输入中文时自动转为 \\uXXXX 转义序列',
   ),
+  settingsTerminalReplMode(
+    'settings.terminal.repl_mode.title',
+    'REPL 模式',
+  ),
+  settingsTerminalReplModeSubtitle(
+    'settings.terminal.repl_mode.subtitle',
+    'Paste 模式使用 Ctrl-E 粘贴模式执行，兼容所有 MicroPython 固件',
+  ),
+  settingsTerminalReplModeRawPaste(
+    'settings.terminal.repl_mode.raw_paste',
+    'Raw-paste',
+  ),
+  settingsTerminalReplModeRawRepl(
+    'settings.terminal.repl_mode.raw_repl',
+    'Raw REPL',
+  ),
+  settingsTerminalReplModePaste(
+    'settings.terminal.repl_mode.paste',
+    'Paste',
+  ),
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
   settingsTerminalDisplayDescription(
     'settings.terminal.display.description',
@@ -510,6 +538,18 @@ enum I18nKey {
   settingsTerminalWebReplPasswordHint(
     'settings.terminal.webrepl.password_hint',
     '设备的 WebREPL 访问密码',
+  ),
+  webReplEmptyHost(
+    'webrepl.error.empty_host',
+    '请输入设备 IP 地址',
+  ),
+  webReplConnectFailed(
+    'webrepl.error.connect_failed',
+    '连接失败：{error}',
+  ),
+  webReplDisconnected(
+    'webrepl.error.disconnected',
+    '连接已断开',
   ),
   settingsTerminalUnset('settings.terminal.unset', '未设置'),
   settingsTerminalSet('settings.terminal.set', '已设置'),

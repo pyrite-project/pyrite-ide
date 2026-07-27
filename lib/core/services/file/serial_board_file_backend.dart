@@ -4,12 +4,13 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
 
-/// Board file backend that talks to every supported platform through the
-/// existing serial provider and MicroPython raw-paste protocol.
-class RawPasteSerialBoardFileBackend implements BoardFileBackend {
+/// Board file backend that communicates with MicroPython devices over serial,
+/// supporting raw-paste, raw REPL, and paste modes.
+class SerialBoardFileBackend implements BoardFileBackend {
   static const _resultMarker = '__PYRITE_BOARD_FILE_RESULT__';
   static const _writeReadyMarker = 'PYRITE_WRITE_READY';
   static const _writeDoneMarker = 'PYRITE_WRITE_DONE';
@@ -21,7 +22,7 @@ class RawPasteSerialBoardFileBackend implements BoardFileBackend {
 
   final Ref ref;
 
-  RawPasteSerialBoardFileBackend(this.ref);
+  SerialBoardFileBackend(this.ref);
 
   @override
   Future<List<BoardFileEntry>> listDirectory({String path = '/'}) async {
@@ -148,6 +149,12 @@ _emit_ok(encoded)
     List<int> bytes, {
     void Function(int sent, int total)? onProgress,
   }) async {
+    final mode = ref.read(replModeProvider);
+    if (mode == ReplMode.paste) {
+      await _writeFileBytesViaPaste(path, bytes, onProgress: onProgress);
+      return;
+    }
+
     final target = boardFileTextExpression(path);
     final tempPath = _temporaryPathFor(path);
     final temp = boardFileTextExpression(tempPath);
@@ -170,6 +177,75 @@ _emit_ok(encoded)
       ackEvery: _rawWriteAckEvery,
       onProgress: onProgress,
     );
+  }
+
+  /// Writes file bytes via paste mode using base64 chunked encoding.
+  Future<void> _writeFileBytesViaPaste(
+    String targetPath,
+    List<int> bytes, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    final totalSize = payload.length;
+    onProgress?.call(0, totalSize);
+
+    const chunkSize = 2000;
+    final tempPath = _temporaryPathFor(targetPath);
+    final tempExpr = boardFileTextExpression(tempPath);
+    final targetExpr = boardFileTextExpression(targetPath);
+
+    await runPythonOnDevice(
+      ref,
+      _wrapSimplePython('''
+import os
+try:
+  os.remove($tempExpr)
+except OSError:
+  pass
+f = open($tempExpr, 'wb')
+f.close()
+_emit_ok(True)
+'''),
+    );
+
+    var offset = 0;
+    while (offset < totalSize) {
+      final end = (offset + chunkSize < totalSize)
+          ? offset + chunkSize
+          : totalSize;
+      final chunk = payload.sublist(offset, end);
+      final b64 = base64Encode(chunk);
+
+      await runPythonOnDevice(
+        ref,
+        _wrapSimplePython('''
+import ubinascii
+data = ubinascii.a2b_base64('$b64')
+f = open($tempExpr, 'ab')
+f.write(data)
+f.close()
+_emit_ok(True)
+'''),
+      );
+
+      offset = end;
+      onProgress?.call(offset, totalSize);
+    }
+
+    await runPythonOnDevice(
+      ref,
+      _wrapSimplePython('''
+import os
+try:
+  os.remove($targetExpr)
+except OSError:
+  pass
+os.rename($tempExpr, $targetExpr)
+_emit_ok(True)
+'''),
+    );
+
+    onProgress?.call(totalSize, totalSize);
   }
 
   static String _buildWriteFileScript({

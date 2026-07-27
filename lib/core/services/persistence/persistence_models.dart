@@ -99,6 +99,7 @@ class PersistedData {
   final List<MicroPythonStubsLayer> microPythonStubsLayers;
   final List<String> microPythonStubsExtraPaths;
   final List<DataContributionRecord> dataContributions;
+  final String replMode;
 
   PersistedData({
     this.projectPath,
@@ -167,6 +168,7 @@ class PersistedData {
     this.microPythonStubsLayers = const [],
     this.microPythonStubsExtraPaths = const [],
     this.dataContributions = const [],
+    this.replMode = 'rawPaste',
   });
 }
 

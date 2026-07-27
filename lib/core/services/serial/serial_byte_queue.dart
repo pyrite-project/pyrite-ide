@@ -8,6 +8,10 @@ class SerialByteQueue {
 
   bool get hasData => _buffer.isNotEmpty;
 
+  /// Returns the index of [pattern] in the buffer, or -1 if not found.
+  /// Does not consume any data.
+  int indexOf(List<int> pattern) => _indexOf(pattern);
+
   void add(Uint8List data) {
     if (data.isEmpty) return;
     _buffer.addAll(data);

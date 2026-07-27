@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
@@ -40,9 +42,9 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     _password = ref.read(webReplPassword);
 
     if (host.isEmpty) {
-      state = const WebReplInfo(
+      state = WebReplInfo(
         state: WebReplState.error,
-        errorMessage: '请输入设备 IP 地址',
+        errorMessage: translate(ref, I18nKey.webReplEmptyHost),
       );
       return;
     }
@@ -60,15 +62,16 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
         onError: (error) {
           state = WebReplInfo(
             state: WebReplState.error,
-            errorMessage: '连接失败: $error',
+            errorMessage: translateWithReplacements(
+                ref, I18nKey.webReplConnectFailed, {'error': '$error'}),
           );
           _cleanup();
         },
         onDone: () {
           if (state.state != WebReplState.disconnected) {
-            state = const WebReplInfo(
+            state = WebReplInfo(
               state: WebReplState.error,
-              errorMessage: '连接已断开',
+              errorMessage: translate(ref, I18nKey.webReplDisconnected),
             );
           }
           _cleanup();
@@ -77,7 +80,8 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     } catch (e) {
       state = WebReplInfo(
         state: WebReplState.error,
-        errorMessage: '连接失败: $e',
+        errorMessage: translateWithReplacements(
+            ref, I18nKey.webReplConnectFailed, {'error': '$e'}),
       );
       _cleanup();
     }

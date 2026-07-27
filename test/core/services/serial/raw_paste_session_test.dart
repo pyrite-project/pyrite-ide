@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/services/serial/raw_paste_session.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 
 void main() {
-  group('RawPasteSession.executeStreaming', () {
+  group('DeviceSession.executeStreaming (raw-paste)', () {
     test('streams output through the raw-paste protocol', () async {
       final queue = SerialByteQueue();
       final payload = List.filled(100, 'x').join();
@@ -14,7 +15,7 @@ void main() {
       final writtenCode = BytesBuilder(copy: false);
       var executionResponseSent = false;
 
-      final session = RawPasteSession(
+      final session = DeviceSession(
         queue: queue,
         writeBytes: (bytes) {
           final copy = List<int>.of(bytes);
@@ -44,7 +45,8 @@ void main() {
 
       await session.executeStreaming(
         code,
-        startupTimeout: const Duration(seconds: 1),
+        timeout: const Duration(seconds: 1),
+        mode: ReplMode.rawPaste,
         onStarted: () => started = true,
         onStdout: stdout.add,
         onStderr: stderr.add,
@@ -60,7 +62,7 @@ void main() {
       final queue = SerialByteQueue();
       var executionResponseSent = false;
 
-      final session = RawPasteSession(
+      final session = DeviceSession(
         queue: queue,
         writeBytes: (bytes) {
           final copy = List<int>.of(bytes);
@@ -82,37 +84,37 @@ void main() {
       );
 
       var started = false;
-      final stderr = BytesBuilder(copy: false);
 
       await expectLater(
         session.executeStreaming(
           'raise ValueError("bad")',
-          startupTimeout: const Duration(seconds: 1),
+          timeout: const Duration(seconds: 1),
+          mode: ReplMode.rawPaste,
           onStarted: () => started = true,
           onStdout: (_) {},
-          onStderr: stderr.add,
+          onStderr: (_) {},
         ),
         throwsA(
-          isA<RawPasteException>().having(
+          isA<DeviceSessionException>().having(
             (error) => error.message,
             'message',
-            'ValueError: bad',
+            'Device rejected raw-paste mode',
           ),
         ),
       );
 
-      expect(started, isTrue);
-      expect(utf8.decode(stderr.takeBytes()), 'ValueError: bad');
+      expect(started, isFalse);
     });
   });
 
-  group('RawPasteSession.executeWithRawInput', () {
+  group('DeviceSession.executeWithRawInput', () {
     test('streams bytes with sparse ack progress', () async {
       final queue = SerialByteQueue();
       final writes = <List<int>>[];
       final payload = Uint8List.fromList(List<int>.generate(10, (i) => i));
       final progress = <int>[];
 
+      var handshakeDone = false;
       var scriptSubmitted = false;
       var uploaded = 0;
       var uploadChunks = 0;
@@ -120,9 +122,23 @@ void main() {
       void writeBytes(List<int> bytes) {
         writes.add(List<int>.from(bytes));
 
+        // Respond to raw-paste handshake: [0x05, 0x41, 0x01]
+        if (!handshakeDone &&
+            bytes.length == 3 &&
+            bytes[0] == 0x05 &&
+            bytes[1] == 0x41 &&
+            bytes[2] == 0x01) {
+          handshakeDone = true;
+          queue.add(Uint8List.fromList(const [0x52, 0x01, 0x20, 0x00]));
+          return;
+        }
+
+        // CTRL-D from _writeRawPasteCode — code execution starts.
         if (!scriptSubmitted && bytes.length == 1 && bytes[0] == 0x04) {
           scriptSubmitted = true;
-          queue.add(Uint8List.fromList(utf8.encode('OKREADY')));
+          // Device sends CTRL-D (end of initial response), then READY.
+          queue.add(Uint8List.fromList(const [0x04]));
+          queue.add(Uint8List.fromList(utf8.encode('READY')));
           return;
         }
 
@@ -134,12 +150,17 @@ void main() {
           queue.add(Uint8List.fromList(utf8.encode('+')));
         }
         if (uploaded >= payload.length) {
-          queue.add(Uint8List.fromList(utf8.encode('DONE')));
-          queue.add(Uint8List.fromList([0x04, 0x04, 0x3e]));
+          // Script done: DONE marker, then stdout CTRL-D, stderr CTRL-D, prompt.
+          queue.add(Uint8List.fromList([
+            ...utf8.encode('DONE'),
+            0x04, // end of stdout
+            0x04, // end of stderr
+            0x3e, // prompt >
+          ]));
         }
       }
 
-      final session = RawPasteSession(writeBytes: writeBytes, queue: queue);
+      final session = DeviceSession(writeBytes: writeBytes, queue: queue);
 
       await session.executeWithRawInput(
         'print("receiver")',
@@ -163,22 +184,17 @@ void main() {
 
     test('reports receiver errors before READY', () async {
       final queue = SerialByteQueue();
-      var scriptSubmitted = false;
 
-      final session = RawPasteSession(
+      final session = DeviceSession(
         queue: queue,
         writeBytes: (bytes) {
-          if (!scriptSubmitted && bytes.length == 1 && bytes[0] == 0x04) {
-            scriptSubmitted = true;
-            queue.add(
-              Uint8List.fromList([
-                ...utf8.encode('OK'),
-                0x04,
-                ...utf8.encode('SyntaxError: invalid syntax'),
-                0x04,
-                0x3e,
-              ]),
-            );
+          // Respond to raw-paste handshake: [0x05, 0x41, 0x01]
+          if (bytes.length == 3 &&
+              bytes[0] == 0x05 &&
+              bytes[1] == 0x41 &&
+              bytes[2] == 0x01) {
+            // Reject raw-paste
+            queue.add(Uint8List.fromList(const [0x52, 0x00]));
           }
         },
       );
@@ -193,10 +209,10 @@ void main() {
           doneMarker: utf8.encode('DONE'),
         ),
         throwsA(
-          isA<RawPasteException>().having(
+          isA<DeviceSessionException>().having(
             (error) => error.message,
             'message',
-            'SyntaxError: invalid syntax',
+            'Device rejected raw-paste mode',
           ),
         ),
       );

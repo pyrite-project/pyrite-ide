@@ -8,7 +8,6 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/serial_data_callbacks_provider.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 
 abstract class SdkSerialCommands {

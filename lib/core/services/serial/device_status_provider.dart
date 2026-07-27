@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
@@ -42,7 +44,7 @@ class DeviceStatusNotifier extends StateNotifier<AsyncValue<DeviceStatus?>> {
     final serialProvider = getUsbSerialProvider();
     final serialState = ref.read(serialProvider);
     if (serialState.isConnected != true) {
-      throw StateError('设备未连接');
+      throw StateError(translate(ref, I18nKey.devicesStatusNotConnected));
     }
   }
 
@@ -117,7 +119,7 @@ print('$_statusMarker' + json.dumps(result))
         );
       }
     }
-    throw StateError('未能从设备响应中解析到状态数据');
+    throw StateError(translate(ref, I18nKey.devicesStatusParseError));
   }
 }
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -88,6 +90,16 @@ class TerminalSettings extends ConsumerWidget {
               onChanged: (value) {
                 ref.read(chineseToUnicodeConversion.notifier).state = value;
               },
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.terminal),
+              title: const UseText(I18nKey.settingsTerminalReplMode),
+              subtitle: Text(
+                translateForWidget(ref, _replModeLabel(ref.watch(replModeProvider))),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showReplModeDialog(context, ref),
             ),
           ],
         ),
@@ -245,6 +257,37 @@ class TerminalSettings extends ConsumerWidget {
       ),
     );
   }
+
+  void _showReplModeDialog(BuildContext context, WidgetRef ref) {
+    final current = ref.read(replModeProvider);
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const UseText(I18nKey.settingsTerminalReplMode),
+        children: ReplMode.values.map((mode) {
+          final selected = mode == current;
+          final label = _replModeLabel(mode);
+          return SimpleDialogOption(
+            child: ListTile(
+              title: UseText(label),
+              trailing: selected ? const Icon(Icons.check) : null,
+              minTileHeight: 0,
+              onTap: () {
+                ref.read(replModeProvider.notifier).state = mode;
+                Navigator.pop(context);
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  I18nKey _replModeLabel(ReplMode mode) => switch (mode) {
+    ReplMode.rawPaste => I18nKey.settingsTerminalReplModeRawPaste,
+    ReplMode.rawRepl => I18nKey.settingsTerminalReplModeRawRepl,
+    ReplMode.paste => I18nKey.settingsTerminalReplModePaste,
+  };
 
   void _showTerminalFontDialog(BuildContext context, WidgetRef ref) {
     final List<SimpleDialogOption> children = [];
