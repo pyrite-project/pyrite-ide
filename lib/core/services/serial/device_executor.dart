@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 
 // ---------------------------------------------------------------------------
 // ReplMutex — prevents concurrent REPL transactions
@@ -35,6 +37,28 @@ class ReplMutex {
       }
     }
   }
+
+  /// Forcefully releases the mutex. All waiters in [_waitQueue] will receive
+  /// a [ForceResetException]. The currently running action (if any) is not
+  /// interrupted directly — callers should also cancel the serial queue.
+  void forceReset() {
+    if (!_locked) return;
+    _locked = false;
+    for (final c in _waitQueue) {
+      if (!c.isCompleted) {
+        c.completeError(const ForceResetException());
+      }
+    }
+    _waitQueue.clear();
+  }
+}
+
+/// Thrown when [ReplMutex.forceReset] is called while a waiter is pending.
+class ForceResetException implements Exception {
+  const ForceResetException();
+  @override
+  String toString() =>
+      'ForceResetException: REPL transaction was force-reset by user';
 }
 
 final replMutexProvider = Provider<ReplMutex>((ref) => ReplMutex());
@@ -629,6 +653,29 @@ Future<T> _runTransaction<T>(
       read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
     }
 
+    // Register running operation so the status bar can show an indicator
+    // with interrupt and force-reset buttons.
+    read(runningOperationsProvider.notifier).start(RunningOperation(
+      id: 'code-exec',
+      label: '运行中',
+      icon: Icons.play_arrow,
+      canInterrupt: true,
+      canForceReset: true,
+      onInterrupt: () {
+        // 1. Send CTRL-C to the device to stop execution.
+        writeBytes([0x03]);
+        // 2. Cancel the IDE-side queue so pending reads unblock and the
+        //    finally block runs, releasing the mutex and all state.
+        queue.cancel();
+      },
+      onForceReset: () {
+        // Cancel the queue (triggers SerialCancelledException → finally).
+        queue.cancel();
+        // Force-release the mutex even if a waiter is still pending.
+        mutex.forceReset();
+      },
+    ));
+
     final mode = read(replModeProvider);
     final session = DeviceSession(queue: queue, writeBytes: writeBytes);
     try {
@@ -637,6 +684,7 @@ Future<T> _runTransaction<T>(
       await session.enterRepl(mode);
       return await action(session, mode);
     } finally {
+      read(runningOperationsProvider.notifier).stop('code-exec');
       cleanup?.call();
       try {
         await session.exitRepl(mode);
@@ -711,6 +759,16 @@ Future<void> runPythonOnDeviceStreaming(
       return () => sub.close();
     },
   );
+}
+
+/// Forcefully interrupts any in-flight REPL transaction and releases the mutex.
+///
+/// Call this when the user presses the "force reset" button in the status bar
+/// and the normal interrupt flow (CTRL-C + queue.cancel) is not sufficient.
+void forceResetReplTransaction(Ref ref) {
+  final mutex = ref.read(replMutexProvider);
+  mutex.forceReset();
+  ref.read(runningOperationsProvider.notifier).stop('code-exec');
 }
 
 /// Runs a Python script while streaming raw binary data into stdin.

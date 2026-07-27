@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +23,8 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
+import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
+import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -1029,37 +1032,68 @@ class EditorToolsBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
+    final registryItems = ref.watch(statusBarRegistryProvider);
+    final runningOps = ref.watch(runningOperationsProvider);
+    final scrollController = ScrollController();
+
     return Container(
+      width: double.infinity,
       height: 40,
       padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
         border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
-      child: Row(
-        children: [
-          if (showNavigationDrawerButton) ...[
-            const MobileNavigationDrawerButton(),
-            const SizedBox(width: 4),
-          ] else if (!isMobile) ...[
+      child: Listener(
+        onPointerSignal: (event) {
+          if (event is PointerScrollEvent && scrollController.hasClients) {
+            final delta = event.scrollDelta.dy;
+            final newOffset = (scrollController.offset + delta).clamp(
+              0.0,
+              scrollController.position.maxScrollExtent,
+            );
+            scrollController.jumpTo(newOffset);
+          }
+        },
+        child: SingleChildScrollView(
+          controller: scrollController,
+          scrollDirection: Axis.horizontal,
+          child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showNavigationDrawerButton) ...[
+              const MobileNavigationDrawerButton(),
+              const SizedBox(width: 4),
+            ], 
             buildLspState(context, ref),
             const SizedBox(width: 4),
-          ],
-          Flexible(flex: isMobile ? 1 : 2, child: buildFileState(context, ref)),
-          const SizedBox(width: 4),
-          if (!isMobile) ...[
-            Flexible(child: buildBoardConnectState(context, ref)),
+            buildFileState(context, ref),
             const SizedBox(width: 4),
-          ],
-          Flexible(child: buildGitState(context, ref)),
-          const SizedBox(width: 4),
-          buildConsoleState(context, ref),
-          const SizedBox(width: 4),
-          if (ref.watch(fileTransferProgressProvider).isActive) ...[
-            Flexible(flex: 2, child: buildTransferState(context, ref)),
+            if (!isMobile) ...[
+              buildBoardConnectState(context, ref),
+              const SizedBox(width: 4),
+            ],
+            buildGitState(context, ref),
             const SizedBox(width: 4),
+            buildConsoleState(context, ref),
+            const SizedBox(width: 4),
+            if (ref.watch(fileTransferProgressProvider).isActive) ...[
+              buildTransferState(context, ref),
+              const SizedBox(width: 4),
+            ],
+            // Running operations from the registry
+            for (final op in runningOps) ...[
+              _buildRunningOperation(context, ref, op),
+              const SizedBox(width: 4),
+            ],
+            // Externally registered items
+            for (final entry in registryItems) ...[
+              entry.builder(context),
+              const SizedBox(width: 4),
+            ],
           ],
-        ],
+        ),
+      ),
       ),
     );
   }
@@ -1137,10 +1171,11 @@ class EditorToolsBar extends ConsumerWidget {
     return Tooltip(
       message: transfer.currentFile ?? label,
       child: SizedBox(
+        width: 160,
         height: 32,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -1288,6 +1323,74 @@ class EditorToolsBar extends ConsumerWidget {
         }
         ref.read(consolePageShow.notifier).state = !visible;
       },
+    );
+  }
+
+  Widget _buildRunningOperation(
+    BuildContext context,
+    WidgetRef ref,
+    RunningOperation op,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = op.failed ? scheme.error : scheme.primary;
+    return Container(
+      height: 32,
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (op.progress != null)
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                value: op.progress,
+                strokeWidth: 2,
+                color: color,
+              ),
+            )
+          else
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: color),
+            ),
+          const SizedBox(width: 6),
+          Text(
+            op.label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          if (op.canInterrupt) ...[
+            const SizedBox(width: 4),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 17,
+                tooltip: translateForWidget(ref, I18nKey.statusInterrupt),
+                icon: const Icon(Icons.stop_circle_outlined),
+                onPressed: op.onInterrupt,
+              ),
+            ),
+          ],
+          if (op.canForceReset) ...[
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 17,
+                tooltip: translateForWidget(ref, I18nKey.statusForceReset),
+                icon: const Icon(Icons.refresh),
+                onPressed: op.onForceReset,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -1335,7 +1335,12 @@ enum I18nKey {
   settingsUploadConfirmToolbar('settings.upload_confirm.toolbar', '浮动工具栏'),
   settingsUploadConfirmDialog('settings.upload_confirm.dialog', '确认对话框'),
   expansionWelcomeTab('expansion.welcome.tab', '欢迎'),
-  expansionWelcomeContent('expansion.welcome.content', '欢迎使用拓展页');
+  expansionWelcomeContent('expansion.welcome.content', '欢迎使用拓展页'),
+  statusRunningCode('status.running.code', '代码执行中...'),
+  statusInterrupt('status.interrupt', '中断'),
+  statusForceReset('status.force_reset', '强制重置'),
+  statusInterruptDevice('status.interrupt.device', '中断设备运行'),
+  statusForceResetDevice('status.force_reset.device', '强制重置设备连接');
 
   const I18nKey(this.key, this.fallback);
 

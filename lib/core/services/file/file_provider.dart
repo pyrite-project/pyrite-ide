@@ -16,6 +16,7 @@ import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -131,6 +132,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
     }
     return filePath;
+
   }
 
   Future<String> createFolder(String folderPath) async {

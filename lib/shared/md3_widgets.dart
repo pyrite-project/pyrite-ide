@@ -190,6 +190,7 @@ class StatusBarButton extends StatelessWidget {
     this.statusColor,
     this.tooltip,
     this.compact = false,
+    this.fixedWidth,
   });
 
   final Object label;
@@ -198,6 +199,10 @@ class StatusBarButton extends StatelessWidget {
   final Color? statusColor;
   final String? tooltip;
   final bool compact;
+
+  /// When non-null, the button is wrapped in a [SizedBox] with this width
+  /// so it is not compressed in a scrollable row.
+  final double? fixedWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -268,8 +273,13 @@ class StatusBarButton extends StatelessWidget {
       },
     );
 
-    if (tooltip == null) return child;
-    return Tooltip(message: tooltip!, child: child);
+    final result =
+        tooltip == null ? child : Tooltip(message: tooltip!, child: child);
+
+    if (fixedWidth != null) {
+      return SizedBox(width: fixedWidth, height: 32, child: result);
+    }
+    return result;
   }
 }
 
