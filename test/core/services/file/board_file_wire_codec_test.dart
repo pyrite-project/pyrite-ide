@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/services/file/board_file_wire_codec.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
 
 void main() {
   test('encodes Chinese board file text as ASCII-safe base64', () {

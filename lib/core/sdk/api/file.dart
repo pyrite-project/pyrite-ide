@@ -6,11 +6,11 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
-import 'package:pyrite_ide/core/services/file/local_utils.dart' as local;
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 
 abstract class SdkFileCommands {
   static const String getDirList = 'sdk.file.get_dir_list';

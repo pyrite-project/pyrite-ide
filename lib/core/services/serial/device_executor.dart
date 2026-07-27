@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
@@ -605,8 +606,11 @@ class DeviceNotReadyException implements Exception {
 /// Runs a REPL transaction with mutex, I/O pausing, and cleanup.
 Future<T> _runTransaction<T>(
   _ProviderReader read,
-  Future<T> Function(DeviceSession session, ReplMode mode) action,
-) async {
+  Future<T> Function(DeviceSession session, ReplMode mode) action, {
+  /// Called with the queue before execution starts. Return an optional
+  /// cleanup function that will be called in the `finally` block.
+  void Function()? Function(SerialByteQueue queue)? onSetup,
+}) async {
   final mutex = read(replMutexProvider);
   return mutex.runExclusive(() async {
     _ensureConnected(read);
@@ -616,6 +620,9 @@ Future<T> _runTransaction<T>(
 
     read(serialReplIoPausedProvider.notifier).state = true;
     read(serialDataCallbacksProvider.notifier).add(callback);
+
+    // Set up disconnect listener — caller wires it and provides cleanup.
+    final cleanup = onSetup?.call(queue);
 
     void writeBytes(List<int> bytes) {
       final serialProvider = getUsbSerialProvider();
@@ -630,9 +637,11 @@ Future<T> _runTransaction<T>(
       await session.enterRepl(mode);
       return await action(session, mode);
     } finally {
+      cleanup?.call();
       try {
         await session.exitRepl(mode);
       } catch (_) {}
+      queue.cancel();
       queue.clear();
       // CTRL-C + CTRL-B to force back to normal REPL.
       writeBytes([0x03, 0x03]);
@@ -666,6 +675,12 @@ Future<String> runPythonOnDevice(
   return _runTransaction(
     ref.read,
     (session, mode) => session.execute(python, timeout: timeout, mode: mode),
+    onSetup: (queue) {
+      final sub = ref.listen(getUsbSerialProvider(), (_, next) {
+        if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
+      });
+      return () => sub.close();
+    },
   );
 }
 
@@ -689,6 +704,12 @@ Future<void> runPythonOnDeviceStreaming(
       onStdout: onStdout,
       onStderr: onStderr,
     ),
+    onSetup: (queue) {
+      final sub = ref.listenManual(getUsbSerialProvider(), (_, next) {
+        if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
+      });
+      return () => sub.close();
+    },
   );
 }
 
@@ -725,6 +746,12 @@ Future<void> runPythonOnDeviceWithRawInput(
         ackEvery: ackEvery,
         onProgress: onProgress,
       );
+    },
+    onSetup: (queue) {
+      final sub = ref.listen(getUsbSerialProvider(), (_, next) {
+        if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
+      });
+      return () => sub.close();
     },
   );
 }

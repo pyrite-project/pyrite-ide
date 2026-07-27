@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
-import 'package:pyrite_ide/core/services/file/board_filesystem_mount.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 

@@ -1,10 +1,21 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+/// Thrown when a serial queue operation is cancelled due to device disconnect.
+class SerialCancelledException implements Exception {
+  final String message;
+  const SerialCancelledException([
+    this.message = 'Serial connection lost',
+  ]);
+  @override
+  String toString() => 'SerialCancelledException: $message';
+}
+
 /// Buffer for receiving serial bytes and reading them by pattern or count.
 class SerialByteQueue {
   final List<int> _buffer = [];
   Completer<void>? _dataCompleter;
+  bool _cancelled = false;
 
   bool get hasData => _buffer.isNotEmpty;
 
@@ -13,8 +24,17 @@ class SerialByteQueue {
   int indexOf(List<int> pattern) => _indexOf(pattern);
 
   void add(Uint8List data) {
-    if (data.isEmpty) return;
+    if (_cancelled || data.isEmpty) return;
     _buffer.addAll(data);
+    _dataCompleter?.complete();
+    _dataCompleter = null;
+  }
+
+  /// Cancels all pending and future reads. Completes any waiting future
+  /// immediately so that blocked operations unblock and release the mutex.
+  void cancel() {
+    _cancelled = true;
+    _buffer.clear();
     _dataCompleter?.complete();
     _dataCompleter = null;
   }
@@ -75,12 +95,14 @@ class SerialByteQueue {
   }
 
   Future<void> _waitForData(Duration? timeout) async {
+    if (_cancelled) throw const SerialCancelledException();
     _dataCompleter ??= Completer<void>();
     if (timeout == null) {
       await _dataCompleter!.future;
     } else {
       await _dataCompleter!.future.timeout(timeout);
     }
+    if (_cancelled) throw const SerialCancelledException();
   }
 
   Duration _remaining(Duration timeout, Stopwatch stopwatch) {

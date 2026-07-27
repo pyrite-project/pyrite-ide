@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/services/file/diff_info.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 
 void main() {
   test('computeDiff reports inserted ranges', () {

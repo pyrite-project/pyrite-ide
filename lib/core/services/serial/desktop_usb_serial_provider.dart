@@ -8,7 +8,7 @@ import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
 
 final DynamicLibrary? _kernel32 = Platform.isWindows
     ? DynamicLibrary.open('kernel32.dll')

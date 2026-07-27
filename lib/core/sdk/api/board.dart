@@ -6,11 +6,9 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
-import 'package:pyrite_ide/core/services/file/board_file_backend.dart';
-import 'package:pyrite_ide/core/services/file/board_file_backend_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 
 abstract class SdkBoardCommands {
   static const String getDirList = 'sdk.board.get_dir_list';
@@ -319,7 +317,7 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
     final filePath = payload['path']?.toString();
 
     if (filePath != null) {
-      final correspondingFilePath = board.getLocalFile(filePath);
+      final correspondingFilePath = getLocalFile(filePath);
       _respondOk(envelope, respond, data: correspondingFilePath);
     } else {
       _respondOk(envelope, respond, data: null);

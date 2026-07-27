@@ -1,8 +1,20 @@
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:super_tree/super_tree.dart';
+
+// ---------------------------------------------------------------------------
+// Local workspace provider (alias)
+// ---------------------------------------------------------------------------
+
+final ProviderListenable<Directory?> localWorkspaceProvider = fileProvider;
+
+// ---------------------------------------------------------------------------
+// Git-aware tree item types
+// ---------------------------------------------------------------------------
 
 class LocalFolderItem extends FolderItem {
   LocalFolderItem(super.name, {this.isGitIgnored = false});
@@ -24,26 +36,26 @@ bool isGitIgnoredItem(FileSystemItem item) {
   };
 }
 
-String getPattern() {
-  final String pattern;
-  if (Platform.isWindows) {
-    pattern = "\\";
-  } else {
-    pattern = "/";
-  }
+// ---------------------------------------------------------------------------
+// Tree building
+// ---------------------------------------------------------------------------
 
-  return pattern;
+String getPattern() {
+  if (Platform.isWindows) {
+    return "\\";
+  }
+  return "/";
 }
 
 Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
   Stream<FileSystemEntity> datas,
 ) async {
   final entities = <FileSystemEntity>[];
-  List<TreeNode<FileSystemItem>> items = [];
-  String pattern = getPattern();
+  final items = <TreeNode<FileSystemItem>>[];
+  final pattern = getPattern();
 
   try {
-    await for (FileSystemEntity data in datas) {
+    await for (final data in datas) {
       entities.add(data);
     }
   } on FileSystemException {
@@ -64,7 +76,6 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
           canLoadChildren: true,
         ),
       );
-      // print(data.path);
     } else {
       items.add(
         TreeNode(
@@ -80,6 +91,10 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
 
   return items;
 }
+
+// ---------------------------------------------------------------------------
+// Git ignore support
+// ---------------------------------------------------------------------------
 
 Future<Set<String>> gitIgnoredPaths(Iterable<String> entityPaths) async {
   final normalizedPaths = entityPaths.map(path.normalize).toList();
@@ -123,6 +138,10 @@ Future<Set<String>> gitIgnoredPaths(Iterable<String> entityPaths) async {
   }
 }
 
+// ---------------------------------------------------------------------------
+// System file dialogs
+// ---------------------------------------------------------------------------
+
 Future<File?> sysGetFile() async {
   final XFile? file = await openFile();
   if (file != null) {
@@ -139,32 +158,27 @@ Future<File?> sysCreateFile() async {
     String path = path0.path;
     file = File(path);
     await file.create();
-    // openFilesisSavedMap[file.path] = StateProvider<bool>((ref) => true);
   } else {
     file = null;
   }
   return file;
 }
 
-void writeFile(String path, String content) async {
-  final File file = File(path);
-  await file.writeAsString(content);
-}
-
 Future<bool> sysSaveAs(String content) async {
   FileSaveLocation? path0 = await getSaveLocation();
-  File? file;
   if (path0 != null) {
     String path = path0.path;
-    file = File(path);
+    final file = File(path);
     await file.create();
     file.writeAsString(content);
     return true;
-  } else {
-    file = null;
-    return false;
   }
+  return false;
 }
+
+// ---------------------------------------------------------------------------
+// Basic file operations
+// ---------------------------------------------------------------------------
 
 Future<Stream<FileSystemEntity>> getFileList(String path) async {
   return Directory(path).list();
@@ -197,9 +211,13 @@ Future<void> deleteFile(String path) async {
 }
 
 Future<String> getFileContent(String path) async {
-  final File file = File(path);
+  final file = File(path);
   return await file.readAsString();
 }
+
+// ---------------------------------------------------------------------------
+// Unique name generators
+// ---------------------------------------------------------------------------
 
 Future<String> createFileWithUniqueName(String desiredPath) async {
   final uniquePath = await getUniqueFilePath(desiredPath);
@@ -217,7 +235,6 @@ Future<String> getUniqueFilePath(
   String originalPath, {
   int maxAttempts = 10000,
 }) async {
-  // 先检查原始路径是否可用
   if (!await File(originalPath).exists()) {
     return originalPath;
   }

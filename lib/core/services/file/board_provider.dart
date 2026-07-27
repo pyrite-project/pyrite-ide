@@ -8,17 +8,11 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_file_items_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_file_ops.dart';
-import 'package:pyrite_ide/core/services/file/board_file_tree_view.dart';
-import 'package:pyrite_ide/core/services/file/board_transfer.dart';
-import 'package:pyrite_ide/core/services/file/file_ops_utils.dart';
-import 'package:pyrite_ide/core/services/file/board_utils.dart' as board;
-import 'package:pyrite_ide/core/services/file/file_transfer_progress.dart';
-import 'package:pyrite_ide/core/services/file/local_file_items_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/file/ui_utils.dart';
-import 'package:pyrite_ide/core/services/file/upload_and_download_diff.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -351,7 +345,7 @@ class BoardNotifier {
     );
 
     final correspondingFilePath =
-        (await board.getLocalFile(boardPath)).path;
+        (await getLocalFile(boardPath)).path;
     final provider = pendingDownloadProviderMap.putIfAbsent(
       correspondingFilePath,
       () => StateProvider<PendingDownload?>((ref) => null),
@@ -375,7 +369,7 @@ class BoardNotifier {
     final node =
         ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
-    final file = await board.getLocalFile(node.id);
+    final file = await getLocalFile(node.id);
     final content = await ops.getFileContent(id);
     await file.writeAsString(content);
     if (context.mounted) {
@@ -421,7 +415,7 @@ class BoardNotifier {
     if (selected?.data is FileItem || selectedTab != null) {
       final boardPath = selected?.id ?? selectedTab?.value.filePath;
       final content = await ops.getFileContent(boardPath);
-      final correspondingFilePath = (await board.getLocalFile(boardPath)).path;
+      final correspondingFilePath = (await getLocalFile(boardPath)).path;
 
       if ((ref.read(editorControllerMapProvider)[correspondingFilePath]
                   ?.text !=
