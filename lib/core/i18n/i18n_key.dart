@@ -269,6 +269,8 @@ enum I18nKey {
     'file.message.downloaded_folder_to_local',
     '已下载文件夹到本地：{path}',
   ),
+  fileMessageCreatedLocalFile('file.message.created_local_file', '已创建本地文件：{path}'),
+  fileMessageCreatedLocalFolder('file.message.created_local_folder', '已创建本地文件夹：{path}'),
   fileTransferPrepareUploadFile('file.transfer.prepare_upload_file', '准备上传文件'),
   fileTransferPrepareUploadFolder(
     'file.transfer.prepare_upload_folder',

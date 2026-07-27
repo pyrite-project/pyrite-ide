@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/utils.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
@@ -14,6 +15,14 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 
 class EditorWelcome extends ConsumerWidget {
   const EditorWelcome({super.key});
+  
+  String tr(WidgetRef ref, I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,10 +101,17 @@ class EditorWelcome extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFilePath(
                         path.join(parentPath, "new_file"),
                       );
-                      await ref
+                      ref
                           .read(fileProvider.notifier)
                           .createFile(uniquePath);
                       context.go("/file");
+                      showIdeSuccess(
+                        context,
+                        tr(
+                          ref,
+                          I18nKey.fileMessageCreatedLocalFile
+                        ).replaceAll('{path}', uniquePath),
+                      );
                     } ,
                       icon: const Icon(Icons.add),
                       label: const UseText(I18nKey.menuNewFile),

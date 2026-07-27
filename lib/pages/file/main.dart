@@ -160,6 +160,14 @@ class _RenderDragHandleBounds extends RenderProxyBox {
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
 
+  String tr(WidgetRef ref, I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final body = buildWorkspace(context, ref);
@@ -579,17 +587,10 @@ class ProjectFiles extends ConsumerWidget {
     List<TreeNode<FileSystemItem>> nodes,
     String targetFolder,
   ) async {
-    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
-      var value = translateForWidget(ref, key);
-      for (final entry in replacements.entries) {
-        value = value.replaceAll('{${entry.key}}', entry.value);
-      }
-      return value;
-    }
 
     final sourceLabel = nodes.length == 1
         ? nodes.single.data.name
-        : tr(I18nKey.fileMoveSelectedCount, {'count': nodes.length.toString()});
+        : tr(ref, I18nKey.fileMoveSelectedCount, {'count': nodes.length.toString()});
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -597,7 +598,7 @@ class ProjectFiles extends ConsumerWidget {
         icon: const Icon(Icons.drive_file_move_outline),
         title: const UseText(I18nKey.fileMoveConfirmTitle),
         content: Text(
-          tr(I18nKey.fileMoveConfirmMessage, {
+          tr(ref, I18nKey.fileMoveConfirmMessage, {
             'source': sourceLabel,
             'target': targetFolder,
           }),
@@ -1042,7 +1043,7 @@ class ProjectFiles extends ConsumerWidget {
             final uniquePath = await local.getUniqueFilePath(
               path.join(parentDir, "new_file"),
             );
-            await ref.read(fileProvider.notifier).createFile(uniquePath);
+            ref.read(fileProvider.notifier).createFile(uniquePath);
           },
         ),
         MenuAction(
@@ -1054,7 +1055,7 @@ class ProjectFiles extends ConsumerWidget {
             final uniquePath = await local.getUniqueFolderPath(
               path.join(parentDir, "new_folder"),
             );
-            await ref.read(fileProvider.notifier).createFolder(uniquePath);
+            ref.read(fileProvider.notifier).createFolder(uniquePath);
           },
         ),
       ],
@@ -1294,9 +1295,17 @@ class ProjectFiles extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFilePath(
                         path.join(parentPath, "new_file"),
                       );
-                      await ref
+                      ref
                           .read(fileProvider.notifier)
                           .createFile(uniquePath);
+                      if (!context.mounted) return;
+                      showIdeSuccess(
+                        context,
+                        tr(
+                          ref,
+                          I18nKey.fileMessageCreatedLocalFile
+                        ).replaceAll('{path}', uniquePath),
+                      );
                     },
                     icon: const Icon(Icons.note_add_outlined),
                   ),
@@ -1310,9 +1319,16 @@ class ProjectFiles extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFolderPath(
                         path.join(parentPath, "new_folder"),
                       );
-                      await ref
+                      ref
                           .read(fileProvider.notifier)
                           .createFolder(uniquePath);
+                      showIdeSuccess(
+                        context,
+                        tr(
+                          ref,
+                          I18nKey.fileMessageCreatedLocalFolder
+                        ).replaceAll('{path}', uniquePath),
+                      );
                     },
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),
