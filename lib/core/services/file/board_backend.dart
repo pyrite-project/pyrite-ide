@@ -718,9 +718,18 @@ class BoardFileOps {
       bytesTotal: size,
     );
     if (size == 0) return Uint8List(0);
-    final bytes = await backend.readFileBytes(sourcePath);
-    progress.updateBytes(bytes.length, bytes.length);
-    return bytes;
+
+    const chunkSize = 4096;
+    final result = Uint8List(size);
+    var offset = 0;
+    while (offset < size) {
+      final len = (size - offset < chunkSize) ? size - offset : chunkSize;
+      final chunk = await backend.readFileChunk(sourcePath, offset, len);
+      result.setRange(offset, offset + len, chunk);
+      offset += len;
+      progress.updateBytes(offset, size);
+    }
+    return result;
   }
 
   Future<void> writeFile(String targetPath, String content) async {
