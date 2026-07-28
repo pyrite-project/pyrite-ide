@@ -795,6 +795,10 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   Future<File?> openFile(BuildContext context, String id) async {
+    if (context.mounted && !ResponsiveBreakpoints.of(context).isDesktop) {
+      context.go('/editor');
+    }
+    
     ref.read(localFileTreeViewControllerProvider).setSelectedNodeId(id);
     final node = ref.read(localFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
