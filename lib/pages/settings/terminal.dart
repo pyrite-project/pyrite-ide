@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -54,7 +54,7 @@ class TerminalSettings extends ConsumerWidget {
               onChanged: (value) {
                 ref.read(serialAutoReconnect.notifier).state = value;
                 ref
-                    .read(getUsbSerialProvider().notifier)
+                    .read(serialProvider.notifier)
                     .setAutoReconnect(value);
               },
             ),
@@ -243,7 +243,7 @@ class TerminalSettings extends ConsumerWidget {
                     minTileHeight: 0,
                     onTap: () {
                       ref
-                          .read(getUsbSerialProvider().notifier)
+                          .read(serialProvider.notifier)
                           .setBaudRate(rate);
                       ref.read(serialDefaultBaudRate.notifier).state = rate;
                       Navigator.pop(context);

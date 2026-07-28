@@ -34,12 +34,11 @@ final _closeHandle = _kernel32
 final _getLastError = _kernel32
     ?.lookupFunction<Uint32 Function(), int Function()>('GetLastError');
 
-class DesktopUsbSerialNotifier
-    extends BaseUsbSerialNotifier<DesktopUsbSerialState> {
+class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   FlSerial? _serial;
   StreamSubscription<SerialEvent>? _eventSub;
 
-  DesktopUsbSerialNotifier(Ref ref) : super(ref, const DesktopUsbSerialState());
+  SerialNotifier(Ref ref) : super(ref, const SerialProviderState());
 
   @override
   Future<void> performUpdate() async {
@@ -182,7 +181,7 @@ class DesktopUsbSerialNotifier
   }
 }
 
-final StateNotifierProvider<DesktopUsbSerialNotifier, DesktopUsbSerialState>
-desktopUsbSerialProvider = StateNotifierProvider(
-  (ref) => DesktopUsbSerialNotifier(ref),
+final StateNotifierProvider<SerialNotifier, SerialProviderState>
+    serialProvider = StateNotifierProvider(
+  (ref) => SerialNotifier(ref),
 );

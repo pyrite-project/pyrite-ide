@@ -10,7 +10,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
@@ -296,10 +296,10 @@ class ProjectFiles extends ConsumerWidget {
             scrollController,
             event.position.global,
           );
-          return ref.read(getUsbSerialProvider()).isConnected &&
+          return ref.read(serialProvider).isConnected &&
                   _hasDragSource(event.session, _FileDragSource.board)
               ? DropOperation.move
-              : ref.read(getUsbSerialProvider()).isConnected &&
+              : ref.read(serialProvider).isConnected &&
                     (_hasDragSource(event.session, _FileDragSource.local) ||
                         _hasExternalFiles(event.session))
               ? DropOperation.copy
@@ -567,7 +567,7 @@ class ProjectFiles extends ConsumerWidget {
         operation: translateForWidget(ref, I18nKey.fileOperationMoveBoardFile),
       );
       if (sendCtrlC) {
-        ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+        ref.read(serialProvider.notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
@@ -661,7 +661,7 @@ class ProjectFiles extends ConsumerWidget {
         ),
       );
       if (sendCtrlC) {
-        ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+        ref.read(serialProvider.notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
@@ -691,7 +691,7 @@ class ProjectFiles extends ConsumerWidget {
         operation: translateForWidget(ref, I18nKey.fileOperationUploadToBoard),
       );
       if (sendCtrlC) {
-        ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+        ref.read(serialProvider.notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
@@ -748,7 +748,7 @@ class ProjectFiles extends ConsumerWidget {
         operation: translateForWidget(ref, I18nKey.fileOperationUploadToBoard),
       );
       if (sendCtrlC) {
-        ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+        ref.read(serialProvider.notifier).sendCommand("\x03");
       }
     } catch (error) {
       if (!context.mounted) return;
@@ -991,7 +991,7 @@ class ProjectFiles extends ConsumerWidget {
                 }),
           callback: () => _uploadSelectedLocalItems(context, ref),
           attributes: MenuActionAttributes(
-            disabled: !ref.watch(getUsbSerialProvider()).isConnected,
+            disabled: !ref.watch(serialProvider).isConnected,
           ),
         ),
         MenuAction(
@@ -1022,13 +1022,13 @@ class ProjectFiles extends ConsumerWidget {
                 operation: tr(I18nKey.fileOperationOverwriteBoardFile),
               );
               if (sendCtrlC) {
-                ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+                ref.read(serialProvider.notifier).sendCommand("\x03");
               }
             }
           },
           attributes: MenuActionAttributes(
             disabled:
-                !ref.watch(getUsbSerialProvider()).isConnected ||
+                !ref.watch(serialProvider).isConnected ||
                 selectedCount != 1 ||
                 (boardFileTarget == null || (node.data is FolderItem)),
           ),
@@ -1123,7 +1123,7 @@ class ProjectFiles extends ConsumerWidget {
                   operation: tr(I18nKey.fileOperationDeleteBoardFile),
                 );
                 if (sendCtrlC) {
-                  ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+                  ref.read(serialProvider.notifier).sendCommand("\x03");
                 }
               }
             }
@@ -1148,7 +1148,7 @@ class ProjectFiles extends ConsumerWidget {
           callback: () => _downloadSelectedBoardItems(context, ref),
           attributes: MenuActionAttributes(
             disabled:
-                !ref.watch(getUsbSerialProvider()).isConnected ||
+                !ref.watch(serialProvider).isConnected ||
                 (ref.watch(fileProvider)?.path == null),
           ),
         ),
@@ -1180,7 +1180,7 @@ class ProjectFiles extends ConsumerWidget {
                 operation: tr(I18nKey.fileOperationReadBoardFile),
               );
               if (sendCtrlC) {
-                ref.read(getUsbSerialProvider().notifier).sendCommand("\x03");
+                ref.read(serialProvider.notifier).sendCommand("\x03");
               }
             }
           },
@@ -1203,7 +1203,7 @@ class ProjectFiles extends ConsumerWidget {
   ) {
     final selectionMode = ref.watch(localFileSelectionModeProvider);
     final controller = ref.watch(localFileTreeViewControllerProvider);
-    final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
+    final isConnected = ref.watch(serialProvider).isConnected;
 
     return ListenableBuilder(
       listenable: controller,
@@ -1418,7 +1418,7 @@ class ProjectFiles extends ConsumerWidget {
                                     );
                                 if (sendCtrlC) {
                                   ref
-                                      .read(getUsbSerialProvider().notifier)
+                                      .read(serialProvider.notifier)
                                       .sendCommand("\x03");
                                 }
                               }
@@ -1489,7 +1489,7 @@ class ProjectFiles extends ConsumerWidget {
                                   );
                                   if (sendCtrlC) {
                                     ref
-                                        .read(getUsbSerialProvider().notifier)
+                                        .read(serialProvider.notifier)
                                         .sendCommand("\x03");
                                   }
                                 }
@@ -1643,7 +1643,7 @@ class ProjectFiles extends ConsumerWidget {
 
   Widget buildLocalActionStrip(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
+    final isConnected = ref.watch(serialProvider).isConnected;
     return Container(
       width: double.infinity,
       padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 6),
@@ -1673,7 +1673,7 @@ class ProjectFiles extends ConsumerWidget {
                         );
                         if (sendCtrlC) {
                           ref
-                              .read(getUsbSerialProvider().notifier)
+                              .read(serialProvider.notifier)
                               .sendCommand("\x03");
                         }
                       }
@@ -1697,9 +1697,9 @@ class ProjectFiles extends ConsumerWidget {
   }
 
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
-    if (ref.watch(getUsbSerialProvider()).isConnected &&
+    if (ref.watch(serialProvider).isConnected &&
         ref.watch(boardFileItemsProvider).isNotEmpty) {
-      final usb = ref.watch(getUsbSerialProvider());
+      final usb = ref.watch(serialProvider);
       final selectionMode = ref.watch(boardFileSelectionModeProvider);
       return Column(
         children: [
@@ -1804,7 +1804,7 @@ class ProjectFiles extends ConsumerWidget {
           ),
         ],
       );
-    } else if (ref.watch(getUsbSerialProvider()).isConnected) {
+    } else if (ref.watch(serialProvider).isConnected) {
       final isLoading = ref.watch(boardFileListLoadingProvider);
       return WorkspaceEmptyState(
         icon: Icons.developer_board_outlined,

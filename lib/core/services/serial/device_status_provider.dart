@@ -5,7 +5,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 
 const _statusMarker = '__PYRITE_DEVICE_STATUS__';
 
@@ -41,7 +41,6 @@ class DeviceStatusNotifier extends StateNotifier<AsyncValue<DeviceStatus?>> {
   }
 
   void _ensureConnected() {
-    final serialProvider = getUsbSerialProvider();
     final serialState = ref.read(serialProvider);
     if (serialState.isConnected != true) {
       throw StateError(translate(ref, I18nKey.devicesStatusNotConnected));

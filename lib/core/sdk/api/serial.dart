@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
-import 'package:pyrite_ide/core/services/serial/android_usb_serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/desktop_usb_serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
 
 abstract class SdkSerialCommands {
   static const String listPorts = 'sdk.serial.list_ports';
@@ -33,7 +30,10 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     runManager.registerHandler(SdkSerialCommands.getStatus, _handleGetStatus);
     runManager.registerHandler(SdkSerialCommands.read, _handleRead);
     runManager.registerHandler(SdkSerialCommands.connect, _handleConnect);
-    runManager.registerHandler(SdkSerialCommands.disconnect, _handleDisconnect);
+    runManager.registerHandler(
+      SdkSerialCommands.disconnect,
+      _handleDisconnect,
+    );
     runManager.registerHandler(SdkSerialCommands.send, _handleSend);
     runManager.registerHandler(
       SdkSerialCommands.sendCommand,
@@ -83,36 +83,14 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     return payload is Map<String, dynamic> ? payload : <String, dynamic>{};
   }
 
-  dynamic get _serialProvider => getUsbSerialProvider();
-
-  bool get _isConnected => ref.read(_serialProvider).isConnected == true;
+  bool get _isConnected => ref.read(serialProvider).isConnected == true;
 
   Future<void> _handleListPorts(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
-    if (Platform.isAndroid) {
-      await ref.read(androidUsbSerialProvider.notifier).refresh();
-      final state = ref.read(androidUsbSerialProvider);
-      _respondOk(
-        envelope,
-        respond,
-        data: state.devices
-            .map(
-              (device) => {
-                'name': device.deviceName,
-                'path': device.deviceName,
-                'manufacturer': device.manufacturerName,
-                'product': device.productName,
-              },
-            )
-            .toList(),
-      );
-      return;
-    }
-
-    await ref.read(desktopUsbSerialProvider.notifier).refresh();
-    final state = ref.read(desktopUsbSerialProvider);
+    await ref.read(serialProvider.notifier).refresh();
+    final state = ref.read(serialProvider);
     _respondOk(
       envelope,
       respond,
@@ -132,13 +110,12 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final state = ref.read(_serialProvider);
+    final state = ref.read(serialProvider);
     _respondOk(
       envelope,
       respond,
       data: {
-        'platform': Platform.isAndroid ? 'android' : 'desktop',
-        'is_connected': state.isConnected == true,
+        'is_connected': state.isConnected,
         'selected_port': state.selectedPortName,
         'baud_rate': state.baudRate,
         'auto_reconnect': state.autoReconnect,
@@ -151,18 +128,15 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     void Function(Map<String, dynamic>) respond,
   ) async {
     final payload = _payload(envelope);
-    final port = payload['port']?.toString() ?? payload['path']?.toString();
+    final port =
+        payload['port']?.toString() ?? payload['path']?.toString();
     if (port == null || port.isEmpty) {
       _respondError(envelope, respond, 'Missing serial port');
       return;
     }
 
     try {
-      if (Platform.isAndroid) {
-        await ref.read(androidUsbSerialProvider.notifier).connectPort(port);
-      } else {
-        await ref.read(desktopUsbSerialProvider.notifier).connectPort(port);
-      }
+      await ref.read(serialProvider.notifier).connectPort(port);
       _handleGetStatus(envelope, respond);
     } catch (e) {
       _respondError(envelope, respond, e.toString());
@@ -174,7 +148,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     void Function(Map<String, dynamic>) respond,
   ) async {
     try {
-      await ref.read(_serialProvider.notifier).disconnectPort();
+      await ref.read(serialProvider.notifier).disconnectPort();
       _respondOk(envelope, respond);
     } catch (e) {
       _respondError(envelope, respond, e.toString());
@@ -196,7 +170,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       _respondError(envelope, respond, 'Invalid serial data');
       return;
     }
-    ref.read(_serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
+    ref.read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
     _respondOk(envelope, respond, data: bytes.length);
   }
 
@@ -215,7 +189,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       return;
     }
     ref
-        .read(_serialProvider.notifier)
+        .read(serialProvider.notifier)
         .sendCommand(command, chunked: payload['chunked'] != false);
     _respondOk(envelope, respond);
   }
@@ -229,14 +203,17 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       return;
     }
     final payload = _payload(envelope);
-    final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 1000;
+    final timeoutMs =
+        (payload['timeout_ms'] as num?)?.toInt() ?? 1000;
     final maxBytes = (payload['max_bytes'] as num?)?.toInt();
     final buffer = <int>[];
     final completer = Completer<void>();
 
     void callback(Uint8List data) {
       buffer.addAll(data);
-      if (maxBytes != null && buffer.length >= maxBytes && !completer.isCompleted) {
+      if (maxBytes != null &&
+          buffer.length >= maxBytes &&
+          !completer.isCompleted) {
         completer.complete();
       }
     }
@@ -273,7 +250,8 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       _respondError(envelope, respond, 'Missing Python code');
       return;
     }
-    final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 20000;
+    final timeoutMs =
+        (payload['timeout_ms'] as num?)?.toInt() ?? 20000;
     try {
       final output = await runPythonOnDevice(
         ref,
@@ -295,7 +273,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       _respondError(envelope, respond, 'Missing baud rate');
       return;
     }
-    ref.read(_serialProvider.notifier).setBaudRate(value);
+    ref.read(serialProvider.notifier).setBaudRate(value);
     _respondOk(envelope, respond);
   }
 
@@ -304,7 +282,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     void Function(Map<String, dynamic>) respond,
   ) {
     final value = _payload(envelope)['value'];
-    ref.read(_serialProvider.notifier).setAutoReconnect(value == true);
+    ref.read(serialProvider.notifier).setAutoReconnect(value == true);
     _respondOk(envelope, respond);
   }
 

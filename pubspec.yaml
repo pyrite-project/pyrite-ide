@@ -68,7 +68,6 @@ dependencies:
   m3_floating_toolbar: 0.1.0
   flserial:
     path: flserial
-  usb_serial: 0.5.2
   serious_python:
     path: python_runtime/src/serious_python
   web_socket_channel: 3.0.3

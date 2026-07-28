@@ -6,7 +6,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
@@ -28,7 +28,7 @@ class EditorWelcome extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final workspace = ref.watch(fileProvider);
-    final usb = ref.watch(getUsbSerialProvider());
+    final usb = ref.watch(serialProvider);
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(24),

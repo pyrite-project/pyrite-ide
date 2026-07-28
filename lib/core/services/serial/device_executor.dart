@@ -9,7 +9,7 @@ import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -285,6 +285,12 @@ class DeviceSession {
   // -- Paste mode -----------------------------------------------------------
 
   Future<void> _enterPasteMode(Duration timeout) async {
+    // Wait for the device to finish processing CTRL-C and show ">>>",
+    // then clear any leftover output before entering paste mode.
+    try {
+      await queue.readUntil(_prompt3, timeout);
+    } catch (_) {}
+    queue.clear();
     _write([0x05]); // Ctrl-E
     await _waitForPasteReady(timeout);
   }
@@ -314,10 +320,7 @@ class DeviceSession {
   }
 
   Future<String> _executePaste(String code, Duration timeout) async {
-    queue.clear();
-    _write([0x05]); // Ctrl-E
-    await _waitForPasteReady(timeout ~/ 3);
-
+    // _enterPasteMode already entered paste mode (Ctrl-E + waited for ===).
     final script = "print('$_startMarker')\n$code\nprint('$_endMarker')\n";
     _write(utf8.encode(script));
     _write([0x04]); // Ctrl-D
@@ -333,10 +336,7 @@ class DeviceSession {
     required void Function(Uint8List data) onStdout,
     required void Function(Uint8List data) onStderr,
   }) async {
-    queue.clear();
-    _write([0x05]); // Ctrl-E
-    await _waitForPasteReady(timeout ~/ 3);
-
+    // _enterPasteMode already entered paste mode (Ctrl-E + waited for ===).
     final script = "print('$_startMarker')\n$code\nprint('$_endMarker')\n";
     _write(utf8.encode(script));
     _write([0x04]); // Ctrl-D
@@ -649,7 +649,6 @@ Future<T> _runTransaction<T>(
     final cleanup = onSetup?.call(queue);
 
     void writeBytes(List<int> bytes) {
-      final serialProvider = getUsbSerialProvider();
       read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
     }
 
@@ -702,7 +701,6 @@ Future<T> _runTransaction<T>(
 }
 
 void _ensureConnected(_ProviderReader read) {
-  final serialProvider = getUsbSerialProvider();
   final serialState = read(serialProvider);
   if (serialState.isConnected != true) {
     throw const DeviceNotReadyException('Device not connected.');
@@ -724,7 +722,7 @@ Future<String> runPythonOnDevice(
     ref.read,
     (session, mode) => session.execute(python, timeout: timeout, mode: mode),
     onSetup: (queue) {
-      final sub = ref.listen(getUsbSerialProvider(), (_, next) {
+      final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
       return () => sub.close();
@@ -753,7 +751,7 @@ Future<void> runPythonOnDeviceStreaming(
       onStderr: onStderr,
     ),
     onSetup: (queue) {
-      final sub = ref.listenManual(getUsbSerialProvider(), (_, next) {
+      final sub = ref.listenManual(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
       return () => sub.close();
@@ -806,7 +804,7 @@ Future<void> runPythonOnDeviceWithRawInput(
       );
     },
     onSetup: (queue) {
-      final sub = ref.listen(getUsbSerialProvider(), (_, next) {
+      final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
       return () => sub.close();

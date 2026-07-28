@@ -5,7 +5,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -107,7 +107,6 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
   }
 
   bool _isConnected() {
-    final serialProvider = getUsbSerialProvider();
     final serialState = ref.read(serialProvider);
     return serialState.isConnected == true;
   }

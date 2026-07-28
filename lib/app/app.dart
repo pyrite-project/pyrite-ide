@@ -10,7 +10,7 @@ import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -131,7 +131,7 @@ class PyriteIDE extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.read(getUsbSerialProvider().notifier).registerUpdateTask();
+    ref.read(serialProvider.notifier).registerUpdateTask();
     ref.read(pluginRunManagerProvider.notifier).setupRouterListener();
 
     return DynamicColorBuilder(

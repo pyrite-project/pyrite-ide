@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
@@ -29,7 +29,7 @@ class Editor extends ConsumerWidget {
         ? selectedValue
         : null;
     final canSave = fileValue != null;
-    final isConnected = ref.watch(getUsbSerialProvider()).isConnected;
+    final isConnected = ref.watch(serialProvider).isConnected;
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 8,
@@ -92,7 +92,7 @@ class Editor extends ConsumerWidget {
                 onPressed: isConnected
                     ? () {
                         ref
-                            .read(getUsbSerialProvider().notifier)
+                            .read(serialProvider.notifier)
                             .sendCommand("\x03");
                       }
                     : null,
@@ -108,7 +108,7 @@ class Editor extends ConsumerWidget {
                 onPressed: isConnected
                     ? () {
                         ref
-                            .read(getUsbSerialProvider().notifier)
+                            .read(serialProvider.notifier)
                             .sendCommand("\x04");
                       }
                     : null,

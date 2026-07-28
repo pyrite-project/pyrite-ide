@@ -5,7 +5,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
-import 'package:pyrite_ide/core/services/serial/utils.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 abstract class SdkSettingsCommands {
@@ -418,7 +418,7 @@ class SettingsRegistry {
       setter: (ref, v) {
         final value = (v as num).toInt();
         ref.read(serialDefaultBaudRate.notifier).state = value;
-        ref.read(getUsbSerialProvider().notifier).setBaudRate(value);
+        ref.read(serialProvider.notifier).setBaudRate(value);
       },
     ),
     _SettingEntry(
@@ -429,7 +429,7 @@ class SettingsRegistry {
       setter: (ref, v) {
         final value = v == true;
         ref.read(serialAutoReconnect.notifier).state = value;
-        ref.read(getUsbSerialProvider().notifier).setAutoReconnect(value);
+        ref.read(serialProvider.notifier).setAutoReconnect(value);
       },
     ),
     _SettingEntry(
