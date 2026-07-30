@@ -100,6 +100,8 @@ class PersistedData {
   final List<String> microPythonStubsExtraPaths;
   final List<DataContributionRecord> dataContributions;
   final String replMode;
+  final String fileTransferMode;
+  final String hardwareResetStrategy;
 
   PersistedData({
     this.projectPath,
@@ -168,7 +170,9 @@ class PersistedData {
     this.microPythonStubsLayers = const [],
     this.microPythonStubsExtraPaths = const [],
     this.dataContributions = const [],
-    this.replMode = 'rawPaste',
+    this.replMode = 'rawRepl',
+    this.fileTransferMode = 'streaming',
+    this.hardwareResetStrategy = 'disabled',
   });
 }
 

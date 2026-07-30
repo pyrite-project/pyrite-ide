@@ -5,6 +5,9 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
@@ -430,6 +433,67 @@ class SettingsRegistry {
         final value = v == true;
         ref.read(serialAutoReconnect.notifier).state = value;
         ref.read(serialProvider.notifier).setAutoReconnect(value);
+      },
+    ),
+    _SettingEntry(
+      name: 'serial.repl_mode',
+      type: 'string',
+      provider: replModeProvider,
+      getter: (ref) => ref.read(replModeProvider).name,
+      setter: (ref, v) {
+        final parsed = switch (v?.toString()) {
+          'rawRepl' => ReplMode.rawRepl,
+          'paste' => ReplMode.paste,
+          _ => null,
+        };
+        if (parsed == null) {
+          throw ArgumentError.value(v, 'value', 'Expected rawRepl or paste');
+        }
+        ref.read(replModeProvider.notifier).state = parsed;
+      },
+    ),
+    _SettingEntry(
+      name: 'serial.file_transfer_mode',
+      type: 'string',
+      provider: fileTransferModeProvider,
+      getter: (ref) => ref.read(fileTransferModeProvider).name,
+      setter: (ref, v) {
+        final parsed = switch (v?.toString()) {
+          'streaming' => FileTransferMode.streaming,
+          'chunked' => FileTransferMode.chunked,
+          _ => null,
+        };
+        if (parsed == null) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected streaming or chunked',
+          );
+        }
+        ref.read(fileTransferModeProvider.notifier).state = parsed;
+      },
+    ),
+    _SettingEntry(
+      name: 'serial.hardware_reset_strategy',
+      type: 'string',
+      provider: hardwareResetStrategyProvider,
+      getter: (ref) => ref.read(hardwareResetStrategyProvider).name,
+      setter: (ref, v) {
+        final parsed = switch (v?.toString()) {
+          'disabled' => HardwareResetStrategy.disabled,
+          'dtrPulse' => HardwareResetStrategy.dtrPulse,
+          'rtsPulse' => HardwareResetStrategy.rtsPulse,
+          'esp32' => HardwareResetStrategy.esp32,
+          _ => null,
+        };
+        if (parsed == null) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected disabled, dtrPulse, rtsPulse, or esp32',
+          );
+        }
+        ref.read(hardwareResetStrategyProvider.notifier).state = parsed;
       },
     ),
     _SettingEntry(

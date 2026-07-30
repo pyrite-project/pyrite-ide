@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -53,9 +55,7 @@ class TerminalSettings extends ConsumerWidget {
               value: ref.watch(serialAutoReconnect),
               onChanged: (value) {
                 ref.read(serialAutoReconnect.notifier).state = value;
-                ref
-                    .read(serialProvider.notifier)
-                    .setAutoReconnect(value);
+                ref.read(serialProvider.notifier).setAutoReconnect(value);
               },
             ),
 
@@ -96,10 +96,38 @@ class TerminalSettings extends ConsumerWidget {
               leading: const Icon(Icons.terminal),
               title: const UseText(I18nKey.settingsTerminalReplMode),
               subtitle: Text(
-                translateForWidget(ref, _replModeLabel(ref.watch(replModeProvider))),
+                translateForWidget(
+                  ref,
+                  _replModeLabel(ref.watch(replModeProvider)),
+                ),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showReplModeDialog(context, ref),
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.swap_horiz),
+              title: const UseText(I18nKey.settingsTerminalTransferMode),
+              subtitle: Text(
+                translateForWidget(
+                  ref,
+                  _transferModeLabel(ref.watch(fileTransferModeProvider)),
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showTransferModeDialog(context, ref),
+            ),
+            ListTile(
+              leading: const Icon(Icons.power_settings_new),
+              title: const UseText(I18nKey.settingsTerminalHardwareReset),
+              subtitle: Text(
+                translateForWidget(
+                  ref,
+                  _hardwareResetLabel(ref.watch(hardwareResetStrategyProvider)),
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showHardwareResetDialog(context, ref),
             ),
           ],
         ),
@@ -242,9 +270,7 @@ class TerminalSettings extends ConsumerWidget {
                     trailing: selected ? const Icon(Icons.check) : null,
                     minTileHeight: 0,
                     onTap: () {
-                      ref
-                          .read(serialProvider.notifier)
-                          .setBaudRate(rate);
+                      ref.read(serialProvider.notifier).setBaudRate(rate);
                       ref.read(serialDefaultBaudRate.notifier).state = rate;
                       Navigator.pop(context);
                     },
@@ -284,9 +310,72 @@ class TerminalSettings extends ConsumerWidget {
   }
 
   I18nKey _replModeLabel(ReplMode mode) => switch (mode) {
-    ReplMode.rawPaste => I18nKey.settingsTerminalReplModeRawPaste,
     ReplMode.rawRepl => I18nKey.settingsTerminalReplModeRawRepl,
     ReplMode.paste => I18nKey.settingsTerminalReplModePaste,
+  };
+
+  void _showTransferModeDialog(BuildContext context, WidgetRef ref) {
+    final current = ref.read(fileTransferModeProvider);
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const UseText(I18nKey.settingsTerminalTransferMode),
+        children: FileTransferMode.values.map((mode) {
+          final selected = mode == current;
+          final label = _transferModeLabel(mode);
+          return SimpleDialogOption(
+            child: ListTile(
+              title: UseText(label),
+              trailing: selected ? const Icon(Icons.check) : null,
+              minTileHeight: 0,
+              onTap: () {
+                ref.read(fileTransferModeProvider.notifier).state = mode;
+                Navigator.pop(context);
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  I18nKey _transferModeLabel(FileTransferMode mode) => switch (mode) {
+    FileTransferMode.chunked => I18nKey.settingsTerminalTransferModeChunked,
+    FileTransferMode.streaming => I18nKey.settingsTerminalTransferModeStreaming,
+  };
+
+  void _showHardwareResetDialog(BuildContext context, WidgetRef ref) {
+    final current = ref.read(hardwareResetStrategyProvider);
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const UseText(I18nKey.settingsTerminalHardwareReset),
+        children: HardwareResetStrategy.values.map((strategy) {
+          return SimpleDialogOption(
+            child: ListTile(
+              title: UseText(_hardwareResetLabel(strategy)),
+              trailing: strategy == current ? const Icon(Icons.check) : null,
+              minTileHeight: 0,
+              onTap: () {
+                ref.read(hardwareResetStrategyProvider.notifier).state =
+                    strategy;
+                Navigator.pop(context);
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  I18nKey _hardwareResetLabel(
+    HardwareResetStrategy strategy,
+  ) => switch (strategy) {
+    HardwareResetStrategy.disabled =>
+      I18nKey.settingsTerminalHardwareResetDisabled,
+    HardwareResetStrategy.dtrPulse => I18nKey.settingsTerminalHardwareResetDtr,
+    HardwareResetStrategy.rtsPulse => I18nKey.settingsTerminalHardwareResetRts,
+    HardwareResetStrategy.esp32 => I18nKey.settingsTerminalHardwareResetEsp32,
   };
 
   void _showTerminalFontDialog(BuildContext context, WidgetRef ref) {

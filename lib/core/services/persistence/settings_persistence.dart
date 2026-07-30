@@ -55,6 +55,8 @@ class SettingsPersistedData {
   final List<MicroPythonStubsLayer> microPythonStubsLayers;
   final List<String> microPythonStubsExtraPaths;
   final String replMode;
+  final String fileTransferMode;
+  final String hardwareResetStrategy;
 
   SettingsPersistedData({
     required this.editorTextFont,
@@ -106,7 +108,9 @@ class SettingsPersistedData {
     this.microPythonStubsAutoDetectLayers = false,
     this.microPythonStubsLayers = const [],
     this.microPythonStubsExtraPaths = const [],
-    this.replMode = 'rawPaste',
+    this.replMode = 'rawRepl',
+    this.fileTransferMode = 'streaming',
+    this.hardwareResetStrategy = 'disabled',
   });
 
   Map<String, dynamic> toJson() => {
@@ -162,6 +166,8 @@ class SettingsPersistedData {
         .toList(),
     'microPythonStubsExtraPaths': microPythonStubsExtraPaths,
     'replMode': replMode,
+    'fileTransferMode': fileTransferMode,
+    'hardwareResetStrategy': hardwareResetStrategy,
   };
 
   factory SettingsPersistedData.fromJson(
@@ -231,7 +237,10 @@ class SettingsPersistedData {
         (json['microPythonStubsExtraPaths'] as List? ?? [])
             .map((item) => item.toString())
             .toList(),
-    replMode: json['replMode'] as String? ?? 'rawPaste',
+    replMode: json['replMode'] as String? ?? 'rawRepl',
+    fileTransferMode: json['fileTransferMode'] as String? ?? 'streaming',
+    hardwareResetStrategy:
+        json['hardwareResetStrategy'] as String? ?? 'disabled',
   );
 }
 

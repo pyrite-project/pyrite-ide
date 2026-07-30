@@ -114,6 +114,7 @@ abstract class Permissions {
     'sdk.serial.send': 'serial:write',
     'sdk.serial.send_command': 'serial:write',
     'sdk.serial.run_python': 'serial:write',
+    'sdk.serial.hardware_reset': 'serial:write',
     'sdk.serial.set_baud_rate': 'serial:write',
     'sdk.serial.set_auto_reconnect': 'serial:write',
 

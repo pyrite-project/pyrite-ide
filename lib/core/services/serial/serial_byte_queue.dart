@@ -4,9 +4,7 @@ import 'dart:typed_data';
 /// Thrown when a serial queue operation is cancelled due to device disconnect.
 class SerialCancelledException implements Exception {
   final String message;
-  const SerialCancelledException([
-    this.message = 'Serial connection lost',
-  ]);
+  const SerialCancelledException([this.message = 'Serial connection lost']);
   @override
   String toString() => 'SerialCancelledException: $message';
 }
@@ -14,10 +12,16 @@ class SerialCancelledException implements Exception {
 /// Buffer for receiving serial bytes and reading them by pattern or count.
 class SerialByteQueue {
   final List<int> _buffer = [];
+  int _readOffset = 0;
   Completer<void>? _dataCompleter;
   bool _cancelled = false;
 
-  bool get hasData => _buffer.isNotEmpty;
+  int get availableLength => _buffer.length - _readOffset;
+
+  bool get hasData => availableLength > 0;
+
+  /// Whether this queue has been cancelled (by disconnect or user interrupt).
+  bool get isCancelled => _cancelled;
 
   /// Returns the index of [pattern] in the buffer, or -1 if not found.
   /// Does not consume any data.
@@ -25,6 +29,7 @@ class SerialByteQueue {
 
   void add(Uint8List data) {
     if (_cancelled || data.isEmpty) return;
+    _compactIfNeeded();
     _buffer.addAll(data);
     _dataCompleter?.complete();
     _dataCompleter = null;
@@ -35,22 +40,40 @@ class SerialByteQueue {
   void cancel() {
     _cancelled = true;
     _buffer.clear();
+    _readOffset = 0;
     _dataCompleter?.complete();
     _dataCompleter = null;
   }
 
   void clear() {
     _buffer.clear();
+    _readOffset = 0;
   }
 
   Future<Uint8List> readBytes(int count, Duration timeout) async {
     final stopwatch = Stopwatch()..start();
-    while (_buffer.length < count) {
+    while (availableLength < count) {
       await _waitForData(_remaining(timeout, stopwatch));
     }
-    final result = _buffer.sublist(0, count);
-    _buffer.removeRange(0, count);
-    return Uint8List.fromList(result);
+    return _take(count);
+  }
+
+  Future<void> readBytesStreaming(
+    int count,
+    Duration timeout, {
+    required void Function(Uint8List data) onData,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    var remaining = count;
+    while (remaining > 0) {
+      if (!hasData) {
+        await _waitForData(_remaining(timeout, stopwatch));
+      }
+      final length = availableLength < remaining ? availableLength : remaining;
+      final data = _take(length);
+      remaining -= data.length;
+      onData(data);
+    }
   }
 
   Future<Uint8List> readUntil(List<int> pattern, Duration timeout) async {
@@ -59,9 +82,7 @@ class SerialByteQueue {
       final index = _indexOf(pattern);
       if (index >= 0) {
         final end = index + pattern.length;
-        final result = _buffer.sublist(0, end);
-        _buffer.removeRange(0, end);
-        return Uint8List.fromList(result);
+        return _take(end);
       }
       await _waitForData(_remaining(timeout, stopwatch));
     }
@@ -81,14 +102,14 @@ class SerialByteQueue {
       final index = _indexOf(pattern);
       if (index >= 0) {
         if (index > 0) {
-          onData(Uint8List.fromList(_buffer.sublist(0, index)));
+          onData(_take(index));
         }
-        _buffer.removeRange(0, index + pattern.length);
+        _advance(pattern.length);
         return;
       }
-      if (_buffer.isNotEmpty) {
-        onData(Uint8List.fromList(_buffer));
-        _buffer.clear();
+      final safeLength = availableLength - pattern.length + 1;
+      if (safeLength > 0) {
+        onData(_take(safeLength));
       }
       await _waitForData(_remainingNullable(timeout, stopwatch));
     }
@@ -119,8 +140,9 @@ class SerialByteQueue {
   }
 
   int _indexOf(List<int> pattern) {
-    if (pattern.isEmpty || _buffer.length < pattern.length) return -1;
-    for (int i = 0; i <= _buffer.length - pattern.length; i++) {
+    if (pattern.isEmpty || availableLength < pattern.length) return -1;
+    final lastStart = _buffer.length - pattern.length;
+    for (int i = _readOffset; i <= lastStart; i++) {
       var matched = true;
       for (int j = 0; j < pattern.length; j++) {
         if (_buffer[i + j] != pattern[j]) {
@@ -128,8 +150,34 @@ class SerialByteQueue {
           break;
         }
       }
-      if (matched) return i;
+      if (matched) return i - _readOffset;
     }
     return -1;
+  }
+
+  Uint8List _take(int count) {
+    final result = Uint8List.fromList(
+      _buffer.sublist(_readOffset, _readOffset + count),
+    );
+    _advance(count);
+    return result;
+  }
+
+  void _advance(int count) {
+    _readOffset += count;
+    _compactIfNeeded();
+  }
+
+  void _compactIfNeeded() {
+    if (_readOffset == 0) return;
+    if (_readOffset == _buffer.length) {
+      _buffer.clear();
+      _readOffset = 0;
+      return;
+    }
+    if (_readOffset >= 4096 && _readOffset * 2 >= _buffer.length) {
+      _buffer.removeRange(0, _readOffset);
+      _readOffset = 0;
+    }
   }
 }

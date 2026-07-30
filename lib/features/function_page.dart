@@ -1157,6 +1157,12 @@ class EditorToolsBar extends ConsumerWidget {
     final percent = transfer.progress == null
         ? ''
         : ' ${(transfer.progress! * 100).round()}%';
+    final speed = transfer.bytesPerSecond != null &&
+            transfer.bytesPerSecond! > 0
+        ? ' ${transfer.bytesPerSecond! >= 1024
+            ? '${(transfer.bytesPerSecond! / 1024).toStringAsFixed(1)}KB/s'
+            : '${transfer.bytesPerSecond!.round()}B/s'}'
+        : '';
     final dirKey = switch (transfer.direction) {
       FileTransferDirection.upload => I18nKey.editorToolbarUpload,
       FileTransferDirection.download => I18nKey.editorToolbarDownload,
@@ -1165,7 +1171,7 @@ class EditorToolsBar extends ConsumerWidget {
     };
     final label =
         transfer.message ??
-        '${translateForWidget(ref, dirKey)}$index · $file$percent';
+        '${translateForWidget(ref, dirKey)}$index · $file$percent$speed';
     final color = transfer.failed ? scheme.error : scheme.primary;
 
     return Tooltip(

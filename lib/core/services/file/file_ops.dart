@@ -162,8 +162,7 @@ List<_DiffOp> _backtrackMyersDiff(
             (previousFurthestByDiagonal[diagonal - 1] ?? -1) <
                 (previousFurthestByDiagonal[diagonal + 1] ?? -1));
     final previousDiagonal = movedDown ? diagonal + 1 : diagonal - 1;
-    final previousOldIndex =
-        previousFurthestByDiagonal[previousDiagonal] ?? 0;
+    final previousOldIndex = previousFurthestByDiagonal[previousDiagonal] ?? 0;
     final previousNewIndex = previousOldIndex - previousDiagonal;
 
     while (oldIndex > previousOldIndex && newIndex > previousNewIndex) {
@@ -318,6 +317,7 @@ class FileTransferProgressState {
     this.bytesTotal = 0,
     this.message,
     this.failed = false,
+    this.bytesPerSecond,
   });
 
   final bool isActive;
@@ -330,6 +330,7 @@ class FileTransferProgressState {
   final int bytesTotal;
   final String? message;
   final bool failed;
+  final double? bytesPerSecond;
 
   double? get progress {
     if (bytesTotal <= 0) return null;
@@ -347,6 +348,7 @@ class FileTransferProgressState {
     int? bytesTotal,
     String? message,
     bool? failed,
+    double? bytesPerSecond,
   }) {
     return FileTransferProgressState(
       isActive: isActive ?? this.isActive,
@@ -359,6 +361,7 @@ class FileTransferProgressState {
       bytesTotal: bytesTotal ?? this.bytesTotal,
       message: message ?? this.message,
       failed: failed ?? this.failed,
+      bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
     );
   }
 }
@@ -368,6 +371,8 @@ class FileTransferProgressNotifier
   FileTransferProgressNotifier() : super(const FileTransferProgressState());
 
   Timer? _clearTimer;
+  DateTime? _transferStartTime;
+  DateTime? _lastProgressUpdate;
 
   void start({
     required FileTransferDirection direction,
@@ -376,6 +381,8 @@ class FileTransferProgressNotifier
     String? message,
   }) {
     _clearTimer?.cancel();
+    _transferStartTime = null;
+    _lastProgressUpdate = null;
     state = FileTransferProgressState(
       isActive: true,
       direction: direction,
@@ -391,6 +398,8 @@ class FileTransferProgressNotifier
     required int totalFiles,
     required int bytesTotal,
   }) {
+    _transferStartTime = DateTime.now();
+    _lastProgressUpdate = null;
     state = FileTransferProgressState(
       isActive: true,
       direction: state.direction,
@@ -405,7 +414,27 @@ class FileTransferProgressNotifier
   }
 
   void updateBytes(int done, int total) {
-    state = state.copyWith(bytesDone: done, bytesTotal: total);
+    final now = DateTime.now();
+    final completed = total > 0 && done >= total;
+    if (!completed &&
+        _lastProgressUpdate != null &&
+        now.difference(_lastProgressUpdate!) <
+            const Duration(milliseconds: 50)) {
+      return;
+    }
+    _lastProgressUpdate = now;
+    double? speed;
+    if (_transferStartTime != null && done > 0) {
+      final elapsed =
+          DateTime.now().difference(_transferStartTime!).inMilliseconds /
+          1000.0;
+      if (elapsed > 0) speed = done / elapsed;
+    }
+    state = state.copyWith(
+      bytesDone: done,
+      bytesTotal: total,
+      bytesPerSecond: speed,
+    );
   }
 
   void complete({required String message}) {

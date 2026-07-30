@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -37,28 +38,46 @@ class ReplMutex {
       }
     }
   }
-
-  /// Forcefully releases the mutex. All waiters in [_waitQueue] will receive
-  /// a [ForceResetException]. The currently running action (if any) is not
-  /// interrupted directly — callers should also cancel the serial queue.
-  void forceReset() {
-    if (!_locked) return;
-    _locked = false;
-    for (final c in _waitQueue) {
-      if (!c.isCompleted) {
-        c.completeError(const ForceResetException());
-      }
-    }
-    _waitQueue.clear();
-  }
 }
 
-/// Thrown when [ReplMutex.forceReset] is called while a waiter is pending.
-class ForceResetException implements Exception {
-  const ForceResetException();
-  @override
-  String toString() =>
-      'ForceResetException: REPL transaction was force-reset by user';
+enum TransactionTermination { none, interrupt, hardwareReset }
+
+class HardwareResetController {
+  VoidCallback? _request;
+
+  bool get isAvailable => _request != null;
+
+  void register(VoidCallback request) => _request = request;
+
+  void unregister(VoidCallback request) {
+    if (_request == request) _request = null;
+  }
+
+  void request() => _request?.call();
+}
+
+final hardwareResetControllerProvider = Provider<HardwareResetController>(
+  (ref) => HardwareResetController(),
+);
+
+/// Requests a reset for an active transaction, or resets the idle device
+/// while holding the REPL mutex. Hardware reset is never invoked implicitly.
+Future<bool> hardwareResetDevice(ProviderReader read) async {
+  final strategy = read(hardwareResetStrategyProvider);
+  if (strategy == HardwareResetStrategy.disabled) return false;
+  final controller = read(hardwareResetControllerProvider);
+  if (controller.isAvailable) {
+    controller.request();
+    return true;
+  }
+  return read(replMutexProvider).runExclusive(() async {
+    read(serialReplIoPausedProvider.notifier).state = true;
+    try {
+      return await read(serialProvider.notifier).hardwareReset(strategy);
+    } finally {
+      read(serialReplIoPausedProvider.notifier).state = false;
+    }
+  });
 }
 
 final replMutexProvider = Provider<ReplMutex>((ref) => ReplMutex());
@@ -84,9 +103,10 @@ class SerialDataCallbacksNotifier
 }
 
 final serialDataCallbacksProvider =
-    StateNotifierProvider<SerialDataCallbacksNotifier, List<SerialDataCallback>>(
-  (ref) => SerialDataCallbacksNotifier(),
-);
+    StateNotifierProvider<
+      SerialDataCallbacksNotifier,
+      List<SerialDataCallback>
+    >((ref) => SerialDataCallbacksNotifier());
 
 // ---------------------------------------------------------------------------
 // I/O pause flag — blocks user REPL while a transaction owns the serial line
@@ -95,15 +115,8 @@ final serialDataCallbacksProvider =
 final serialReplIoPausedProvider = StateProvider<bool>((ref) => false);
 
 // ---------------------------------------------------------------------------
-// DeviceSession — unified REPL session supporting all three modes
+// DeviceSession — unified REPL session supporting raw-repl and paste modes
 // ---------------------------------------------------------------------------
-
-/// Magic bytes for the raw-paste protocol.
-const int _rawPasteRespR = 0x52;
-const int _rawPasteAccepted = 0x01;
-const int _rawPasteRejected = 0x00;
-const int _rawRespLowerR = 0x72;
-const int _rawRespA = 0x61;
 
 class DeviceSession {
   DeviceSession({
@@ -113,15 +126,25 @@ class DeviceSession {
 
   final SerialByteQueue queue;
   final void Function(List<int>) _writeBytes;
+  bool _pasteReady = false;
 
   // -- Shared protocol tokens -----------------------------------------------
 
   static final _prompt = Uint8List.fromList([0x3E]); // ">"
-  static final _prompt3 = Uint8List.fromList([0x3E, 0x3E, 0x3E, 0x20]); // ">>> "
-  static final _dotsPrompt = Uint8List.fromList([0x2E, 0x2E, 0x2E, 0x20]); // "... "
+  static final _prompt3 = Uint8List.fromList([
+    0x3E,
+    0x3E,
+    0x3E,
+    0x20,
+  ]); // ">>> "
+  static final _dotsPrompt = Uint8List.fromList([
+    0x2E,
+    0x2E,
+    0x2E,
+    0x20,
+  ]); // "... "
   static final _eot = Uint8List.fromList([0x04]); // CTRL-D
   static final _rawReplBanner = utf8.encode('raw REPL; CTRL-B to exit');
-  static final _rawPasteRequest = Uint8List.fromList([0x05, 0x41, 0x01]);
 
   // Paste-mode markers (wraps user code to extract clean output).
   static const _startMarker = '__PYRITE_NORMAL_REPL_START__';
@@ -129,25 +152,29 @@ class DeviceSession {
 
   // -- Public: enter / exit ------------------------------------------------
 
-  /// Enters the appropriate REPL mode after CTRL-C has been sent.
+  /// Enters the selected REPL mode after CTRL-C has been sent.
   Future<void> enterRepl(ReplMode mode, {Duration? timeout}) async {
     final t = timeout ?? const Duration(seconds: 5);
-    switch (mode) {
-      case ReplMode.paste:
-        await _enterPasteMode(t);
-        break;
-      case ReplMode.rawRepl:
-        await _enterRawRepl(t);
-        break;
-      case ReplMode.rawPaste:
-        await _enterRawPasteWithRetry(t);
-        break;
+    debugPrint('[repl] enterRepl mode=$mode timeout=${t.inSeconds}s');
+
+    if (mode == ReplMode.paste) {
+      await _enterPasteMode(t);
+      _pasteReady = true;
+      return;
+    }
+
+    if (mode == ReplMode.rawRepl) {
+      await _enterRawRepl(t);
+      return;
     }
   }
 
   /// Exits the current REPL mode and resets to normal state.
   Future<void> exitRepl(ReplMode mode, {Duration? timeout}) async {
     final t = timeout ?? const Duration(seconds: 2);
+    debugPrint(
+      '[repl] exitRepl mode=$mode timeout=${t.inSeconds}s queueCancelled=${queue.isCancelled}',
+    );
     switch (mode) {
       case ReplMode.paste:
         _write([0x03]); // CTRL-C
@@ -162,14 +189,8 @@ class DeviceSession {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         queue.clear();
         break;
-      case ReplMode.rawPaste:
-        queue.clear();
-        _write(_eot);
-        try {
-          await queue.readUntil(_prompt, t);
-        } catch (_) {}
-        break;
     }
+    debugPrint('[repl] exitRepl done');
   }
 
   // -- Public: execute ------------------------------------------------------
@@ -180,13 +201,28 @@ class DeviceSession {
     Duration timeout = const Duration(seconds: 20),
     required ReplMode mode,
   }) async {
+    return executeCommand(code, timeout: timeout, mode: mode);
+  }
+
+  /// Executes one command while keeping ownership of the current REPL
+  /// transaction. Paste mode re-enters paste input between commands without
+  /// repeating the transaction-level interrupt handshake.
+  Future<String> executeCommand(
+    String code, {
+    Duration timeout = const Duration(seconds: 20),
+    required ReplMode mode,
+  }) async {
     switch (mode) {
       case ReplMode.paste:
+        if (!_pasteReady) {
+          queue.clear();
+          _write([0x05]); // CTRL-E
+          await _waitForPasteReady(timeout);
+          _pasteReady = true;
+        }
         return _executePaste(code, timeout);
       case ReplMode.rawRepl:
-        return _executeRawRepl(code, timeout);
-      case ReplMode.rawPaste:
-        return _executeRawPaste(code, timeout);
+        return executeRawCommand(code, timeout: timeout);
     }
   }
 
@@ -201,6 +237,12 @@ class DeviceSession {
   }) async {
     switch (mode) {
       case ReplMode.paste:
+        if (!_pasteReady) {
+          queue.clear();
+          _write([0x05]); // CTRL-E
+          await _waitForPasteReady(timeout);
+          _pasteReady = true;
+        }
         return _executeStreamingPaste(
           code,
           timeout: timeout,
@@ -216,19 +258,17 @@ class DeviceSession {
           onStdout: onStdout,
           onStderr: onStderr,
         );
-      case ReplMode.rawPaste:
-        return _executeStreamingRawPaste(
-          code,
-          timeout: timeout,
-          onStarted: onStarted,
-          onStdout: onStdout,
-          onStderr: onStderr,
-        );
     }
   }
 
-  /// Executes a Python script that reads raw binary data from stdin.
-  /// Only works with raw-paste mode.
+  /// Executes a Python script that reads Base64-framed data from stdin.
+  ///
+  /// Protocol (matches CLI's _send_flash_payload):
+  ///   1. Send code + CTRL-D to execute
+  ///   2. Wait for [readyMarker] (device signals it's ready for data)
+  ///   3. Send Base64 lines for [chunkSize] byte chunks, waiting for '+' ACK every
+  ///      [ackEvery] chunks (sparse ACK flow control)
+  ///   4. Wait for [doneMarker] and consume the raw REPL trailer
   Future<void> executeWithRawInput(
     String code,
     Uint8List data, {
@@ -240,46 +280,154 @@ class DeviceSession {
     int ackEvery = 8,
     void Function(int sent, int total)? onProgress,
   }) async {
-    final response = await _tryRawPasteHandshake(startupTimeout);
-    if (response == null) {
-      throw const DeviceSessionException('Device rejected raw-paste mode');
-    }
+    debugPrint(
+      '[raw-input] START raw-repl upload, code=${code.length}B data=${data.length}B '
+      'chunk=$chunkSize ackEvery=$ackEvery timeout=${completionTimeout.inSeconds}s',
+    );
 
+    // Phase 1: Send code + CTRL-D to execute the device script.
     final codeBytes = utf8.encode(code);
-    await _writeRawPasteCode(codeBytes, response, startupTimeout);
-    await queue.readUntil(_eot, startupTimeout);
+    _write(codeBytes);
+    _write(_eot); // CTRL-D: execute the code
+    debugPrint('[raw-input] code sent, waiting for readyMarker...');
 
-    await queue.readUntil(readyMarker, completionTimeout);
+    // Phase 2: Wait for device to signal READY.
+    final readyData = await queue.readUntil(readyMarker, startupTimeout);
+    _logDevText(utf8.decode(readyData, allowMalformed: true));
+    debugPrint('[raw-input] readyMarker received');
+    debugPrint('[raw-input] sending data...');
 
+    // Phase 3: Send data with sparse ACK flow control.
     var sent = 0;
     var ackCount = 0;
     while (sent < data.length) {
+      if (queue.isCancelled) {
+        debugPrint(
+          '[raw-input] CANCELLED during data send at $sent/${data.length}',
+        );
+        throw const SerialCancelledException();
+      }
       final end = math.min(sent + chunkSize, data.length);
-      _write(data.sublist(sent, end));
+      _write(utf8.encode('${base64Encode(data.sublist(sent, end))}\n'));
       sent = end;
       ackCount++;
-      if (ackEvery > 0 && ackCount % ackEvery == 0 && sent < data.length) {
-        final ack = await queue.readBytes(1, completionTimeout);
-        if (ack[0] != 0x2B) {
+      if (ackEvery > 0 && ackCount % ackEvery == 0) {
+        debugPrint(
+          '[raw-input] waiting ACK #$ackCount at $sent/${data.length}',
+        );
+        final ack = await _readUntilPattern(0x2B, completionTimeout);
+        if (!ack) {
           throw DeviceSessionException(
-            'Unexpected ACK: 0x${ack[0].toRadixString(16)}',
+            'Device ACK timeout during data transfer',
           );
         }
+        debugPrint('[raw-input] ACK received');
       }
       onProgress?.call(sent, data.length);
     }
-
-    await queue.readUntil(doneMarker, completionTimeout);
+    final doneData = await queue.readUntil(doneMarker, completionTimeout);
+    final doneText = utf8.decode(doneData, allowMalformed: true);
+    if (doneText.contains('PYRITE_WRITE_ERR:')) {
+      throw DeviceSessionException(doneText.trim());
+    }
     await queue.readUntil(_eot, completionTimeout);
-    await _readPayloadUntilEot(completionTimeout);
+    final stderr = await _readUntilEot(completionTimeout);
     await queue.readUntil(_prompt, completionTimeout);
+    if (stderr.isNotEmpty) {
+      throw DeviceSessionException(utf8.decode(stderr, allowMalformed: true));
+    }
   }
 
-  /// Sends SOH and waits for the raw-repl banner + prompt.
-  Future<void> tryHandshake(Duration timeout) async {
-    _write(const [0x01]); // CTRL-A
-    await queue.readUntil(_rawReplBanner, timeout);
+  /// Executes [code] in the current raw REPL session and reads exactly
+  /// [expectedSize] stdout bytes before consuming stderr and the prompt.
+  Future<Uint8List> readRawFile(
+    String code,
+    int expectedSize, {
+    Duration timeout = const Duration(seconds: 30),
+    void Function(int received, int total)? onProgress,
+  }) async {
+    _write(utf8.encode(code));
+    _write(_eot);
+    await queue.readUntil(const [0x4F, 0x4B], timeout); // OK
+
+    final output = BytesBuilder(copy: false);
+    var received = 0;
+    await queue.readBytesStreaming(
+      expectedSize,
+      timeout,
+      onData: (data) {
+        output.add(data);
+        received += data.length;
+        onProgress?.call(received, expectedSize);
+      },
+    );
+    await queue.readUntil(_eot, timeout);
+    final stderr = await _readUntilEot(timeout);
     await queue.readUntil(_prompt, timeout);
+    if (stderr.isNotEmpty) {
+      throw DeviceSessionException(utf8.decode(stderr, allowMalformed: true));
+    }
+    return output.takeBytes();
+  }
+
+  /// Logs any `[DEV-LOG]` lines found in [text] via `debugPrint`.
+  static void _logDevText(String text) {
+    for (final line in text.split('\n')) {
+      final trimmed = line.trimRight();
+      if (trimmed.startsWith('[DEV-LOG]')) {
+        debugPrint('[device] $trimmed');
+      }
+    }
+  }
+
+  /// Reads from the queue until [pattern] is found.
+  ///
+  /// If [pattern] is an `int`, matches a single byte.
+  /// If [pattern] is a `String`, accumulates text and matches via `contains`.
+  ///
+  /// Returns `true` if found, `false` on timeout. Cancellation is propagated
+  /// as [SerialCancelledException] so callers never retry an interrupted job.
+  /// [onError] is called periodically with accumulated text (for error
+  /// detection before the target is found). DEV-LOG lines are logged
+  /// automatically.
+  Future<bool> _readUntilPattern(
+    Object pattern,
+    Duration timeout, {
+    void Function(String text)? onError,
+  }) async {
+    final sw = Stopwatch()..start();
+    final buf = StringBuffer();
+    var lastErrorCheck = 0;
+    while (sw.elapsed < timeout) {
+      if (queue.isCancelled) throw const SerialCancelledException();
+      if (queue.hasData) {
+        final byte = await queue.readBytes(1, const Duration(milliseconds: 50));
+        if (pattern is int) {
+          if (byte[0] == pattern) return true;
+          // Log DEV-LOG lines from non-target bytes.
+          final ch = String.fromCharCodes(byte);
+          if (ch == '\n') {
+            _logDevText(buf.toString());
+            buf.clear();
+          } else if (ch != '\r') {
+            buf.write(ch);
+          }
+        } else {
+          buf.write(String.fromCharCodes(byte));
+          final text = buf.toString();
+          if (text.contains(pattern as String)) return true;
+          // Periodically check for errors and DEV-LOG lines.
+          if (text.length - lastErrorCheck >= 8) {
+            lastErrorCheck = text.length;
+            if (onError != null) onError(text);
+            _logDevText(text);
+          }
+        }
+      } else {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    }
+    return false;
   }
 
   // -- Paste mode -----------------------------------------------------------
@@ -289,6 +437,8 @@ class DeviceSession {
     // then clear any leftover output before entering paste mode.
     try {
       await queue.readUntil(_prompt3, timeout);
+    } on SerialCancelledException {
+      rethrow;
     } catch (_) {}
     queue.clear();
     _write([0x05]); // Ctrl-E
@@ -299,6 +449,7 @@ class DeviceSession {
     final eqPrompt = Uint8List.fromList([0x3D, 0x3D, 0x3D]); // "==="
     final stopwatch = Stopwatch()..start();
     while (true) {
+      if (queue.isCancelled) throw const SerialCancelledException();
       if (queue.indexOf(eqPrompt) >= 0) {
         await queue.readUntil(eqPrompt, Duration.zero);
         return;
@@ -325,8 +476,12 @@ class DeviceSession {
     _write(utf8.encode(script));
     _write([0x04]); // Ctrl-D
 
-    final allData = await _waitForPromptAndReadAll(timeout);
-    return _extractBetweenMarkers(allData);
+    try {
+      final allData = await _waitForPromptAndReadAll(timeout);
+      return _extractBetweenMarkers(allData);
+    } finally {
+      _pasteReady = false;
+    }
   }
 
   Future<void> _executeStreamingPaste(
@@ -342,10 +497,14 @@ class DeviceSession {
     _write([0x04]); // Ctrl-D
     onStarted();
 
-    final allData = await _waitForPromptAndReadAll(timeout);
-    final clean = _extractBetweenMarkers(allData);
-    final bytes = Uint8List.fromList(utf8.encode(clean));
-    if (bytes.isNotEmpty) onStdout(bytes);
+    try {
+      final allData = await _waitForPromptAndReadAll(timeout);
+      final clean = _extractBetweenMarkers(allData);
+      final bytes = Uint8List.fromList(utf8.encode(clean));
+      if (bytes.isNotEmpty) onStdout(bytes);
+    } finally {
+      _pasteReady = false;
+    }
   }
 
   Future<String> _waitForPromptAndReadAll(Duration timeout) async {
@@ -353,6 +512,7 @@ class DeviceSession {
 
     final stopwatch = Stopwatch()..start();
     while (true) {
+      if (queue.isCancelled) throw const SerialCancelledException();
       if (queue.indexOf(_prompt3) >= 0) {
         final data = await queue.readUntil(_prompt3, Duration.zero);
         return utf8.decode(data, allowMalformed: true);
@@ -389,12 +549,21 @@ class DeviceSession {
     await queue.readUntil(_prompt, timeout);
   }
 
-  Future<String> _executeRawRepl(String code, Duration timeout) async {
-    final bytes = utf8.encode(code);
-    await _enterRawRepl(timeout ~/ 3);
-
-    _write(bytes);
-    _write(_eot);
+  /// Executes one command in the already-entered raw REPL session.
+  Future<String> executeRawCommand(
+    String code, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final bytes = Uint8List.fromList([...utf8.encode(code), ..._eot]);
+    var offset = 0;
+    while (offset < bytes.length) {
+      final end = math.min(offset + 255, bytes.length);
+      _write(bytes.sublist(offset, end));
+      offset = end;
+      if (offset < bytes.length) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
 
     final stdout = await _readUntilEot(timeout);
     final stderr = await _readUntilEot(timeout);
@@ -427,8 +596,6 @@ class DeviceSession {
     required void Function(Uint8List data) onStderr,
   }) async {
     final bytes = utf8.encode(code);
-    await _enterRawRepl(timeout ~/ 3);
-
     _write(bytes);
     _write(_eot);
     onStarted();
@@ -438,163 +605,11 @@ class DeviceSession {
     await queue.readUntil(_prompt, timeout);
   }
 
-  // -- Raw-paste mode (flow-controlled) -------------------------------------
-
-  Future<int?> _tryRawPasteHandshake(Duration timeout) async {
-    _write(_rawPasteRequest);
-    final response = await queue.readBytes(2, timeout);
-    if (response[0] == _rawPasteRespR && response[1] == _rawPasteAccepted) {
-      final window = await queue.readBytes(2, timeout);
-      return window[0] | (window[1] << 8);
-    }
-    if (response[0] == _rawPasteRespR && response[1] == _rawPasteRejected) {
-      return null;
-    }
-    if (response[0] == _rawRespLowerR && response[1] == _rawRespA) {
-      await queue.readUntil(_prompt, timeout);
-      return null;
-    }
-    throw DeviceSessionException(
-      'Unexpected raw-paste handshake: ${response.toList()}',
-    );
-  }
-
-  Future<void> _enterRawPasteWithRetry(Duration timeout) async {
-    // Tier 1: CTRL-C burst + CTRL-A handshake.
-    var entered = await _tryHandshakeAfterInterrupt(timeout);
-
-    // Tier 2: CTRL-D flush + retry.
-    if (!entered) {
-      _write([0x04]); // CTRL-D to flush half-parsed state
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      entered = await _tryHandshakeAfterInterrupt(const Duration(seconds: 3));
-    }
-
-    if (!entered) {
-      _resetDevice();
-      throw const DeviceSessionException(
-        'Device not responding. Device may be running a program or not in REPL state.\n'
-        'Press CTRL-C in the terminal to stop the program and try again.',
-      );
-    }
-    queue.clear();
-  }
-
-  Future<bool> _tryHandshakeAfterInterrupt(Duration timeout) async {
-    for (var i = 0; i < 2; i++) {
-      _write([0x03]); // CTRL-C
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 30));
-    queue.clear();
-
-    try {
-      await tryHandshake(timeout);
-      return true;
-    } on TimeoutException {
-      return false;
-    } on DeviceSessionException {
-      rethrow;
-    }
-  }
-
-  Future<String> _executeRawPaste(String code, Duration timeout) async {
-    final bytes = utf8.encode(code);
-    final response = await _tryRawPasteHandshake(timeout);
-    if (response == null) {
-      throw const DeviceSessionException('Device rejected raw-paste mode');
-    }
-    await _writeRawPasteCode(bytes, response, timeout);
-    await queue.readUntil(_eot, timeout);
-    final stdout = await _readPayloadUntilEot(timeout);
-    await _readPayloadUntilEot(timeout); // consume stderr
-    await queue.readUntil(_prompt, timeout);
-    return utf8.decode(stdout, allowMalformed: true);
-  }
-
-  Future<void> _executeStreamingRawPaste(
-    String code, {
-    required Duration timeout,
-    required void Function() onStarted,
-    required void Function(Uint8List data) onStdout,
-    required void Function(Uint8List data) onStderr,
-  }) async {
-    final bytes = utf8.encode(code);
-    final response = await _tryRawPasteHandshake(timeout);
-    if (response == null) {
-      throw const DeviceSessionException('Device rejected raw-paste mode');
-    }
-    onStarted();
-    await _writeRawPasteCode(bytes, response, timeout);
-    await queue.readUntil(_eot, timeout);
-    await queue.readUntilStreaming(_eot, onData: onStdout);
-    await queue.readUntilStreaming(_eot, onData: onStderr);
-    await queue.readUntil(_prompt, timeout);
-  }
-
-  Future<void> _writeRawPasteCode(
-    Uint8List code,
-    int windowIncrement,
-    Duration timeout,
-  ) async {
-    var remainingWindow = windowIncrement;
-    var offset = 0;
-    var sentEndOfData = false;
-
-    while (offset < code.length) {
-      while (queue.hasData) {
-        final signal = (await queue.readBytes(1, timeout))[0];
-        if (signal == _rawPasteAccepted) {
-          remainingWindow += windowIncrement;
-        } else if (signal == 0x04) {
-          _write(_eot);
-          sentEndOfData = true;
-          offset = code.length;
-          break;
-        }
-      }
-      if (offset >= code.length) break;
-
-      if (remainingWindow <= 0) {
-        final signal = (await queue.readBytes(1, timeout))[0];
-        if (signal == _rawPasteAccepted) {
-          remainingWindow += windowIncrement;
-          continue;
-        }
-        if (signal == 0x04) {
-          _write(_eot);
-          sentEndOfData = true;
-          break;
-        }
-        continue;
-      }
-
-      final count = math.min(remainingWindow, code.length - offset);
-      _write(code.sublist(offset, offset + count));
-      offset += count;
-      remainingWindow -= count;
-    }
-
-    if (!sentEndOfData) {
-      _write(_eot);
-    }
-  }
-
   // -- Helpers --------------------------------------------------------------
 
   Future<Uint8List> _readUntilEot(Duration timeout) async {
     final data = await queue.readUntil(_eot, timeout);
     return Uint8List.fromList(data.sublist(0, data.length - 1));
-  }
-
-  Future<Uint8List> _readPayloadUntilEot(Duration timeout) async {
-    final data = await queue.readUntil(_eot, timeout);
-    return Uint8List.fromList(data.sublist(0, data.length - 1));
-  }
-
-  void _resetDevice() {
-    _write([0x03, 0x03]); // interrupt
-    _write([0x02]); // CTRL-B: exit raw REPL
   }
 
   void _write(List<int> bytes) {
@@ -615,9 +630,8 @@ class DeviceSessionException implements Exception {
 // ---------------------------------------------------------------------------
 
 const _defaultTimeout = Duration(seconds: 20);
-const Duration _postExitDelay = Duration(milliseconds: 10);
 
-typedef _ProviderReader = T Function<T>(ProviderListenable<T> provider);
+typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);
 
 /// Exception thrown when the device cannot be reached for a REPL operation.
 class DeviceNotReadyException implements Exception {
@@ -627,13 +641,72 @@ class DeviceNotReadyException implements Exception {
   String toString() => 'DeviceNotReadyException: $message';
 }
 
+/// Sends a CTRL-C burst and enters REPL on a fresh [DeviceSession].
+Future<DeviceSession> _initSessionAndEnterRepl(
+  SerialByteQueue queue,
+  void Function(List<int>) writeBytes,
+  ReplMode mode, {
+  int interruptCount = 12,
+  int interruptIntervalMs = 30,
+  Duration settleDelay = const Duration(milliseconds: 150),
+}) async {
+  final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+  for (var i = 0; i < interruptCount; i++) {
+    writeBytes([0x03]);
+    await Future<void>.delayed(Duration(milliseconds: interruptIntervalMs));
+  }
+  await Future<void>.delayed(settleDelay);
+  await session.enterRepl(mode);
+  return session;
+}
+
+/// Interrupts the active script and confirms a friendly REPL prompt.
+Future<bool> _recoverInterruptedDevice(
+  SerialByteQueue queue,
+  void Function(List<int>) writeBytes, {
+  int maxAttempts = 2,
+}) async {
+  const recoveryMarker = '__PYRITE_RECOVERED__';
+  final encodedMarker = base64Encode(utf8.encode(recoveryMarker));
+  final recoveryCommand = utf8.encode(
+    "import ubinascii;print(ubinascii.a2b_base64('$encodedMarker').decode())\r\n",
+  );
+  final marker = utf8.encode(recoveryMarker);
+  final friendlyPrompt = utf8.encode('>>> ');
+  for (var attempt = 0; attempt < maxAttempts; attempt++) {
+    queue.clear();
+    writeBytes([0x03, 0x03, 0x03, 0x03, 0x03]);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    writeBytes([0x02]); // CTRL-B: leave raw REPL if necessary.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    queue.clear();
+    writeBytes(recoveryCommand);
+    try {
+      await queue.readUntil(marker, const Duration(seconds: 2));
+      await queue.readUntil(friendlyPrompt, const Duration(seconds: 2));
+      debugPrint('[txn] device recovery confirmed on attempt ${attempt + 1}');
+      return true;
+    } on SerialCancelledException {
+      return false;
+    } on TimeoutException {
+      // Retry with another interrupt burst.
+    }
+  }
+  debugPrint('[txn] device recovery could not confirm friendly REPL');
+  return false;
+}
+
 /// Runs a REPL transaction with mutex, I/O pausing, and cleanup.
+///
 Future<T> _runTransaction<T>(
-  _ProviderReader read,
+  ProviderReader read,
   Future<T> Function(DeviceSession session, ReplMode mode) action, {
-  /// Called with the queue before execution starts. Return an optional
-  /// cleanup function that will be called in the `finally` block.
   void Function()? Function(SerialByteQueue queue)? onSetup,
+  ReplMode? forceMode,
+  int interruptCount = 12,
+  int interruptIntervalMs = 30,
+  Duration settleDelay = const Duration(milliseconds: 150),
+  Duration exitSettleDelay = const Duration(milliseconds: 300),
 }) async {
   final mutex = read(replMutexProvider);
   return mutex.runExclusive(() async {
@@ -652,55 +725,163 @@ Future<T> _runTransaction<T>(
       read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
     }
 
+    var termination = TransactionTermination.none;
+
+    void requestHardwareReset() {
+      if (termination != TransactionTermination.none) {
+        debugPrint('[txn] duplicate hardware reset ignored');
+        return;
+      }
+      termination = TransactionTermination.hardwareReset;
+      debugPrint('[txn] hardware reset requested; cancelling queue');
+      queue.cancel();
+    }
+
+    read(hardwareResetControllerProvider).register(requestHardwareReset);
+
     // Register running operation so the status bar can show an indicator
     // with interrupt and force-reset buttons.
-    read(runningOperationsProvider.notifier).start(RunningOperation(
-      id: 'code-exec',
-      label: '运行中',
-      icon: Icons.play_arrow,
-      canInterrupt: true,
-      canForceReset: true,
-      onInterrupt: () {
-        // 1. Send CTRL-C to the device to stop execution.
-        writeBytes([0x03]);
-        // 2. Cancel the IDE-side queue so pending reads unblock and the
-        //    finally block runs, releasing the mutex and all state.
-        queue.cancel();
-      },
-      onForceReset: () {
-        // Cancel the queue (triggers SerialCancelledException → finally).
-        queue.cancel();
-        // Force-release the mutex even if a waiter is still pending.
-        mutex.forceReset();
-      },
-    ));
+    read(runningOperationsProvider.notifier).start(
+      RunningOperation(
+        id: 'code-exec',
+        label: '运行中',
+        icon: Icons.play_arrow,
+        canInterrupt: true,
+        canForceReset:
+            read(hardwareResetStrategyProvider) !=
+            HardwareResetStrategy.disabled,
+        onInterrupt: () {
+          if (termination != TransactionTermination.none) {
+            debugPrint('[txn] duplicate interrupt ignored during recovery');
+            return;
+          }
+          termination = TransactionTermination.interrupt;
+          debugPrint(
+            '[txn] onInterrupt fired, sending 5x CTRL-C + cancelling queue',
+          );
+          // 1. Send multiple CTRL-C to the device to stop execution.
+          writeBytes([0x03, 0x03, 0x03, 0x03, 0x03]);
+          // 2. Cancel the IDE-side queue so pending reads unblock and the
+          //    finally block runs, releasing the mutex and all state.
+          queue.cancel();
+          debugPrint('[txn] queue cancelled, isCancelled=${queue.isCancelled}');
+        },
+        onForceReset: () {
+          requestHardwareReset();
+        },
+      ),
+    );
 
-    final mode = read(replModeProvider);
-    final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+    final mode = forceMode ?? read(replModeProvider) ?? ReplMode.rawRepl;
+    DeviceSession? session;
     try {
-      // CTRL-C to interrupt any running program.
-      writeBytes([0x03]);
-      await session.enterRepl(mode);
+      debugPrint('[txn] START mode=$mode');
+      try {
+        debugPrint('[txn] entering REPL...');
+        session = await _initSessionAndEnterRepl(
+          queue,
+          writeBytes,
+          mode,
+          interruptCount: interruptCount,
+          interruptIntervalMs: interruptIntervalMs,
+          settleDelay: settleDelay,
+        );
+        debugPrint('[txn] REPL entered OK');
+      } catch (e) {
+        debugPrint('[txn] enterRepl failed: $e');
+        if ((interruptCount < 12 ||
+                settleDelay < const Duration(milliseconds: 150)) &&
+            !queue.isCancelled) {
+          debugPrint('[txn] retrying REPL with conservative handshake');
+          queue.clear();
+          session = await _initSessionAndEnterRepl(queue, writeBytes, mode);
+          debugPrint('[txn] REPL entered after conservative retry');
+        } else {
+          rethrow;
+        }
+      }
+      debugPrint('[txn] running action...');
       return await action(session, mode);
     } finally {
-      read(runningOperationsProvider.notifier).stop('code-exec');
+      debugPrint('[txn] FINALLY: queue.isCancelled=${queue.isCancelled}');
+      read(hardwareResetControllerProvider).unregister(requestHardwareReset);
       cleanup?.call();
       try {
-        await session.exitRepl(mode);
-      } catch (_) {}
+        if (termination == TransactionTermination.none && session != null) {
+          debugPrint('[txn] exitRepl...');
+          await session.exitRepl(mode);
+          debugPrint('[txn] exitRepl done');
+        } else if (termination != TransactionTermination.none) {
+          debugPrint('[txn] interrupted; skipping normal REPL exit');
+        }
+      } catch (e) {
+        debugPrint('[txn] exitRepl error: $e');
+      }
       queue.cancel();
       queue.clear();
-      // CTRL-C + CTRL-B to force back to normal REPL.
-      writeBytes([0x03, 0x03]);
-      writeBytes([0x02]);
-      await Future<void>.delayed(_postExitDelay);
       read(serialDataCallbacksProvider.notifier).remove(callback);
-      read(serialReplIoPausedProvider.notifier).state = false;
+      try {
+        if (termination == TransactionTermination.interrupt) {
+          final recoveryQueue = SerialByteQueue();
+          void recoveryCallback(Uint8List data) => recoveryQueue.add(data);
+          read(serialDataCallbacksProvider.notifier).add(recoveryCallback);
+          try {
+            var recovered = await _recoverInterruptedDevice(
+              recoveryQueue,
+              writeBytes,
+            );
+            if (!recovered && read(serialProvider).isConnected) {
+              debugPrint(
+                '[txn] soft recovery failed; reopening the serial connection',
+              );
+              final serial = read(serialProvider.notifier);
+              final baudRate = read(serialProvider).baudRate;
+              recovered = await serial.reconnectAtBaud(
+                baudRate,
+                initializeDevice: false,
+              );
+              if (recovered) {
+                await Future<void>.delayed(const Duration(milliseconds: 500));
+                recovered = await _recoverInterruptedDevice(
+                  recoveryQueue,
+                  writeBytes,
+                  maxAttempts: 1,
+                );
+              }
+            }
+            if (!recovered && read(serialProvider).isConnected) {
+              debugPrint(
+                '[txn] device remains unresponsive; disconnecting the port',
+              );
+              await read(serialProvider.notifier).disconnectPort();
+            }
+            debugPrint('[txn] interrupt recovery result=$recovered');
+          } finally {
+            recoveryQueue.cancel();
+            read(serialDataCallbacksProvider.notifier).remove(recoveryCallback);
+          }
+        } else if (termination == TransactionTermination.hardwareReset) {
+          final strategy = read(hardwareResetStrategyProvider);
+          final reset = await read(
+            serialProvider.notifier,
+          ).hardwareReset(strategy);
+          debugPrint('[txn] hardware reset result=$reset');
+        } else {
+          // Leave successful transactions at the friendly prompt.
+          writeBytes([0x03, 0x03]);
+          writeBytes([0x02]);
+          await Future<void>.delayed(exitSettleDelay);
+        }
+      } finally {
+        read(runningOperationsProvider.notifier).stop('code-exec');
+        read(serialReplIoPausedProvider.notifier).state = false;
+        debugPrint('[txn] FINALLY done');
+      }
     }
   });
 }
 
-void _ensureConnected(_ProviderReader read) {
+void _ensureConnected(ProviderReader read) {
   final serialState = read(serialProvider);
   if (serialState.isConnected != true) {
     throw const DeviceNotReadyException('Device not connected.');
@@ -721,6 +902,28 @@ Future<String> runPythonOnDevice(
   return _runTransaction(
     ref.read,
     (session, mode) => session.execute(python, timeout: timeout, mode: mode),
+    onSetup: (queue) {
+      final sub = ref.listen(serialProvider, (_, next) {
+        if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
+      });
+      return () => sub.close();
+    },
+  );
+}
+
+/// Runs multiple commands inside one transaction. Raw REPL stays open between
+/// commands; Paste mode only re-enters paste input and keeps Python globals.
+Future<T> runPythonInReplSession<T>(
+  Ref ref,
+  Future<T> Function(DeviceSession session, ReplMode mode) action,
+) {
+  return _runTransaction(
+    ref.read,
+    action,
+    interruptCount: 3,
+    interruptIntervalMs: 30,
+    settleDelay: const Duration(milliseconds: 50),
+    exitSettleDelay: const Duration(milliseconds: 80),
     onSetup: (queue) {
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
@@ -759,18 +962,10 @@ Future<void> runPythonOnDeviceStreaming(
   );
 }
 
-/// Forcefully interrupts any in-flight REPL transaction and releases the mutex.
-///
-/// Call this when the user presses the "force reset" button in the status bar
-/// and the normal interrupt flow (CTRL-C + queue.cancel) is not sufficient.
-void forceResetReplTransaction(Ref ref) {
-  final mutex = ref.read(replMutexProvider);
-  mutex.forceReset();
-  ref.read(runningOperationsProvider.notifier).stop('code-exec');
-}
-
-/// Runs a Python script while streaming raw binary data into stdin.
-/// Only works with raw-paste mode.
+/// Runs a Python script while streaming Base64-framed data into stdin.
+/// Uses regular raw REPL mode (CTRL-A + code + CTRL-D) because
+/// sys.stdin.buffer.readinto() does not work during code execution in
+/// raw-paste mode on many boards (including K230D).
 Future<void> runPythonOnDeviceWithRawInput(
   Ref ref,
   String python,
@@ -786,11 +981,6 @@ Future<void> runPythonOnDeviceWithRawInput(
   return _runTransaction(
     ref.read,
     (session, mode) {
-      if (mode != ReplMode.rawPaste) {
-        throw UnsupportedError(
-          'Raw input execution requires raw-paste mode.',
-        );
-      }
       return session.executeWithRawInput(
         python,
         data,
@@ -803,6 +993,7 @@ Future<void> runPythonOnDeviceWithRawInput(
         onProgress: onProgress,
       );
     },
+    forceMode: ReplMode.rawRepl,
     onSetup: (queue) {
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
@@ -810,4 +1001,68 @@ Future<void> runPythonOnDeviceWithRawInput(
       return () => sub.close();
     },
   );
+}
+
+/// Reads a file as raw bytes. Size lookup and transfer share one raw REPL
+/// transaction, avoiding an extra interrupt/entry/exit handshake.
+Future<Uint8List> runPythonReadDeviceFile(
+  Ref ref,
+  String remotePath, {
+  void Function(int received, int total)? onProgress,
+}) {
+  return _runTransaction(
+    ref.read,
+    (session, mode) async {
+      final path = _boardFileExpr(remotePath);
+      final sizeOutput = await session.executeRawCommand(
+        "import os\nprint(os.stat($path)[6])",
+        timeout: const Duration(seconds: 5),
+      );
+      final expectedSize = int.tryParse(sizeOutput.trim());
+      if (expectedSize == null || expectedSize < 0) {
+        throw DeviceSessionException(
+          'Invalid file size response: ${sizeOutput.trim()}',
+        );
+      }
+      onProgress?.call(0, expectedSize);
+      if (expectedSize == 0) return Uint8List(0);
+
+      final baudRate = ref.read(serialProvider).baudRate;
+      final wireSeconds = (expectedSize * 10 / math.max(baudRate, 1)).ceil();
+      final timeout = Duration(seconds: math.max(30, wireSeconds + 15));
+      final script =
+          "import os,sys\n"
+          "_out=sys.stdout.buffer\n"
+          "p=$path\n"
+          "with open(p,'rb') as f:\n"
+          " while True:\n"
+          "  c=f.read(512)\n"
+          "  if not c:break\n"
+          "  _out.write(c)\n";
+
+      debugPrint(
+        '[raw-input] readDeviceFile path=$remotePath size=$expectedSize',
+      );
+
+      final raw = await session.readRawFile(
+        script,
+        expectedSize,
+        timeout: timeout,
+        onProgress: onProgress,
+      );
+      debugPrint('[raw-input] readDeviceFile done: ${raw.length} bytes');
+      return raw;
+    },
+    forceMode: ReplMode.rawRepl,
+    onSetup: (queue) {
+      final sub = ref.listen(serialProvider, (_, next) {
+        if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
+      });
+      return () => sub.close();
+    },
+  );
+}
+
+String _boardFileExpr(String path) {
+  return "'${path.replaceAll("'", "\\'")}'";
 }

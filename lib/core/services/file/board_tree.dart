@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -25,6 +27,15 @@ class BoardFileItemsNotifier
       final items = await buildBoardFileListItems(entries);
       state = items;
       return items;
+    } on DeviceNotReadyException catch (error) {
+      debugPrint('[board-tree] refresh skipped: $error');
+      return state;
+    } on SerialCancelledException catch (error) {
+      debugPrint('[board-tree] refresh cancelled: $error');
+      return state;
+    } on TimeoutException catch (error) {
+      debugPrint('[board-tree] refresh timed out: $error');
+      return state;
     } finally {
       ref.read(boardFileListLoadingProvider.notifier).state = false;
     }

@@ -42,6 +42,8 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
     extends StateNotifier<T> {
   final Ref ref;
   Timer? _reconnectTimer;
+  bool _reconnectEnabled = false;
+  bool _reconnectInProgress = false;
 
   BaseUsbSerialNotifier(this.ref, T initialState) : super(initialState);
 
@@ -66,17 +68,29 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
   Future<void> disconnectPort();
 
   void scheduleReconnect(String path) {
-    _reconnectTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (state.isConnected) {
-        _reconnectTimer?.cancel();
-        _reconnectTimer = null;
+    _reconnectEnabled = true;
+    _reconnectTimer?.cancel();
+    if (state.isConnected || _reconnectInProgress) return;
+    _reconnectTimer = Timer(const Duration(seconds: 2), () async {
+      if (!_reconnectEnabled || state.isConnected || _reconnectInProgress) {
         return;
       }
-      connectPort(path);
+      _reconnectInProgress = true;
+      try {
+        await connectPort(path);
+      } catch (_) {
+        // Retried below while automatic reconnection remains enabled.
+      } finally {
+        _reconnectInProgress = false;
+        if (_reconnectEnabled && !state.isConnected) {
+          scheduleReconnect(path);
+        }
+      }
     });
   }
 
   void cancelReconnect() {
+    _reconnectEnabled = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
   }

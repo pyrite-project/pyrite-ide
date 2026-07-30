@@ -50,3 +50,5 @@ app.*.map.json
 /android/.kotlin
 **/android/.cxx/
 opencode.json
+
+.tmp/

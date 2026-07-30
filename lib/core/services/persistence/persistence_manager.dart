@@ -14,6 +14,8 @@ import 'package:pyrite_ide/core/services/persistence/editor/tabs_persistence.dar
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class PersistenceManager {
@@ -105,7 +107,9 @@ class PersistenceManager {
       microPythonStubsLayers: settings?.microPythonStubsLayers ?? const [],
       microPythonStubsExtraPaths:
           settings?.microPythonStubsExtraPaths ?? const [],
-      replMode: settings?.replMode ?? 'rawPaste',
+      replMode: settings?.replMode ?? 'rawRepl',
+      fileTransferMode: settings?.fileTransferMode ?? 'streaming',
+      hardwareResetStrategy: settings?.hardwareResetStrategy ?? 'disabled',
       dataContributions: dataContributions ?? const [],
     );
   }
@@ -185,6 +189,10 @@ class PersistenceManager {
             microPythonStubsExtraPaths,
           ),
           replMode: container.read(replModeProvider).name,
+          fileTransferMode: container.read(fileTransferModeProvider).name,
+          hardwareResetStrategy: container
+              .read(hardwareResetStrategyProvider)
+              .name,
         ),
       ),
       functionPagePersistence.save(

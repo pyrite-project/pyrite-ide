@@ -22,10 +22,13 @@ class SerialProviderState extends UsbSerialState {
     bool? isConnected,
     int? baudRate,
     bool? autoReconnect,
+    bool clearSelectedPort = false,
   }) {
     return SerialProviderState(
       portInfos: portInfos ?? this.portInfos,
-      selectedPortName: selectedPortName ?? this.selectedPortName,
+      selectedPortName: clearSelectedPort
+          ? null
+          : selectedPortName ?? this.selectedPortName,
       isConnected: isConnected ?? this.isConnected,
       baudRate: baudRate ?? this.baudRate,
       autoReconnect: autoReconnect ?? this.autoReconnect,

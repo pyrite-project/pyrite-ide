@@ -4,6 +4,8 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/expansion_page.dart';
@@ -30,6 +32,7 @@ class Editor extends ConsumerWidget {
         : null;
     final canSave = fileValue != null;
     final isConnected = ref.watch(serialProvider).isConnected;
+    final hardwareResetStrategy = ref.watch(hardwareResetStrategyProvider);
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 8,
@@ -91,9 +94,38 @@ class Editor extends ConsumerWidget {
                 icon: const Icon(Icons.stop_circle_outlined, size: 20),
                 onPressed: isConnected
                     ? () {
-                        ref
-                            .read(serialProvider.notifier)
-                            .sendCommand("\x03");
+                        ref.read(serialProvider.notifier).sendCommand("\x03");
+                      }
+                    : null,
+              ),
+              IconButton(
+                tooltip: translateForWidget(
+                  ref,
+                  isConnected &&
+                          hardwareResetStrategy !=
+                              HardwareResetStrategy.disabled
+                      ? I18nKey.editorToolbarHardwareReset
+                      : I18nKey.editorToolbarHardwareResetUnavailable,
+                ),
+                icon: const Icon(Icons.power_settings_new, size: 20),
+                onPressed:
+                    isConnected &&
+                        hardwareResetStrategy != HardwareResetStrategy.disabled
+                    ? () async {
+                        final accepted = await hardwareResetDevice(ref.read);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              translateForWidget(
+                                ref,
+                                accepted
+                                    ? I18nKey.editorToolbarHardwareResetStarted
+                                    : I18nKey.editorToolbarHardwareResetFailed,
+                              ),
+                            ),
+                          ),
+                        );
                       }
                     : null,
               ),
@@ -107,9 +139,7 @@ class Editor extends ConsumerWidget {
                 icon: const Icon(Icons.restart_alt, size: 20),
                 onPressed: isConnected
                     ? () {
-                        ref
-                            .read(serialProvider.notifier)
-                            .sendCommand("\x04");
+                        ref.read(serialProvider.notifier).sendCommand("\x04");
                       }
                     : null,
               ),

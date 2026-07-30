@@ -443,7 +443,12 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
             .complete(message: translateWithReplacements(ref,I18nKey.fileMessageDownloadedToLocal, {'path': localPath}));
         _respondOk(envelope, respond, data: true);
       } catch (e) {
-        ref.read(fileTransferProgressProvider.notifier).fail(translateWithReplacements(ref,I18nKey.fileMessageDownloadFailed, {'error': e.toString()}));
+        var errorMsg = e.toString();
+        if (e is BoardFileBackendException &&
+            (e.message.contains('ENOENT') || e.message.contains('No such file'))) {
+          errorMsg = '$errorMsg\n${translateWithReplacements(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+        }
+        ref.read(fileTransferProgressProvider.notifier).fail(translateWithReplacements(ref,I18nKey.fileMessageDownloadFailed, {'error': errorMsg}));
         _respondOk(envelope, respond, data: false);
       }
     } else {

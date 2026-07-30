@@ -20,6 +20,8 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
@@ -157,7 +159,13 @@ void _applyData(PersistedData data) {
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
   container.read(replModeProvider.notifier).state =
-      ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawPaste;
+      ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
+  container.read(fileTransferModeProvider.notifier).state =
+      FileTransferMode.values.asNameMap()[data.fileTransferMode] ??
+      FileTransferMode.streaming;
+  container.read(hardwareResetStrategyProvider.notifier).state =
+      HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
+      HardwareResetStrategy.disabled;
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;

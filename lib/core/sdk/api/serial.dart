@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 
 abstract class SdkSerialCommands {
   static const String listPorts = 'sdk.serial.list_ports';
@@ -16,6 +17,7 @@ abstract class SdkSerialCommands {
   static const String send = 'sdk.serial.send';
   static const String sendCommand = 'sdk.serial.send_command';
   static const String runPython = 'sdk.serial.run_python';
+  static const String hardwareReset = 'sdk.serial.hardware_reset';
   static const String setBaudRate = 'sdk.serial.set_baud_rate';
   static const String setAutoReconnect = 'sdk.serial.set_auto_reconnect';
 }
@@ -40,6 +42,10 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       _handleSendCommand,
     );
     runManager.registerHandler(SdkSerialCommands.runPython, _handleRunPython);
+    runManager.registerHandler(
+      SdkSerialCommands.hardwareReset,
+      _handleHardwareReset,
+    );
     runManager.registerHandler(
       SdkSerialCommands.setBaudRate,
       _handleSetBaudRate,
@@ -91,6 +97,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
   ) async {
     await ref.read(serialProvider.notifier).refresh();
     final state = ref.read(serialProvider);
+    final hardwareResetStrategy = ref.read(hardwareResetStrategyProvider);
     _respondOk(
       envelope,
       respond,
@@ -119,6 +126,9 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
         'selected_port': state.selectedPortName,
         'baud_rate': state.baudRate,
         'auto_reconnect': state.autoReconnect,
+        'hardware_reset_strategy': hardwareResetStrategy.name,
+        'hardware_reset_enabled':
+            hardwareResetStrategy != HardwareResetStrategy.disabled,
       },
     );
   }
@@ -259,6 +269,26 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
         timeout: Duration(milliseconds: timeoutMs),
       );
       _respondOk(envelope, respond, data: output);
+    } catch (e) {
+      _respondError(envelope, respond, e.toString());
+    }
+  }
+
+  Future<void> _handleHardwareReset(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) async {
+    if (!_isConnected) {
+      _respondError(envelope, respond, '设备未连接');
+      return;
+    }
+    try {
+      final accepted = await hardwareResetDevice(ref.read);
+      if (!accepted) {
+        _respondError(envelope, respond, 'Hardware reset is disabled');
+        return;
+      }
+      _respondOk(envelope, respond, data: true);
     } catch (e) {
       _respondError(envelope, respond, e.toString());
     }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -517,9 +518,21 @@ class BoardNotifier {
         totalFiles: 1,
         message: translateWithReplacements(ref,I18nKey.fileTransferPrepareDownloadFile),
       );
-      final bytes = await ops.getFileBytesWithProgress(
-        filePath, currentFile: filePath, index: 1, totalFiles: 1,
-      );
+      Uint8List bytes;
+      try {
+        bytes = await ops.getFileBytesWithProgress(
+          filePath, currentFile: filePath, index: 1, totalFiles: 1,
+        );
+      } on BoardFileBackendException catch (e) {
+        var errorMsg = e.message;
+        if (e.message.contains('ENOENT') || e.message.contains('No such file')) {
+          errorMsg = '$errorMsg\n${translateWithReplacements(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+        }
+        ref.read(fileTransferProgressProvider.notifier).fail(
+          translateWithReplacements(ref, I18nKey.fileMessageDownloadFailed, {'error': errorMsg}),
+        );
+        return;
+      }
       final file = File(targetPath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(bytes);

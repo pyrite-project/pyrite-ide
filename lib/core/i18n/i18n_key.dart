@@ -204,6 +204,10 @@ enum I18nKey {
   fileMessageMoveFailed('file.message.move_failed', '移动失败：{error}'),
   fileMessageDownloadFailed('file.message.download_failed', '下载失败：{error}'),
   fileMessageUploadFailed('file.message.upload_failed', '上传失败：{error}'),
+  fileMessageFilesystemNotMounted(
+    'file.message.filesystem_not_mounted',
+    '提示：文件系统可能未挂载，请检查设备固件配置或重新连接',
+  ),
   fileMessageImportFailed('file.message.import_failed', '导入失败：{error}'),
   fileMessageSelectLocalItem('file.message.select_local_item', '先选择一个本地文件或文件夹'),
   fileMessageSelectBoardItem('file.message.select_board_item', '先选择一个设备文件或文件夹'),
@@ -269,8 +273,14 @@ enum I18nKey {
     'file.message.downloaded_folder_to_local',
     '已下载文件夹到本地：{path}',
   ),
-  fileMessageCreatedLocalFile('file.message.created_local_file', '已创建本地文件：{path}'),
-  fileMessageCreatedLocalFolder('file.message.created_local_folder', '已创建本地文件夹：{path}'),
+  fileMessageCreatedLocalFile(
+    'file.message.created_local_file',
+    '已创建本地文件：{path}',
+  ),
+  fileMessageCreatedLocalFolder(
+    'file.message.created_local_folder',
+    '已创建本地文件夹：{path}',
+  ),
   fileTransferPrepareUploadFile('file.transfer.prepare_upload_file', '准备上传文件'),
   fileTransferPrepareUploadFolder(
     'file.transfer.prepare_upload_folder',
@@ -376,14 +386,8 @@ enum I18nKey {
   devicesStatusQuery('devices.status.query', '查询设备状态'),
   devicesStatusFirmware('devices.status.firmware', '固件版本'),
   devicesStatusPlatform('devices.status.platform', '平台型号'),
-  devicesStatusNotConnected(
-    'devices.status.not_connected',
-    '设备未连接',
-  ),
-  devicesStatusParseError(
-    'devices.status.parse_error',
-    '未能从设备响应中解析到状态数据',
-  ),
+  devicesStatusNotConnected('devices.status.not_connected', '设备未连接'),
+  devicesStatusParseError('devices.status.parse_error', '未能从设备响应中解析到状态数据'),
   settingsStyleThemeMode('settings.style.theme_mode.title', '主题模式'),
   settingsStyleThemeModeDescription(
     'settings.style.theme_mode.description',
@@ -481,10 +485,7 @@ enum I18nKey {
     'settings.terminal.chinese_to_unicode.subtitle',
     '输入中文时自动转为 \\uXXXX 转义序列',
   ),
-  settingsTerminalReplMode(
-    'settings.terminal.repl_mode.title',
-    'REPL 模式',
-  ),
+  settingsTerminalReplMode('settings.terminal.repl_mode.title', 'REPL 模式'),
   settingsTerminalReplModeSubtitle(
     'settings.terminal.repl_mode.subtitle',
     'Paste 模式使用 Ctrl-E 粘贴模式执行，兼容所有 MicroPython 固件',
@@ -497,9 +498,39 @@ enum I18nKey {
     'settings.terminal.repl_mode.raw_repl',
     'Raw REPL',
   ),
-  settingsTerminalReplModePaste(
-    'settings.terminal.repl_mode.paste',
-    'Paste',
+  settingsTerminalReplModePaste('settings.terminal.repl_mode.paste', 'Paste'),
+  settingsTerminalTransferMode('settings.terminal.transfer_mode', '文件传输模式'),
+  settingsTerminalTransferModeSubtitle(
+    'settings.terminal.transfer_mode.subtitle',
+    'Raw REPL 使用所选协议；Paste 始终使用分块传输',
+  ),
+  settingsTerminalTransferModeStreaming(
+    'settings.terminal.transfer_mode.streaming',
+    '流式传输',
+  ),
+  settingsTerminalTransferModeChunked(
+    'settings.terminal.transfer_mode.chunked',
+    '分块传输',
+  ),
+  settingsTerminalHardwareReset(
+    'settings.terminal.hardware_reset.title',
+    '硬件复位方式',
+  ),
+  settingsTerminalHardwareResetDisabled(
+    'settings.terminal.hardware_reset.disabled',
+    '关闭',
+  ),
+  settingsTerminalHardwareResetDtr(
+    'settings.terminal.hardware_reset.dtr',
+    'DTR 脉冲',
+  ),
+  settingsTerminalHardwareResetRts(
+    'settings.terminal.hardware_reset.rts',
+    'RTS 脉冲',
+  ),
+  settingsTerminalHardwareResetEsp32(
+    'settings.terminal.hardware_reset.esp32',
+    'ESP32 DTR/RTS',
   ),
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
   settingsTerminalDisplayDescription(
@@ -541,18 +572,9 @@ enum I18nKey {
     'settings.terminal.webrepl.password_hint',
     '设备的 WebREPL 访问密码',
   ),
-  webReplEmptyHost(
-    'webrepl.error.empty_host',
-    '请输入设备 IP 地址',
-  ),
-  webReplConnectFailed(
-    'webrepl.error.connect_failed',
-    '连接失败：{error}',
-  ),
-  webReplDisconnected(
-    'webrepl.error.disconnected',
-    '连接已断开',
-  ),
+  webReplEmptyHost('webrepl.error.empty_host', '请输入设备 IP 地址'),
+  webReplConnectFailed('webrepl.error.connect_failed', '连接失败：{error}'),
+  webReplDisconnected('webrepl.error.disconnected', '连接已断开'),
   settingsTerminalUnset('settings.terminal.unset', '未设置'),
   settingsTerminalSet('settings.terminal.set', '已设置'),
   settingsTerminalSelectBaudRate('settings.terminal.select_baud_rate', '选择波特率'),
@@ -1015,6 +1037,19 @@ enum I18nKey {
   editorToolbarInterruptNeedsDevice(
     'editor.toolbar.interrupt_needs_device',
     '连接设备后可中断运行',
+  ),
+  editorToolbarHardwareReset('editor.toolbar.hardware_reset', 'DTR/RTS 硬件复位'),
+  editorToolbarHardwareResetUnavailable(
+    'editor.toolbar.hardware_reset_unavailable',
+    '连接设备并配置硬件复位方式后可用',
+  ),
+  editorToolbarHardwareResetStarted(
+    'editor.toolbar.hardware_reset_started',
+    '已请求硬件复位',
+  ),
+  editorToolbarHardwareResetFailed(
+    'editor.toolbar.hardware_reset_failed',
+    '硬件复位失败或设备不支持所选控制线',
   ),
   editorToolbarSoftReboot('editor.toolbar.soft_reboot', '软重启设备'),
   editorToolbarSoftRebootNeedsDevice(

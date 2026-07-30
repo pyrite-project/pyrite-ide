@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
@@ -665,12 +666,17 @@ class ProjectFiles extends ConsumerWidget {
       }
     } catch (error) {
       if (!context.mounted) return;
+      var errorMsg = error.toString();
+      if (error is BoardFileBackendException &&
+          (error.message.contains('ENOENT') || error.message.contains('No such file'))) {
+        errorMsg = '$errorMsg\n${translateForWidget(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+      }
       showIdeError(
         context,
         translateForWidget(
           ref,
           I18nKey.fileMessageDownloadFailed,
-        ).replaceAll('{error}', error.toString()),
+        ).replaceAll('{error}', errorMsg),
       );
     }
   }
