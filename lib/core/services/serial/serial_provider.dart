@@ -147,6 +147,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   }
 
   void _autoDisconnect() {
+    resetReplOutputDecoder();
     final portName = state.selectedPortName;
     _eventSub?.cancel();
     _eventSub = null;
@@ -168,6 +169,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
   @override
   Future<void> disconnectPort() async {
+    resetReplOutputDecoder();
     cancelReconnect();
     await _eventSub?.cancel();
     _eventSub = null;

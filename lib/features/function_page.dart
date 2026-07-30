@@ -110,7 +110,10 @@ class ConsolePage extends ConsumerWidget {
             ),
           IconButton(
             tooltip: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
-            onPressed: () => repl.write('\x1b[2J\x1b[H'),
+            onPressed: () {
+              replController.clearSelection();
+              repl.clear();
+            },
             icon: const Icon(Icons.cleaning_services_outlined),
           ),
           IconButton(

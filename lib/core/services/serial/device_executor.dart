@@ -472,7 +472,8 @@ class DeviceSession {
 
   Future<String> _executePaste(String code, Duration timeout) async {
     // _enterPasteMode already entered paste mode (Ctrl-E + waited for ===).
-    final script = "print('$_startMarker')\n$code\nprint('$_endMarker')\n";
+    final script =
+        '${_markerPrint(_startMarker)}\n$code\n${_markerPrint(_endMarker)}\n';
     _write(utf8.encode(script));
     _write([0x04]); // Ctrl-D
 
@@ -492,19 +493,28 @@ class DeviceSession {
     required void Function(Uint8List data) onStderr,
   }) async {
     // _enterPasteMode already entered paste mode (Ctrl-E + waited for ===).
-    final script = "print('$_startMarker')\n$code\nprint('$_endMarker')\n";
+    final script =
+        '${_markerPrint(_startMarker)}\n$code\n${_markerPrint(_endMarker)}\n';
     _write(utf8.encode(script));
     _write([0x04]); // Ctrl-D
     onStarted();
 
     try {
-      final allData = await _waitForPromptAndReadAll(timeout);
-      final clean = _extractBetweenMarkers(allData);
-      final bytes = Uint8List.fromList(utf8.encode(clean));
-      if (bytes.isNotEmpty) onStdout(bytes);
+      final parser = _PasteOutputParser(
+        startMarker: _startMarker,
+        endMarker: _endMarker,
+        onOutput: onStdout,
+      );
+      await _waitForPromptAndStream(timeout, parser);
+      parser.close();
     } finally {
       _pasteReady = false;
     }
+  }
+
+  String _markerPrint(String marker) {
+    final split = marker.length ~/ 2;
+    return "print('${marker.substring(0, split)}' + '${marker.substring(split)}')";
   }
 
   Future<String> _waitForPromptAndReadAll(Duration timeout) async {
@@ -520,6 +530,30 @@ class DeviceSession {
       if (queue.indexOf(withoutSpace) >= 0) {
         final data = await queue.readUntil(withoutSpace, Duration.zero);
         return utf8.decode(data, allowMalformed: true);
+      }
+      final remaining = timeout - stopwatch.elapsed;
+      if (remaining <= Duration.zero) {
+        throw TimeoutException('Timed out waiting for >>> prompt', timeout);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  Future<void> _waitForPromptAndStream(
+    Duration timeout,
+    _PasteOutputParser parser,
+  ) async {
+    final withoutSpace = Uint8List.fromList([0x3E, 0x3E, 0x3E]);
+    final stopwatch = Stopwatch()..start();
+    while (true) {
+      if (queue.isCancelled) throw const SerialCancelledException();
+      if (queue.indexOf(_prompt3) >= 0) {
+        await queue.readUntilStreaming(_prompt3, onData: parser.addBytes);
+        return;
+      }
+      if (queue.indexOf(withoutSpace) >= 0) {
+        await queue.readUntilStreaming(withoutSpace, onData: parser.addBytes);
+        return;
       }
       final remaining = timeout - stopwatch.elapsed;
       if (remaining <= Duration.zero) {
@@ -623,6 +657,105 @@ class DeviceSessionException implements Exception {
   const DeviceSessionException(this.message);
   @override
   String toString() => 'DeviceSessionException: $message';
+}
+
+class _PasteOutputParser {
+  _PasteOutputParser({
+    required this.startMarker,
+    required this.endMarker,
+    required this.onOutput,
+  }) {
+    _decoder = const Utf8Decoder(allowMalformed: true).startChunkedConversion(
+      StringConversionSink.fromStringSink(_CallbackStringSink(_addText)),
+    );
+  }
+
+  final String startMarker;
+  final String endMarker;
+  final void Function(Uint8List data) onOutput;
+  late ByteConversionSink _decoder;
+  String _pending = '';
+  bool _started = false;
+  bool _finished = false;
+
+  void addBytes(Uint8List data) => _decoder.add(data);
+
+  void close() {
+    _decoder.close();
+    if (!_finished) {
+      throw const DeviceSessionException(
+        'Paste execution ended without the output marker.',
+      );
+    }
+  }
+
+  void _addText(String text) {
+    if (_finished || text.isEmpty) return;
+    _pending += text;
+
+    if (!_started) {
+      final markerIndex = _pending.indexOf(startMarker);
+      if (markerIndex < 0) {
+        _keepPossibleMarkerPrefix(startMarker);
+        return;
+      }
+      _pending = _pending.substring(markerIndex + startMarker.length);
+      _started = true;
+    }
+
+    final endIndex = _pending.indexOf(endMarker);
+    if (endIndex >= 0) {
+      _emit(_pending.substring(0, endIndex));
+      _pending = '';
+      _finished = true;
+      return;
+    }
+
+    final keep = _matchingSuffixLength(_pending, endMarker);
+    final emitLength = _pending.length - keep;
+    if (emitLength > 0) {
+      _emit(_pending.substring(0, emitLength));
+      _pending = _pending.substring(emitLength);
+    }
+  }
+
+  void _keepPossibleMarkerPrefix(String marker) {
+    final keep = _matchingSuffixLength(_pending, marker);
+    _pending = keep == 0 ? '' : _pending.substring(_pending.length - keep);
+  }
+
+  int _matchingSuffixLength(String text, String marker) {
+    final maxLength = math.min(text.length, marker.length - 1);
+    for (var length = maxLength; length > 0; length--) {
+      if (text.endsWith(marker.substring(0, length))) return length;
+    }
+    return 0;
+  }
+
+  void _emit(String text) {
+    if (text.isEmpty) return;
+    onOutput(Uint8List.fromList(utf8.encode(text)));
+  }
+}
+
+class _CallbackStringSink implements StringSink {
+  const _CallbackStringSink(this._write);
+
+  final void Function(String) _write;
+
+  @override
+  void write(Object? object) => _write(object?.toString() ?? '');
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) {
+    _write(objects.join(separator));
+  }
+
+  @override
+  void writeCharCode(int charCode) => _write(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => _write('${object ?? ''}\n');
 }
 
 // ---------------------------------------------------------------------------

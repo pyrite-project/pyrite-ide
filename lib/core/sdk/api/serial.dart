@@ -97,7 +97,6 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
   ) async {
     await ref.read(serialProvider.notifier).refresh();
     final state = ref.read(serialProvider);
-    final hardwareResetStrategy = ref.read(hardwareResetStrategyProvider);
     _respondOk(
       envelope,
       respond,
@@ -118,6 +117,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     void Function(Map<String, dynamic>) respond,
   ) {
     final state = ref.read(serialProvider);
+    final hardwareResetStrategy = ref.read(hardwareResetStrategyProvider);
     _respondOk(
       envelope,
       respond,

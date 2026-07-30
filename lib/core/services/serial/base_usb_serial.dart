@@ -44,6 +44,7 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
   Timer? _reconnectTimer;
   bool _reconnectEnabled = false;
   bool _reconnectInProgress = false;
+  ByteConversionSink? _replOutputDecoder;
 
   BaseUsbSerialNotifier(this.ref, T initialState) : super(initialState);
 
@@ -129,6 +130,7 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
   }
 
   void bindReplOnOutputCallback() {
+    _replOutputDecoder = null;
     repl.onOutput = (String data) {
       if (ref.read(serialReplIoPausedProvider)) return;
       final encode = ref.read(chineseToUnicodeConversion);
@@ -137,10 +139,16 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
   }
 
   void handleData(Uint8List data) {
-    if (!ref.read(serialReplIoPausedProvider)) {
-      try {
-        repl.write(utf8.decode(data));
-      } catch (_) {}
+    if (ref.read(serialReplIoPausedProvider)) {
+      // Protocol traffic is consumed by the active transaction. Do not let a
+      // partial UTF-8 sequence leak into the next terminal output chunk.
+      _replOutputDecoder = null;
+    } else {
+      _replOutputDecoder ??= const Utf8Decoder(allowMalformed: true)
+          .startChunkedConversion(
+            StringConversionSink.fromStringSink(_ReplOutputSink(repl.write)),
+          );
+      _replOutputDecoder!.add(data);
     }
     for (final cb in ref.read(serialDataCallbacksProvider)) {
       try {
@@ -148,6 +156,30 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
       } catch (_) {}
     }
   }
+
+  void resetReplOutputDecoder() {
+    _replOutputDecoder = null;
+  }
+}
+
+class _ReplOutputSink implements StringSink {
+  const _ReplOutputSink(this._write);
+
+  final void Function(String) _write;
+
+  @override
+  void write(Object? object) => _write(object?.toString() ?? '');
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) {
+    _write(objects.join(separator));
+  }
+
+  @override
+  void writeCharCode(int charCode) => _write(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => _write('${object ?? ''}\n');
 }
 
 /// Encodes non-ASCII characters for MicroPython REPL input.

@@ -52,7 +52,8 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
   }
 
   void clear() {
-    ideOutputTerminal.write('\x1b[2J\x1b[H');
+    ideOutputController.clearSelection();
+    ideOutputTerminal.clear();
     state = const [];
   }
 
