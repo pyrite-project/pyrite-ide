@@ -105,6 +105,17 @@ class ContextKeyHost {
   }
 
   void _onBusEvent(String topic, Map<String, dynamic> payload) {
+    // Bus emit listeners run synchronously inside emit(), which callers fire
+    // during widget build/dispose (e.g. PluginViewHost emits view.closed from
+    // dispose/didUpdateWidget). Mutating context keys there would notify the
+    // ChangeNotifierProvider mid-build and trip Riverpod's "modified a provider
+    // while building" assertion, so defer the mirror to a microtask — the same
+    // reason _bootstrap defers its initial writes.
+    scheduleMicrotask(() => _dispatchBusEvent(topic, payload));
+  }
+
+  void _dispatchBusEvent(String topic, Map<String, dynamic> payload) {
+    if (_disposed) return;
     switch (topic) {
       case DocumentTopics.activeChanged:
       case DocumentTopics.opened:
