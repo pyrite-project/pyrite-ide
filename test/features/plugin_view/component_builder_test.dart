@@ -10,6 +10,7 @@ import 'package:pyrite_ide/features/plugin_view/component_builder.dart';
 import 'package:pyrite_ide/features/plugin_view/component_error_boundary.dart';
 import 'package:pyrite_ide/features/plugin_view/component_host_state.dart';
 import 'package:pyrite_ide/features/plugin_view/native_view_registry.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_canvas.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_markdown.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_split_view.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_video_player.dart';
@@ -429,6 +430,140 @@ void main() {
   });
 
   group('completed native components', () {
+    testWidgets(
+      'AppBar and Scaffold render a bounded page with plugin actions',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            SizedBox(
+              width: 360,
+              height: 240,
+              child: Builder(
+                builder: (context) => harness.builder.build(context, {
+                  'type': 'Scaffold',
+                  'children': [
+                    {
+                      'type': 'AppBar',
+                      'props': {'title': 'Canvas tools'},
+                      'children': [
+                        {
+                          'type': 'IconButton',
+                          'props': {
+                            'id': 'refresh',
+                            'icon': 'material:refresh',
+                            'tooltip': 'Refresh',
+                          },
+                          'events': {'press': 'refresh-handler'},
+                        },
+                      ],
+                    },
+                    {
+                      'type': 'Text',
+                      'props': {'value': 'Body'},
+                    },
+                  ],
+                }),
+              ),
+            ),
+          ),
+        );
+
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(find.text('Canvas tools'), findsOneWidget);
+        expect(find.text('Body'), findsOneWidget);
+        await tester.tap(find.byIcon(Icons.refresh));
+        expect(harness.events.single.id, 'refresh');
+        expect(harness.events.single.event, 'press');
+        expect(harness.events.single.payload, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('Canvas invoke mutates only ephemeral overlay layers', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => harness.builder.build(context, {
+              'type': 'Canvas',
+              'props': {
+                'id': 'surface',
+                'width': 200,
+                'height': 120,
+                'ops': [
+                  {
+                    'op': 'rect',
+                    'id': 'base',
+                    'x': 0,
+                    'y': 0,
+                    'w': 40,
+                    'h': 40,
+                  },
+                ],
+              },
+            }),
+          ),
+        ),
+      );
+
+      Future<String?> hit() async =>
+          ((await harness.hostState.invokeComponentMethod(
+                    'surface',
+                    'hit_test',
+                    const {'x': 10, 'y': 10},
+                  ))
+                  as Map<String, dynamic>?)?['elementId']
+              as String?;
+
+      expect(await hit(), 'base');
+      expect(
+        await harness.hostState.invokeComponentMethod(
+          'surface',
+          'push_ops',
+          const {
+            'layer': 'preview',
+            'ops': [
+              {'op': 'rect', 'id': 'overlay', 'x': 0, 'y': 0, 'w': 20, 'h': 20},
+            ],
+          },
+        ),
+        isTrue,
+      );
+      expect(await hit(), 'overlay');
+      await harness.hostState.invokeComponentMethod(
+        'surface',
+        'clear_layer',
+        const {'layer': 'preview'},
+      );
+      expect(await hit(), 'base');
+      await harness.hostState.invokeComponentMethod(
+        'surface',
+        'set_ops',
+        const {
+          'ops': [
+            {
+              'op': 'rect',
+              'id': 'replacement',
+              'x': 0,
+              'y': 0,
+              'w': 20,
+              'h': 20,
+            },
+          ],
+        },
+      );
+      expect(await hit(), 'replacement');
+      await harness.hostState.invokeComponentMethod(
+        'surface',
+        'clear',
+        const {},
+      );
+      expect(await hit(), 'base');
+      expect(find.byType(PluginCanvas), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('Image and Video resolve plugin-scoped resources', (
       tester,
     ) async {

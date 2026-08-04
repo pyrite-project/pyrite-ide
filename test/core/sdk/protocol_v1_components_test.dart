@@ -44,6 +44,17 @@ void main() {
     );
   });
 
+  test('the AppBar/Scaffold and Canvas v2 pages validate', () {
+    for (final key in const ['appBarScaffoldPage', 'canvasPage']) {
+      final result = registry.validate(_asMap(fixture[key]));
+      expect(
+        result.isValid,
+        isTrue,
+        reason: '$key: ${result.diagnostics.join('; ')}',
+      );
+    }
+  });
+
   test('every invalid tree is rejected with the expected path and reason', () {
     final cases = fixture['invalidTrees'] as List;
     expect(cases, isNotEmpty);
@@ -87,6 +98,20 @@ void main() {
     expect(payload['method'], 'reveal_item');
     expect(_asMap(payload['arguments'])['id'], 'b');
   });
+
+  test(
+    'Canvas invoke and semantic event envelopes validate under protocol v1',
+    () {
+      for (final key in const ['canvasInvokePushOps', 'canvasInvokeHitTest']) {
+        final envelope = PluginProtocol.validateIncoming(_asMap(fixture[key]));
+        expect(envelope['type'], SdkCommands.viewComponentInvoke, reason: key);
+      }
+      for (final key in const ['canvasDragEvent', 'canvasTapEvent']) {
+        final envelope = PluginProtocol.validateIncoming(_asMap(fixture[key]));
+        expect(envelope['type'], IdeCommands.viewEvent, reason: key);
+      }
+    },
+  );
 
   test('the event fixture targets a component declared in the page', () {
     final payload = _asMap(_asMap(fixture['ideViewEvent'])['payload']);

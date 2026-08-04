@@ -87,6 +87,145 @@
     "data": null,
     "timestamp": 1700000000610
   },
+  "appBarScaffoldPage": {
+    "type": "Scaffold",
+    "props": {"id": "page"},
+    "children": [
+      {
+        "type": "AppBar",
+        "props": {"id": "bar", "title": "Devices"},
+        "children": [
+          {
+            "type": "IconButton",
+            "props": {"id": "refresh", "icon": "material:refresh", "tooltip": "Refresh"},
+            "events": {"press": true}
+          },
+          {
+            "type": "Menu",
+            "props": {"id": "more", "icon": "material:more_vert", "iconOnly": true, "items": [{"type": "item", "id": "settings", "label": "Settings"}]},
+            "events": {"select": true}
+          }
+        ]
+      },
+      {
+        "type": "Flex",
+        "props": {"direction": "vertical"},
+        "children": [
+          {
+            "type": "VirtualList",
+            "props": {"id": "list", "items": [{"id": "a", "label": "COM1"}], "emptyLabel": "No devices"},
+            "events": {"select": true}
+          }
+        ]
+      }
+    ]
+  },
+  "canvasPage": {
+    "type": "Canvas",
+    "props": {
+      "id": "surface",
+      "width": 640,
+      "height": 480,
+      "interactive": true,
+      "viewport": {"scale": 1, "minScale": 0.5, "maxScale": 8},
+      "ops": [
+        {"op": "rect", "x": 0, "y": 0, "w": 640, "h": 480, "paint": {"color": "#FF101418", "style": "fill"}},
+        {"op": "line", "x1": 0, "y1": 240, "x2": 640, "y2": 240, "paint": {"color": "theme:outline", "strokeWidth": 1, "style": "stroke"}},
+        {"op": "save"},
+        {"op": "translate", "dx": 320, "dy": 240},
+        {"op": "circle", "cx": 0, "cy": 0, "r": 80, "id": "node-1", "paint": {"style": "fill", "shader": {"type": "radial", "center": [0, 0], "radius": 80, "colors": ["#FF3AA0FF", "#FF0B3D91"], "stops": [0, 1]}}},
+        {"op": "restore"},
+        {"op": "path", "commands": [{"c": "moveTo", "x": 40, "y": 40}, {"c": "quadTo", "x1": 120, "y1": 10, "x": 200, "y": 40}, {"c": "close"}], "paint": {"color": "theme:primary", "style": "stroke", "strokeWidth": 2, "strokeJoin": "round"}},
+        {"op": "text", "x": 16, "y": 16, "text": "Canvas v2", "size": 14, "color": "theme:onSurface"},
+        {"op": "image", "src": "plugin-resource:///assets/logo.png", "x": 540, "y": 16, "width": 84, "height": 84, "opacity": 0.9, "id": "logo"}
+      ]
+    },
+    "events": {"tap": true, "drag": true}
+  },
+  "canvasInvokePushOps": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-component-invoke-2",
+    "replyTo": null,
+    "sequence": 52,
+    "type": "sdk.view.component.invoke",
+    "payload": {
+      "viewId": "outline",
+      "instanceId": "inst-1",
+      "componentId": "surface",
+      "method": "push_ops",
+      "arguments": {"layer": "cursor", "ops": [{"op": "circle", "cx": 100, "cy": 120, "r": 4, "paint": {"color": "#FFFFCC00", "style": "fill"}}]}
+    },
+    "data": null,
+    "timestamp": 1700000000620
+  },
+  "canvasInvokeHitTest": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-component-invoke-3",
+    "replyTo": null,
+    "sequence": 53,
+    "type": "sdk.view.component.invoke",
+    "payload": {
+      "viewId": "outline",
+      "instanceId": "inst-1",
+      "componentId": "surface",
+      "method": "hit_test",
+      "arguments": {"x": 320, "y": 240}
+    },
+    "data": null,
+    "timestamp": 1700000000630
+  },
+  "canvasDragEvent": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-event-2",
+    "replyTo": null,
+    "sequence": 54,
+    "type": "ide.view.event",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "componentId": "surface",
+      "event": "drag",
+      "payload": {"phase": "update", "x": 128.5, "y": 96.0, "dx": 4.0, "dy": -2.0}
+    },
+    "data": null,
+    "timestamp": 1700000000640
+  },
+  "canvasTapEvent": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-event-3",
+    "replyTo": null,
+    "sequence": 55,
+    "type": "ide.view.event",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "componentId": "surface",
+      "event": "tap",
+      "payload": {"x": 320.0, "y": 240.0, "elementId": "node-1"}
+    },
+    "data": null,
+    "timestamp": 1700000000650
+  },
   "invalidTrees": [
     {
       "why": "unknown component",
@@ -146,6 +285,24 @@
       },
       "expectedPath": "root.events.hover",
       "expectedMessage": "unknown event"
+    },
+    {
+      "why": "illegal action child in AppBar",
+      "node": {"type": "AppBar", "props": {"title": "x"}, "children": [{"type": "Text", "props": {"value": "nope"}}]},
+      "expectedPath": "root.children[0]",
+      "expectedMessage": "cannot contain"
+    },
+    {
+      "why": "unknown event for Canvas",
+      "node": {"type": "Canvas", "props": {"id": "c"}, "events": {"scroll": true}},
+      "expectedPath": "root.events.scroll",
+      "expectedMessage": "unknown event"
+    },
+    {
+      "why": "missing required id for Canvas",
+      "node": {"type": "Canvas", "props": {}},
+      "expectedPath": "root.props.id",
+      "expectedMessage": "missing required property"
     }
   ]
 }

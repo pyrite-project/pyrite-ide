@@ -718,5 +718,49 @@ class ComponentRegistry {
         'contextMenuRequest': 'a property requested a dynamic context menu',
       },
     ),
+
+    // -- Page scaffolding ----------------------------------------------------
+    // A title bar for a free component tree. Actions are expressed as children
+    // (restricted to IconButton/Menu/Dropdown), reusing the same restricted
+    // parent pattern as Tabs->Tab so validation, events, and invoke work with
+    // no new machinery. It renders only the plugin's own action children; the
+    // manifest/title command menu stays exclusive to the renderer-driven path.
+    const ComponentSpec(
+      name: 'AppBar',
+      props: {
+        'id': PropSpec(PropType.string),
+        'title': PropSpec(PropType.string),
+      },
+      children: ChildPolicy.many,
+      allowedChildren: {'IconButton', 'Menu', 'Dropdown'},
+    ),
+    // Minimal two-slot page skeleton: an optional AppBar (only when it is the
+    // first child) plus a body that receives a bounded main-axis extent so
+    // scrollable children (VirtualList, DataTable, Flex) work.
+    const ComponentSpec(
+      name: 'Scaffold',
+      props: {'id': PropSpec(PropType.string)},
+      children: ChildPolicy.many,
+    ),
+    // High-performance interactive custom-draw surface. Interaction (pan/zoom,
+    // hover highlight, drag preview, rubber-band) is host-local; only the
+    // semantic events below cross the process boundary, throttled by the host.
+    const ComponentSpec(
+      name: 'Canvas',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'width': PropSpec(PropType.number),
+        'height': PropSpec(PropType.number),
+        'ops': PropSpec(PropType.any),
+        'interactive': PropSpec(PropType.boolean, defaultValue: false),
+        'viewport': PropSpec(PropType.map),
+      },
+      events: {
+        'tap': 'a tap/click on the canvas',
+        'drag': 'a drag gesture (start/update/end)',
+        'hover': 'the pointer hovered over the canvas (throttled)',
+        'pointer': 'a low-level pointer event (throttled)',
+      },
+    ),
   ];
 }

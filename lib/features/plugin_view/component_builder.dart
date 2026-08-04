@@ -8,6 +8,7 @@ import 'package:pyrite_ide/features/plugin_view/component_host_state.dart';
 import 'package:pyrite_ide/features/plugin_view/data/plugin_data_table.dart';
 import 'package:pyrite_ide/features/plugin_view/data/plugin_tree_view.dart';
 import 'package:pyrite_ide/features/plugin_view/data/plugin_virtual_list.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_canvas.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_dialog.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_markdown.dart';
@@ -198,6 +199,82 @@ class ComponentBuilder {
             ),
           ),
           child: Row(children: _spaced(context, children, 4, Axis.horizontal)),
+        );
+
+      // -- Page scaffolding --------------------------------------------------
+      // Reuses the exact visual from native_view_registry's
+      // `_modelViewWithAppBar`, but renders ONLY the plugin's own action
+      // children. The manifest/title command menu is intentionally absent here:
+      // ComponentBuilder has no access to `view.titleMenuItems`, so keeping it
+      // out is structural, not a runtime check.
+      case 'AppBar':
+        return AppBar(
+          primary: false,
+          automaticallyImplyLeading: false,
+          toolbarHeight: 40,
+          titleSpacing: 12,
+          elevation: 0,
+          scrolledUnderElevation: 1,
+          title: Text(
+            props['title']?.toString() ?? '',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          actions: [for (final child in children) _build(context, child)],
+        );
+      case 'Scaffold':
+        {
+          // First child of type AppBar is the top bar; the rest is the body.
+          final hasBar =
+              children.isNotEmpty && children.first['type'] == 'AppBar';
+          final bar = hasBar ? _build(context, children.first) : null;
+          final bodyChildren = hasBar ? children.sublist(1) : children;
+          // Expanded gives the body a bounded main-axis extent so a scrollable
+          // sole child (VirtualList/DataTable/Flex) receives finite height.
+          final Widget body = switch (bodyChildren.length) {
+            0 => const SizedBox.expand(),
+            1 => _build(context, bodyChildren.first),
+            // `max` (not the generic Column's `min`) because Expanded bounds it.
+            _ => Column(
+              mainAxisSize: MainAxisSize.max,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [for (final c in bodyChildren) _build(context, c)],
+            ),
+          };
+          return Column(
+            children: [
+              ?bar,
+              Expanded(child: body),
+            ],
+          );
+        }
+      case 'Canvas':
+        return PluginCanvas(
+          key: hostState.stateKey<PluginCanvasState>(_id(props)),
+          componentId: _id(props),
+          width: (props['width'] as num?)?.toDouble(),
+          height: (props['height'] as num?)?.toDouble(),
+          ops: _entryList(props['ops']),
+          interactive: props['interactive'] == true,
+          viewport: props['viewport'] is Map
+              ? (props['viewport'] as Map).map(
+                  (k, v) => MapEntry(k.toString(), v),
+                )
+              : const {},
+          pluginRootPath: pluginRootPath,
+          // Events are opt-in: a callback is wired only when subscribed, so an
+          // unsubscribed event produces zero cross-process traffic.
+          onTap: _hasEvent(node, 'tap')
+              ? (payload) => onEvent(_id(props), 'tap', payload)
+              : null,
+          onDrag: _hasEvent(node, 'drag')
+              ? (payload) => onEvent(_id(props), 'drag', payload)
+              : null,
+          onHover: _hasEvent(node, 'hover')
+              ? (payload) => onEvent(_id(props), 'hover', payload)
+              : null,
+          onPointer: _hasEvent(node, 'pointer')
+              ? (payload) => onEvent(_id(props), 'pointer', payload)
+              : null,
         );
 
       // -- Content -----------------------------------------------------------
@@ -791,6 +868,32 @@ class ComponentBuilder {
           hostState.setOverride(id, 'open', false);
           state.close(result);
           return result ?? true;
+        }
+      case 'Canvas':
+        // is_mounted / ensure_visible / request_focus / unfocus / get_bounds
+        // are handled by the generic pre-switch block; get_bounds returns the
+        // widget rect and must NOT be shadowed here.
+        final state = hostState.stateKey<PluginCanvasState>(id).currentState;
+        if (state == null) return false;
+        final layer = arguments['layer']?.toString();
+        switch (method) {
+          case 'push_ops':
+            state.pushOps(_entryList(arguments['ops']), layer: layer);
+            return true;
+          case 'set_ops':
+            state.setOps(_entryList(arguments['ops']), layer: layer);
+            return true;
+          case 'clear':
+            state.clear();
+            return true;
+          case 'clear_layer':
+            state.clearLayer(arguments['layer']?.toString() ?? '');
+            return true;
+          case 'hit_test':
+            return state.hitTest(
+              (arguments['x'] as num?)?.toDouble() ?? 0,
+              (arguments['y'] as num?)?.toDouble() ?? 0,
+            );
         }
     }
     throw ComponentMethodException(

@@ -809,19 +809,31 @@ class TabletView extends ConsumerWidget {
       ...pluginNavigationRailDestinations(ref),
     ];
     final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
-    return NavigationRail(
-      minWidth: 72,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      labelType: NavigationRailLabelType.selected,
-      destinations: destinations,
-      selectedIndex: ref.watch(tabletSelectedIndex),
-      onDestinationSelected: (value) {
-        selectedIndexValue = value;
-        ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
-        ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
-        ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
-        context.go(navigationRoutes[selectedIndexValue]);
-      },
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(
+            child: NavigationRail(
+              minWidth: 72,
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              labelType: NavigationRailLabelType.selected,
+              destinations: destinations,
+              selectedIndex: ref.watch(tabletSelectedIndex),
+              onDestinationSelected: (value) {
+                selectedIndexValue = value;
+                ref.read(desktopSelectedIndex.notifier).state =
+                    selectedIndexValue;
+                ref.read(mobileSelectedIndex.notifier).state =
+                    selectedIndexValue;
+                ref.read(tabletSelectedIndex.notifier).state =
+                    selectedIndexValue;
+                context.go(navigationRoutes[selectedIndexValue]);
+              },
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -877,20 +889,32 @@ class DesktopView extends ConsumerWidget {
       ...pluginNavigationRailDestinations(ref),
     ];
     final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
-    return NavigationRail(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      minWidth: 72,
-      labelType: NavigationRailLabelType.selected,
-      destinations: destinations,
-      selectedIndex: ref.watch(desktopSelectedIndex),
-      trailing: const RailTrailingActions(),
-      onDestinationSelected: (value) {
-        selectedIndexValue = value;
-        ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
-        ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
-        ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
-        context.go(navigationRoutes[selectedIndexValue]);
-      },
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(
+            child: NavigationRail(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              minWidth: 72,
+              labelType: NavigationRailLabelType.selected,
+              destinations: destinations,
+              selectedIndex: ref.watch(desktopSelectedIndex),
+              trailing: const RailTrailingActions(),
+              onDestinationSelected: (value) {
+                selectedIndexValue = value;
+                ref.read(desktopSelectedIndex.notifier).state =
+                    selectedIndexValue;
+                ref.read(mobileSelectedIndex.notifier).state =
+                    selectedIndexValue;
+                ref.read(tabletSelectedIndex.notifier).state =
+                    selectedIndexValue;
+                context.go(navigationRoutes[selectedIndexValue]);
+              },
+            ),
+          ),
+        ),
+      ),
     );
   }
 
