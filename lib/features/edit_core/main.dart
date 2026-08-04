@@ -257,7 +257,8 @@ class _EditCoreState extends ConsumerState<EditCore> {
       final currentContent = pending.content;
       await ref
           .read(boardProvider)
-          .ops.writeFile(pending.targetPath, currentContent);
+          .ops
+          .writeFile(pending.targetPath, currentContent);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
       ref

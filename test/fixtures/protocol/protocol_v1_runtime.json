@@ -1,0 +1,104 @@
+{
+  "sdkRuntimeVariables": {
+    "protocolVersion": 1,
+    "pluginId": "var-inspector",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-rt-vars-1",
+    "replyTo": null,
+    "sequence": 30,
+    "type": "sdk.runtime.variables",
+    "payload": {
+      "sessionId": "device",
+      "scopeId": "globals",
+      "start": 0,
+      "count": 50
+    },
+    "data": null,
+    "timestamp": 1700000000400
+  },
+  "sdkRuntimeVariablesResponse": {
+    "protocolVersion": 1,
+    "pluginId": "var-inspector",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-rt-vars-response-1",
+    "replyTo": "sdk-rt-vars-1",
+    "sequence": 30,
+    "type": "sdk.response.ok",
+    "payload": {
+      "data": {
+        "items": [
+          {
+            "name": "items",
+            "type": "list",
+            "repr": "[1, 2, 3]",
+            "reference": "runtime-device:generation-4:obj-42",
+            "hasChildren": true,
+            "namedVariables": 0,
+            "indexedVariables": 3
+          }
+        ],
+        "total": 1,
+        "start": 0
+      }
+    },
+    "data": null,
+    "timestamp": 1700000000401
+  },
+  "sdkRuntimeChildren": {
+    "protocolVersion": 1,
+    "pluginId": "var-inspector",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-rt-children-1",
+    "replyTo": null,
+    "sequence": 31,
+    "type": "sdk.runtime.children",
+    "payload": {
+      "reference": "runtime-device:generation-4:obj-42",
+      "start": 0,
+      "count": 200
+    },
+    "data": null,
+    "timestamp": 1700000000402
+  },
+  "ideProgramPaused": {
+    "protocolVersion": 1,
+    "pluginId": "var-inspector",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-rt-paused-1",
+    "replyTo": null,
+    "sequence": 32,
+    "type": "ide.event.emit",
+    "payload": {
+      "subscriptionId": "sub-rt-1",
+      "topic": "runtime.program.paused",
+      "events": [
+        {"sessionId": "device", "generation": 4, "capability": "available", "programState": "paused"}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000403
+  },
+  "ideBackendRestarted": {
+    "protocolVersion": 1,
+    "pluginId": "var-inspector",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-rt-restart-1",
+    "replyTo": null,
+    "sequence": 33,
+    "type": "ide.event.emit",
+    "payload": {
+      "subscriptionId": "sub-rt-2",
+      "topic": "runtime.backend.restarted",
+      "events": [
+        {"sessionId": "device", "generation": 5, "capability": "available", "programState": "idle"}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000404
+  }
+}

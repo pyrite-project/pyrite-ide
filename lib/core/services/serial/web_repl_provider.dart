@@ -14,13 +14,13 @@ class WebReplInfo {
   final WebReplState state;
   final String? errorMessage;
 
-  const WebReplInfo({this.state = WebReplState.disconnected, this.errorMessage});
+  const WebReplInfo({
+    this.state = WebReplState.disconnected,
+    this.errorMessage,
+  });
 
   WebReplInfo copyWith({WebReplState? state, String? errorMessage}) {
-    return WebReplInfo(
-      state: state ?? this.state,
-      errorMessage: errorMessage,
-    );
+    return WebReplInfo(state: state ?? this.state, errorMessage: errorMessage);
   }
 }
 
@@ -63,7 +63,10 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
           state = WebReplInfo(
             state: WebReplState.error,
             errorMessage: translateWithReplacements(
-                ref, I18nKey.webReplConnectFailed, {'error': '$error'}),
+              ref,
+              I18nKey.webReplConnectFailed,
+              {'error': '$error'},
+            ),
           );
           _cleanup();
         },
@@ -81,7 +84,10 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
       state = WebReplInfo(
         state: WebReplState.error,
         errorMessage: translateWithReplacements(
-            ref, I18nKey.webReplConnectFailed, {'error': '$e'}),
+          ref,
+          I18nKey.webReplConnectFailed,
+          {'error': '$e'},
+        ),
       );
       _cleanup();
     }
@@ -131,7 +137,8 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   }
 }
 
-final webReplProvider =
-    StateNotifierProvider<WebReplNotifier, WebReplInfo>((ref) {
+final webReplProvider = StateNotifierProvider<WebReplNotifier, WebReplInfo>((
+  ref,
+) {
   return WebReplNotifier(ref);
 });

@@ -88,7 +88,10 @@ class RunningOperationsNotifier extends StateNotifier<List<RunningOperation>> {
 
   /// Removes the operation with the given [id].
   void stop(String id) {
-    state = [for (final e in state) if (e.id != id) e];
+    state = [
+      for (final e in state)
+        if (e.id != id) e,
+    ];
   }
 
   /// Updates the progress of the operation with the given [id].
@@ -102,5 +105,5 @@ class RunningOperationsNotifier extends StateNotifier<List<RunningOperation>> {
 
 final runningOperationsProvider =
     StateNotifierProvider<RunningOperationsNotifier, List<RunningOperation>>(
-  (ref) => RunningOperationsNotifier(),
-);
+      (ref) => RunningOperationsNotifier(),
+    );

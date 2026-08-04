@@ -161,13 +161,17 @@ class _RenderDragHandleBounds extends RenderProxyBox {
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
 
-  String tr(WidgetRef ref, I18nKey key, [Map<String, String> replacements = const {}]) {
-      var value = translateForWidget(ref, key);
-      for (final entry in replacements.entries) {
-        value = value.replaceAll('{${entry.key}}', entry.value);
-      }
-      return value;
+  String tr(
+    WidgetRef ref,
+    I18nKey key, [
+    Map<String, String> replacements = const {},
+  ]) {
+    var value = translateForWidget(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
     }
+    return value;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -588,10 +592,11 @@ class ProjectFiles extends ConsumerWidget {
     List<TreeNode<FileSystemItem>> nodes,
     String targetFolder,
   ) async {
-
     final sourceLabel = nodes.length == 1
         ? nodes.single.data.name
-        : tr(ref, I18nKey.fileMoveSelectedCount, {'count': nodes.length.toString()});
+        : tr(ref, I18nKey.fileMoveSelectedCount, {
+            'count': nodes.length.toString(),
+          });
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -668,8 +673,10 @@ class ProjectFiles extends ConsumerWidget {
       if (!context.mounted) return;
       var errorMsg = error.toString();
       if (error is BoardFileBackendException &&
-          (error.message.contains('ENOENT') || error.message.contains('No such file'))) {
-        errorMsg = '$errorMsg\n${translateForWidget(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+          (error.message.contains('ENOENT') ||
+              error.message.contains('No such file'))) {
+        errorMsg =
+            '$errorMsg\n${translateForWidget(ref, I18nKey.fileMessageFilesystemNotMounted)}';
       }
       showIdeError(
         context,
@@ -1009,7 +1016,8 @@ class ProjectFiles extends ConsumerWidget {
               final bytes = await File(node.id).readAsBytes();
               await ref
                   .read(boardProvider)
-                  .ops.writeFileBytes(boardFileTarget!.id, bytes);
+                  .ops
+                  .writeFileBytes(boardFileTarget!.id, bytes);
               ref
                   .read(boardFileItemsProvider.notifier)
                   .buildRootFileListItems();
@@ -1119,9 +1127,7 @@ class ProjectFiles extends ConsumerWidget {
                   : node.data.name,
             )) {
               try {
-                await ref
-                    .read(boardProvider)
-                    .deleteSelectedBoardItems(context);
+                await ref.read(boardProvider).deleteSelectedBoardItems(context);
               } on DeviceNotReadyException catch (_) {
                 if (!context.mounted) return;
                 final sendCtrlC = await showDeviceNotReadyDialog(
@@ -1166,7 +1172,8 @@ class ProjectFiles extends ConsumerWidget {
             try {
               final bytes = await ref
                   .read(boardProvider)
-                  .ops.getFileBytes(node.id);
+                  .ops
+                  .getFileBytes(node.id);
               await File(localFileTarget!.id).writeAsBytes(bytes);
               ref
                   .read(localFileItemsProvider.notifier)
@@ -1301,15 +1308,13 @@ class ProjectFiles extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFilePath(
                         path.join(parentPath, "new_file"),
                       );
-                      ref
-                          .read(fileProvider.notifier)
-                          .createFile(uniquePath);
+                      ref.read(fileProvider.notifier).createFile(uniquePath);
                       if (!context.mounted) return;
                       showIdeSuccess(
                         context,
                         tr(
                           ref,
-                          I18nKey.fileMessageCreatedLocalFile
+                          I18nKey.fileMessageCreatedLocalFile,
                         ).replaceAll('{path}', uniquePath),
                       );
                     },
@@ -1325,14 +1330,12 @@ class ProjectFiles extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFolderPath(
                         path.join(parentPath, "new_folder"),
                       );
-                      ref
-                          .read(fileProvider.notifier)
-                          .createFolder(uniquePath);
+                      ref.read(fileProvider.notifier).createFolder(uniquePath);
                       showIdeSuccess(
                         context,
                         tr(
                           ref,
-                          I18nKey.fileMessageCreatedLocalFolder
+                          I18nKey.fileMessageCreatedLocalFolder,
                         ).replaceAll('{path}', uniquePath),
                       );
                     },
@@ -1487,12 +1490,12 @@ class ProjectFiles extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   final sendCtrlC =
                                       await showDeviceNotReadyDialog(
-                                    context,
-                                    operation: translateForWidget(
-                                      ref,
-                                      I18nKey.fileOperationRefreshBoardFile,
-                                    ),
-                                  );
+                                        context,
+                                        operation: translateForWidget(
+                                          ref,
+                                          I18nKey.fileOperationRefreshBoardFile,
+                                        ),
+                                      );
                                   if (sendCtrlC) {
                                     ref
                                         .read(serialProvider.notifier)
@@ -1678,9 +1681,7 @@ class ProjectFiles extends ConsumerWidget {
                           ),
                         );
                         if (sendCtrlC) {
-                          ref
-                              .read(serialProvider.notifier)
-                              .sendCommand("\x03");
+                          ref.read(serialProvider.notifier).sendCommand("\x03");
                         }
                       }
                     }
@@ -1749,9 +1750,7 @@ class ProjectFiles extends ConsumerWidget {
                     : SelectionMode.multiple,
                 onNodeDoubleTap: selectionMode
                     ? null
-                    : (id) => ref
-                          .read(boardProvider)
-                          .openFile(context, id),
+                    : (id) => ref.read(boardProvider).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
               style: SuperTreeThemes.material().treeStyle.copyWith(
@@ -1819,8 +1818,9 @@ class ProjectFiles extends ConsumerWidget {
         actionLabel: I18nKey.fileActionRefresh,
         onAction: isLoading
             ? null
-            : () =>
-                ref.watch(boardFileItemsProvider.notifier).buildRootFileListItems(),
+            : () => ref
+                  .watch(boardFileItemsProvider.notifier)
+                  .buildRootFileListItems(),
       );
     } else {
       return WorkspaceEmptyState(

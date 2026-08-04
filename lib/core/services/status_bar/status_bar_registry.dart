@@ -57,11 +57,14 @@ class StatusBarRegistryNotifier extends StateNotifier<List<StatusBarEntry>> {
 
   /// Removes the entry with the given [id].
   void unregister(String id) {
-    state = [for (final e in state) if (e.id != id) e];
+    state = [
+      for (final e in state)
+        if (e.id != id) e,
+    ];
   }
 }
 
 final statusBarRegistryProvider =
     StateNotifierProvider<StatusBarRegistryNotifier, List<StatusBarEntry>>(
-  (ref) => StatusBarRegistryNotifier(),
-);
+      (ref) => StatusBarRegistryNotifier(),
+    );

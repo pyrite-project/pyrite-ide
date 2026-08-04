@@ -6,7 +6,11 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
+import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -16,11 +20,16 @@ import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/editor/welcome.dart';
 
 class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   final Ref ref;
   VoidCallback? onUnsavedChange;
+
+  /// Monotonic so two tabs hosting the same view never collide, and so a tab
+  /// instance can never collide with the sidebar's `container:<id>` instances.
+  int _pluginViewTabCounter = 0;
 
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
@@ -281,6 +290,76 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     state = newController;
   }
 
+  /// Opens [viewId] as an editor tab hosting a [PluginViewSurface].
+  ///
+  /// The tab gets its own [ViewInstanceId] so the same view may be open in a tab
+  /// and in the sidebar at once as two independent models. Returns the created
+  /// instance, or null when the plugin is not running — without a live session
+  /// there is nothing to bind the instance to.
+  ViewInstanceId? openPluginView({
+    required String pluginId,
+    required String viewId,
+    required String renderer,
+    String? title,
+    bool expansion = false,
+  }) {
+    final manager = ref
+        .read(pluginRunManagerProvider)
+        .entries
+        .where((entry) => entry.key.id == pluginId)
+        .map((entry) => entry.value)
+        .firstOrNull;
+    if (manager == null) return null;
+
+    final instanceId = 'tab:${++_pluginViewTabCounter}';
+    final instance = ViewInstanceId(
+      pluginId: pluginId,
+      sessionId: manager.sessionId,
+      viewId: viewId,
+      instanceId: instanceId,
+    );
+
+    final tab = TabData(
+      leading: (context, status) => Padding(
+        padding: const EdgeInsetsGeometry.only(right: 4),
+        child: Icon(
+          Icons.extension_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+      value: TabDataValue(
+        type: TabDataValue.pluginViewType,
+        filePath: TabDataValue.pluginViewPath(
+          pluginId: pluginId,
+          viewId: viewId,
+          instanceId: instanceId,
+        ),
+        pluginId: pluginId,
+        viewId: viewId,
+        viewInstanceId: instanceId,
+        renderer: renderer,
+      ),
+      text: (title == null || title.isEmpty) ? viewId : title,
+      content: PluginViewSurface(instance: instance, renderer: renderer),
+    );
+
+    if (expansion) {
+      final controller = ref.read(expansionViewController);
+      controller.addTab(tab);
+      final newController = TabbedViewController(List.from(controller.tabs));
+      newController.selectTab(tab);
+      ref.read(expansionViewController.notifier).state = newController;
+      return instance;
+    }
+
+    state.addTab(tab);
+    final newController = TabbedViewController(List.from(state.tabs));
+    newController.selectTab(tab);
+    state = newController;
+    return instance;
+  }
+
   void onTabTap(TabData tabData, int newTabIndex) async {
     // print("tap");
     TabbedViewController newController = TabbedViewController(
@@ -303,6 +382,33 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
     if (value.type == 'git_diff') {
       value.editorController?.dispose();
+      return;
+    }
+
+    // Closing the host must close the instance, otherwise the plugin keeps
+    // patching a model nothing renders.
+    if (value.isPluginView) {
+      final pluginId = value.pluginId;
+      final viewId = value.viewId;
+      final instanceId = value.viewInstanceId;
+      if (pluginId == null || viewId == null || instanceId == null) return;
+      final manager = ref
+          .read(pluginRunManagerProvider)
+          .entries
+          .where((entry) => entry.key.id == pluginId)
+          .map((entry) => entry.value)
+          .firstOrNull;
+      if (manager == null) return;
+      ref
+          .read(viewModelStoreProvider)
+          .close(
+            ViewInstanceId(
+              pluginId: pluginId,
+              sessionId: manager.sessionId,
+              viewId: viewId,
+              instanceId: instanceId,
+            ),
+          );
       return;
     }
 

@@ -19,11 +19,16 @@ class DataContributionsPersistence {
     try {
       final file = await _file;
       if (!await file.exists()) return null;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final records = json['records'] as List? ?? const [];
       return records
           .whereType<Map>()
-          .map((item) => DataContributionRecord.fromJson(Map<String, dynamic>.from(item)))
+          .map(
+            (item) => DataContributionRecord.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
           .toList();
     } catch (e) {
       debugPrint('DataContributionsPersistence: Failed to load: $e');
@@ -34,9 +39,11 @@ class DataContributionsPersistence {
   Future<void> save(List<DataContributionRecord> records) async {
     try {
       final file = await _file;
-      await file.writeAsString(jsonEncode({
-        'records': records.map((record) => record.toJson()).toList(),
-      }));
+      await file.writeAsString(
+        jsonEncode({
+          'records': records.map((record) => record.toJson()).toList(),
+        }),
+      );
     } catch (e) {
       debugPrint('DataContributionsPersistence: Failed to save: $e');
     }

@@ -1,0 +1,19 @@
+manifest_version = 2
+id = "rfw-renderer"
+name = "RFW Renderer"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+activation_events = ["onView:rfw-renderer.main"]
+permissions = ["ui.view"]
+platforms = ["windows"]
+
+[[contributes.navigation_containers]]
+id = "rfw-renderer"
+title = "RFW"
+
+[[contributes.views]]
+id = "rfw-renderer.main"
+container = "rfw-renderer"
+title = "RFW"
+renderer = "rfw.widget"

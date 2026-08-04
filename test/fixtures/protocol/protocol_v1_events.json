@@ -1,0 +1,69 @@
+{
+  "sdkEventsSubscribe": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-events-subscribe-1",
+    "replyTo": null,
+    "sequence": 10,
+    "type": "sdk.events.subscribe",
+    "payload": {
+      "subscriptionId": "sub-1",
+      "topic": "editor.document.changed",
+      "filter": {"language": "python"},
+      "delivery": {"mode": "debounce", "debounceMs": 100}
+    },
+    "data": null,
+    "timestamp": 1700000000200
+  },
+  "sdkEventsSubscribeResponse": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-response-1",
+    "replyTo": "sdk-events-subscribe-1",
+    "sequence": 10,
+    "type": "sdk.response.ok",
+    "payload": {
+      "data": {"subscriptionId": "sub-1"}
+    },
+    "data": null,
+    "timestamp": 1700000000201
+  },
+  "ideEventEmit": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-event-emit-1",
+    "replyTo": null,
+    "sequence": 11,
+    "type": "ide.event.emit",
+    "payload": {
+      "subscriptionId": "sub-1",
+      "topic": "editor.document.changed",
+      "events": [
+        {"documentId": "doc-7", "revision": 18}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000202
+  },
+  "sdkEventsUnsubscribe": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-events-unsubscribe-1",
+    "replyTo": null,
+    "sequence": 12,
+    "type": "sdk.events.unsubscribe",
+    "payload": {
+      "subscriptionId": "sub-1"
+    },
+    "data": null,
+    "timestamp": 1700000000203
+  }
+}

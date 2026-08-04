@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "acceptancePage": {
+    "type": "Column",
+    "props": {"gap": 4},
+    "children": [
+      {
+        "type": "Toolbar",
+        "props": {"dense": true},
+        "children": [
+          {
+            "type": "IconButton",
+            "props": {"id": "refresh", "icon": "material:refresh", "tooltip": "Refresh"},
+            "events": {"press": true}
+          },
+          {
+            "type": "Badge",
+            "props": {"label": "2 results", "tone": "info"}
+          }
+        ]
+      },
+      {
+        "type": "TextField",
+        "props": {"id": "search", "placeholder": "Search symbols"},
+        "events": {"change": true, "submit": true}
+      },
+      {
+        "type": "Flex",
+        "props": {"direction": "vertical"},
+        "children": [
+          {
+            "type": "VirtualList",
+            "props": {
+              "id": "results",
+              "items": [
+                {"id": "w", "label": "Widget", "icon": "material:code"},
+                {"id": "b", "label": "build", "icon": "material:code"}
+              ],
+              "selectedId": "w",
+              "emptyLabel": "No matches"
+            },
+            "events": {"select": true, "activate": true}
+          }
+        ]
+      }
+    ]
+  },
+  "ideViewEvent": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-event-1",
+    "replyTo": null,
+    "sequence": 50,
+    "type": "ide.view.event",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "componentId": "results",
+      "event": "select",
+      "payload": {"itemId": "b"}
+    },
+    "data": null,
+    "timestamp": 1700000000600
+  },
+  "sdkComponentInvoke": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-component-invoke-1",
+    "replyTo": null,
+    "sequence": 51,
+    "type": "sdk.view.component.invoke",
+    "payload": {
+      "viewId": "outline",
+      "instanceId": "inst-1",
+      "componentId": "results",
+      "method": "reveal_item",
+      "arguments": {"id": "b", "animated": true}
+    },
+    "data": null,
+    "timestamp": 1700000000610
+  },
+  "invalidTrees": [
+    {
+      "why": "unknown component",
+      "node": {"type": "Frobnicator"},
+      "expectedPath": "root",
+      "expectedMessage": "unknown component"
+    },
+    {
+      "why": "unknown property",
+      "node": {"type": "Text", "props": {"value": "x", "colour": "red"}},
+      "expectedPath": "root.props.colour",
+      "expectedMessage": "unknown property"
+    },
+    {
+      "why": "missing required property",
+      "node": {"type": "Button", "props": {"id": "b"}},
+      "expectedPath": "root.props.label",
+      "expectedMessage": "missing required property"
+    },
+    {
+      "why": "wrong property type",
+      "node": {"type": "Text", "props": {"value": 42}},
+      "expectedPath": "root.props.value",
+      "expectedMessage": "expected string"
+    },
+    {
+      "why": "value outside the allowed set",
+      "node": {"type": "Badge", "props": {"label": "x", "tone": "chartreuse"}},
+      "expectedPath": "root.props.tone",
+      "expectedMessage": "expected one of"
+    },
+    {
+      "why": "children under a leaf component",
+      "node": {
+        "type": "Text",
+        "props": {"value": "x"},
+        "children": [{"type": "Text", "props": {"value": "y"}}]
+      },
+      "expectedPath": "root.children",
+      "expectedMessage": "cannot contain children"
+    },
+    {
+      "why": "illegal child type for a restricted parent",
+      "node": {
+        "type": "Tabs",
+        "children": [{"type": "Text", "props": {"value": "not a tab"}}]
+      },
+      "expectedPath": "root.children[0]",
+      "expectedMessage": "cannot contain"
+    },
+    {
+      "why": "unknown event",
+      "node": {
+        "type": "Button",
+        "props": {"id": "b", "label": "B"},
+        "events": {"hover": true}
+      },
+      "expectedPath": "root.events.hover",
+      "expectedMessage": "unknown event"
+    }
+  ]
+}

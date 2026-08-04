@@ -31,12 +31,11 @@ abstract class SdkBoardCommands {
   static const String downloadFile = 'sdk.board.download_file';
 }
 
-class SdkBoard extends StateNotifier<PluginRunManager?> {
+class SdkBoard {
   final Ref ref;
-  SdkBoard(this.ref) : super(null);
+  SdkBoard(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
     runManager.registerHandler(SdkBoardCommands.getDirList, _handleGetDirList);
     runManager.registerHandler(SdkBoardCommands.getRootDir, _handleGetRootDir);
     runManager.registerHandler(
@@ -425,11 +424,15 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
               direction: FileTransferDirection.download,
               scope: FileTransferScope.file,
               totalFiles: 1,
-              message: translateWithReplacements(ref,I18nKey.fileTransferPrepareDownloadFile),
+              message: translateWithReplacements(
+                ref,
+                I18nKey.fileTransferPrepareDownloadFile,
+              ),
             );
         final bytes = await ref
             .read(boardProvider)
-            .ops.getFileBytesWithProgress(
+            .ops
+            .getFileBytesWithProgress(
               boardPath,
               currentFile: boardPath,
               index: 1,
@@ -440,43 +443,37 @@ class SdkBoard extends StateNotifier<PluginRunManager?> {
         await file.writeAsBytes(bytes);
         ref
             .read(fileTransferProgressProvider.notifier)
-            .complete(message: translateWithReplacements(ref,I18nKey.fileMessageDownloadedToLocal, {'path': localPath}));
+            .complete(
+              message: translateWithReplacements(
+                ref,
+                I18nKey.fileMessageDownloadedToLocal,
+                {'path': localPath},
+              ),
+            );
         _respondOk(envelope, respond, data: true);
       } catch (e) {
         var errorMsg = e.toString();
         if (e is BoardFileBackendException &&
-            (e.message.contains('ENOENT') || e.message.contains('No such file'))) {
-          errorMsg = '$errorMsg\n${translateWithReplacements(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+            (e.message.contains('ENOENT') ||
+                e.message.contains('No such file'))) {
+          errorMsg =
+              '$errorMsg\n${translateWithReplacements(ref, I18nKey.fileMessageFilesystemNotMounted)}';
         }
-        ref.read(fileTransferProgressProvider.notifier).fail(translateWithReplacements(ref,I18nKey.fileMessageDownloadFailed, {'error': errorMsg}));
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageDownloadFailed,
+                {'error': errorMsg},
+              ),
+            );
         _respondOk(envelope, respond, data: false);
       }
     } else {
       _respondOk(envelope, respond, data: false);
     }
   }
-
-  @override
-  void dispose() {
-    state?.unregisterHandler(SdkBoardCommands.getDirList);
-    state?.unregisterHandler(SdkBoardCommands.getRootDir);
-    state?.unregisterHandler(SdkBoardCommands.getFocusFileNode);
-    state?.unregisterHandler(SdkBoardCommands.getFocusFolderNode);
-    state?.unregisterHandler(SdkBoardCommands.openFile);
-    state?.unregisterHandler(SdkBoardCommands.downloadSelectedBoardItem);
-    state?.unregisterHandler(SdkBoardCommands.rename);
-    state?.unregisterHandler(SdkBoardCommands.deleteFile);
-    state?.unregisterHandler(SdkBoardCommands.deleteFolder);
-    state?.unregisterHandler(SdkBoardCommands.isFile);
-    state?.unregisterHandler(SdkBoardCommands.isDirectory);
-    state?.unregisterHandler(SdkBoardCommands.getCorrespondingFilePath);
-    state?.unregisterHandler(SdkBoardCommands.readFile);
-    state?.unregisterHandler(SdkBoardCommands.writeFile);
-    state?.unregisterHandler(SdkBoardCommands.exists);
-    state?.unregisterHandler(SdkBoardCommands.downloadFile);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkBoard, PluginRunManager?> sdkBoardProvider =
-    StateNotifierProvider((ref) => SdkBoard(ref));
+final Provider<SdkBoard> sdkBoardProvider = Provider(SdkBoard.new);

@@ -31,11 +31,17 @@ class BoardNotifier {
   }
 
   TreeNode<FileSystemItem>? getFocusFileNode() {
-    return getFocusFileNodeFromProvider(ref, boardFileTreeViewControllerProvider);
+    return getFocusFileNodeFromProvider(
+      ref,
+      boardFileTreeViewControllerProvider,
+    );
   }
 
   TreeNode<FileSystemItem>? getFocusFolderNode() {
-    return getFocusFolderNodeFromProvider(ref, boardFileTreeViewControllerProvider);
+    return getFocusFolderNodeFromProvider(
+      ref,
+      boardFileTreeViewControllerProvider,
+    );
   }
 
   List<TreeNode<FileSystemItem>> getSelectedNodes({bool topLevelOnly = true}) {
@@ -49,7 +55,10 @@ class BoardNotifier {
   Future<void> deleteSelectedBoardItems(BuildContext context) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectBoardItem));
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageSelectBoardItem),
+      );
       return;
     }
 
@@ -63,7 +72,9 @@ class BoardNotifier {
     ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
     showEditorSnackBar(
       context,
-      translateWithReplacements(ref,I18nKey.fileMessageDeletedBoardItems, {'count': '${nodes.length}'}),
+      translateWithReplacements(ref, I18nKey.fileMessageDeletedBoardItems, {
+        'count': '${nodes.length}',
+      }),
     );
   }
 
@@ -72,8 +83,7 @@ class BoardNotifier {
     List<TreeNode<FileSystemItem>> nodes,
     String targetFolder,
   ) async {
-    final normalizedTargetFolder =
-        ops.normalizeBoardPath(targetFolder);
+    final normalizedTargetFolder = ops.normalizeBoardPath(targetFolder);
     final movableNodes = nodes
         .where(
           (node) =>
@@ -93,7 +103,10 @@ class BoardNotifier {
               ? FileTransferScope.folder
               : FileTransferScope.file,
           totalFiles: movableNodes.length,
-          message: translateWithReplacements(ref,I18nKey.fileTransferPrepareMoveBoardFile),
+          message: translateWithReplacements(
+            ref,
+            I18nKey.fileTransferPrepareMoveBoardFile,
+          ),
         );
 
     try {
@@ -114,7 +127,10 @@ class BoardNotifier {
             ops.isBoardPathInside(normalizedTargetFolder, sourcePath)) {
           showEditorSnackBar(
             context,
-            translateWithReplacements(ref,I18nKey.fileMessageCannotMoveFolderIntoSelf),
+            translateWithReplacements(
+              ref,
+              I18nKey.fileMessageCannotMoveFolderIntoSelf,
+            ),
           );
           skipped++;
           continue;
@@ -132,12 +148,17 @@ class BoardNotifier {
           switch (action) {
             case FileConflictAction.cancel:
               showEditorSnackBar(
-                  context, translateWithReplacements(ref,I18nKey.fileMessageCanceledMove));
+                context,
+                translateWithReplacements(ref, I18nKey.fileMessageCanceledMove),
+              );
               return;
             case FileConflictAction.showDiff:
               showEditorSnackBar(
                 context,
-                translateWithReplacements(ref,I18nKey.fileMessageCannotShowMoveDiff),
+                translateWithReplacements(
+                  ref,
+                  I18nKey.fileMessageCannotShowMoveDiff,
+                ),
               );
               return;
             case FileConflictAction.skip:
@@ -172,14 +193,15 @@ class BoardNotifier {
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
-            message: translateWithReplacements(ref,I18nKey.fileMessageMoveComplete, {
-              'done': '$moved',
-              'skipped': '$skipped',
-            }),
+            message: translateWithReplacements(
+              ref,
+              I18nKey.fileMessageMoveComplete,
+              {'done': '$moved', 'skipped': '$skipped'},
+            ),
           );
       showEditorSnackBar(
         context,
-        translateWithReplacements(ref,I18nKey.fileMessageMoveComplete, {
+        translateWithReplacements(ref, I18nKey.fileMessageMoveComplete, {
           'done': '$moved',
           'skipped': '$skipped',
         }),
@@ -187,7 +209,11 @@ class BoardNotifier {
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
-          .fail(translateWithReplacements(ref,I18nKey.fileMessageMoveFailed, {'error': '$error'}));
+          .fail(
+            translateWithReplacements(ref, I18nKey.fileMessageMoveFailed, {
+              'error': '$error',
+            }),
+          );
       rethrow;
     }
   }
@@ -198,13 +224,19 @@ class BoardNotifier {
   }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectBoardItem));
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageSelectBoardItem),
+      );
       return;
     }
 
     final localWorkspace = ref.read(fileProvider);
     if (localWorkspace == null) {
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageOpenLocalProject));
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageOpenLocalProject),
+      );
       return;
     }
 
@@ -218,8 +250,10 @@ class BoardNotifier {
 
     for (var i = 0; i < nodes.length; i++) {
       final node = nodes[i];
-      final targetPath =
-          path.join(targetFolder, BoardFileOps.boardPath.basename(node.id));
+      final targetPath = path.join(
+        targetFolder,
+        BoardFileOps.boardPath.basename(node.id),
+      );
       final exists = node.data is FolderItem
           ? await Directory(targetPath).exists()
           : await File(targetPath).exists();
@@ -237,14 +271,20 @@ class BoardNotifier {
           case FileConflictAction.cancel:
             showEditorSnackBar(
               context,
-              translateWithReplacements(ref,I18nKey.fileMessageCanceledDownload),
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageCanceledDownload,
+              ),
             );
             return;
           case FileConflictAction.showDiff:
             if (!canShowDiff) {
               showEditorSnackBar(
                 context,
-                translateWithReplacements(ref,I18nKey.fileMessageCannotShowFolderDiff),
+                translateWithReplacements(
+                  ref,
+                  I18nKey.fileMessageCannotShowFolderDiff,
+                ),
               );
               return;
             }
@@ -256,7 +296,10 @@ class BoardNotifier {
             if (!shown) {
               showEditorSnackBar(
                 context,
-                translateWithReplacements(ref,I18nKey.fileMessageCannotShowDiff),
+                translateWithReplacements(
+                  ref,
+                  I18nKey.fileMessageCannotShowDiff,
+                ),
               );
             }
             return;
@@ -284,7 +327,10 @@ class BoardNotifier {
               direction: FileTransferDirection.download,
               scope: FileTransferScope.file,
               totalFiles: nodes.length,
-              message: translateWithReplacements(ref,I18nKey.fileTransferPrepareDownloadFile),
+              message: translateWithReplacements(
+                ref,
+                I18nKey.fileTransferPrepareDownloadFile,
+              ),
             );
         final bytes = await ops.getFileBytesWithProgress(
           node.id,
@@ -303,14 +349,15 @@ class BoardNotifier {
     ref
         .read(fileTransferProgressProvider.notifier)
         .complete(
-          message: translateWithReplacements(ref,I18nKey.fileMessageDownloadComplete, {
-            'done': '$downloaded',
-            'skipped': '$skipped',
-          }),
+          message: translateWithReplacements(
+            ref,
+            I18nKey.fileMessageDownloadComplete,
+            {'done': '$downloaded', 'skipped': '$skipped'},
+          ),
         );
     showEditorSnackBar(
       context,
-      translateWithReplacements(ref,I18nKey.fileMessageDownloadComplete, {
+      translateWithReplacements(ref, I18nKey.fileMessageDownloadComplete, {
         'done': '$downloaded',
         'skipped': '$skipped',
       }),
@@ -345,8 +392,7 @@ class BoardNotifier {
       removedRanges: diff.removedRanges,
     );
 
-    final correspondingFilePath =
-        (await getLocalFile(boardPath)).path;
+    final correspondingFilePath = (await getLocalFile(boardPath)).path;
     final provider = pendingDownloadProviderMap.putIfAbsent(
       correspondingFilePath,
       () => StateProvider<PendingDownload?>((ref) => null),
@@ -367,8 +413,7 @@ class BoardNotifier {
 
   Future<File?> openFile(BuildContext context, String id) async {
     ref.read(boardFileTreeViewControllerProvider).setSelectedNodeId(id);
-    final node =
-        ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
+    final node = ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
     final file = await getLocalFile(node.id);
     final content = await ops.getFileContent(id);
@@ -382,8 +427,7 @@ class BoardNotifier {
   }
 
   Future<void> saveFile() async {
-    final TabData? nowTab =
-        ref.read(tabbedViewControllerProvider).selectedTab;
+    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
       if (value.isBoardFile == true && value.boardFilePath != null) {
@@ -405,11 +449,17 @@ class BoardNotifier {
     final selected = selectedFile ?? selectedFolder;
     final localWorkspace = ref.read(fileProvider);
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageSelectBoardItem));
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageSelectBoardItem),
+      );
       return;
     }
     if (localWorkspace == null) {
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageOpenLocalProject));
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageOpenLocalProject),
+      );
       return;
     }
 
@@ -418,8 +468,7 @@ class BoardNotifier {
       final content = await ops.getFileContent(boardPath);
       final correspondingFilePath = (await getLocalFile(boardPath)).path;
 
-      if ((ref.read(editorControllerMapProvider)[correspondingFilePath]
-                  ?.text !=
+      if ((ref.read(editorControllerMapProvider)[correspondingFilePath]?.text !=
               null) &&
           (content !=
               ref
@@ -431,8 +480,10 @@ class BoardNotifier {
             icon: const Icon(Icons.file_download_outlined),
             title: const UseText(I18nKey.dialogBoardContentMismatchTitle),
             content: Text(
-              translate(ref, I18nKey.dialogContentMismatchMessage)
-                  .replaceAll('{path}', boardPath ?? ''),
+              translate(
+                ref,
+                I18nKey.dialogContentMismatchMessage,
+              ).replaceAll('{path}', boardPath ?? ''),
             ),
             actions: [
               TextButton(
@@ -442,7 +493,12 @@ class BoardNotifier {
               TextButton(
                 onPressed: () {
                   saveFile();
-                  _doDownloadBoardItem(context, selected, selectedTab, localWorkspace);
+                  _doDownloadBoardItem(
+                    context,
+                    selected,
+                    selectedTab,
+                    localWorkspace,
+                  );
                   context.pop();
                 },
                 child: const UseText(I18nKey.dialogEditorContent),
@@ -453,10 +509,19 @@ class BoardNotifier {
                   foregroundColor: Theme.of(context).colorScheme.onError,
                 ),
                 onPressed: () {
-                  ref.read(editorControllerMapProvider)[correspondingFilePath]
-                      ?.text = content;
+                  ref
+                          .read(
+                            editorControllerMapProvider,
+                          )[correspondingFilePath]
+                          ?.text =
+                      content;
                   saveFile();
-                  _doDownloadBoardItem(context, selected, selectedTab, localWorkspace);
+                  _doDownloadBoardItem(
+                    context,
+                    selected,
+                    selectedTab,
+                    localWorkspace,
+                  );
                   context.pop();
                 },
                 child: const UseText(I18nKey.dialogActualContent),
@@ -478,7 +543,9 @@ class BoardNotifier {
     TabData? selectedTab,
     Directory localWorkspace,
   ) async {
-    final localFolderTarget = ref.read(fileProvider.notifier).getFocusFolderNode();
+    final localFolderTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFolderNode();
     final sourceName = BoardFileOps.boardPath.basename(
       (selected?.id ?? selectedTab?.value.filePath).toString(),
     );
@@ -500,60 +567,119 @@ class BoardNotifier {
         final diff = computeDiff(originContent, content);
         if (ref.read(uploadConfirmStyleProvider) == 'dialog') {
           final confirmed = await showDiffConfirmDialog(
-            context, diff: diff, targetPath: targetPath, isUpload: false,
+            context,
+            diff: diff,
+            targetPath: targetPath,
+            isUpload: false,
           );
           if (!confirmed) {
-            showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageCanceledDownload));
+            showEditorSnackBar(
+              context,
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageCanceledDownload,
+              ),
+            );
             return;
           }
         } else {
-          await _showDownloadDiff(context, boardPath: filePath, localPath: targetPath);
+          await _showDownloadDiff(
+            context,
+            boardPath: filePath,
+            localPath: targetPath,
+          );
           return;
         }
       }
 
-      ref.read(fileTransferProgressProvider.notifier).start(
-        direction: FileTransferDirection.download,
-        scope: FileTransferScope.file,
-        totalFiles: 1,
-        message: translateWithReplacements(ref,I18nKey.fileTransferPrepareDownloadFile),
-      );
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .start(
+            direction: FileTransferDirection.download,
+            scope: FileTransferScope.file,
+            totalFiles: 1,
+            message: translateWithReplacements(
+              ref,
+              I18nKey.fileTransferPrepareDownloadFile,
+            ),
+          );
       Uint8List bytes;
       try {
         bytes = await ops.getFileBytesWithProgress(
-          filePath, currentFile: filePath, index: 1, totalFiles: 1,
+          filePath,
+          currentFile: filePath,
+          index: 1,
+          totalFiles: 1,
         );
       } on BoardFileBackendException catch (e) {
         var errorMsg = e.message;
-        if (e.message.contains('ENOENT') || e.message.contains('No such file')) {
-          errorMsg = '$errorMsg\n${translateWithReplacements(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+        if (e.message.contains('ENOENT') ||
+            e.message.contains('No such file')) {
+          errorMsg =
+              '$errorMsg\n${translateWithReplacements(ref, I18nKey.fileMessageFilesystemNotMounted)}';
         }
-        ref.read(fileTransferProgressProvider.notifier).fail(
-          translateWithReplacements(ref, I18nKey.fileMessageDownloadFailed, {'error': errorMsg}),
-        );
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageDownloadFailed,
+                {'error': errorMsg},
+              ),
+            );
         return;
       }
       final file = File(targetPath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(bytes);
-      ref.read(fileTransferProgressProvider.notifier).complete(
-        message: translateWithReplacements(ref,I18nKey.fileMessageDownloadedToLocal, {'path': targetPath}),
+      ref
+          .read(fileTransferProgressProvider.notifier)
+          .complete(
+            message: translateWithReplacements(
+              ref,
+              I18nKey.fileMessageDownloadedToLocal,
+              {'path': targetPath},
+            ),
+          );
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageDownloadedToLocal, {
+          'path': targetPath,
+        }),
       );
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageDownloadedToLocal, {'path': targetPath}));
     } else {
       final filePath = selected?.id ?? selectedTab?.value.filePath;
       try {
         await transfer.downloadFolder(filePath, targetPath);
-        ref.read(fileTransferProgressProvider.notifier).complete(
-          message: translateWithReplacements(ref,I18nKey.fileMessageDownloadedFolderToLocal, {'path': targetPath}),
-        );
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .complete(
+              message: translateWithReplacements(
+                ref,
+                I18nKey.fileMessageDownloadedFolderToLocal,
+                {'path': targetPath},
+              ),
+            );
       } catch (error) {
-        ref.read(fileTransferProgressProvider.notifier).fail(
-          translateWithReplacements(ref,I18nKey.fileMessageDownloadFailed, {'error': '$error'}),
-        );
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageDownloadFailed,
+                {'error': '$error'},
+              ),
+            );
         rethrow;
       }
-      showEditorSnackBar(context, translateWithReplacements(ref,I18nKey.fileMessageDownloadedFolderToLocal, {'path': targetPath}));
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(
+          ref,
+          I18nKey.fileMessageDownloadedFolderToLocal,
+          {'path': targetPath},
+        ),
+      );
     }
 
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();

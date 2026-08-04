@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
@@ -54,24 +55,44 @@ Future<File> _writePackage(
   String type = 'ui',
   bool autoStart = false,
   bool includeEntryPoint = true,
-  String permissions = 'ui = true',
+  List<String> permissions = const ['ui.view', 'ui.navigate'],
   Map<String, String> files = const {},
+  String? viewId,
 }) async {
+  final permissionValues = permissions.map((value) => '"$value"').join(', ');
+  final effectiveViewId = viewId ?? '$id.main';
+  final activationEvents = autoStart
+      ? '"onStartup"'
+      : type == 'ui'
+      ? '"onView:$effectiveViewId"'
+      : '';
+  final contributions = type == 'ui'
+      ? '''
+[[contributes.navigation_containers]]
+id = "$id"
+title = "Example"
+icon = { material = "extension_outlined" }
+
+[[contributes.views]]
+id = "$effectiveViewId"
+container = "$id"
+title = "Example"
+renderer = "native.form"
+'''
+      : '';
   final archive = Archive()
     ..addFile(
       ArchiveFile.string('plugin.toml', '''
-[general]
-name = "Example"
+manifest_version = 2
 id = "$id"
+name = "Example"
 version = "$version"
 type = "$type"
-auto_start = $autoStart
-
-[permissions]
-$permissions
-
-[platform]
-windows = true
+protocol_version = 1
+activation_events = [$activationEvents]
+permissions = [$permissionValues]
+platforms = ["windows"]
+$contributions
 '''),
     );
   if (includeEntryPoint) {
@@ -84,6 +105,70 @@ windows = true
   final zip = File(path.join(root.path, '$id-$version.zip'));
   await zip.writeAsBytes(ZipEncoder().encodeBytes(archive));
   return zip;
+}
+
+Future<File> _writeManifestFixturePackage(
+  Directory root,
+  String fixture,
+) async {
+  final manifest = await File(
+    path.join('test', 'fixtures', 'manifest_v2', '$fixture.toml'),
+  ).readAsString();
+  final archive = Archive()
+    ..addFile(ArchiveFile.string('plugin.toml', manifest))
+    ..addFile(ArchiveFile.string('__main__.py', 'print("fixture")'));
+  final zip = File(path.join(root.path, '$fixture.zip'));
+  await zip.writeAsBytes(ZipEncoder().encodeBytes(archive));
+  return zip;
+}
+
+PluginPersistedData _persistedPlugin({
+  required String id,
+  PluginType type = PluginType.service,
+  String? viewId,
+  List<String> permissions = const [],
+  Map<String, List<String>>? grantedPermissions,
+}) {
+  final effectiveViewId = viewId ?? '$id.main';
+  final manifest = PluginManifestV2(
+    id: id,
+    name: id,
+    version: '1.0.0',
+    type: type,
+    activationEvents: type == PluginType.ui
+        ? ['onView:$effectiveViewId']
+        : const [],
+    permissions: permissions,
+    platforms: const ['windows'],
+    contributes: type == PluginType.ui
+        ? PluginContributions(
+            navigationContainers: [
+              PluginNavigationContainerContribution(id: id, title: id),
+            ],
+            views: [
+              PluginViewContribution(
+                id: effectiveViewId,
+                container: id,
+                title: id,
+                renderer: 'native.form',
+              ),
+            ],
+          )
+        : const PluginContributions(),
+  );
+  final declared = manifest.permissionsByResource;
+  return PluginPersistedData(
+    id: id,
+    name: id,
+    version: manifest.version,
+    type: type.name,
+    declaredPermissions: declared,
+    permissions: grantedPermissions ?? declared,
+    platforms: manifest.platforms,
+    status: PluginStatus.usable.name,
+    manifest: manifest,
+    rawManifest: 'manifest_version = 2\n',
+  );
 }
 
 ProviderContainer _createContainer(
@@ -200,7 +285,253 @@ void main() {
       container.read(pluginManagerProvider)['example']?.status,
       PluginStatus.usable,
     );
-    expect((await PluginPersistence().load())?.single.version, '1.0.0');
+    final persisted = (await PluginPersistence().load())?.single;
+    expect(persisted?.version, '1.0.0');
+    expect(persisted?.rawManifest, contains('manifest_version = 2'));
+    expect(persisted?.manifest?.contributes.views.single.id, 'example.main');
+  });
+
+  test('install rejects invalid manifests with stable error codes', () async {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    const cases = {
+      'contribution_conflict': PluginManifestErrorCode.contributionConflict,
+      'invalid_schema': PluginManifestErrorCode.invalidSchema,
+      'invalid_when': PluginManifestErrorCode.invalidWhen,
+      'manifest_v1': PluginManifestErrorCode.unsupportedVersion,
+      'missing_navigation': PluginManifestErrorCode.missingNavigationContainer,
+      'missing_version': PluginManifestErrorCode.missingVersion,
+      'rfw_renderer': PluginManifestErrorCode.rfwRendererUnsupported,
+      'unknown_renderer': PluginManifestErrorCode.unknownRenderer,
+    };
+
+    for (final entry in cases.entries) {
+      final package = await _writeManifestFixturePackage(root, entry.key);
+      await expectLater(
+        manager.install(package.path),
+        throwsA(
+          isA<PluginManifestException>().having(
+            (error) => error.code,
+            'code',
+            entry.value,
+          ),
+        ),
+        reason: entry.key,
+      );
+    }
+    expect(container.read(pluginManagerProvider), isEmpty);
+  });
+
+  test('install rejects conflicts with an existing pending update', () async {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    final parentV1 = await _writePackage(root, id: 'nested', version: '1.0.0');
+    final childV1 = await _writePackage(
+      root,
+      id: 'nested.child',
+      version: '1.0.0',
+    );
+    expect(await manager.install(parentV1.path), isFalse);
+    expect(await manager.install(childV1.path), isFalse);
+
+    final parentV2 = await _writePackage(
+      root,
+      id: 'nested',
+      version: '2.0.0',
+      viewId: 'nested.child.shared',
+    );
+    final childV2 = await _writePackage(
+      root,
+      id: 'nested.child',
+      version: '2.0.0',
+      viewId: 'nested.child.shared',
+    );
+    expect(await manager.install(parentV2.path), isTrue);
+
+    await expectLater(
+      manager.install(childV2.path),
+      throwsA(
+        isA<PluginManifestException>().having(
+          (error) => error.code,
+          'code',
+          PluginManifestErrorCode.contributionConflict,
+        ),
+      ),
+    );
+    expect(await _pending(root, 'nested').exists(), isTrue);
+    expect(await _pending(root, 'nested.child').exists(), isFalse);
+  });
+
+  test('enabling legacy persisted metadata is explicitly rejected', () async {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    manager.loadPersisted([
+      PluginPersistedData.fromJson({
+        'id': 'legacy',
+        'name': 'Legacy',
+        'status': 'disabled',
+      }),
+    ]);
+
+    await expectLater(
+      manager.changeStatus('legacy', PluginStatus.usable),
+      throwsA(
+        isA<PluginManifestException>().having(
+          (error) => error.code,
+          'code',
+          PluginManifestErrorCode.missingVersion,
+        ),
+      ),
+    );
+    expect(
+      container.read(pluginManagerProvider)['legacy']?.status,
+      PluginStatus.disabled,
+    );
+  });
+
+  test('cold start disables every plugin in a global manifest conflict', () {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    manager.loadPersisted([
+      _persistedPlugin(
+        id: 'nested',
+        type: PluginType.ui,
+        viewId: 'nested.child.shared',
+        permissions: const ['ui.view'],
+      ),
+      _persistedPlugin(
+        id: 'nested.child',
+        type: PluginType.ui,
+        viewId: 'nested.child.shared',
+        permissions: const ['ui.view'],
+      ),
+    ]);
+
+    final restored = container.read(pluginManagerProvider);
+    expect(
+      restored.values.map((plugin) => plugin.status),
+      everyElement(PluginStatus.disabled),
+    );
+    expect(
+      restored.values.map((plugin) => plugin.manifestErrorCode),
+      everyElement(PluginManifestErrorCode.contributionConflict),
+    );
+  });
+
+  test('cold start disables case-insensitive plugin ID aliases', () async {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    manager.loadPersisted([
+      _persistedPlugin(id: 'Alias'),
+      _persistedPlugin(id: 'alias'),
+    ]);
+
+    final restored = container.read(pluginManagerProvider);
+    expect(restored, hasLength(2));
+    expect(
+      restored.values.map((plugin) => plugin.status),
+      everyElement(PluginStatus.disabled),
+    );
+    expect(
+      restored.values.map((plugin) => plugin.manifestErrorCode),
+      everyElement(PluginManifestErrorCode.contributionConflict),
+    );
+    await expectLater(
+      manager.changeStatus('Alias', PluginStatus.usable),
+      throwsA(
+        isA<PluginManifestException>().having(
+          (error) => error.code,
+          'code',
+          PluginManifestErrorCode.contributionConflict,
+        ),
+      ),
+    );
+  });
+
+  test('persisted and updated grants cannot exceed manifest permissions', () {
+    final container = createContainer(PluginPersistence());
+    final manager = container.read(pluginManagerProvider.notifier);
+    manager.loadPersisted([
+      _persistedPlugin(
+        id: 'restricted',
+        permissions: const ['file.read'],
+        grantedPermissions: const {
+          'file': ['read', 'write'],
+          'serial': ['write'],
+        },
+      ),
+    ]);
+
+    expect(
+      container.read(pluginManagerProvider)['restricted']?.permissions,
+      const {
+        'file': ['read'],
+      },
+    );
+    manager.updatePermissions('restricted', const {
+      'file': ['read', 'write'],
+      'serial': ['write'],
+    });
+    expect(
+      container.read(pluginManagerProvider)['restricted']?.permissions,
+      const {
+        'file': ['read'],
+      },
+    );
+  });
+
+  test('cold start initializes grants for pre-grant-schema metadata', () {
+    final persisted = _persistedPlugin(
+      id: 'legacy-grants',
+      permissions: const ['editor.read', 'runtime.inspect'],
+    );
+    final json = persisted.toJson()
+      ..['permissions'] = <String, List<String>>{}
+      ..remove('permissionGrantsInitialized');
+    final container = createContainer(PluginPersistence());
+
+    container.read(pluginManagerProvider.notifier).loadPersisted([
+      PluginPersistedData.fromJson(json),
+    ]);
+
+    expect(
+      container.read(pluginManagerProvider)['legacy-grants']?.permissions,
+      const {
+        'editor': ['read'],
+        'runtime': ['inspect'],
+      },
+    );
+  });
+
+  test('cold start disables contributions from an invalid plugin', () {
+    const contribution = DataContributionRecord(
+      pluginId: 'legacy-data',
+      pluginType: 'data',
+      kind: DataContributionKeys.theme,
+      contributionId: 'legacy-theme',
+      payload: {},
+    );
+    final container = createContainer(PluginPersistence());
+    container.read(dataContributionsProvider.notifier).state = [contribution];
+    container.read(dataRegistryProvider).restoreContributions([contribution]);
+    final manager = container.read(pluginManagerProvider.notifier);
+
+    manager.loadPersisted([
+      PluginPersistedData.fromJson({
+        'id': 'legacy-data',
+        'name': 'Legacy Data',
+        'type': 'data',
+        'status': 'usable',
+      }),
+    ]);
+
+    expect(container.read(dataContributionsProvider).single.enabled, isFalse);
+    expect(
+      container
+          .read(dataRegistryProvider)
+          .getThemeById('legacy-data::legacy-theme'),
+      isNull,
+    );
   });
 
   test('plugin metadata file is replaced by a complete new snapshot', () async {
@@ -371,7 +702,7 @@ void main() {
   );
 
   test(
-    'legacy persisted installing status is normalized on cold start',
+    'persisted plugin without Manifest v2 is disabled on cold start',
     () async {
       await PluginPersistence().save([
         const Plugin(
@@ -386,7 +717,11 @@ void main() {
 
       expect(
         container.read(pluginManagerProvider)['example']?.status,
-        PluginStatus.usable,
+        PluginStatus.disabled,
+      );
+      expect(
+        container.read(pluginManagerProvider)['example']?.manifestErrorCode,
+        PluginManifestErrorCode.missingVersion,
       );
     },
   );
@@ -526,52 +861,49 @@ void main() {
     },
   );
 
-  test(
-    'activation failure does not display installing after restart',
-    () async {
-      final first = createContainer(PluginPersistence());
-      final manager = first.read(pluginManagerProvider.notifier);
-      await manager.install((await _writePackage(root, version: '1.0.0')).path);
-      await manager.changeStatus('example', PluginStatus.disabled);
-      await manager.persist();
-      await manager.install((await _writePackage(root, version: '2.0.0')).path);
-      closeContainer(first);
+  test('activation failure restores metadata for the active package', () async {
+    final first = createContainer(PluginPersistence());
+    final manager = first.read(pluginManagerProvider.notifier);
+    await manager.install((await _writePackage(root, version: '1.0.0')).path);
+    await manager.changeStatus('example', PluginStatus.disabled);
+    await manager.persist();
+    await manager.install((await _writePackage(root, version: '2.0.0')).path);
+    closeContainer(first);
 
-      final trash = File(path.join(root.path, 'plugin_updates', 'trash'));
-      await trash.writeAsString('block trash directory');
-      final second = await coldStart();
+    final trash = File(path.join(root.path, 'plugin_updates', 'trash'));
+    await trash.writeAsString('block trash directory');
+    final second = await coldStart();
 
-      final plugin = second.read(pluginManagerProvider)['example'];
-      expect(plugin?.version, '2.0.0');
-      expect(plugin?.status, PluginStatus.disabled);
-      await second.read(pluginManagerProvider.notifier).persist();
-      final persisted = (await PluginPersistence().load())?.single;
-      expect(persisted?.version, '2.0.0');
-      expect(persisted?.status, PluginStatus.disabled.name);
-      expect(
-        File(
-          path.join(_active(root, 'example').path, '__main__.py'),
-        ).readAsStringSync(),
-        '1.0.0',
-      );
-      expect(
-        File(
-          path.join(_pending(root, 'example').path, '__main__.py'),
-        ).readAsStringSync(),
-        '2.0.0',
-      );
-      closeContainer(second);
+    final plugin = second.read(pluginManagerProvider)['example'];
+    expect(plugin?.version, '1.0.0');
+    expect(plugin?.status, PluginStatus.disabled);
+    await second.read(pluginManagerProvider.notifier).persist();
+    final persisted = (await PluginPersistence().load())?.single;
+    expect(persisted?.version, '1.0.0');
+    expect(persisted?.status, PluginStatus.disabled.name);
+    expect(
+      File(
+        path.join(_active(root, 'example').path, '__main__.py'),
+      ).readAsStringSync(),
+      '1.0.0',
+    );
+    expect(
+      File(
+        path.join(_pending(root, 'example').path, '__main__.py'),
+      ).readAsStringSync(),
+      '2.0.0',
+    );
+    closeContainer(second);
 
-      await trash.delete();
-      final third = await coldStart();
-      expect(third.read(pluginManagerProvider)['example']?.version, '2.0.0');
-      expect(
-        third.read(pluginManagerProvider)['example']?.status,
-        PluginStatus.disabled,
-      );
-      expect(await _pending(root, 'example').exists(), isFalse);
-    },
-  );
+    await trash.delete();
+    final third = await coldStart();
+    expect(third.read(pluginManagerProvider)['example']?.version, '2.0.0');
+    expect(
+      third.read(pluginManagerProvider)['example']?.status,
+      PluginStatus.disabled,
+    );
+    expect(await _pending(root, 'example').exists(), isFalse);
+  });
 
   test('first install rolls back when metadata cannot be saved', () async {
     final persistence = _FailOncePluginPersistence()..failNextSave = true;
@@ -642,7 +974,7 @@ void main() {
       final pending = _pending(root, 'example');
       final newMetadata = PluginTomlParser.parseFromDirectory(
         pending,
-      )!.toPlugin();
+      ).toPlugin();
       await PluginPersistence().save([newMetadata]);
       final backup = _activeBackup(root, 'example');
       await backup.parent.create(recursive: true);
@@ -665,6 +997,38 @@ void main() {
       expect(await backup.exists(), isFalse);
     },
   );
+
+  test('active recovery refuses an invalid pending manifest', () async {
+    final first = createContainer(PluginPersistence());
+    final manager = first.read(pluginManagerProvider.notifier);
+    await manager.install((await _writePackage(root, version: '1.0.0')).path);
+    await manager.install((await _writePackage(root, version: '2.0.0')).path);
+
+    final active = _active(root, 'example');
+    final pending = _pending(root, 'example');
+    final manifestFile = File(path.join(pending.path, 'plugin.toml'));
+    await manifestFile.writeAsString(
+      (await manifestFile.readAsString()).replaceFirst(
+        'manifest_version = 2',
+        'manifest_version = 1',
+      ),
+    );
+    final backup = _activeBackup(root, 'example');
+    await backup.parent.create(recursive: true);
+    await active.rename(backup.path);
+    closeContainer(first);
+
+    final second = await coldStart();
+    final plugin = second.read(pluginManagerProvider)['example'];
+    expect(plugin?.status, PluginStatus.disabled);
+    expect(
+      plugin?.manifestErrorCode,
+      PluginManifestErrorCode.unsupportedVersion,
+    );
+    expect(await active.exists(), isFalse);
+    expect(await pending.exists(), isTrue);
+    expect(await backup.exists(), isTrue);
+  });
 
   test('install waits for an active backup to be recovered', () async {
     final container = createContainer(PluginPersistence());
@@ -837,7 +1201,7 @@ void main() {
           version: '2.0.0',
           type: 'service',
           autoStart: true,
-          permissions: 'ui = true\nfile = ["read"]',
+          permissions: ['ui.view', 'ui.navigate', 'file.read'],
         )).path,
       );
       await manager.changeStatus('example', PluginStatus.disabled);
@@ -1213,4 +1577,24 @@ void main() {
     );
     expect(await _removal(root, 'example').exists(), isFalse);
   });
+
+  test(
+    'status and uninstall changes remove host contributions immediately',
+    () async {
+      final container = createContainer(PluginPersistence());
+      final manager = container.read(pluginManagerProvider.notifier);
+      manager.loadPersisted([
+        _persistedPlugin(id: 'example', type: PluginType.ui),
+      ]);
+      final registry = container.read(contributionRegistryProvider);
+
+      expect(registry.pluginIds, contains('example'));
+      await manager.changeStatus('example', PluginStatus.disabled);
+      expect(registry.pluginIds, isEmpty);
+      await manager.changeStatus('example', PluginStatus.usable);
+      expect(registry.pluginIds, contains('example'));
+      await manager.uninstall('example');
+      expect(registry.pluginIds, isEmpty);
+    },
+  );
 }

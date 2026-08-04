@@ -1,0 +1,9 @@
+manifest_version = 2
+id = "file-indexer"
+name = "File Indexer"
+version = "1.0.0"
+type = "service"
+protocol_version = 1
+activation_events = ["onStartup"]
+permissions = ["file.read"]
+platforms = ["windows", "linux", "macos", "android"]

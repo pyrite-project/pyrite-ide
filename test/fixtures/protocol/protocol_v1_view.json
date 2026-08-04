@@ -1,0 +1,132 @@
+{
+  "sdkViewSnapshot": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-view-snapshot-1",
+    "replyTo": null,
+    "sequence": 40,
+    "type": "sdk.view.snapshot",
+    "payload": {
+      "viewId": "outline",
+      "instanceId": "inst-1",
+      "revision": 1,
+      "nodes": [
+        {"id": "n1", "label": "Widget"},
+        {"id": "n2", "label": "build"}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000500
+  },
+  "sdkViewPatch": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-view-patch-1",
+    "replyTo": null,
+    "sequence": 41,
+    "type": "sdk.view.patch",
+    "payload": {
+      "viewId": "outline",
+      "instanceId": "inst-1",
+      "baseRevision": 1,
+      "revision": 2,
+      "ops": [
+        {"op": "insert", "id": "n3", "index": 2, "data": {"label": "dispose"}},
+        {"op": "update", "id": "n1", "data": {"label": "Widget2"}},
+        {"op": "move", "id": "n3", "index": 0},
+        {"op": "remove", "id": "n2"}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000501
+  },
+  "ideViewAck": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-ack-1",
+    "replyTo": null,
+    "sequence": 42,
+    "type": "ide.view.ack",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "revision": 2
+    },
+    "data": null,
+    "timestamp": 1700000000502
+  },
+  "ideViewNack": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-nack-1",
+    "replyTo": null,
+    "sequence": 43,
+    "type": "ide.view.nack",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "reason": "revisionGap",
+      "message": "expected baseRevision 2, got 7"
+    },
+    "data": null,
+    "timestamp": 1700000000503
+  },
+  "ideViewResync": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-resync-1",
+    "replyTo": null,
+    "sequence": 44,
+    "type": "ide.view.resync",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "revision": 2
+    },
+    "data": null,
+    "timestamp": 1700000000504
+  },
+  "ideViewVisibilityChanged": {
+    "protocolVersion": 1,
+    "pluginId": "outline-view",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-view-visibility-1",
+    "replyTo": null,
+    "sequence": 45,
+    "type": "ide.view.visibility.changed",
+    "payload": {
+      "instance": {
+        "pluginId": "outline-view",
+        "sessionId": "session-42",
+        "viewId": "outline",
+        "instanceId": "inst-1"
+      },
+      "visible": false
+    },
+    "data": null,
+    "timestamp": 1700000000505
+  }
+}

@@ -10,7 +10,9 @@ void refreshOpenLspStubsConfiguration(dynamic ref) {
   final layers = ref.read(microPythonStubsLayers);
   final controllers = ref.read(editorControllerMapProvider).values.toList();
   final stubsConfig = buildLspStubsConfig(ref);
-  ref.read(ideOutputLogProvider.notifier).add(
+  ref
+      .read(ideOutputLogProvider.notifier)
+      .add(
         IdeOutputSource.ide,
         'Stubs refresh requested: enabled=$enabled, '
         'layers=${layers.map((layer) => '${layer.provider}/${layer.profile}').join(', ')}, '
@@ -18,7 +20,9 @@ void refreshOpenLspStubsConfiguration(dynamic ref) {
         'openLsp=${controllers.where((controller) => controller.lspConfig != null).length}',
       );
   if (stubsConfig.workspaceConfiguration.isEmpty) {
-    ref.read(ideOutputLogProvider.notifier).add(
+    ref
+        .read(ideOutputLogProvider.notifier)
+        .add(
           IdeOutputSource.ide,
           'Skipped LSP stubs refresh: no resolved stubs paths',
         );
@@ -29,7 +33,9 @@ void refreshOpenLspStubsConfiguration(dynamic ref) {
     if (lspConfig == null || !lspConfig.isInitialized) {
       continue;
     }
-    ref.read(ideOutputLogProvider.notifier).add(
+    ref
+        .read(ideOutputLogProvider.notifier)
+        .add(
           IdeOutputSource.ide,
           'Refreshing LSP stubs paths: ${stubsConfig.paths.join(';')}',
         );

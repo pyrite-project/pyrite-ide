@@ -1,0 +1,10 @@
+manifest_version = 2
+id = "invalid-schema"
+name = "Invalid Schema"
+version = "1.0.0"
+type = "service"
+protocol_version = 1
+activation_events = []
+permissions = ["file.read"]
+platforms = ["windows"]
+unexpected = true

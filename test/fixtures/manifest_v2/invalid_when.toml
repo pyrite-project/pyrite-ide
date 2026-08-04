@@ -1,0 +1,20 @@
+manifest_version = 2
+id = "invalid-when"
+name = "Invalid When"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+activation_events = ["onView:invalid-when.main"]
+permissions = ["ui.view"]
+platforms = ["windows"]
+
+[[contributes.navigation_containers]]
+id = "invalid-when"
+title = "Invalid When"
+
+[[contributes.views]]
+id = "invalid-when.main"
+container = "invalid-when"
+title = "Invalid When"
+renderer = "native.tree"
+when = "runtime.unknown == 'python'"

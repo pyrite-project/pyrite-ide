@@ -1,24 +1,30 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 
 abstract class SdkTabCommands {
   static const String createFile = 'sdk.tab.create_file';
-  static const String createCustom = 'sdk.tab.create_custom';
+  static const String createView = 'sdk.tab.create_view';
   static const String close = 'sdk.tab.close';
   static const String list = 'sdk.tab.list';
   static const String switchTab = 'sdk.tab.switch';
 }
 
-class SdkTab extends StateNotifier<PluginRunManager?> {
+class SdkTab {
   final Ref ref;
-  SdkTab(this.ref) : super(null);
+  SdkTab(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
-    runManager.registerHandler(SdkTabCommands.createFile, _handleCreateFile);
-    runManager.registerHandler(SdkTabCommands.createCustom, _handleCreateCustom);
+    runManager.registerHandler(
+      SdkTabCommands.createFile,
+      (envelope, respond) => _handleCreateFile(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkTabCommands.createView,
+      (envelope, respond) => _handleCreateView(runManager, envelope, respond),
+    );
     runManager.registerHandler(SdkTabCommands.close, _handleClose);
     runManager.registerHandler(SdkTabCommands.list, _handleList);
     runManager.registerHandler(SdkTabCommands.switchTab, _handleSwitch);
@@ -57,6 +63,7 @@ class SdkTab extends StateNotifier<PluginRunManager?> {
   // ── Handlers ──
 
   void _handleCreateFile(
+    PluginRunManager runManager,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
@@ -69,46 +76,69 @@ class SdkTab extends StateNotifier<PluginRunManager?> {
     }
 
     // Delegate to editor open_file — it creates a tab with the file
-    state?.sendJson(makeEnvelope(
-      type: 'sdk.editor.open_file',
-      payload: {'file_path': filePath},
-      replyTo: envelope['id'],
-    ));
+    runManager.sendJson(
+      makeEnvelope(
+        type: 'sdk.editor.open_file',
+        payload: {'file_path': filePath},
+        replyTo: envelope['id'],
+      ),
+    );
     _respondOk(envelope, respond, data: true);
   }
 
-  void _handleCreateCustom(
+  /// Opens one of the calling plugin's contributed views as an editor tab.
+  ///
+  /// The tab hosts the same render surface as the sidebar placement, so a view
+  /// gains no capability by being placed one way or the other. Responds with the
+  /// allocated `instanceId`: patches and route state are per instance, so the
+  /// plugin must address this one rather than reusing a sidebar instance.
+  void _handleCreateView(
+    PluginRunManager runManager,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
-    final pageName = payload['page']?.toString();
-    final pagesData = payload['pages'] as Map<String, dynamic>?;
-
-    if (pageName == null || pageName.isEmpty) {
-      _respondError(envelope, respond, '缺少 page');
-      return;
-    }
-    if (pagesData == null || pagesData.isEmpty) {
-      _respondError(envelope, respond, '缺少 pages');
+    final viewId = (payload['viewId'] ?? payload['view_id'])?.toString();
+    if (viewId == null || viewId.isEmpty) {
+      _respondError(envelope, respond, '缺少 viewId');
       return;
     }
 
-    // Push the RFW pages into the run manager (same as sdk.page.push)
-    state?.pages.addAll(pagesData.map((k, v) => MapEntry(k, v.toString())));
+    final contribution = ref
+        .read(contributionRegistryProvider)
+        .views
+        .visible
+        .where(
+          (entry) =>
+              entry.pluginId == runManager.pluginId && entry.value.id == viewId,
+        )
+        .firstOrNull;
+    if (contribution == null) {
+      _respondError(envelope, respond, '插件未贡献视图: $viewId');
+      return;
+    }
 
-    // Navigate to the custom page
-    state?.currentRoute = pageName;
-    state?.sendJson(makeEnvelope(
-      type: 'ide.router.sync',
-      payload: {
-        'page': pageName,
-        'stack': state?.routeStack ?? [],
-      },
-    ));
-    state?.onDataChanged?.call();
+    final renderer = (payload['renderer']?.toString().isNotEmpty ?? false)
+        ? payload['renderer'].toString()
+        : contribution.value.renderer;
+    final title = payload['title']?.toString() ?? contribution.value.title;
+    final expansion = payload['expansion'] == true;
 
-    _respondOk(envelope, respond, data: true);
+    final instance = ref
+        .read(tabbedViewControllerProvider.notifier)
+        .openPluginView(
+          pluginId: runManager.pluginId,
+          viewId: viewId,
+          renderer: renderer,
+          title: title,
+          expansion: expansion,
+        );
+    if (instance == null) {
+      _respondError(envelope, respond, '插件未运行，无法创建视图标签页');
+      return;
+    }
+
+    _respondOk(envelope, respond, data: instance.toJson());
   }
 
   void _handleClose(
@@ -122,19 +152,17 @@ class SdkTab extends StateNotifier<PluginRunManager?> {
     final tabs = ref.read(tabbedViewControllerProvider).tabs;
 
     if (index != null && index >= 0 && index < tabs.length) {
-      ref.read(tabbedViewControllerProvider.notifier).afterTabClose(
-            index,
-            tabs[index],
-          );
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .afterTabClose(index, tabs[index]);
       _respondOk(envelope, respond, data: true);
     } else if (filePath != null) {
       for (int i = 0; i < tabs.length; i++) {
         final value = tabs[i].value;
         if (value is TabDataValue && value.filePath == filePath) {
-          ref.read(tabbedViewControllerProvider.notifier).afterTabClose(
-                i,
-                tabs[i],
-              );
+          ref
+              .read(tabbedViewControllerProvider.notifier)
+              .afterTabClose(i, tabs[i]);
           _respondOk(envelope, respond, data: true);
           return;
         }
@@ -178,13 +206,13 @@ class SdkTab extends StateNotifier<PluginRunManager?> {
     final tabs = ref.read(tabbedViewControllerProvider).tabs;
 
     if (index != null && index >= 0 && index < tabs.length) {
-      controller.state.selectedIndex = index;
+      controller.onTabTap(tabs[index], index);
       _respondOk(envelope, respond, data: true);
     } else if (filePath != null) {
       for (int i = 0; i < tabs.length; i++) {
         final value = tabs[i].value;
         if (value is TabDataValue && value.filePath == filePath) {
-          controller.state.selectedIndex = i;
+          controller.onTabTap(tabs[i], i);
           _respondOk(envelope, respond, data: true);
           return;
         }
@@ -194,17 +222,6 @@ class SdkTab extends StateNotifier<PluginRunManager?> {
       _respondError(envelope, respond, '需要 index 或 file_path');
     }
   }
-
-  @override
-  void dispose() {
-    state?.unregisterHandler(SdkTabCommands.createFile);
-    state?.unregisterHandler(SdkTabCommands.createCustom);
-    state?.unregisterHandler(SdkTabCommands.close);
-    state?.unregisterHandler(SdkTabCommands.list);
-    state?.unregisterHandler(SdkTabCommands.switchTab);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkTab, PluginRunManager?> sdkTabProvider =
-    StateNotifierProvider((ref) => SdkTab(ref));
+final Provider<SdkTab> sdkTabProvider = Provider(SdkTab.new);

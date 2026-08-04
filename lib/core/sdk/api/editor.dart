@@ -55,28 +55,50 @@ abstract class SdkEditorCommands {
   static const String scrollToLine = 'sdk.editor.scroll_to_line';
 }
 
-class SdkEditor extends StateNotifier<PluginRunManager?> {
+class SdkEditor {
   final Ref ref;
-  SdkEditor(this.ref) : super(null);
+  SdkEditor(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
-
     // Text Content
     runManager.registerHandler(SdkEditorCommands.getText, _handleGetText);
     runManager.registerHandler(SdkEditorCommands.setText, _handleSetText);
-    runManager.registerHandler(SdkEditorCommands.getLineCount, _handleGetLineCount);
-    runManager.registerHandler(SdkEditorCommands.getLineText, _handleGetLineText);
-    runManager.registerHandler(SdkEditorCommands.getSelectedText, _handleGetSelectedText);
+    runManager.registerHandler(
+      SdkEditorCommands.getLineCount,
+      _handleGetLineCount,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.getLineText,
+      _handleGetLineText,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.getSelectedText,
+      _handleGetSelectedText,
+    );
     runManager.registerHandler(SdkEditorCommands.insertText, _handleInsertText);
-    runManager.registerHandler(SdkEditorCommands.replaceRange, _handleReplaceRange);
+    runManager.registerHandler(
+      SdkEditorCommands.replaceRange,
+      _handleReplaceRange,
+    );
     runManager.registerHandler(SdkEditorCommands.clear, _handleClear);
 
     // Cursor & Selection
-    runManager.registerHandler(SdkEditorCommands.getCursorPosition, _handleGetCursorPosition);
-    runManager.registerHandler(SdkEditorCommands.setCursorPosition, _handleSetCursorPosition);
-    runManager.registerHandler(SdkEditorCommands.getSelection, _handleGetSelection);
-    runManager.registerHandler(SdkEditorCommands.setSelection, _handleSetSelection);
+    runManager.registerHandler(
+      SdkEditorCommands.getCursorPosition,
+      _handleGetCursorPosition,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.setCursorPosition,
+      _handleSetCursorPosition,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.getSelection,
+      _handleGetSelection,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.setSelection,
+      _handleSetSelection,
+    );
     runManager.registerHandler(SdkEditorCommands.selectAll, _handleSelectAll);
     runManager.registerHandler(SdkEditorCommands.goToLine, _handleGoToLine);
 
@@ -94,18 +116,33 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     // Search
     runManager.registerHandler(SdkEditorCommands.find, _handleFind);
     runManager.registerHandler(SdkEditorCommands.findRegex, _handleFindRegex);
-    runManager.registerHandler(SdkEditorCommands.clearSearch, _handleClearSearch);
+    runManager.registerHandler(
+      SdkEditorCommands.clearSearch,
+      _handleClearSearch,
+    );
 
     // Tab Management
     runManager.registerHandler(SdkEditorCommands.openFile, _handleOpenFile);
     runManager.registerHandler(SdkEditorCommands.closeTab, _handleCloseTab);
-    runManager.registerHandler(SdkEditorCommands.getCurrentTab, _handleGetCurrentTab);
+    runManager.registerHandler(
+      SdkEditorCommands.getCurrentTab,
+      _handleGetCurrentTab,
+    );
     runManager.registerHandler(SdkEditorCommands.listTabs, _handleListTabs);
 
     // Decorations
-    runManager.registerHandler(SdkEditorCommands.setGhostText, _handleSetGhostText);
-    runManager.registerHandler(SdkEditorCommands.clearGhostText, _handleClearGhostText);
-    runManager.registerHandler(SdkEditorCommands.scrollToLine, _handleScrollToLine);
+    runManager.registerHandler(
+      SdkEditorCommands.setGhostText,
+      _handleSetGhostText,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.clearGhostText,
+      _handleClearGhostText,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.scrollToLine,
+      _handleScrollToLine,
+    );
   }
 
   void _respondOk(
@@ -139,7 +176,9 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
   }
 
   CodeForgeController? _getController() {
-    return ref.read(editorControllerMapProvider.notifier).getSelectedController();
+    return ref
+        .read(editorControllerMapProvider.notifier)
+        .getSelectedController();
   }
 
   // ── Text Content ──
@@ -316,10 +355,7 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
       return;
     }
     final sel = controller.selection;
-    _respondOk(envelope, respond, data: {
-      'start': sel.start,
-      'end': sel.end,
-    });
+    _respondOk(envelope, respond, data: {'start': sel.start, 'end': sel.end});
   }
 
   void _handleSetSelection(
@@ -335,10 +371,12 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     final start = payload['start'] as int? ?? 0;
     final end = payload['end'] as int? ?? 0;
     final len = controller.text.length;
-    controller.setSelectionSilently(TextSelection(
-      baseOffset: start.clamp(0, len),
-      extentOffset: end.clamp(0, len),
-    ));
+    controller.setSelectionSilently(
+      TextSelection(
+        baseOffset: start.clamp(0, len),
+        extentOffset: end.clamp(0, len),
+      ),
+    );
     _respondOk(envelope, respond);
   }
 
@@ -439,7 +477,9 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final undoCtrl = ref.read(editorControllerMapProvider.notifier).getSelectedUndoRedoController();
+    final undoCtrl = ref
+        .read(editorControllerMapProvider.notifier)
+        .getSelectedUndoRedoController();
     _respondOk(envelope, respond, data: undoCtrl?.canUndo ?? false);
   }
 
@@ -447,7 +487,9 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final undoCtrl = ref.read(editorControllerMapProvider.notifier).getSelectedUndoRedoController();
+    final undoCtrl = ref
+        .read(editorControllerMapProvider.notifier)
+        .getSelectedUndoRedoController();
     _respondOk(envelope, respond, data: undoCtrl?.canRedo ?? false);
   }
 
@@ -542,7 +584,9 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     for (int i = 0; i < tabs.length; i++) {
       final value = tabs[i].value;
       if (value is TabDataValue && value.filePath == filePath) {
-        ref.read(tabbedViewControllerProvider.notifier).afterTabClose(i, tabs[i]);
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .afterTabClose(i, tabs[i]);
         break;
       }
     }
@@ -560,10 +604,14 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
       return;
     }
     final value = selected.value as TabDataValue;
-    _respondOk(envelope, respond, data: {
-      'path': value.filePath,
-      'name': value.file?.path.split(RegExp(r'[/\\]')).last,
-    });
+    _respondOk(
+      envelope,
+      respond,
+      data: {
+        'path': value.filePath,
+        'name': value.file?.path.split(RegExp(r'[/\\]')).last,
+      },
+    );
   }
 
   void _handleListTabs(
@@ -599,11 +647,7 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     final text = payload['text']?.toString() ?? '';
     final line = payload['line'] as int? ?? 0;
     final column = payload['column'] as int? ?? 0;
-    controller.setGhostText(GhostText(
-      text: text,
-      line: line,
-      column: column,
-    ));
+    controller.setGhostText(GhostText(text: text, line: line, column: column));
     _respondOk(envelope, respond);
   }
 
@@ -634,52 +678,6 @@ class SdkEditor extends StateNotifier<PluginRunManager?> {
     controller.scrollToLine(line);
     _respondOk(envelope, respond);
   }
-
-  @override
-  void dispose() {
-    // Text Content
-    state?.unregisterHandler(SdkEditorCommands.getText);
-    state?.unregisterHandler(SdkEditorCommands.setText);
-    state?.unregisterHandler(SdkEditorCommands.getLineCount);
-    state?.unregisterHandler(SdkEditorCommands.getLineText);
-    state?.unregisterHandler(SdkEditorCommands.getSelectedText);
-    state?.unregisterHandler(SdkEditorCommands.insertText);
-    state?.unregisterHandler(SdkEditorCommands.replaceRange);
-    state?.unregisterHandler(SdkEditorCommands.clear);
-    // Cursor & Selection
-    state?.unregisterHandler(SdkEditorCommands.getCursorPosition);
-    state?.unregisterHandler(SdkEditorCommands.setCursorPosition);
-    state?.unregisterHandler(SdkEditorCommands.getSelection);
-    state?.unregisterHandler(SdkEditorCommands.setSelection);
-    state?.unregisterHandler(SdkEditorCommands.selectAll);
-    state?.unregisterHandler(SdkEditorCommands.goToLine);
-    // Clipboard
-    state?.unregisterHandler(SdkEditorCommands.copy);
-    state?.unregisterHandler(SdkEditorCommands.cut);
-    state?.unregisterHandler(SdkEditorCommands.paste);
-    // Undo / Redo
-    state?.unregisterHandler(SdkEditorCommands.undo);
-    state?.unregisterHandler(SdkEditorCommands.redo);
-    state?.unregisterHandler(SdkEditorCommands.canUndo);
-    state?.unregisterHandler(SdkEditorCommands.canRedo);
-    // Search
-    state?.unregisterHandler(SdkEditorCommands.find);
-    state?.unregisterHandler(SdkEditorCommands.findRegex);
-    state?.unregisterHandler(SdkEditorCommands.clearSearch);
-    // Tab Management
-    state?.unregisterHandler(SdkEditorCommands.openFile);
-    state?.unregisterHandler(SdkEditorCommands.closeTab);
-    state?.unregisterHandler(SdkEditorCommands.getCurrentTab);
-    state?.unregisterHandler(SdkEditorCommands.listTabs);
-    // Decorations
-    state?.unregisterHandler(SdkEditorCommands.setGhostText);
-    state?.unregisterHandler(SdkEditorCommands.clearGhostText);
-    state?.unregisterHandler(SdkEditorCommands.scrollToLine);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkEditor, PluginRunManager?>
-sdkEditorProvider = StateNotifierProvider(
-  (ref) => SdkEditor(ref),
-);
+final Provider<SdkEditor> sdkEditorProvider = Provider(SdkEditor.new);

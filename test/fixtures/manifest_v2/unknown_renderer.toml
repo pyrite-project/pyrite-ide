@@ -1,0 +1,19 @@
+manifest_version = 2
+id = "unknown-renderer"
+name = "Unknown Renderer"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+activation_events = ["onView:unknown-renderer.main"]
+permissions = ["ui.view"]
+platforms = ["windows"]
+
+[[contributes.navigation_containers]]
+id = "unknown-renderer"
+title = "Unknown"
+
+[[contributes.views]]
+id = "unknown-renderer.main"
+container = "unknown-renderer"
+title = "Unknown"
+renderer = "native.chart"

@@ -6,8 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/sdk/environment_broadcaster.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
@@ -93,12 +93,13 @@ class PyriteIDE extends ConsumerWidget {
     );
 
     if (Platform.isAndroid) {
-    SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
+      SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: scheme.surfaceContainer); 
-    SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  }
+        systemNavigationBarColor: scheme.surfaceContainer,
+      );
+      SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     return FlexColorScheme(
       colorScheme: scheme,
       useMaterial3: true,
@@ -132,7 +133,6 @@ class PyriteIDE extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.read(serialProvider.notifier).registerUpdateTask();
-    ref.read(pluginRunManagerProvider.notifier).setupRouterListener();
 
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
@@ -180,7 +180,9 @@ class PyriteIDE extends ConsumerWidget {
               child: Stack(
                 children: [
                   ResponsiveBreakpoints.builder(
-                    child: child!,
+                    // Inside the responsive scope so it can read the
+                    // breakpoints that define the plugin-facing layout mode.
+                    child: EnvironmentBroadcaster(child: child!),
                     breakpoints: [
                       const Breakpoint(start: 0, end: 599, name: MOBILE),
                       const Breakpoint(start: 600, end: 839, name: TABLET),

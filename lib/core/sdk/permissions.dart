@@ -1,16 +1,33 @@
 abstract class Permissions {
-  static const Map<String, String> commandRequirements = {
-    // ui
-    'sdk.page.push': 'ui:view',
-    'sdk.var.set': 'ui:view',
-    'sdk.callback.register': 'ui:view',
-    'sdk.callback.clear': 'ui:view',
-    'sdk.callback.set': 'ui:view',
-    'sdk.router.push': 'ui:navigate',
-    'sdk.router.pop': 'ui:navigate',
-    'sdk.router.replace': 'ui:navigate',
-    'sdk.router.goto': 'ui:navigate',
+  static const Set<String> publicCommands = {
+    'sdk.output.append',
+    'sdk.path.request',
+    // Subscribing is always allowed to reach the bus; the bus enforces the
+    // per-topic permission and rejects unauthorized topics itself.
+    'sdk.events.subscribe',
+    'sdk.events.unsubscribe',
+    // Platform and layout mode carry no user data; a plugin needs them to lay
+    // itself out correctly, so gating them would only break mobile support.
+    'sdk.env.get',
+    // A plugin manages the model of its own views; no extra permission needed.
+    'sdk.view.open',
+    'sdk.view.snapshot',
+    'sdk.view.patch',
+    'sdk.view.close',
+    // Route stacks are per view instance and private to the plugin's own view,
+    // so navigating one needs no more trust than drawing it.
+    'sdk.view.route.push',
+    'sdk.view.route.pop',
+    'sdk.view.route.replace',
+    'sdk.view.route.goto',
+    'sdk.view.component.invoke',
+    // Manifest configuration is scoped to the calling plugin's declared ids.
+    'sdk.configuration.get',
+    'sdk.configuration.set',
+    'sdk.configuration.list',
+  };
 
+  static const Map<String, String> commandRequirements = {
     // file
     'sdk.file.get_dir_list': 'file:read',
     'sdk.file.get_root_dir': 'file:read',
@@ -45,6 +62,7 @@ abstract class Permissions {
     'sdk.board.get_focus_file_node': 'board:read',
     'sdk.board.get_focus_folder_node': 'board:read',
     'sdk.board.get_corresponding_file_path': 'board:read',
+    'sdk.board.open_file': 'board:read',
     'sdk.board.write_file': 'board:write',
     'sdk.board.delete_file': 'board:write',
     'sdk.board.delete_folder': 'board:write',
@@ -85,6 +103,21 @@ abstract class Permissions {
     'sdk.editor.cut': 'editor:write',
     'sdk.editor.paste': 'editor:write',
 
+    // editor document service (T13)
+    'sdk.editor.active_document.get': 'editor:read',
+    'sdk.editor.document.get': 'editor:read',
+    'sdk.editor.document.symbols': 'editor:read',
+    'sdk.editor.document.selection.get': 'editor:read',
+    'sdk.editor.document.reveal': 'editor:write',
+
+    // runtime inspection (T14)
+    'sdk.runtime.sessions': 'runtime:inspect',
+    'sdk.runtime.state': 'runtime:inspect',
+    'sdk.runtime.scopes': 'runtime:inspect',
+    'sdk.runtime.variables': 'runtime:inspect',
+    'sdk.runtime.children': 'runtime:inspect',
+    'sdk.runtime.object_info': 'runtime:inspect',
+
     // persistence
     'sdk.persistence.get': 'persistence:read',
     'sdk.persistence.list_groups': 'persistence:read',
@@ -95,7 +128,7 @@ abstract class Permissions {
 
     // tab
     'sdk.tab.create_file': 'tab:create',
-    'sdk.tab.create_custom': 'tab:create',
+    'sdk.tab.create_view': 'tab:create',
     'sdk.tab.close': 'tab:manage',
     'sdk.tab.list': 'tab:manage',
     'sdk.tab.switch': 'tab:manage',
@@ -130,20 +163,20 @@ abstract class Permissions {
     'sdk.stubs.contribute': 'data:write',
     'sdk.stubs.register_runtime': 'data:write',
     'sdk.stubs.revoke': 'data:write',
+    'sdk.stubs.get': 'data:read',
+    'sdk.stubs.list': 'data:read',
+    'sdk.stubs.resolve_layers': 'data:read',
     'sdk.theme.revoke': 'data:write',
     'sdk.i18n.revoke': 'data:write',
 
     // dialog
     'sdk.dialog.open_folder': 'dialog:show',
-  };
 
-  static const Map<String, List<String>> _hierarchy = {
-    'file:write': ['file:read'],
-    'board:write': ['board:read'],
-    'editor:write': ['editor:read'],
-    'persistence:write': ['persistence:read'],
-    'serial:write': ['serial:read'],
-    'data:write': ['data:read'],
+    // message
+    'sdk.message.show': 'ui:notify',
+
+    // clipboard
+    'sdk.clipboard.set_text': 'ui:view',
   };
 
   static bool check(
@@ -165,17 +198,16 @@ abstract class Permissions {
       if (allowed.contains('write')) return true;
     }
 
-    final implied = _hierarchy[required];
-    if (implied != null) {
-      for (final impliedPerm in implied) {
-        if (check(pluginPermissions, impliedPerm)) return true;
-      }
-    }
-
     return false;
   }
 
   static String? getRequirement(String commandType) {
     return commandRequirements[commandType];
   }
+
+  static bool isPublic(String commandType) =>
+      publicCommands.contains(commandType);
+
+  static bool isKnown(String commandType) =>
+      isPublic(commandType) || commandRequirements.containsKey(commandType);
 }

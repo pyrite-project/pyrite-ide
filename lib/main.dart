@@ -27,9 +27,8 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/features/window.dart';
-import 'package:serious_python/serious_python.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
 
 String? getPythonPath() {
@@ -228,27 +227,6 @@ void _startAutoSave() {
   });
 }
 
-Future<void> _bootstrapPythonRuntime() async {
-  try {
-    await SeriousPython.runAsset(
-      pythonRuntimeBootAsset,
-      appFileName: "boot.py",
-      targetPath: pythonRuntimeBootCachePath,
-      checkHash: true,
-      sync: true,
-    );
-  } catch (error, stackTrace) {
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: "pyrite_ide",
-        context: ErrorDescription("while bootstrapping the Python runtime"),
-      ),
-    );
-  }
-}
-
 // PyriteIDE: Hello World.
 void main() async {
   GitDebugLog.startSession();
@@ -317,10 +295,21 @@ void main() async {
   appWindow.bind(container);
   appWindow.init();
 
-  await _bootstrapPythonRuntime();
+  try {
+    await container.read(pythonRuntimeHostProvider).start();
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'pyrite_ide',
+        context: ErrorDescription('while bootstrapping the Python runtime'),
+      ),
+    );
+  }
 
-  // Auto-start plugins with autoStart: true after the Python runtime snapshot
-  // has been captured.
+  // Activate only plugins declaring onStartup after the Python runtime snapshot
+  // has been captured. Other plugins remain dormant until their trigger fires.
   unawaited(container.read(pluginManagerProvider.notifier).autoStart());
   // container.read(lspClientProvider);
 

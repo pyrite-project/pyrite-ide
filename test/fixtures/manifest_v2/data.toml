@@ -1,0 +1,9 @@
+manifest_version = 2
+id = "workspace-data"
+name = "Workspace Data"
+version = "1.0.0"
+type = "data"
+protocol_version = 1
+activation_events = []
+permissions = ["data.write"]
+platforms = ["windows", "linux", "macos", "android"]

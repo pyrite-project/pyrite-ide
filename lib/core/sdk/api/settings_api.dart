@@ -591,12 +591,11 @@ class SettingsRegistry {
       _settings.map((e) => {'name': e.name, 'type': e.type}).toList();
 }
 
-class SdkSettings extends StateNotifier<PluginRunManager?> {
+class SdkSettings {
   final Ref ref;
-  SdkSettings(this.ref) : super(null);
+  SdkSettings(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
     runManager.registerHandler(SdkSettingsCommands.get, _handleGet);
     runManager.registerHandler(SdkSettingsCommands.set, _handleSet);
     runManager.registerHandler(SdkSettingsCommands.list, _handleList);
@@ -688,15 +687,6 @@ class SdkSettings extends StateNotifier<PluginRunManager?> {
     final settings = SettingsRegistry.listAll();
     _respondOk(envelope, respond, data: settings);
   }
-
-  @override
-  void dispose() {
-    state?.unregisterHandler(SdkSettingsCommands.get);
-    state?.unregisterHandler(SdkSettingsCommands.set);
-    state?.unregisterHandler(SdkSettingsCommands.list);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkSettings, PluginRunManager?>
-sdkSettingsProvider = StateNotifierProvider((ref) => SdkSettings(ref));
+final Provider<SdkSettings> sdkSettingsProvider = Provider(SdkSettings.new);

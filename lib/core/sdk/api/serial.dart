@@ -22,20 +22,16 @@ abstract class SdkSerialCommands {
   static const String setAutoReconnect = 'sdk.serial.set_auto_reconnect';
 }
 
-class SdkSerial extends StateNotifier<PluginRunManager?> {
+class SdkSerial {
   final Ref ref;
-  SdkSerial(this.ref) : super(null);
+  SdkSerial(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
     runManager.registerHandler(SdkSerialCommands.listPorts, _handleListPorts);
     runManager.registerHandler(SdkSerialCommands.getStatus, _handleGetStatus);
     runManager.registerHandler(SdkSerialCommands.read, _handleRead);
     runManager.registerHandler(SdkSerialCommands.connect, _handleConnect);
-    runManager.registerHandler(
-      SdkSerialCommands.disconnect,
-      _handleDisconnect,
-    );
+    runManager.registerHandler(SdkSerialCommands.disconnect, _handleDisconnect);
     runManager.registerHandler(SdkSerialCommands.send, _handleSend);
     runManager.registerHandler(
       SdkSerialCommands.sendCommand,
@@ -138,8 +134,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     void Function(Map<String, dynamic>) respond,
   ) async {
     final payload = _payload(envelope);
-    final port =
-        payload['port']?.toString() ?? payload['path']?.toString();
+    final port = payload['port']?.toString() ?? payload['path']?.toString();
     if (port == null || port.isEmpty) {
       _respondError(envelope, respond, 'Missing serial port');
       return;
@@ -213,8 +208,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       return;
     }
     final payload = _payload(envelope);
-    final timeoutMs =
-        (payload['timeout_ms'] as num?)?.toInt() ?? 1000;
+    final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 1000;
     final maxBytes = (payload['max_bytes'] as num?)?.toInt();
     final buffer = <int>[];
     final completer = Completer<void>();
@@ -243,10 +237,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
     _respondOk(
       envelope,
       respond,
-      data: {
-        'data': data,
-        'text': utf8.decode(data, allowMalformed: true),
-      },
+      data: {'data': data, 'text': utf8.decode(data, allowMalformed: true)},
     );
   }
 
@@ -260,8 +251,7 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
       _respondError(envelope, respond, 'Missing Python code');
       return;
     }
-    final timeoutMs =
-        (payload['timeout_ms'] as num?)?.toInt() ?? 20000;
+    final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 20000;
     try {
       final output = await runPythonOnDevice(
         ref,
@@ -330,7 +320,4 @@ class SdkSerial extends StateNotifier<PluginRunManager?> {
   }
 }
 
-final sdkSerialProvider =
-    StateNotifierProvider<SdkSerial, PluginRunManager?>((ref) {
-  return SdkSerial(ref);
-});
+final Provider<SdkSerial> sdkSerialProvider = Provider(SdkSerial.new);

@@ -1,0 +1,9 @@
+manifest_version = 1
+id = "manifest-v1"
+name = "Manifest V1"
+version = "1.0.0"
+type = "service"
+protocol_version = 1
+activation_events = []
+permissions = ["file.read"]
+platforms = ["windows"]

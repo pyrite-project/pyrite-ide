@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
@@ -161,7 +163,7 @@ Future<PluginPersistedData> _extractPluginPackage(
     await extractArchiveToDisk(archive, destination.path);
     final manifest = PluginTomlParser.parseFromDirectory(destination);
     final entryPoint = File(path.join(destination.path, '__main__.py'));
-    if (manifest == null || !await entryPoint.exists()) {
+    if (!await entryPoint.exists()) {
       throw const FormatException('Invalid plugin package');
     }
     _pluginChild(destination, manifest.id);
@@ -199,6 +201,36 @@ Plugin _mergePluginUpdate(PluginPersistedData manifest, Plugin? current) {
   );
 }
 
+Plugin _readActivePluginMetadata(
+  Directory root,
+  String pluginId,
+  Plugin? current,
+  PluginStatus? intendedStatus,
+) {
+  final active = _pluginChild(
+    Directory(path.join(root.path, _pluginDirectoryName)),
+    pluginId,
+  );
+  final parsed = PluginTomlParser.parseFromDirectory(active);
+  if (parsed.id != pluginId ||
+      !File(path.join(active.path, '__main__.py')).existsSync()) {
+    throw const PluginManifestException(
+      PluginManifestErrorCode.invalidSchema,
+      'Active package identity or entry point is invalid',
+    );
+  }
+  final plugin = parsed.toPlugin();
+  return plugin.copyWith(
+    status: _persistablePluginStatus(
+      intendedStatus ?? current?.status ?? plugin.status,
+    ),
+    permissions: restrictPluginPermissions(
+      current?.permissions ?? plugin.permissions,
+      plugin.declaredPermissions,
+    ),
+  );
+}
+
 PluginStatus _persistablePluginStatus(PluginStatus status) {
   return status == PluginStatus.installing ? PluginStatus.usable : status;
 }
@@ -232,14 +264,24 @@ Future<Set<String>> _recoverPendingBackups(Directory updatesRoot) async {
   return failed;
 }
 
-Future<Set<String>> _recoverActiveBackups(
+class _ActiveRecoveryResult {
+  const _ActiveRecoveryResult(this.blocked, this.manifestErrors);
+
+  final Set<String> blocked;
+  final Map<String, String> manifestErrors;
+}
+
+Future<_ActiveRecoveryResult> _recoverActiveBackups(
   Directory root,
   Directory updatesRoot,
+  Iterable<PluginManifestV2> installedManifests,
 ) async {
   final backupsRoot = Directory(
     path.join(updatesRoot.path, _activeBackupsDirectoryName),
   );
-  if (!await backupsRoot.exists()) return {};
+  if (!await backupsRoot.exists()) {
+    return const _ActiveRecoveryResult(<String>{}, <String, String>{});
+  }
 
   final activeRoot = await Directory(
     path.join(root.path, _pluginDirectoryName),
@@ -249,30 +291,68 @@ Future<Set<String>> _recoverActiveBackups(
   ).create(recursive: true);
   final trashRoot = Directory(path.join(updatesRoot.path, _trashDirectoryName));
   final failed = <String>{};
+  final manifestErrors = <String, String>{};
+  final recoveredManifests = <PluginManifestV2>[];
   await for (final backup in backupsRoot.list(followLinks: false)) {
     if (backup is! Directory) continue;
     final pluginId = path.basename(backup.path);
     try {
       final active = _pluginChild(activeRoot, pluginId);
       final pending = _pluginChild(pendingRoot, pluginId);
+      late final Directory candidate;
       if (!await active.exists()) {
         if (!await pending.exists()) {
           throw StateError(
             'Plugin transaction has no active or pending package',
           );
         }
-        await pending.rename(active.path);
+        candidate = pending;
       } else if (await pending.exists()) {
         throw StateError('Plugin transaction has two candidate packages');
+      } else {
+        candidate = active;
       }
+      final parsed = PluginTomlParser.parseFromDirectory(candidate);
+      if (parsed.id != pluginId ||
+          !await File(path.join(candidate.path, '__main__.py')).exists()) {
+        throw const PluginManifestException(
+          PluginManifestErrorCode.invalidSchema,
+          'Recovered package identity or entry point is invalid',
+        );
+      }
+      final manifest = parsed.manifest!;
+      final otherManifests = [
+        ...installedManifests.where((value) => value.id != pluginId),
+        ...recoveredManifests.where((value) => value.id != pluginId),
+      ];
+      if (otherManifests.any(
+        (value) =>
+            value.id != manifest.id &&
+            value.id.toLowerCase() == manifest.id.toLowerCase(),
+      )) {
+        throw const PluginManifestException(
+          PluginManifestErrorCode.contributionConflict,
+          'Recovered plugin ID conflicts with an installed plugin',
+        );
+      }
+      PluginManifestValidator().validateNoConflicts(manifest, otherManifests);
+      if (!await active.exists()) await pending.rename(active.path);
       await _restoreUserDirectories(backup, active, trashRoot);
       await _trashDirectory(backup, trashRoot);
+      recoveredManifests.add(manifest);
+    } on PluginManifestException catch (error) {
+      failed.add(pluginId);
+      manifestErrors[pluginId] = error.code;
+      debugPrint(
+        'PluginManager: Failed to recover $pluginId '
+        '[${error.code}]: ${error.message}',
+      );
     } catch (error) {
       failed.add(pluginId);
       debugPrint('PluginManager: Failed to recover $pluginId: $error');
     }
   }
-  return failed;
+  return _ActiveRecoveryResult(failed, manifestErrors);
 }
 
 Future<void> _replacePendingPackage(
@@ -387,14 +467,94 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       plugin.copyWith(status: _intendedStatuses[plugin.id] ?? plugin.status),
   ]);
 
+  void _syncHostContributions([Map<String, Plugin>? plugins]) {
+    ref
+        .read(contributionRegistryProvider)
+        .replaceAll(
+          (plugins ?? state).values
+              .where((plugin) => plugin.status == PluginStatus.usable)
+              .map((plugin) => plugin.manifest)
+              .whereType<PluginManifestV2>(),
+          deferNotification: true,
+        );
+  }
+
   void loadPersisted(List<PluginPersistedData> plugins) {
     _intendedStatuses.clear();
-    state = {
-      for (final plugin in plugins)
-        plugin.id: plugin.toPlugin().copyWith(
-          status: _persistablePluginStatus(plugin.toPlugin().status),
+    final candidates = plugins.map((plugin) => plugin.toPlugin()).toList();
+    final errors = <int, String>{};
+    final pluginIdOwners = <String, List<int>>{};
+    final contributionIdOwners = <String, List<int>>{};
+    final validator = PluginManifestValidator();
+
+    for (var index = 0; index < candidates.length; index++) {
+      final candidate = candidates[index];
+      final manifest = candidate.manifest;
+      if (manifest == null) {
+        errors[index] =
+            candidate.manifestErrorCode ??
+            PluginManifestErrorCode.missingVersion;
+        continue;
+      }
+      try {
+        validator.validate(manifest);
+      } on PluginManifestException catch (error) {
+        errors[index] = error.code;
+        continue;
+      }
+      pluginIdOwners
+          .putIfAbsent(candidate.id.toLowerCase(), () => <int>[])
+          .add(index);
+      for (final id in manifest.contributes.ids) {
+        contributionIdOwners
+            .putIfAbsent(id.toLowerCase(), () => <int>[])
+            .add(index);
+      }
+    }
+
+    for (final owners in [
+      ...pluginIdOwners.values,
+      ...contributionIdOwners.values,
+    ]) {
+      if (owners.length < 2) continue;
+      for (final owner in owners) {
+        errors[owner] = PluginManifestErrorCode.contributionConflict;
+      }
+    }
+
+    final indexes = List<int>.generate(candidates.length, (index) => index)
+      ..sort((left, right) {
+        final leftId = candidates[left].id;
+        final rightId = candidates[right].id;
+        final insensitive = leftId.toLowerCase().compareTo(
+          rightId.toLowerCase(),
+        );
+        if (insensitive != 0) return insensitive;
+        final sensitive = leftId.compareTo(rightId);
+        return sensitive != 0 ? sensitive : left.compareTo(right);
+      });
+    final restored = <String, Plugin>{};
+    for (final index in indexes) {
+      final candidate = candidates[index];
+      final error = errors[index];
+      restored.putIfAbsent(
+        candidate.id,
+        () => candidate.copyWith(
+          status: error == null
+              ? _persistablePluginStatus(candidate.status)
+              : PluginStatus.disabled,
+          manifestErrorCode: error,
         ),
-    };
+      );
+    }
+    state = restored;
+    _syncHostContributions();
+    for (final plugin in state.values) {
+      if (plugin.status != PluginStatus.usable) {
+        _disableContributions(plugin.id);
+      }
+    }
+    _removeOrphanContributions();
   }
 
   Future<void> applyPendingChanges() => _runExclusive(_applyPendingChanges);
@@ -415,6 +575,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       path.join(root.path, _pluginUpdatesDirectoryName),
     );
     if (!await updatesRoot.exists()) {
+      _syncHostContributions();
       _removeOrphanContributions();
       return;
     }
@@ -424,8 +585,27 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     );
     await _deleteDirectory(trashRoot);
     final pendingBlocked = await _recoverPendingBackups(updatesRoot);
-    final activeBlocked = await _recoverActiveBackups(root, updatesRoot);
-    final blocked = {...pendingBlocked, ...activeBlocked};
+    final activeRecovery = await _recoverActiveBackups(
+      root,
+      updatesRoot,
+      state.values
+          .map((plugin) => plugin.manifest)
+          .whereType<PluginManifestV2>(),
+    );
+    final blocked = {...pendingBlocked, ...activeRecovery.blocked};
+    if (activeRecovery.blocked.isNotEmpty) {
+      state = {
+        for (final entry in state.entries)
+          entry.key: activeRecovery.blocked.contains(entry.key)
+              ? entry.value.copyWith(
+                  status: PluginStatus.disabled,
+                  manifestErrorCode:
+                      activeRecovery.manifestErrors[entry.key] ??
+                      entry.value.manifestErrorCode,
+                )
+              : entry.value,
+      };
+    }
     await _deleteDirectory(
       Directory(path.join(updatesRoot.path, _stagingDirectoryName)),
     );
@@ -490,12 +670,34 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       for (final pending in packages.whereType<Directory>()) {
         final pluginId = path.basename(pending.path);
         if (blocked.contains(pluginId)) continue;
-        final manifest = PluginTomlParser.parseFromDirectory(pending);
+        late final PluginPersistedData manifest;
+        try {
+          manifest = PluginTomlParser.parseFromDirectory(pending);
+        } on PluginManifestException catch (error) {
+          debugPrint(
+            'PluginManager: Invalid pending package $pluginId '
+            '[${error.code}]: ${error.message}',
+          );
+          continue;
+        }
         final entryPoint = File(path.join(pending.path, '__main__.py'));
-        if (manifest == null ||
-            manifest.id != pluginId ||
-            !await entryPoint.exists()) {
+        if (manifest.id != pluginId || !await entryPoint.exists()) {
           debugPrint('PluginManager: Invalid pending package $pluginId');
+          continue;
+        }
+        try {
+          PluginManifestValidator().validateNoConflicts(
+            manifest.manifest!,
+            state.values
+                .where((plugin) => plugin.id != pluginId)
+                .map((plugin) => plugin.manifest)
+                .whereType<PluginManifestV2>(),
+          );
+        } on PluginManifestException catch (error) {
+          debugPrint(
+            'PluginManager: Conflicting pending package $pluginId '
+            '[${error.code}]: ${error.message}',
+          );
           continue;
         }
 
@@ -510,50 +712,98 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           state = next;
         } catch (error) {
           if (metadataSaved) {
-            state = {
-              ...state,
-              pluginId: updated.copyWith(
-                status: _persistablePluginStatus(updated.status),
-              ),
-            };
+            late Plugin rollbackPlugin;
+            try {
+              rollbackPlugin = _readActivePluginMetadata(
+                root,
+                pluginId,
+                state[pluginId],
+                _intendedStatuses[pluginId],
+              );
+            } catch (rollbackError) {
+              final current = state[pluginId] ?? updated;
+              rollbackPlugin = current.copyWith(
+                status: PluginStatus.disabled,
+                manifestErrorCode: rollbackError is PluginManifestException
+                    ? rollbackError.code
+                    : PluginManifestErrorCode.invalidSchema,
+              );
+              debugPrint(
+                'PluginManager: Failed to read active metadata for '
+                '$pluginId: $rollbackError',
+              );
+            }
+            final rollbackState = {...state, pluginId: rollbackPlugin};
+            state = rollbackState;
+            try {
+              await _save(rollbackState.values);
+            } catch (rollbackError) {
+              debugPrint(
+                'PluginManager: Failed to restore metadata for '
+                '$pluginId: $rollbackError',
+              );
+            }
           }
           debugPrint('PluginManager: Failed to apply $pluginId: $error');
         }
       }
     }
+    _syncHostContributions();
     _removeOrphanContributions();
   }
 
   Future<void> autoStart() async {
-    for (final plugin in state.values) {
-      if (plugin.status != PluginStatus.usable) continue;
-      if (plugin.type == PluginType.data) {
-        await ref.read(pluginRunManagerProvider.notifier).runOnce(plugin);
-      } else if (plugin.autoStart) {
-        await ref.read(pluginRunManagerProvider.notifier).start(plugin);
-      }
-    }
+    await ref
+        .read(activationManagerProvider.notifier)
+        .activateOnStartup(state.values);
   }
 
   Future<void> changeStatus(String id, PluginStatus status) async {
     final plugin = state[id];
     if (plugin == null) return;
+    if (status == PluginStatus.usable) {
+      final manifest = plugin.manifest;
+      if (manifest == null) {
+        throw PluginManifestException(
+          plugin.manifestErrorCode ?? PluginManifestErrorCode.missingVersion,
+          'Plugin $id does not have a valid Manifest v2',
+        );
+      }
+      final validator = PluginManifestValidator()..validate(manifest);
+      validator.validateNoConflicts(
+        manifest,
+        state.values
+            .where((candidate) => candidate.id != id)
+            .map((candidate) => candidate.manifest)
+            .whereType<PluginManifestV2>(),
+      );
+    }
     if (status == PluginStatus.disabled) {
-      unawaited(ref.read(pluginRunManagerProvider.notifier).stop(plugin));
       _disableContributions(id);
     }
-    final updated = plugin.copyWith(status: status);
+    final updated = plugin.copyWith(
+      status: status,
+      manifestErrorCode: status == PluginStatus.usable
+          ? null
+          : plugin.manifestErrorCode,
+    );
     _intendedStatuses.remove(id);
-    state = {...state, id: updated};
-    if (status == PluginStatus.usable && updated.type == PluginType.data) {
-      await ref.read(pluginRunManagerProvider.notifier).runOnce(updated);
+    final next = {...state, id: updated};
+    _syncHostContributions(next);
+    state = next;
+    if (status == PluginStatus.disabled) {
+      unawaited(
+        ref.read(activationManagerProvider.notifier).deactivate(updated),
+      );
     }
     _onChanged?.call();
   }
 
   void _disableContributions(String pluginId) {
+    final records = ref.read(dataContributionsProvider);
+    if (!records.any((record) => record.pluginId == pluginId)) return;
     ref.read(dataContributionsProvider.notifier).state = [
-      for (final record in ref.read(dataContributionsProvider))
+      for (final record in records)
         if (record.pluginId == pluginId)
           DataContributionRecord(
             pluginId: record.pluginId,
@@ -590,7 +840,16 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
 
   void updatePermissions(String id, Map<String, List<String>> permissions) {
     if (state[id] != null) {
-      state = {...state, id: state[id]!.copyWith(permissions: permissions)};
+      final plugin = state[id]!;
+      state = {
+        ...state,
+        id: plugin.copyWith(
+          permissions: restrictPluginPermissions(
+            permissions,
+            plugin.declaredPermissions,
+          ),
+        ),
+      };
       _onChanged?.call();
     }
   }
@@ -617,13 +876,34 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     );
     final manifest = await _extractPluginPackage(packagePath, staged);
     try {
+      final normalizedManifest = manifest.manifest!;
+      final pendingRoot = await Directory(
+        path.join(updatesRoot.path, _pendingDirectoryName),
+      ).create(recursive: true);
+      final pendingManifests = <PluginManifestV2>[];
+      await for (final entity in pendingRoot.list(followLinks: false)) {
+        if (entity is! Directory) continue;
+        try {
+          final pendingManifest = PluginTomlParser.parseFromDirectory(entity);
+          if (pendingManifest.id != manifest.id &&
+              pendingManifest.id == path.basename(entity.path)) {
+            pendingManifests.add(pendingManifest.manifest!);
+          }
+        } on PluginManifestException {
+          // Invalid pending transactions are handled during cold-start recovery.
+        }
+      }
+      PluginManifestValidator().validateNoConflicts(normalizedManifest, [
+        ...state.values
+            .where((plugin) => plugin.id != manifest.id)
+            .map((plugin) => plugin.manifest)
+            .whereType<PluginManifestV2>(),
+        ...pendingManifests,
+      ]);
       final active = _pluginChild(
         Directory(path.join(root.path, _pluginDirectoryName)),
         manifest.id,
       );
-      final pendingRoot = await Directory(
-        path.join(updatesRoot.path, _pendingDirectoryName),
-      ).create(recursive: true);
       final activeBackupsRoot = Directory(
         path.join(updatesRoot.path, _activeBackupsDirectoryName),
       );
@@ -635,7 +915,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         (id) =>
             id != manifest.id && id.toLowerCase() == manifest.id.toLowerCase(),
       )) {
-        throw const FormatException(
+        throw const PluginManifestException(
+          PluginManifestErrorCode.contributionConflict,
           'Plugin ID conflicts with an installed plugin',
         );
       }
@@ -649,7 +930,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           final name = path.basename(entity.path);
           if (name != manifest.id &&
               name.toLowerCase() == manifest.id.toLowerCase()) {
-            throw const FormatException(
+            throw const PluginManifestException(
+              PluginManifestErrorCode.contributionConflict,
               'Plugin ID conflicts with an installed plugin',
             );
           }
@@ -728,7 +1010,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         await _save(next.values);
         metadataSaved = true;
         await _activatePendingPackage(root, updatesRoot, manifest.id);
-        state = {...state, manifest.id: installed};
+        _syncHostContributions(next);
+        state = next;
 
         if (installed.type == PluginType.data) {
           await ref.read(pluginRunManagerProvider.notifier).runOnce(installed);
@@ -781,9 +1064,12 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       pluginId: plugin.copyWith(status: PluginStatus.uninstalled),
     };
     _intendedStatuses.remove(pluginId);
+    _syncHostContributions(next);
     state = next;
     _removeContributions(pluginId);
-    unawaited(ref.read(pluginRunManagerProvider.notifier).stop(plugin));
+    unawaited(
+      ref.read(activationManagerProvider.notifier).deactivate(next[pluginId]!),
+    );
 
     final pending = _pluginChild(
       Directory(path.join(updatesRoot.path, _pendingDirectoryName)),
@@ -812,7 +1098,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   }
 
   void restart(Plugin plugin) {
-    unawaited(ref.read(pluginRunManagerProvider.notifier).stop(plugin));
+    unawaited(ref.read(pluginRunManagerProvider.notifier).restart(plugin));
   }
 }
 

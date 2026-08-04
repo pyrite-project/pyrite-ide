@@ -1,0 +1,100 @@
+{
+  "ideInitialize": {
+    "protocolVersion": 1,
+    "pluginId": "minimal-legacy-plugin",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-initialize-1",
+    "replyTo": null,
+    "sequence": 1,
+    "type": "ide.initialize",
+    "payload": {
+      "protocolVersion": 1,
+      "pluginId": "minimal-legacy-plugin",
+      "capabilities": ["sdk.v1"]
+    },
+    "data": null,
+    "timestamp": 1700000000100
+  },
+  "sdkInitialize": {
+    "protocolVersion": 1,
+    "pluginId": "minimal-legacy-plugin",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-initialize-1",
+    "replyTo": "ide-initialize-1",
+    "sequence": 1,
+    "type": "sdk.initialize",
+    "payload": {
+      "protocolVersion": 1,
+      "sdkVersion": "0.0.0",
+      "capabilities": ["sdk.v1"]
+    },
+    "data": null,
+    "timestamp": 1700000000101
+  },
+  "ideInitialized": {
+    "protocolVersion": 1,
+    "pluginId": "minimal-legacy-plugin",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-initialized-1",
+    "replyTo": "sdk-initialize-1",
+    "sequence": 2,
+    "type": "ide.initialized",
+    "payload": {
+      "protocolVersion": 1,
+      "capabilities": ["sdk.v1"]
+    },
+    "data": null,
+    "timestamp": 1700000000102
+  },
+  "sdkReady": {
+    "protocolVersion": 1,
+    "pluginId": "minimal-legacy-plugin",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-ready-1",
+    "replyTo": "ide-initialized-1",
+    "sequence": 2,
+    "type": "sdk.ready",
+    "payload": {
+      "capabilities": ["sdk.v1"]
+    },
+    "data": null,
+    "timestamp": 1700000000103
+  },
+  "ideTimedRequest": {
+    "protocolVersion": 1,
+    "pluginId": "minimal-legacy-plugin",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-command-1",
+    "replyTo": null,
+    "sequence": 3,
+    "type": "ide.command.execute",
+    "payload": {
+      "commandId": "debug.refresh",
+      "args": {},
+      "context": {}
+    },
+    "data": null,
+    "timestamp": 1700000000104,
+    "deadline": 1700000005104
+  },
+  "ideRequestCancel": {
+    "protocolVersion": 1,
+    "pluginId": "minimal-legacy-plugin",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-cancel-1",
+    "replyTo": null,
+    "sequence": 4,
+    "type": "ide.request.cancel",
+    "payload": {
+      "requestId": "ide-command-1"
+    },
+    "data": null,
+    "timestamp": 1700000000105
+  }
+}

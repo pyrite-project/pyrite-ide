@@ -1,0 +1,19 @@
+manifest_version = 2
+id = "minimal-ui"
+name = "Minimal UI"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+activation_events = ["onView:minimal-ui.main"]
+permissions = ["ui.view"]
+platforms = ["windows"]
+
+[[contributes.navigation_containers]]
+id = "minimal-ui"
+title = "Minimal"
+
+[[contributes.views]]
+id = "minimal-ui.main"
+container = "minimal-ui"
+title = "Minimal"
+renderer = "native.tree"

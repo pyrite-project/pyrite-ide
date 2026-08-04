@@ -33,11 +33,9 @@ class PaneHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      constraints: BoxConstraints(
-        minHeight: 40,
-      ),
+      constraints: BoxConstraints(minHeight: 40),
       padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
-    
+
       child: Row(
         children: [
           if (leadingIcon != null) ...[
@@ -49,12 +47,7 @@ class PaneHeader extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                UseText(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  
-                ),
+                UseText(title, maxLines: 1, overflow: TextOverflow.ellipsis),
                 if (subtitle != null && !compact)
                   UseText(
                     subtitle!,
@@ -273,8 +266,9 @@ class StatusBarButton extends StatelessWidget {
       },
     );
 
-    final result =
-        tooltip == null ? child : Tooltip(message: tooltip!, child: child);
+    final result = tooltip == null
+        ? child
+        : Tooltip(message: tooltip!, child: child);
 
     if (fixedWidth != null) {
       return SizedBox(width: fixedWidth, height: 32, child: result);

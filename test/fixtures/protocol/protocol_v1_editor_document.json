@@ -1,0 +1,113 @@
+{
+  "sdkActiveDocumentGet": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-active-get-1",
+    "replyTo": null,
+    "sequence": 20,
+    "type": "sdk.editor.active_document.get",
+    "payload": {},
+    "data": null,
+    "timestamp": 1700000000300
+  },
+  "sdkDocumentSymbols": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-symbols-1",
+    "replyTo": null,
+    "sequence": 21,
+    "type": "sdk.editor.document.symbols",
+    "payload": {
+      "documentId": "doc-7"
+    },
+    "data": null,
+    "timestamp": 1700000000301
+  },
+  "sdkDocumentSymbolsResponse": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-symbols-response-1",
+    "replyTo": "sdk-symbols-1",
+    "sequence": 21,
+    "type": "sdk.response.ok",
+    "payload": {
+      "data": {
+        "documentId": "doc-7",
+        "revision": 18,
+        "stale": false,
+        "symbols": [
+          {
+            "name": "Widget",
+            "kind": 5,
+            "children": [
+              {"name": "build", "kind": 6}
+            ]
+          }
+        ]
+      }
+    },
+    "data": null,
+    "timestamp": 1700000000302
+  },
+  "sdkDocumentReveal": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "sdk-reveal-1",
+    "replyTo": null,
+    "sequence": 22,
+    "type": "sdk.editor.document.reveal",
+    "payload": {
+      "documentId": "doc-7",
+      "line": 42,
+      "column": 4
+    },
+    "data": null,
+    "timestamp": 1700000000303
+  },
+  "ideActiveDocumentChanged": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-active-changed-1",
+    "replyTo": null,
+    "sequence": 23,
+    "type": "ide.event.emit",
+    "payload": {
+      "subscriptionId": "sub-outline-1",
+      "topic": "editor.activeDocument.changed",
+      "events": [
+        {"documentId": "doc-7", "filePath": "/proj/main.py", "languageId": "python", "revision": 18}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000304
+  },
+  "ideDocumentChanged": {
+    "protocolVersion": 1,
+    "pluginId": "python-tools",
+    "sessionId": "session-42",
+    "generation": 3,
+    "requestId": "ide-doc-changed-1",
+    "replyTo": null,
+    "sequence": 24,
+    "type": "ide.event.emit",
+    "payload": {
+      "subscriptionId": "sub-outline-2",
+      "topic": "editor.document.changed",
+      "events": [
+        {"documentId": "doc-7", "revision": 19, "changes": [{"start": 120, "end": 128}]}
+      ]
+    },
+    "data": null,
+    "timestamp": 1700000000305
+  }
+}

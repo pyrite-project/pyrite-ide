@@ -7,14 +7,16 @@ abstract class SdkMessageCommands {
   static const String show = 'sdk.message.show';
 }
 
-class SdkMessageApi extends StateNotifier<PluginRunManager?> {
-  SdkMessageApi(this.ref) : super(null);
+class SdkMessageApi {
+  SdkMessageApi(this.ref);
 
   final Ref ref;
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
-    runManager.registerHandler(SdkMessageCommands.show, _handleShow);
+    runManager.registerHandler(
+      SdkMessageCommands.show,
+      (envelope, respond) => _handleShow(runManager, envelope, respond),
+    );
   }
 
   void _respondOk(
@@ -33,6 +35,7 @@ class SdkMessageApi extends StateNotifier<PluginRunManager?> {
   }
 
   void _handleShow(
+    PluginRunManager runManager,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
@@ -46,7 +49,7 @@ class SdkMessageApi extends StateNotifier<PluginRunManager?> {
 
     final messageType = _parseType(type);
     ref.read(ideMessageProvider.notifier).show(message, type: messageType);
-    _logFallback(type, message);
+    _logFallback(runManager.pluginId, type, message);
     _respondOk(envelope, respond, data: true);
   }
 
@@ -59,21 +62,13 @@ class SdkMessageApi extends StateNotifier<PluginRunManager?> {
     };
   }
 
-  void _logFallback(String type, String message) {
+  void _logFallback(String pluginId, String type, String message) {
     ref
         .read(ideOutputLogProvider.notifier)
-        .add(
-          IdeOutputSource.plugin,
-          '[${state?.pluginId ?? 'plugin'}][$type] $message',
-        );
-  }
-
-  @override
-  void dispose() {
-    state?.unregisterHandler(SdkMessageCommands.show);
-    super.dispose();
+        .add(IdeOutputSource.plugin, '[$pluginId][$type] $message');
   }
 }
 
-final StateNotifierProvider<SdkMessageApi, PluginRunManager?>
-sdkMessageApiProvider = StateNotifierProvider((ref) => SdkMessageApi(ref));
+final Provider<SdkMessageApi> sdkMessageApiProvider = Provider(
+  SdkMessageApi.new,
+);

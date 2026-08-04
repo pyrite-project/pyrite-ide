@@ -37,7 +37,8 @@ LspStubsConfig buildLspStubsConfig(Ref ref) {
       .resolveStubsLayers(configuredLayers);
   final paths = <String>{
     for (final layer in resolvedLayers)
-      if (layer['path']?.toString().isNotEmpty == true) layer['path'].toString(),
+      if (layer['path']?.toString().isNotEmpty == true)
+        layer['path'].toString(),
     for (final path in ref.read(microPythonStubsExtraPaths))
       if (path.trim().isNotEmpty) path.trim(),
   }.toList();
@@ -61,10 +62,7 @@ LspStubsConfig buildLspStubsConfig(Ref ref) {
   final pylspConfiguration = {
     'pylsp': {
       'plugins': {
-        'jedi': {
-          'extra_paths': paths,
-          'prioritize_extra_paths': true,
-        },
+        'jedi': {'extra_paths': paths, 'prioritize_extra_paths': true},
       },
     },
   };

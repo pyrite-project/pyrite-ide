@@ -120,8 +120,7 @@ class TabWidget extends ConsumerWidget {
       child: provider.draggingTabIndex == null
           ? GestureDetector(
               onTap: () {
-                final editorController =
-                    ref.read(tabbedViewControllerProvider);
+                final editorController = ref.read(tabbedViewControllerProvider);
                 if (identical(provider.controller, editorController)) {
                   ref
                       .read(tabbedViewControllerProvider.notifier)

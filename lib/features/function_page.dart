@@ -25,6 +25,13 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
+import 'package:pyrite_ide/core/sdk/command_service.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/menu_resolver.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -130,9 +137,7 @@ class ConsolePage extends ConsumerWidget {
                     if (useWebRepl) {
                       ref.read(webReplProvider.notifier).sendCommand("\x03");
                     } else {
-                      ref
-                          .read(serialProvider.notifier)
-                          .sendCommand("\x03");
+                      ref.read(serialProvider.notifier).sendCommand("\x03");
                     }
                   }
                 : null,
@@ -152,9 +157,7 @@ class ConsolePage extends ConsumerWidget {
                     if (useWebRepl) {
                       ref.read(webReplProvider.notifier).sendCommand("\x04");
                     } else {
-                      ref
-                          .read(serialProvider.notifier)
-                          .sendCommand("\x04");
+                      ref.read(serialProvider.notifier).sendCommand("\x04");
                     }
                   }
                 : null,
@@ -443,6 +446,210 @@ class RailTrailingActions extends StatelessWidget {
   }
 }
 
+const _pluginViewRoute = '/plugin-view';
+
+class _PluginNavigationItem {
+  const _PluginNavigationItem({
+    required this.pluginId,
+    required this.container,
+    required this.viewId,
+    this.pluginIcons,
+  });
+
+  final String pluginId;
+  final PluginNavigationContainerContribution container;
+  final String? viewId;
+  final PluginIconSet? pluginIcons;
+
+  String get route => Uri(
+    path: _pluginViewRoute,
+    queryParameters: {
+      'plugin': pluginId,
+      'container': container.id,
+      if (viewId case final String value) 'view': value,
+    },
+  ).toString();
+}
+
+List<_PluginNavigationItem> _pluginNavigationItems(WidgetRef ref) {
+  final registry = ref.watch(contributionRegistryProvider);
+  final plugins = ref.watch(pluginManagerProvider);
+  final containers = registry.navigation.visible.toList()
+    ..sort((left, right) {
+      final order = left.value.order.compareTo(right.value.order);
+      if (order != 0) return order;
+      final plugin = left.pluginId.compareTo(right.pluginId);
+      if (plugin != 0) return plugin;
+      return left.value.id.compareTo(right.value.id);
+    });
+  return [
+    for (final entry in containers)
+      _PluginNavigationItem(
+        pluginId: entry.pluginId,
+        container: entry.value,
+        viewId: registry.views.visible
+            .where(
+              (view) =>
+                  view.pluginId == entry.pluginId &&
+                  view.value.container == entry.value.id,
+            )
+            .map((view) => view.value.id)
+            .firstOrNull,
+        pluginIcons: plugins[entry.pluginId]?.manifest?.icons,
+      ),
+  ];
+}
+
+Widget _pluginNavigationIcon(WidgetRef ref, _PluginNavigationItem item) {
+  final icon = _pluginNavigationIconCore(item);
+  final enabledPlugins = ref
+      .watch(pluginManagerProvider)
+      .values
+      .where((plugin) => plugin.status == PluginStatus.usable)
+      .map((plugin) => plugin.id)
+      .toSet();
+  final items = ref
+      .watch(menuResolverProvider)
+      .resolve(
+        location: MenuResolver.navigationContext,
+        enabledPluginIds: enabledPlugins,
+      )
+      .where((entry) => entry.pluginId == item.pluginId)
+      .toList(growable: false);
+  if (items.isEmpty) return icon;
+  return Builder(
+    builder: (context) => GestureDetector(
+      onSecondaryTapDown: (details) => _showNavigationContextMenu(
+        context,
+        ref,
+        items,
+        details.globalPosition,
+      ),
+      onLongPress: () {
+        final box = context.findRenderObject() as RenderBox?;
+        final offset = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+        _showNavigationContextMenu(context, ref, items, offset);
+      },
+      child: icon,
+    ),
+  );
+}
+
+Widget _pluginNavigationIconCore(_PluginNavigationItem item) {
+  final icon = item.container.icon;
+  if (icon?.kind == PluginIconKind.material) {
+    return Icon(pluginIcon('material:${icon!.value}'));
+  }
+  final asset = icon?.kind == PluginIconKind.asset
+      ? icon!.value
+      : item.pluginIcons?.monochrome;
+  if (asset == null) return const Icon(Icons.extension_outlined);
+  return PluginAssetImage(
+    pluginId: item.pluginId,
+    assetPath: asset,
+    width: 24,
+    height: 24,
+    monochrome: true,
+    fallback: const Icon(Icons.extension_outlined),
+  );
+}
+
+Future<void> _showNavigationContextMenu(
+  BuildContext context,
+  WidgetRef ref,
+  List<ResolvedMenuItem> items,
+  Offset globalPosition,
+) async {
+  final selected = await showMenu<String>(
+    context: context,
+    position: RelativeRect.fromLTRB(
+      globalPosition.dx,
+      globalPosition.dy,
+      globalPosition.dx,
+      globalPosition.dy,
+    ),
+    items: [
+      for (final item in items)
+        PopupMenuItem<String>(
+          value: item.commandId,
+          enabled: item.enabled,
+          child: Text(item.title),
+        ),
+    ],
+  );
+  if (selected == null || !context.mounted) return;
+  try {
+    await ref.read(commandServiceProvider).execute(selected);
+  } on CommandException catch (error) {
+    debugPrint('Navigation command failed (${error.code}): ${error.message}');
+  }
+}
+
+List<String> _navigationRoutes(
+  List<_PluginNavigationItem> plugins, {
+  required int builtInCount,
+}) => [
+  ...routesName.take(builtInCount),
+  for (final item in plugins) item.route,
+];
+
+int _navigationIndex(
+  GoRouterState state,
+  List<_PluginNavigationItem> plugins, {
+  required int builtInCount,
+}) {
+  final base = routesName
+      .take(builtInCount)
+      .toList()
+      .indexWhere(
+        (route) =>
+            state.matchedLocation == route ||
+            state.matchedLocation.startsWith('$route/'),
+      );
+  if (base >= 0) return base;
+  if (state.matchedLocation == _pluginViewRoute) {
+    final plugin = state.uri.queryParameters['plugin'];
+    final container = state.uri.queryParameters['container'];
+    final index = plugins.indexWhere(
+      (item) => item.pluginId == plugin && item.container.id == container,
+    );
+    if (index >= 0) return builtInCount + index;
+  }
+  return -1;
+}
+
+NavigationRailDestination _pluginRailDestination(
+  WidgetRef ref,
+  _PluginNavigationItem item,
+) => NavigationRailDestination(
+  icon: _pluginNavigationIcon(ref, item),
+  selectedIcon: _pluginNavigationIcon(ref, item),
+  label: Text(item.container.title),
+);
+
+NavigationDrawerDestination _pluginDrawerDestination(
+  WidgetRef ref,
+  _PluginNavigationItem item,
+) => NavigationDrawerDestination(
+  icon: _pluginNavigationIcon(ref, item),
+  selectedIcon: _pluginNavigationIcon(ref, item),
+  label: Text(item.container.title),
+);
+
+List<NavigationRailDestination> pluginNavigationRailDestinations(
+  WidgetRef ref,
+) => [
+  for (final item in _pluginNavigationItems(ref))
+    _pluginRailDestination(ref, item),
+];
+
+List<NavigationDrawerDestination> pluginNavigationDrawerDestinations(
+  WidgetRef ref,
+) => [
+  for (final item in _pluginNavigationItems(ref))
+    _pluginDrawerDestination(ref, item),
+];
+
 class MobileView extends ConsumerWidget {
   const MobileView({super.key, required this.child, required this.state});
 
@@ -451,11 +658,16 @@ class MobileView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pluginItems = _pluginNavigationItems(ref);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = routesName.indexOf(
-        "/${state.matchedLocation.split("/")[1]}",
-      );
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
+      if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
+        selectedIndexValue = 0;
+        ref.read(mobileSelectedIndex.notifier).state = 0;
+        context.go(file);
+        return;
+      }
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
       if (routeIndex != -1 && routeIndex != ref.read(mobileSelectedIndex)) {
@@ -476,7 +688,12 @@ class MobileView extends ConsumerWidget {
     );
   }
 
-  void selectDestination(BuildContext context, WidgetRef ref, int value) {
+  void selectDestination(
+    BuildContext context,
+    WidgetRef ref,
+    int value,
+    List<String> navigationRoutes,
+  ) {
     selectedIndexValue = value;
     ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
     ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
@@ -485,21 +702,27 @@ class MobileView extends ConsumerWidget {
     } else {
       ref.read(desktopSelectedIndex.notifier).state = 0;
     }
-    context.go(routesName[selectedIndexValue]);
+    context.go(navigationRoutes[selectedIndexValue]);
   }
 
   Widget mobileNavigationDrawer(BuildContext context, WidgetRef ref) {
     final selectedIndex = ref.watch(mobileSelectedIndex);
+    final pluginItems = _pluginNavigationItems(ref);
+    final destinations = [
+      ...drawerItems,
+      ...pluginNavigationDrawerDestinations(ref),
+    ];
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     return Builder(
       builder: (drawerContext) {
         return NavigationDrawer(
           selectedIndex:
-              selectedIndex >= 0 && selectedIndex < drawerItems.length
+              selectedIndex >= 0 && selectedIndex < destinations.length
               ? selectedIndex
               : null,
           onDestinationSelected: (value) {
             Navigator.of(drawerContext).pop();
-            selectDestination(context, ref, value);
+            selectDestination(context, ref, value, navigationRoutes);
           },
           children: [
             SafeArea(
@@ -527,7 +750,7 @@ class MobileView extends ConsumerWidget {
                 ),
               ),
             ),
-            ...drawerItems,
+            ...destinations,
           ],
         );
       },
@@ -543,11 +766,16 @@ class TabletView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pluginItems = _pluginNavigationItems(ref);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = routesName.indexOf(
-        "/${state.matchedLocation.split("/")[1]}",
-      );
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
+      if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
+        selectedIndexValue = 0;
+        ref.read(tabletSelectedIndex.notifier).state = 0;
+        context.go(file);
+        return;
+      }
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
       if (routeIndex != -1 && routeIndex != ref.read(tabletSelectedIndex)) {
@@ -575,18 +803,24 @@ class TabletView extends ConsumerWidget {
   }
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
+    final pluginItems = _pluginNavigationItems(ref);
+    final destinations = [
+      ...tabletRailItems,
+      ...pluginNavigationRailDestinations(ref),
+    ];
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     return NavigationRail(
       minWidth: 72,
       backgroundColor: Theme.of(context).colorScheme.surface,
       labelType: NavigationRailLabelType.selected,
-      destinations: tabletRailItems,
+      destinations: destinations,
       selectedIndex: ref.watch(tabletSelectedIndex),
       onDestinationSelected: (value) {
         selectedIndexValue = value;
         ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
         ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
         ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
-        context.go(routesName[selectedIndexValue]);
+        context.go(navigationRoutes[selectedIndexValue]);
       },
     );
   }
@@ -600,14 +834,14 @@ class DesktopView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pluginItems = _pluginNavigationItems(ref);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = routesName.indexOf(
-        "/${state.matchedLocation.split("/")[1]}",
-      );
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 5);
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
-      if (routeIndex >= desktopRailItems.length) {
+      if (routeIndex == -1 || routeIndex >= navigationRoutes.length) {
         selectedIndexValue = 0;
         context.go(file);
         return;
@@ -637,11 +871,17 @@ class DesktopView extends ConsumerWidget {
   }
 
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
+    final pluginItems = _pluginNavigationItems(ref);
+    final destinations = [
+      ...desktopRailItems,
+      ...pluginNavigationRailDestinations(ref),
+    ];
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
     return NavigationRail(
       backgroundColor: Theme.of(context).colorScheme.surface,
       minWidth: 72,
       labelType: NavigationRailLabelType.selected,
-      destinations: desktopRailItems,
+      destinations: destinations,
       selectedIndex: ref.watch(desktopSelectedIndex),
       trailing: const RailTrailingActions(),
       onDestinationSelected: (value) {
@@ -649,7 +889,7 @@ class DesktopView extends ConsumerWidget {
         ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
         ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
         ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
-        context.go(routesName[selectedIndexValue]);
+        context.go(navigationRoutes[selectedIndexValue]);
       },
     );
   }
@@ -1062,41 +1302,41 @@ class EditorToolsBar extends ConsumerWidget {
           controller: scrollController,
           scrollDirection: Axis.horizontal,
           child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showNavigationDrawerButton) ...[
-              const MobileNavigationDrawerButton(),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showNavigationDrawerButton) ...[
+                const MobileNavigationDrawerButton(),
+                const SizedBox(width: 4),
+              ],
+              buildLspState(context, ref),
               const SizedBox(width: 4),
-            ], 
-            buildLspState(context, ref),
-            const SizedBox(width: 4),
-            buildFileState(context, ref),
-            const SizedBox(width: 4),
-            if (!isMobile) ...[
-              buildBoardConnectState(context, ref),
+              buildFileState(context, ref),
               const SizedBox(width: 4),
+              if (!isMobile) ...[
+                buildBoardConnectState(context, ref),
+                const SizedBox(width: 4),
+              ],
+              buildGitState(context, ref),
+              const SizedBox(width: 4),
+              buildConsoleState(context, ref),
+              const SizedBox(width: 4),
+              if (ref.watch(fileTransferProgressProvider).isActive) ...[
+                buildTransferState(context, ref),
+                const SizedBox(width: 4),
+              ],
+              // Running operations from the registry
+              for (final op in runningOps) ...[
+                _buildRunningOperation(context, ref, op),
+                const SizedBox(width: 4),
+              ],
+              // Externally registered items
+              for (final entry in registryItems) ...[
+                entry.builder(context),
+                const SizedBox(width: 4),
+              ],
             ],
-            buildGitState(context, ref),
-            const SizedBox(width: 4),
-            buildConsoleState(context, ref),
-            const SizedBox(width: 4),
-            if (ref.watch(fileTransferProgressProvider).isActive) ...[
-              buildTransferState(context, ref),
-              const SizedBox(width: 4),
-            ],
-            // Running operations from the registry
-            for (final op in runningOps) ...[
-              _buildRunningOperation(context, ref, op),
-              const SizedBox(width: 4),
-            ],
-            // Externally registered items
-            for (final entry in registryItems) ...[
-              entry.builder(context),
-              const SizedBox(width: 4),
-            ],
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -1160,11 +1400,9 @@ class EditorToolsBar extends ConsumerWidget {
     final percent = transfer.progress == null
         ? ''
         : ' ${(transfer.progress! * 100).round()}%';
-    final speed = transfer.bytesPerSecond != null &&
-            transfer.bytesPerSecond! > 0
-        ? ' ${transfer.bytesPerSecond! >= 1024
-            ? '${(transfer.bytesPerSecond! / 1024).toStringAsFixed(1)}KB/s'
-            : '${transfer.bytesPerSecond!.round()}B/s'}'
+    final speed =
+        transfer.bytesPerSecond != null && transfer.bytesPerSecond! > 0
+        ? ' ${transfer.bytesPerSecond! >= 1024 ? '${(transfer.bytesPerSecond! / 1024).toStringAsFixed(1)}KB/s' : '${transfer.bytesPerSecond!.round()}B/s'}'
         : '';
     final dirKey = switch (transfer.direction) {
       FileTransferDirection.upload => I18nKey.editorToolbarUpload,
@@ -1367,9 +1605,9 @@ class EditorToolsBar extends ConsumerWidget {
           const SizedBox(width: 6),
           Text(
             op.label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
           ),
           if (op.canInterrupt) ...[
             const SizedBox(width: 4),

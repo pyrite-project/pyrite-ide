@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 
-final dataContributionsProvider =
-    StateProvider<List<DataContributionRecord>>((ref) => const []);
+final dataContributionsProvider = StateProvider<List<DataContributionRecord>>(
+  (ref) => const [],
+);
 
 class StubsProfileEntry {
   const StubsProfileEntry({
@@ -71,15 +72,24 @@ class StubsProviderEntry {
 
   factory StubsProviderEntry.fromJson(Map<String, dynamic> json) {
     return StubsProviderEntry(
-      pluginId: json['plugin_id']?.toString() ?? json['pluginId']?.toString() ?? '',
-      providerId: json['provider_id']?.toString() ?? json['providerId']?.toString() ?? '',
+      pluginId:
+          json['plugin_id']?.toString() ?? json['pluginId']?.toString() ?? '',
+      providerId:
+          json['provider_id']?.toString() ??
+          json['providerId']?.toString() ??
+          '',
       kind: json['kind']?.toString() ?? 'micropython',
       version: json['version']?.toString() ?? '',
       profiles: (json['profiles'] as List? ?? const [])
           .whereType<Map>()
-          .map((item) => StubsProfileEntry.fromMap(Map<String, dynamic>.from(item)))
+          .map(
+            (item) =>
+                StubsProfileEntry.fromMap(Map<String, dynamic>.from(item)),
+          )
           .toList(),
-      aliases: (json['aliases'] as List? ?? const []).map((item) => item.toString()).toList(),
+      aliases: (json['aliases'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
       metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
     );
   }
@@ -296,5 +306,4 @@ class DataRegistry extends ChangeNotifier {
   }
 }
 
-final dataRegistryProvider =
-    ChangeNotifierProvider((ref) => DataRegistry());
+final dataRegistryProvider = ChangeNotifierProvider((ref) => DataRegistry());

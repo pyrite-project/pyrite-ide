@@ -4,6 +4,7 @@ import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/pages/file/main.dart';
 import 'package:pyrite_ide/pages/git/main.dart' deferred as git_page;
+import 'package:pyrite_ide/pages/plugins/detail.dart';
 import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/plugins/monitor.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
@@ -91,10 +92,13 @@ GoRouter routes = GoRouter(
               topCustomTransitionPage(child: Plugins(), state: state),
           routes: [
             GoRoute(
-              path: '/body',
+              path: '/detail',
               builder: (context, state) {
                 final id = state.uri.queryParameters['id'];
-                return PluginBody(pluginId: id!);
+                if (id == null || id.isEmpty) {
+                  return const Scaffold(body: Center(child: Text('插件不存在')));
+                }
+                return PluginDetailPage(pluginId: id);
               },
             ),
             GoRoute(
@@ -102,6 +106,24 @@ GoRouter routes = GoRouter(
               builder: (context, state) => const PermissionMonitor(),
             ),
           ],
+        ),
+        GoRoute(
+          path: '/plugin-view',
+          builder: (context, state) {
+            final pluginId = state.uri.queryParameters['plugin'];
+            final containerId = state.uri.queryParameters['container'];
+            if (pluginId == null ||
+                pluginId.isEmpty ||
+                containerId == null ||
+                containerId.isEmpty) {
+              return const Center(child: Text('插件视图不可用'));
+            }
+            return PluginViewHost(
+              pluginId: pluginId,
+              containerId: containerId,
+              viewId: state.uri.queryParameters['view'],
+            );
+          },
         ),
         GoRoute(
           path: '/settings',

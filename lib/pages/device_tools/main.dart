@@ -40,12 +40,10 @@ class _ToolsState extends ConsumerState<Tools> {
             state.selectedPortName,
             compact: widget.compact,
             onDisconnect: state.isConnected
-                ? () =>
-                      ref.read(serialProvider.notifier).disconnectPort()
+                ? () => ref.read(serialProvider.notifier).disconnectPort()
                 : null,
             onDeviceStatus: state.isConnected
-                ? () =>
-                      setState(() => _showDeviceStatus = !_showDeviceStatus)
+                ? () => setState(() => _showDeviceStatus = !_showDeviceStatus)
                 : null,
             showDeviceStatus: _showDeviceStatus,
           ),
@@ -70,8 +68,7 @@ class _ToolsState extends ConsumerState<Tools> {
               title: I18nKey.devicesEmptySerialTitle,
               message: I18nKey.devicesEmptySerialMessage,
               actionLabel: I18nKey.devicesRefreshSerial,
-              onAction: () =>
-                  ref.read(serialProvider.notifier).refresh(),
+              onAction: () => ref.read(serialProvider.notifier).refresh(),
             ),
           )
         else
@@ -143,9 +140,7 @@ class _ToolsState extends ConsumerState<Tools> {
           Row(
             children: [
               Icon(
-                isConnected
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked,
+                isConnected ? Icons.check_circle : Icons.radio_button_unchecked,
                 color: isConnected
                     ? scheme.onPrimaryContainer
                     : scheme.onSurfaceVariant,
@@ -163,15 +158,13 @@ class _ToolsState extends ConsumerState<Tools> {
                     ),
                     UseText(
                       isConnected
-                          ? selectedPortName ??
-                                I18nKey.devicesSerialConnected
+                          ? selectedPortName ?? I18nKey.devicesSerialConnected
                           : I18nKey.devicesConnectionHint,
-                      style:
-                          Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: isConnected
-                                    ? scheme.onPrimaryContainer
-                                    : scheme.onSurfaceVariant,
-                              ),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: isConnected
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -215,11 +208,7 @@ class _ToolsState extends ConsumerState<Tools> {
     );
   }
 
-  Widget buildDetailListTile(
-    BuildContext context,
-    String name,
-    String? value,
-  ) {
+  Widget buildDetailListTile(BuildContext context, String name, String? value) {
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,

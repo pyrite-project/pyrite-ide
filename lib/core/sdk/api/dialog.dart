@@ -8,13 +8,11 @@ abstract class SdkDialogCommands {
   static const String openFolder = 'sdk.dialog.open_folder';
 }
 
-class SdkDialog extends StateNotifier<PluginRunManager?> {
+class SdkDialog {
   final Ref ref;
-  SdkDialog(this.ref) : super(null);
+  SdkDialog(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
-
     // File selection
     runManager.registerHandler(SdkDialogCommands.openFolder, _handleOpenFolder);
   }
@@ -79,14 +77,6 @@ class SdkDialog extends StateNotifier<PluginRunManager?> {
     if (string == null || string.isEmpty) return null;
     return string;
   }
-
-  @override
-  void dispose() {
-    // Text Content
-    state?.unregisterHandler(SdkDialogCommands.openFolder);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkDialog, PluginRunManager?> sdkDialogProvider =
-    StateNotifierProvider((ref) => SdkDialog(ref));
+final Provider<SdkDialog> sdkDialogProvider = Provider(SdkDialog.new);

@@ -1,0 +1,20 @@
+manifest_version = 2
+id = "integer-overflow"
+name = "Integer Overflow"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+activation_events = ["onView:integer-overflow.main"]
+permissions = ["ui.view"]
+platforms = ["windows"]
+
+[[contributes.navigation_containers]]
+id = "integer-overflow"
+title = "Integer Overflow"
+
+[[contributes.views]]
+id = "integer-overflow.main"
+container = "integer-overflow"
+title = "Integer Overflow"
+renderer = "native.form"
+order = 9223372036854775808

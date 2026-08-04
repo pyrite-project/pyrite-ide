@@ -1,0 +1,9 @@
+manifest_version = 2
+id = "missing-navigation"
+name = "Missing Navigation"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+activation_events = []
+permissions = ["ui.view"]
+platforms = ["windows"]

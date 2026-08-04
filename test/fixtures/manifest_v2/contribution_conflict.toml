@@ -1,0 +1,19 @@
+manifest_version = 2
+id = "contribution-conflict"
+name = "Contribution Conflict"
+version = "1.0.0"
+type = "service"
+protocol_version = 1
+activation_events = []
+permissions = ["settings.read"]
+platforms = ["windows"]
+
+[[contributes.commands]]
+id = "contribution-conflict.shared"
+title = "Shared Command"
+
+[[contributes.configuration]]
+id = "contribution-conflict.shared"
+title = "Shared Setting"
+type = "boolean"
+default = true

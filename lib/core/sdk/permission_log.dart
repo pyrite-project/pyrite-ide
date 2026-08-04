@@ -6,35 +6,51 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+enum PermissionDecision { allowed, denied, unknown }
+
 class PermissionLogEntry {
   final String pluginId;
   final String command;
   final String required;
-  final bool granted;
+  final PermissionDecision decision;
   final int timestamp;
+
+  bool get granted => decision == PermissionDecision.allowed;
 
   PermissionLogEntry({
     required this.pluginId,
     required this.command,
     required this.required,
-    required this.granted,
+    bool? granted,
+    PermissionDecision? decision,
     int? timestamp,
-  }) : timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
+  }) : decision =
+           decision ??
+           (granted == true
+               ? PermissionDecision.allowed
+               : PermissionDecision.denied),
+       timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> toJson() => {
-        'pluginId': pluginId,
-        'command': command,
-        'required': required,
-        'granted': granted,
-        'timestamp': timestamp,
-      };
+    'pluginId': pluginId,
+    'command': command,
+    'required': required,
+    'granted': granted,
+    'decision': decision.name,
+    'timestamp': timestamp,
+  };
 
   factory PermissionLogEntry.fromJson(Map<String, dynamic> json) {
     return PermissionLogEntry(
       pluginId: json['pluginId'] as String? ?? '',
       command: json['command'] as String? ?? '',
       required: json['required'] as String? ?? '',
-      granted: json['granted'] as bool? ?? false,
+      decision: PermissionDecision.values.firstWhere(
+        (decision) => decision.name == json['decision'],
+        orElse: () => json['granted'] == true
+            ? PermissionDecision.allowed
+            : PermissionDecision.denied,
+      ),
       timestamp: json['timestamp'] as int? ?? 0,
     );
   }
@@ -65,9 +81,9 @@ class PermissionLogService extends ChangeNotifier {
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final list = json['logs'] as List<dynamic>? ?? [];
       _entries.clear();
-      _entries.addAll(list.map(
-        (e) => PermissionLogEntry.fromJson(e as Map<String, dynamic>),
-      ));
+      _entries.addAll(
+        list.map((e) => PermissionLogEntry.fromJson(e as Map<String, dynamic>)),
+      );
     } catch (e) {
       debugPrint('PermissionLogService: Failed to load: $e');
     }
@@ -100,9 +116,9 @@ class PermissionLogService extends ChangeNotifier {
     _dirty = false;
     try {
       final file = await _file;
-      await file.writeAsString(jsonEncode({
-        'logs': _entries.map((e) => e.toJson()).toList(),
-      }));
+      await file.writeAsString(
+        jsonEncode({'logs': _entries.map((e) => e.toJson()).toList()}),
+      );
     } catch (e) {
       debugPrint('PermissionLogService: Failed to flush: $e');
     }
@@ -118,5 +134,5 @@ class PermissionLogService extends ChangeNotifier {
 
 final permissionLogServiceProvider =
     ChangeNotifierProvider<PermissionLogService>(
-  (ref) => PermissionLogService(),
-);
+      (ref) => PermissionLogService(),
+    );

@@ -1,64 +1,138 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/sdk/api/persistence.dart';
 import 'package:pyrite_ide/core/sdk/api/settings_api.dart';
 import 'package:pyrite_ide/core/sdk/permissions.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
-class _SettingsHarness {
-  _SettingsHarness._();
+class _SettingsTransport implements PluginTransport {
+  final StreamController<Uint8List> _messages =
+      StreamController<Uint8List>.broadcast();
+  final StreamController<PluginTransportState> _states =
+      StreamController<PluginTransportState>.broadcast();
+  FutureOr<void> Function(Uint8List message)? onSend;
+  bool _closed = false;
 
-  final ProviderContainer container = ProviderContainer();
+  @override
+  String get type => 'Fake';
+
+  @override
+  Stream<Uint8List> get messages => _messages.stream;
+
+  @override
+  Stream<PluginTransportState> get states => _states.stream;
+
+  @override
+  Future<void> start() async {
+    if (_closed) throw StateError('Settings transport is closed');
+    _states.add(PluginTransportState.connecting);
+    _states.add(PluginTransportState.ready);
+  }
+
+  @override
+  Future<void> send(Uint8List message) async {
+    if (_closed) throw StateError('Settings transport is closed');
+    await onSend?.call(message);
+  }
+
+  void emit(Map<String, dynamic> envelope) {
+    _messages.add(Uint8List.fromList(utf8.encode(jsonEncode(envelope))));
+  }
+
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    _states.add(PluginTransportState.closing);
+    _states.add(PluginTransportState.closed);
+    await _messages.close();
+    await _states.close();
+  }
+}
+
+class _SettingsHarness {
+  _SettingsHarness._(this.container, this._ownsContainer);
+
+  final ProviderContainer container;
+  final bool _ownsContainer;
   final StreamController<Map<String, dynamic>> _responses =
       StreamController<Map<String, dynamic>>.broadcast();
 
-  late final HttpServer server;
   late final PluginRunManager manager;
-  late final WebSocket socket;
-  late final StreamSubscription<WebSocket> _serverSubscription;
-  StreamSubscription<dynamic>? _socketSubscription;
+  late final _SettingsTransport transport;
+  int _sdkSequence = 2;
 
   static Future<_SettingsHarness> start({
     Map<String, List<String>> permissions = const {
       'settings': ['read', 'write'],
     },
+    String pluginId = 'settings-test',
+    String assetsPath = '.',
+    ProviderContainer? container,
   }) async {
-    final harness = _SettingsHarness._();
-    harness.server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-
-    final socketReady = Completer<WebSocket>();
-    harness._serverSubscription = harness.server
-        .transform(WebSocketTransformer())
-        .listen((socket) {
-          harness._socketSubscription = socket.listen((message) {
-            harness._responses.add(
-              jsonDecode(message as String) as Map<String, dynamic>,
-            );
-          });
-          if (!socketReady.isCompleted) {
-            socketReady.complete(socket);
-          }
-        });
+    final harness = _SettingsHarness._(
+      container ?? ProviderContainer(),
+      container == null,
+    );
+    harness.transport = _SettingsTransport();
+    harness.transport.onSend = (message) {
+      final envelope = jsonDecode(utf8.decode(message)) as Map<String, dynamic>;
+      switch (envelope['type']) {
+        case IdeCommands.initialize:
+          harness.transport.emit(
+            makeEnvelope(
+              type: SdkCommands.initialize,
+              pluginId: envelope['pluginId'] as String,
+              sessionId: envelope['sessionId'] as String,
+              generation: envelope['generation'] as int,
+              replyTo: envelope['requestId'] as String,
+              sequence: 1,
+              payload: {
+                'protocolVersion': 1,
+                'sdkVersion': 'fixture',
+                'capabilities': ['sdk.v1'],
+              },
+            ),
+          );
+        case IdeCommands.initialized:
+          harness.transport.emit(
+            makeEnvelope(
+              type: SdkCommands.ready,
+              pluginId: envelope['pluginId'] as String,
+              sessionId: envelope['sessionId'] as String,
+              generation: envelope['generation'] as int,
+              replyTo: envelope['requestId'] as String,
+              sequence: 2,
+              payload: {
+                'capabilities': ['sdk.v1'],
+              },
+            ),
+          );
+        default:
+          harness._responses.add(envelope);
+      }
+    };
 
     harness.manager = PluginRunManager(
-      port: harness.server.port,
-      assetsPath: '.',
-      pluginId: 'settings-test',
+      transport: harness.transport,
+      assetsPath: assetsPath,
+      pluginId: pluginId,
       pluginPermissions: permissions,
     );
-    harness.container.read(sdkSettingsProvider.notifier).bind(harness.manager);
+    harness.container.read(sdkSettingsProvider).bind(harness.manager);
+    harness.container.read(sdkPersistenceProvider).bind(harness.manager);
 
     await harness.manager.connect();
-    harness.socket = await socketReady.future.timeout(
-      const Duration(seconds: 5),
-    );
     return harness;
   }
 
@@ -66,11 +140,18 @@ class _SettingsHarness {
     String type, {
     Map<String, dynamic> payload = const {},
   }) async {
-    final envelope = makeEnvelope(type: type, payload: payload);
+    final envelope = makeEnvelope(
+      type: type,
+      payload: payload,
+      pluginId: manager.pluginId,
+      sessionId: manager.sessionId,
+      generation: manager.generation,
+      sequence: ++_sdkSequence,
+    );
     final response = _responses.stream
-        .firstWhere((item) => item['reply_to'] == envelope['id'])
+        .firstWhere((item) => item['replyTo'] == envelope['requestId'])
         .timeout(const Duration(seconds: 5));
-    socket.add(jsonEncode(envelope));
+    transport.emit(envelope);
     return response;
   }
 
@@ -91,19 +172,15 @@ class _SettingsHarness {
 
   Future<void> close() async {
     await manager.stop();
-    await _socketSubscription?.cancel();
-    await socket.close();
-    await _serverSubscription.cancel();
-    await server.close(force: true);
     await _responses.close();
-    container.dispose();
+    if (_ownsContainer) container.dispose();
   }
 }
 
 void _expectOk(Map<String, dynamic> response, dynamic data) {
   expect(response['type'], SdkCommands.responseOk);
   expect(response['payload'], {'data': data});
-  expect(response['reply_to'], isNotEmpty);
+  expect(response['replyTo'], isNotEmpty);
 }
 
 void _expectSettingError(Map<String, dynamic> response, String message) {
@@ -134,7 +211,7 @@ void main() {
     );
   });
 
-  test('theme settings set, get, and list over websocket', () async {
+  test('theme settings set, get, and list over transport', () async {
     final harness = await _SettingsHarness.start();
     addTearDown(harness.close);
     harness.container
@@ -275,7 +352,7 @@ void main() {
     expect(harness.container.read(useMaterialContextMenu), isFalse);
   });
 
-  test('read-only settings permission denies set over websocket', () async {
+  test('read-only settings permission denies set over transport', () async {
     final harness = await _SettingsHarness.start(
       permissions: const {
         'settings': ['read'],
@@ -290,8 +367,109 @@ void main() {
     expect((await harness.list())['type'], SdkCommands.responseOk);
 
     final denied = await harness.set('theme.mode', 'dark');
-    expect(denied['type'], IdeCommands.responseError);
+    expect(denied['type'], SdkCommands.responseError);
+    expect(denied['payload']['code'], 'permission_denied');
     expect(denied['payload']['message'], 'Permission denied: settings:write');
+    expect(denied['payload']['details'], {'required': 'settings:write'});
     expect(harness.container.read(themeMode), ThemeMode.system);
   });
+
+  test('empty and unrelated permissions fail closed', () async {
+    for (final permissions in <Map<String, List<String>>>[
+      const {},
+      const {
+        'editor': ['read'],
+      },
+    ]) {
+      final harness = await _SettingsHarness.start(permissions: permissions);
+      try {
+        final denied = await harness.get('theme.mode');
+        expect(denied['type'], SdkCommands.responseError);
+        expect(denied['payload']['code'], 'permission_denied');
+        expect(denied['payload']['details'], {'required': 'settings:read'});
+      } finally {
+        await harness.close();
+      }
+    }
+  });
+
+  test('unknown SDK command returns a stable error', () async {
+    final harness = await _SettingsHarness.start();
+    addTearDown(harness.close);
+
+    final response = await harness.request('sdk.fixture.missing');
+
+    expect(response['type'], SdkCommands.responseError);
+    expect(response['payload']['code'], 'unknown_command');
+    expect(response['payload']['message'], contains('sdk.fixture.missing'));
+  });
+
+  test(
+    'two plugins keep independent persistence contexts when interleaved',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'pyrite-context-test-',
+      );
+      final secondData = Directory('${root.path}/second/data/shared');
+      await secondData.create(recursive: true);
+      await File(
+        '${secondData.path}/value.json',
+      ).writeAsString(jsonEncode('second'));
+      final container = ProviderContainer();
+      final first = await _SettingsHarness.start(
+        pluginId: 'context-first',
+        assetsPath: '${root.path}/first',
+        permissions: const {
+          'persistence': ['read', 'write'],
+        },
+        container: container,
+      );
+      final second = await _SettingsHarness.start(
+        pluginId: 'context-second',
+        assetsPath: '${root.path}/second',
+        permissions: const {
+          'persistence': ['read'],
+        },
+        container: container,
+      );
+      addTearDown(() async {
+        await first.close();
+        await second.close();
+        container.dispose();
+        await root.delete(recursive: true);
+      });
+
+      final writes = await Future.wait([
+        first.request(
+          SdkPersistenceCommands.set,
+          payload: {'group': 'shared', 'key': 'value', 'value': 'first'},
+        ),
+        second.request(
+          SdkPersistenceCommands.set,
+          payload: {'group': 'shared', 'key': 'value', 'value': 'second'},
+        ),
+      ]);
+      expect(writes[0]['type'], SdkCommands.responseOk);
+      expect(writes[1]['type'], SdkCommands.responseError);
+      expect(writes[1]['payload']['code'], 'permission_denied');
+      expect(writes[1]['payload']['details'], {
+        'required': 'persistence:write',
+      });
+
+      final reads = await Future.wait([
+        second.request(
+          SdkPersistenceCommands.get,
+          payload: {'group': 'shared', 'key': 'value'},
+        ),
+        first.request(
+          SdkPersistenceCommands.get,
+          payload: {'group': 'shared', 'key': 'value'},
+        ),
+      ]);
+
+      expect(reads[0]['payload'], {'data': 'second'});
+      expect(reads[1]['payload'], {'data': 'first'});
+      expect(first.manager.sessionId, isNot(second.manager.sessionId));
+    },
+  );
 }

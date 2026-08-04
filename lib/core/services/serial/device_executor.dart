@@ -840,6 +840,7 @@ Future<T> _runTransaction<T>(
   int interruptIntervalMs = 30,
   Duration settleDelay = const Duration(milliseconds: 150),
   Duration exitSettleDelay = const Duration(milliseconds: 300),
+  String runningOperationId = 'code-exec',
 }) async {
   final mutex = read(replMutexProvider);
   return mutex.runExclusive(() async {
@@ -876,7 +877,7 @@ Future<T> _runTransaction<T>(
     // with interrupt and force-reset buttons.
     read(runningOperationsProvider.notifier).start(
       RunningOperation(
-        id: 'code-exec',
+        id: runningOperationId,
         label: '运行中',
         icon: Icons.play_arrow,
         canInterrupt: true,
@@ -1006,7 +1007,7 @@ Future<T> _runTransaction<T>(
           await Future<void>.delayed(exitSettleDelay);
         }
       } finally {
-        read(runningOperationsProvider.notifier).stop('code-exec');
+        read(runningOperationsProvider.notifier).stop(runningOperationId);
         read(serialReplIoPausedProvider.notifier).state = false;
         debugPrint('[txn] FINALLY done');
       }
@@ -1031,10 +1032,12 @@ Future<String> runPythonOnDevice(
   Ref ref,
   String python, {
   Duration timeout = _defaultTimeout,
+  String runningOperationId = 'code-exec',
 }) {
   return _runTransaction(
     ref.read,
     (session, mode) => session.execute(python, timeout: timeout, mode: mode),
+    runningOperationId: runningOperationId,
     onSetup: (queue) {
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();

@@ -1,3 +1,7 @@
+import 'plugin_manifest.dart';
+
+export 'plugin_manifest.dart';
+
 enum LifecycleHook {
   install("install"),
   start("start"),
@@ -13,9 +17,24 @@ enum LifecycleHook {
   String toString() => value;
 }
 
-enum PluginType { ui, service, data }
-
 enum PluginStatus { usable, installing, disabled, uninstalled }
+
+const _copyWithNotProvided = Object();
+
+Map<String, List<String>> restrictPluginPermissions(
+  Map<String, List<String>> permissions,
+  Map<String, List<String>> declaredPermissions,
+) {
+  return {
+    for (final entry in declaredPermissions.entries)
+      entry.key: [
+        for (final action in entry.value)
+          if (permissions[entry.key]?.contains('*') == true ||
+              permissions[entry.key]?.contains(action) == true)
+            action,
+      ],
+  };
+}
 
 class Plugin {
   const Plugin({
@@ -31,6 +50,9 @@ class Plugin {
     this.platforms = const [],
     this.keepAlive = true,
     this.autoStart = false,
+    this.manifest,
+    this.rawManifest = '',
+    this.manifestErrorCode,
   });
 
   final String id;
@@ -45,6 +67,12 @@ class Plugin {
   final List<String> platforms;
   final bool keepAlive;
   final bool autoStart;
+  final PluginManifestV2? manifest;
+  final String rawManifest;
+  final String? manifestErrorCode;
+
+  PluginContributions get contributions =>
+      manifest?.contributes ?? const PluginContributions();
 
   Plugin copyWith({
     String? id,
@@ -59,6 +87,9 @@ class Plugin {
     List<String>? platforms,
     bool? keepAlive,
     bool? autoStart,
+    PluginManifestV2? manifest,
+    String? rawManifest,
+    Object? manifestErrorCode = _copyWithNotProvided,
   }) {
     return Plugin(
       id: id ?? this.id,
@@ -73,6 +104,11 @@ class Plugin {
       platforms: platforms ?? this.platforms,
       keepAlive: keepAlive ?? this.keepAlive,
       autoStart: autoStart ?? this.autoStart,
+      manifest: manifest ?? this.manifest,
+      rawManifest: rawManifest ?? this.rawManifest,
+      manifestErrorCode: identical(manifestErrorCode, _copyWithNotProvided)
+          ? this.manifestErrorCode
+          : manifestErrorCode as String?,
     );
   }
 

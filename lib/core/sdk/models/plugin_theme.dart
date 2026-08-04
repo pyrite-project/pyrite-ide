@@ -346,8 +346,9 @@ class PluginThemeData {
       colorSecondary: _parseColor(data['color.secondary']),
       colorOnSecondary: _parseColor(data['color.onSecondary']),
       colorSecondaryContainer: _parseColor(data['color.secondaryContainer']),
-      colorOnSecondaryContainer:
-          _parseColor(data['color.onSecondaryContainer']),
+      colorOnSecondaryContainer: _parseColor(
+        data['color.onSecondaryContainer'],
+      ),
       colorTertiary: _parseColor(data['color.tertiary']),
       colorOnTertiary: _parseColor(data['color.onTertiary']),
       colorTertiaryContainer: _parseColor(data['color.tertiaryContainer']),
@@ -360,15 +361,17 @@ class PluginThemeData {
       colorOnSurface: _parseColor(data['color.onSurface']),
       colorSurfaceDim: _parseColor(data['color.surfaceDim']),
       colorSurfaceBright: _parseColor(data['color.surfaceBright']),
-      colorSurfaceContainerLowest:
-          _parseColor(data['color.surfaceContainerLowest']),
-      colorSurfaceContainerLow:
-          _parseColor(data['color.surfaceContainerLow']),
+      colorSurfaceContainerLowest: _parseColor(
+        data['color.surfaceContainerLowest'],
+      ),
+      colorSurfaceContainerLow: _parseColor(data['color.surfaceContainerLow']),
       colorSurfaceContainer: _parseColor(data['color.surfaceContainer']),
-      colorSurfaceContainerHigh:
-          _parseColor(data['color.surfaceContainerHigh']),
-      colorSurfaceContainerHighest:
-          _parseColor(data['color.surfaceContainerHighest']),
+      colorSurfaceContainerHigh: _parseColor(
+        data['color.surfaceContainerHigh'],
+      ),
+      colorSurfaceContainerHighest: _parseColor(
+        data['color.surfaceContainerHighest'],
+      ),
       colorOnSurfaceVariant: _parseColor(data['color.onSurfaceVariant']),
       colorOutline: _parseColor(data['color.outline']),
       colorOutlineVariant: _parseColor(data['color.outlineVariant']),
@@ -380,53 +383,63 @@ class PluginThemeData {
       // Dark colors
       darkColorPrimary: _parseColor(data['dark.color.primary']),
       darkColorOnPrimary: _parseColor(data['dark.color.onPrimary']),
-      darkColorPrimaryContainer:
-          _parseColor(data['dark.color.primaryContainer']),
-      darkColorOnPrimaryContainer:
-          _parseColor(data['dark.color.onPrimaryContainer']),
+      darkColorPrimaryContainer: _parseColor(
+        data['dark.color.primaryContainer'],
+      ),
+      darkColorOnPrimaryContainer: _parseColor(
+        data['dark.color.onPrimaryContainer'],
+      ),
       darkColorSecondary: _parseColor(data['dark.color.secondary']),
       darkColorOnSecondary: _parseColor(data['dark.color.onSecondary']),
-      darkColorSecondaryContainer:
-          _parseColor(data['dark.color.secondaryContainer']),
-      darkColorOnSecondaryContainer:
-          _parseColor(data['dark.color.onSecondaryContainer']),
+      darkColorSecondaryContainer: _parseColor(
+        data['dark.color.secondaryContainer'],
+      ),
+      darkColorOnSecondaryContainer: _parseColor(
+        data['dark.color.onSecondaryContainer'],
+      ),
       darkColorTertiary: _parseColor(data['dark.color.tertiary']),
       darkColorOnTertiary: _parseColor(data['dark.color.onTertiary']),
-      darkColorTertiaryContainer:
-          _parseColor(data['dark.color.tertiaryContainer']),
-      darkColorOnTertiaryContainer:
-          _parseColor(data['dark.color.onTertiaryContainer']),
+      darkColorTertiaryContainer: _parseColor(
+        data['dark.color.tertiaryContainer'],
+      ),
+      darkColorOnTertiaryContainer: _parseColor(
+        data['dark.color.onTertiaryContainer'],
+      ),
       darkColorError: _parseColor(data['dark.color.error']),
       darkColorOnError: _parseColor(data['dark.color.onError']),
-      darkColorErrorContainer:
-          _parseColor(data['dark.color.errorContainer']),
-      darkColorOnErrorContainer:
-          _parseColor(data['dark.color.onErrorContainer']),
+      darkColorErrorContainer: _parseColor(data['dark.color.errorContainer']),
+      darkColorOnErrorContainer: _parseColor(
+        data['dark.color.onErrorContainer'],
+      ),
       darkColorSurface: _parseColor(data['dark.color.surface']),
       darkColorOnSurface: _parseColor(data['dark.color.onSurface']),
       darkColorSurfaceDim: _parseColor(data['dark.color.surfaceDim']),
       darkColorSurfaceBright: _parseColor(data['dark.color.surfaceBright']),
-      darkColorSurfaceContainerLowest:
-          _parseColor(data['dark.color.surfaceContainerLowest']),
-      darkColorSurfaceContainerLow:
-          _parseColor(data['dark.color.surfaceContainerLow']),
-      darkColorSurfaceContainer:
-          _parseColor(data['dark.color.surfaceContainer']),
-      darkColorSurfaceContainerHigh:
-          _parseColor(data['dark.color.surfaceContainerHigh']),
-      darkColorSurfaceContainerHighest:
-          _parseColor(data['dark.color.surfaceContainerHighest']),
-      darkColorOnSurfaceVariant:
-          _parseColor(data['dark.color.onSurfaceVariant']),
+      darkColorSurfaceContainerLowest: _parseColor(
+        data['dark.color.surfaceContainerLowest'],
+      ),
+      darkColorSurfaceContainerLow: _parseColor(
+        data['dark.color.surfaceContainerLow'],
+      ),
+      darkColorSurfaceContainer: _parseColor(
+        data['dark.color.surfaceContainer'],
+      ),
+      darkColorSurfaceContainerHigh: _parseColor(
+        data['dark.color.surfaceContainerHigh'],
+      ),
+      darkColorSurfaceContainerHighest: _parseColor(
+        data['dark.color.surfaceContainerHighest'],
+      ),
+      darkColorOnSurfaceVariant: _parseColor(
+        data['dark.color.onSurfaceVariant'],
+      ),
       darkColorOutline: _parseColor(data['dark.color.outline']),
-      darkColorOutlineVariant:
-          _parseColor(data['dark.color.outlineVariant']),
-      darkColorInverseSurface:
-          _parseColor(data['dark.color.inverseSurface']),
-      darkColorOnInverseSurface:
-          _parseColor(data['dark.color.onInverseSurface']),
-      darkColorInversePrimary:
-          _parseColor(data['dark.color.inversePrimary']),
+      darkColorOutlineVariant: _parseColor(data['dark.color.outlineVariant']),
+      darkColorInverseSurface: _parseColor(data['dark.color.inverseSurface']),
+      darkColorOnInverseSurface: _parseColor(
+        data['dark.color.onInverseSurface'],
+      ),
+      darkColorInversePrimary: _parseColor(data['dark.color.inversePrimary']),
       // Global
       fontFamily: data['global.fontFamily']?.toString(),
       fontFamilyFallback: _parseStringList(data['global.fontFamilyFallback']),
@@ -441,8 +454,7 @@ class PluginThemeData {
       elevatedButtonRadius: _parseDouble(data['sub.elevatedButtonRadius']),
       outlinedButtonRadius: _parseDouble(data['sub.outlinedButtonRadius']),
       filledButtonRadius: _parseDouble(data['sub.filledButtonRadius']),
-      segmentedButtonRadius:
-          _parseDouble(data['sub.segmentedButtonRadius']),
+      segmentedButtonRadius: _parseDouble(data['sub.segmentedButtonRadius']),
       toggleButtonsRadius: _parseDouble(data['sub.toggleButtonsRadius']),
       popupMenuRadius: _parseDouble(data['sub.popupMenuRadius']),
       menuRadius: _parseDouble(data['sub.menuRadius']),
@@ -452,9 +464,9 @@ class PluginThemeData {
       fabRadius: _parseDouble(data['sub.fabRadius']),
       tooltipRadius: _parseDouble(data['sub.tooltipRadius']),
       bottomSheetRadius: _parseDouble(data['sub.bottomSheetRadius']),
-      inputDecoratorBorderType: data['sub.inputDecoratorBorderType']?.toString(),
-      useM2StyleDividerInM3:
-          _parseBool(data['sub.useM2StyleDividerInM3']),
+      inputDecoratorBorderType: data['sub.inputDecoratorBorderType']
+          ?.toString(),
+      useM2StyleDividerInM3: _parseBool(data['sub.useM2StyleDividerInM3']),
       blendOnLevel: _parseInt(data['sub.blendOnLevel']),
       blendOnColors: _parseBool(data['sub.blendOnColors']),
       cardBorderWidth: _parseDouble(data['sub.cardBorderWidth']),
@@ -464,20 +476,23 @@ class PluginThemeData {
       appBarForegroundColor: _parseColor(data['appBar.foregroundColor']),
       appBarSurfaceTintColor: _parseColor(data['appBar.surfaceTintColor']),
       appBarElevation: _parseDouble(data['appBar.elevation']),
-      appBarScrolledUnderElevation:
-          _parseDouble(data['appBar.scrolledUnderElevation']),
+      appBarScrolledUnderElevation: _parseDouble(
+        data['appBar.scrolledUnderElevation'],
+      ),
       appBarCenterTitle: _parseBool(data['appBar.centerTitle']),
       // NavigationRail
       navRailBackgroundColor: _parseColor(data['navRail.backgroundColor']),
       navRailIndicatorColor: _parseColor(data['navRail.indicatorColor']),
-      navRailSelectedIconColor:
-          _parseColor(data['navRail.selectedIconColor']),
-      navRailUnselectedIconColor:
-          _parseColor(data['navRail.unselectedIconColor']),
-      navRailSelectedLabelColor:
-          _parseColor(data['navRail.selectedLabelColor']),
-      navRailUnselectedLabelColor:
-          _parseColor(data['navRail.unselectedLabelColor']),
+      navRailSelectedIconColor: _parseColor(data['navRail.selectedIconColor']),
+      navRailUnselectedIconColor: _parseColor(
+        data['navRail.unselectedIconColor'],
+      ),
+      navRailSelectedLabelColor: _parseColor(
+        data['navRail.selectedLabelColor'],
+      ),
+      navRailUnselectedLabelColor: _parseColor(
+        data['navRail.unselectedLabelColor'],
+      ),
       // NavigationBar
       navBarBackgroundColor: _parseColor(data['navBar.backgroundColor']),
       navBarIndicatorColor: _parseColor(data['navBar.indicatorColor']),
@@ -492,8 +507,9 @@ class PluginThemeData {
       listTileIconColor: _parseColor(data['listTile.iconColor']),
       listTileTextColor: _parseColor(data['listTile.textColor']),
       listTileTileColor: _parseColor(data['listTile.tileColor']),
-      listTileSelectedTileColor:
-          _parseColor(data['listTile.selectedTileColor']),
+      listTileSelectedTileColor: _parseColor(
+        data['listTile.selectedTileColor'],
+      ),
       listTileDense: _parseBool(data['listTile.dense']),
       // Scrollbar
       scrollbarThumbColor: _parseColor(data['scrollbar.thumbColor']),
@@ -502,11 +518,11 @@ class PluginThemeData {
       // Chip
       chipBackgroundColor: _parseColor(data['chip.backgroundColor']),
       // BottomSheet
-      bottomSheetBackgroundColor:
-          _parseColor(data['bottomSheet.backgroundColor']),
+      bottomSheetBackgroundColor: _parseColor(
+        data['bottomSheet.backgroundColor'],
+      ),
       // PopupMenu
-      popupMenuBackgroundColor:
-          _parseColor(data['popupMenu.backgroundColor']),
+      popupMenuBackgroundColor: _parseColor(data['popupMenu.backgroundColor']),
     );
   }
 
@@ -521,42 +537,175 @@ class PluginThemeData {
 
   ColorScheme toColorScheme({required Brightness brightness}) {
     // Generate a base scheme from primary if available, else use defaults
-    final baseSeed = _c(colorPrimary, darkColorPrimary, brightness, Colors.teal);
-    final base = ColorScheme.fromSeed(seedColor: baseSeed, brightness: brightness);
+    final baseSeed = _c(
+      colorPrimary,
+      darkColorPrimary,
+      brightness,
+      Colors.teal,
+    );
+    final base = ColorScheme.fromSeed(
+      seedColor: baseSeed,
+      brightness: brightness,
+    );
 
     return ColorScheme(
       brightness: brightness,
       primary: _c(colorPrimary, darkColorPrimary, brightness, base.primary),
-      onPrimary: _c(colorOnPrimary, darkColorOnPrimary, brightness, base.onPrimary),
-      primaryContainer: _c(colorPrimaryContainer, darkColorPrimaryContainer, brightness, base.primaryContainer),
-      onPrimaryContainer: _c(colorOnPrimaryContainer, darkColorOnPrimaryContainer, brightness, base.onPrimaryContainer),
-      secondary: _c(colorSecondary, darkColorSecondary, brightness, base.secondary),
-      onSecondary: _c(colorOnSecondary, darkColorOnSecondary, brightness, base.onSecondary),
-      secondaryContainer: _c(colorSecondaryContainer, darkColorSecondaryContainer, brightness, base.secondaryContainer),
-      onSecondaryContainer: _c(colorOnSecondaryContainer, darkColorOnSecondaryContainer, brightness, base.onSecondaryContainer),
+      onPrimary: _c(
+        colorOnPrimary,
+        darkColorOnPrimary,
+        brightness,
+        base.onPrimary,
+      ),
+      primaryContainer: _c(
+        colorPrimaryContainer,
+        darkColorPrimaryContainer,
+        brightness,
+        base.primaryContainer,
+      ),
+      onPrimaryContainer: _c(
+        colorOnPrimaryContainer,
+        darkColorOnPrimaryContainer,
+        brightness,
+        base.onPrimaryContainer,
+      ),
+      secondary: _c(
+        colorSecondary,
+        darkColorSecondary,
+        brightness,
+        base.secondary,
+      ),
+      onSecondary: _c(
+        colorOnSecondary,
+        darkColorOnSecondary,
+        brightness,
+        base.onSecondary,
+      ),
+      secondaryContainer: _c(
+        colorSecondaryContainer,
+        darkColorSecondaryContainer,
+        brightness,
+        base.secondaryContainer,
+      ),
+      onSecondaryContainer: _c(
+        colorOnSecondaryContainer,
+        darkColorOnSecondaryContainer,
+        brightness,
+        base.onSecondaryContainer,
+      ),
       tertiary: _c(colorTertiary, darkColorTertiary, brightness, base.tertiary),
-      onTertiary: _c(colorOnTertiary, darkColorOnTertiary, brightness, base.onTertiary),
-      tertiaryContainer: _c(colorTertiaryContainer, darkColorTertiaryContainer, brightness, base.tertiaryContainer),
-      onTertiaryContainer: _c(colorOnTertiaryContainer, darkColorOnTertiaryContainer, brightness, base.onTertiaryContainer),
+      onTertiary: _c(
+        colorOnTertiary,
+        darkColorOnTertiary,
+        brightness,
+        base.onTertiary,
+      ),
+      tertiaryContainer: _c(
+        colorTertiaryContainer,
+        darkColorTertiaryContainer,
+        brightness,
+        base.tertiaryContainer,
+      ),
+      onTertiaryContainer: _c(
+        colorOnTertiaryContainer,
+        darkColorOnTertiaryContainer,
+        brightness,
+        base.onTertiaryContainer,
+      ),
       error: _c(colorError, darkColorError, brightness, base.error),
       onError: _c(colorOnError, darkColorOnError, brightness, base.onError),
-      errorContainer: _c(colorErrorContainer, darkColorErrorContainer, brightness, base.errorContainer),
-      onErrorContainer: _c(colorOnErrorContainer, darkColorOnErrorContainer, brightness, base.onErrorContainer),
+      errorContainer: _c(
+        colorErrorContainer,
+        darkColorErrorContainer,
+        brightness,
+        base.errorContainer,
+      ),
+      onErrorContainer: _c(
+        colorOnErrorContainer,
+        darkColorOnErrorContainer,
+        brightness,
+        base.onErrorContainer,
+      ),
       surface: _c(colorSurface, darkColorSurface, brightness, base.surface),
-      onSurface: _c(colorOnSurface, darkColorOnSurface, brightness, base.onSurface),
-      surfaceDim: _c(colorSurfaceDim, darkColorSurfaceDim, brightness, base.surfaceDim),
-      surfaceBright: _c(colorSurfaceBright, darkColorSurfaceBright, brightness, base.surfaceBright),
-      surfaceContainerLowest: _c(colorSurfaceContainerLowest, darkColorSurfaceContainerLowest, brightness, base.surfaceContainerLowest),
-      surfaceContainerLow: _c(colorSurfaceContainerLow, darkColorSurfaceContainerLow, brightness, base.surfaceContainerLow),
-      surfaceContainer: _c(colorSurfaceContainer, darkColorSurfaceContainer, brightness, base.surfaceContainer),
-      surfaceContainerHigh: _c(colorSurfaceContainerHigh, darkColorSurfaceContainerHigh, brightness, base.surfaceContainerHigh),
-      surfaceContainerHighest: _c(colorSurfaceContainerHighest, darkColorSurfaceContainerHighest, brightness, base.surfaceContainerHighest),
-      onSurfaceVariant: _c(colorOnSurfaceVariant, darkColorOnSurfaceVariant, brightness, base.onSurfaceVariant),
+      onSurface: _c(
+        colorOnSurface,
+        darkColorOnSurface,
+        brightness,
+        base.onSurface,
+      ),
+      surfaceDim: _c(
+        colorSurfaceDim,
+        darkColorSurfaceDim,
+        brightness,
+        base.surfaceDim,
+      ),
+      surfaceBright: _c(
+        colorSurfaceBright,
+        darkColorSurfaceBright,
+        brightness,
+        base.surfaceBright,
+      ),
+      surfaceContainerLowest: _c(
+        colorSurfaceContainerLowest,
+        darkColorSurfaceContainerLowest,
+        brightness,
+        base.surfaceContainerLowest,
+      ),
+      surfaceContainerLow: _c(
+        colorSurfaceContainerLow,
+        darkColorSurfaceContainerLow,
+        brightness,
+        base.surfaceContainerLow,
+      ),
+      surfaceContainer: _c(
+        colorSurfaceContainer,
+        darkColorSurfaceContainer,
+        brightness,
+        base.surfaceContainer,
+      ),
+      surfaceContainerHigh: _c(
+        colorSurfaceContainerHigh,
+        darkColorSurfaceContainerHigh,
+        brightness,
+        base.surfaceContainerHigh,
+      ),
+      surfaceContainerHighest: _c(
+        colorSurfaceContainerHighest,
+        darkColorSurfaceContainerHighest,
+        brightness,
+        base.surfaceContainerHighest,
+      ),
+      onSurfaceVariant: _c(
+        colorOnSurfaceVariant,
+        darkColorOnSurfaceVariant,
+        brightness,
+        base.onSurfaceVariant,
+      ),
       outline: _c(colorOutline, darkColorOutline, brightness, base.outline),
-      outlineVariant: _c(colorOutlineVariant, darkColorOutlineVariant, brightness, base.outlineVariant),
-      inverseSurface: _c(colorInverseSurface, darkColorInverseSurface, brightness, base.inverseSurface),
-      onInverseSurface: _c(colorOnInverseSurface, darkColorOnInverseSurface, brightness, base.onInverseSurface),
-      inversePrimary: _c(colorInversePrimary, darkColorInversePrimary, brightness, base.inversePrimary),
+      outlineVariant: _c(
+        colorOutlineVariant,
+        darkColorOutlineVariant,
+        brightness,
+        base.outlineVariant,
+      ),
+      inverseSurface: _c(
+        colorInverseSurface,
+        darkColorInverseSurface,
+        brightness,
+        base.inverseSurface,
+      ),
+      onInverseSurface: _c(
+        colorOnInverseSurface,
+        darkColorOnInverseSurface,
+        brightness,
+        base.onInverseSurface,
+      ),
+      inversePrimary: _c(
+        colorInversePrimary,
+        darkColorInversePrimary,
+        brightness,
+        base.inversePrimary,
+      ),
       scrim: _c(colorScrim, null, brightness, base.scrim),
       shadow: _c(colorShadow, null, brightness, base.shadow),
     );
@@ -618,7 +767,8 @@ class PluginThemeData {
         centerTitle: appBarCenterTitle,
       ),
       navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: navRailBackgroundColor ?? scheme.surfaceContainerLowest,
+        backgroundColor:
+            navRailBackgroundColor ?? scheme.surfaceContainerLowest,
         indicatorColor: navRailIndicatorColor ?? scheme.secondaryContainer,
         selectedIconTheme: IconThemeData(
           color: navRailSelectedIconColor ?? scheme.onSecondaryContainer,
@@ -637,12 +787,8 @@ class PluginThemeData {
         backgroundColor: navBarBackgroundColor ?? scheme.surfaceContainer,
         indicatorColor: navBarIndicatorColor ?? scheme.secondaryContainer,
       ),
-      cardTheme: CardThemeData(
-        color: cardColor,
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: dialogBackgroundColor,
-      ),
+      cardTheme: CardThemeData(color: cardColor),
+      dialogTheme: DialogThemeData(backgroundColor: dialogBackgroundColor),
       dividerTheme: DividerThemeData(
         color: dividerColor,
         thickness: dividerThickness,
@@ -661,15 +807,11 @@ class PluginThemeData {
             ? WidgetStatePropertyAll(scrollbarThickness)
             : null,
       ),
-      chipTheme: ChipThemeData(
-        backgroundColor: chipBackgroundColor,
-      ),
+      chipTheme: ChipThemeData(backgroundColor: chipBackgroundColor),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: bottomSheetBackgroundColor,
       ),
-      popupMenuTheme: PopupMenuThemeData(
-        color: popupMenuBackgroundColor,
-      ),
+      popupMenuTheme: PopupMenuThemeData(color: popupMenuBackgroundColor),
     );
   }
 }

@@ -1,0 +1,69 @@
+manifest_version = 2
+id = "python-tools"
+name = "Python Tools"
+version = "1.0.0"
+type = "ui"
+protocol_version = 1
+python_version = "3.14"
+author = "PyriteIDE"
+description = "Python outline and variable inspection tools"
+activation_events = [
+  "onView:python-tools.outline",
+  "onView:python-tools.variables",
+  "onCommand:python-tools.refreshVariables",
+]
+permissions = [
+  "ui.view",
+  "editor.read",
+  "settings.read",
+  "runtime.inspect",
+]
+platforms = ["windows", "linux", "macos", "android"]
+
+[[contributes.navigation_containers]]
+id = "python-tools"
+title = "Python"
+icon = { material = "code" }
+location = "primary"
+order = 100
+
+[[contributes.views]]
+id = "python-tools.outline"
+container = "python-tools"
+title = "Outline"
+renderer = "native.outline"
+icon = { material = "account_tree_outlined" }
+order = 10
+
+[[contributes.views]]
+id = "python-tools.variables"
+container = "python-tools"
+title = "Variables"
+renderer = "native.variableInspector"
+icon = { material = "data_object" }
+order = 20
+when = "runtime.language == 'python' && workspace.opened"
+
+[[contributes.commands]]
+id = "python-tools.refreshVariables"
+title = "Refresh Variables"
+icon = { material = "refresh" }
+order = 10
+when = "runtime.language == 'python' && workspace.opened"
+
+[[contributes.menus]]
+location = "view/title"
+view = "python-tools.variables"
+command = "python-tools.refreshVariables"
+group = "navigation"
+order = 10
+when = "runtime.language == 'python' && workspace.opened"
+
+[[contributes.configuration]]
+id = "python-tools.showPrivate"
+title = "Show Private Variables"
+type = "boolean"
+description = "Include private names in the variable inspector"
+default = false
+order = 20
+when = "runtime.language == 'python' && workspace.opened"

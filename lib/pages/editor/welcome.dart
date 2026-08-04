@@ -15,14 +15,18 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 
 class EditorWelcome extends ConsumerWidget {
   const EditorWelcome({super.key});
-  
-  String tr(WidgetRef ref, I18nKey key, [Map<String, String> replacements = const {}]) {
-      var value = translateForWidget(ref, key);
-      for (final entry in replacements.entries) {
-        value = value.replaceAll('{${entry.key}}', entry.value);
-      }
-      return value;
+
+  String tr(
+    WidgetRef ref,
+    I18nKey key, [
+    Map<String, String> replacements = const {},
+  ]) {
+    var value = translateForWidget(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
     }
+    return value;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,22 +101,20 @@ class EditorWelcome extends ConsumerWidget {
                     ),
                     OutlinedButton.icon(
                       onPressed: () async {
-                      final parentPath = ref.read(fileProvider)?.path ?? '';
-                      final uniquePath = await local.getUniqueFilePath(
-                        path.join(parentPath, "new_file"),
-                      );
-                      ref
-                          .read(fileProvider.notifier)
-                          .createFile(uniquePath);
-                      context.go("/file");
-                      showIdeSuccess(
-                        context,
-                        tr(
-                          ref,
-                          I18nKey.fileMessageCreatedLocalFile
-                        ).replaceAll('{path}', uniquePath),
-                      );
-                    } ,
+                        final parentPath = ref.read(fileProvider)?.path ?? '';
+                        final uniquePath = await local.getUniqueFilePath(
+                          path.join(parentPath, "new_file"),
+                        );
+                        ref.read(fileProvider.notifier).createFile(uniquePath);
+                        context.go("/file");
+                        showIdeSuccess(
+                          context,
+                          tr(
+                            ref,
+                            I18nKey.fileMessageCreatedLocalFile,
+                          ).replaceAll('{path}', uniquePath),
+                        );
+                      },
                       icon: const Icon(Icons.add),
                       label: const UseText(I18nKey.menuNewFile),
                     ),

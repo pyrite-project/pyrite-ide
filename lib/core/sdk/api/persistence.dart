@@ -12,24 +12,40 @@ abstract class SdkPersistenceCommands {
   static const String clear = 'sdk.persistence.clear';
 }
 
-class SdkPersistence extends StateNotifier<PluginRunManager?> {
+class SdkPersistence {
   final Ref ref;
-  SdkPersistence(this.ref) : super(null);
+  SdkPersistence(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
-    runManager.registerHandler(SdkPersistenceCommands.get, _handleGet);
-    runManager.registerHandler(SdkPersistenceCommands.set, _handleSet);
-    runManager.registerHandler(SdkPersistenceCommands.delete, _handleDelete);
-    runManager.registerHandler(SdkPersistenceCommands.listGroups, _handleListGroups);
-    runManager.registerHandler(SdkPersistenceCommands.listKeys, _handleListKeys);
-    runManager.registerHandler(SdkPersistenceCommands.clear, _handleClear);
+    final dataPath = runManager.dataPath;
+    runManager.registerHandler(
+      SdkPersistenceCommands.get,
+      (envelope, respond) => _handleGet(dataPath, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkPersistenceCommands.set,
+      (envelope, respond) => _handleSet(dataPath, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkPersistenceCommands.delete,
+      (envelope, respond) => _handleDelete(dataPath, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkPersistenceCommands.listGroups,
+      (envelope, respond) => _handleListGroups(dataPath, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkPersistenceCommands.listKeys,
+      (envelope, respond) => _handleListKeys(dataPath, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkPersistenceCommands.clear,
+      (envelope, respond) => _handleClear(dataPath, envelope, respond),
+    );
   }
 
-  String get _dataPath => '${state!.assetsPath}/data';
-
-  Future<Directory> _ensureGroupDir(String group) async {
-    final dir = Directory('$_dataPath/$group');
+  Future<Directory> _ensureGroupDir(String dataPath, String group) async {
+    final dir = Directory('$dataPath/$group');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -39,6 +55,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
   // ── Handlers ──
 
   void _handleGet(
+    String dataPath,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
@@ -51,7 +68,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
       return;
     }
 
-    final file = File('$_dataPath/$group/$key.json');
+    final file = File('$dataPath/$group/$key.json');
     if (!file.existsSync()) {
       _respondOk(envelope, respond, data: null);
       return;
@@ -67,6 +84,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
   }
 
   void _handleSet(
+    String dataPath,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
@@ -81,7 +99,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
     }
 
     try {
-      final dir = await _ensureGroupDir(group);
+      final dir = await _ensureGroupDir(dataPath, group);
       final file = File('${dir.path}/$key.json');
       await file.writeAsString(jsonEncode(value));
       _respondOk(envelope, respond);
@@ -91,6 +109,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
   }
 
   void _handleDelete(
+    String dataPath,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
@@ -103,7 +122,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
       return;
     }
 
-    final file = File('$_dataPath/$group/$key.json');
+    final file = File('$dataPath/$group/$key.json');
     if (await file.exists()) {
       await file.delete();
     }
@@ -111,10 +130,11 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
   }
 
   void _handleListGroups(
+    String dataPath,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
-    final dir = Directory(_dataPath);
+    final dir = Directory(dataPath);
     if (!await dir.exists()) {
       _respondOk(envelope, respond, data: <String>[]);
       return;
@@ -130,6 +150,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
   }
 
   void _handleListKeys(
+    String dataPath,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
@@ -141,7 +162,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
       return;
     }
 
-    final dir = Directory('$_dataPath/$group');
+    final dir = Directory('$dataPath/$group');
     if (!await dir.exists()) {
       _respondOk(envelope, respond, data: <String>[]);
       return;
@@ -158,6 +179,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
   }
 
   void _handleClear(
+    String dataPath,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
@@ -169,7 +191,7 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
       return;
     }
 
-    final dir = Directory('$_dataPath/$group');
+    final dir = Directory('$dataPath/$group');
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
@@ -207,20 +229,8 @@ class SdkPersistence extends StateNotifier<PluginRunManager?> {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
   }
-
-  @override
-  void dispose() {
-    state?.unregisterHandler(SdkPersistenceCommands.get);
-    state?.unregisterHandler(SdkPersistenceCommands.set);
-    state?.unregisterHandler(SdkPersistenceCommands.delete);
-    state?.unregisterHandler(SdkPersistenceCommands.listGroups);
-    state?.unregisterHandler(SdkPersistenceCommands.listKeys);
-    state?.unregisterHandler(SdkPersistenceCommands.clear);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkPersistence, PluginRunManager?>
-sdkPersistenceProvider = StateNotifierProvider(
-  (ref) => SdkPersistence(ref),
+final Provider<SdkPersistence> sdkPersistenceProvider = Provider(
+  SdkPersistence.new,
 );

@@ -38,12 +38,11 @@ abstract class SdkFileCommands {
   static const String getUniqueName = 'sdk.file.get_unique_name';
 }
 
-class SdkFile extends StateNotifier<PluginRunManager?> {
+class SdkFile {
   final Ref ref;
-  SdkFile(this.ref) : super(null);
+  SdkFile(this.ref);
 
   void bind(PluginRunManager runManager) {
-    state = runManager;
     runManager.registerHandler(SdkFileCommands.getDirList, _handleGetDirList);
     runManager.registerHandler(SdkFileCommands.getRootDir, _handleGetRootDir);
     runManager.registerHandler(
@@ -441,7 +440,10 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
           direction: FileTransferDirection.upload,
           scope: FileTransferScope.file,
           totalFiles: 1,
-          message: translateWithReplacements(ref,I18nKey.fileTransferPrepareUploadFile),
+          message: translateWithReplacements(
+            ref,
+            I18nKey.fileTransferPrepareUploadFile,
+          ),
         );
         progress.startFile(
           file: localPath,
@@ -456,10 +458,22 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
           onProgress: progress.updateBytes,
         );
         progress.updateBytes(bytes.length, bytes.length);
-        progress.complete(message: translateWithReplacements(ref,I18nKey.fileMessageUploadedToDevice, {'path': boardPath}));
+        progress.complete(
+          message: translateWithReplacements(
+            ref,
+            I18nKey.fileMessageUploadedToDevice,
+            {'path': boardPath},
+          ),
+        );
         _respondOk(envelope, respond, data: true);
       } catch (e) {
-        ref.read(fileTransferProgressProvider.notifier).fail(translateWithReplacements(ref,I18nKey.fileMessageUploadFailed, {'error': e.toString()}));
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(
+              translateWithReplacements(ref, I18nKey.fileMessageUploadFailed, {
+                'error': e.toString(),
+              }),
+            );
         _respondOk(envelope, respond, data: false);
       }
     } else {
@@ -492,34 +506,6 @@ class SdkFile extends StateNotifier<PluginRunManager?> {
       _respondOk(envelope, respond, data: null);
     }
   }
-
-  @override
-  void dispose() {
-    state?.unregisterHandler(SdkFileCommands.getDirList);
-    state?.unregisterHandler(SdkFileCommands.getRootDir);
-    state?.unregisterHandler(SdkFileCommands.saveCurrentFile);
-    state?.unregisterHandler(SdkFileCommands.saveCurrentFileAs);
-    state?.unregisterHandler(SdkFileCommands.createFile);
-    state?.unregisterHandler(SdkFileCommands.createFolder);
-    state?.unregisterHandler(SdkFileCommands.getFocusFileNode);
-    state?.unregisterHandler(SdkFileCommands.getFocusFolderNode);
-    state?.unregisterHandler(SdkFileCommands.openFile);
-    state?.unregisterHandler(SdkFileCommands.uploadSelectedLocalFileItem);
-    state?.unregisterHandler(SdkFileCommands.rename);
-    state?.unregisterHandler(SdkFileCommands.delete);
-    state?.unregisterHandler(SdkFileCommands.openFolder);
-    state?.unregisterHandler(SdkFileCommands.isFile);
-    state?.unregisterHandler(SdkFileCommands.isDirectory);
-    state?.unregisterHandler(SdkFileCommands.readFile);
-    state?.unregisterHandler(SdkFileCommands.writeFile);
-    state?.unregisterHandler(SdkFileCommands.copyFile);
-    state?.unregisterHandler(SdkFileCommands.moveFile);
-    state?.unregisterHandler(SdkFileCommands.exists);
-    state?.unregisterHandler(SdkFileCommands.uploadFile);
-    state?.unregisterHandler(SdkFileCommands.getUniqueName);
-    super.dispose();
-  }
 }
 
-final StateNotifierProvider<SdkFile, PluginRunManager?> sdkFileProvider =
-    StateNotifierProvider((ref) => SdkFile(ref));
+final Provider<SdkFile> sdkFileProvider = Provider(SdkFile.new);

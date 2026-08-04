@@ -209,9 +209,7 @@ class DeviceStatusPanel extends ConsumerWidget {
             const SizedBox(width: 6),
             Text(
               title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(),
             ),
             const Spacer(),
             Text(
@@ -260,9 +258,7 @@ class DeviceStatusPanel extends ConsumerWidget {
             textAlign: TextAlign.end,
             maxLines: 10,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(),
           ),
         ),
       ],

@@ -1,12 +1,12 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
-import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
+import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
-import 'package:pyrite_ide/core/sdk/utils.dart';
 import 'package:pyrite_ide/core/sdk/api/file.dart';
 import 'package:pyrite_ide/core/sdk/api/board.dart';
 import 'package:pyrite_ide/core/sdk/api/editor.dart';
@@ -15,285 +15,311 @@ import 'package:pyrite_ide/core/sdk/api/tab.dart';
 import 'package:pyrite_ide/core/sdk/api/settings_api.dart';
 import 'package:pyrite_ide/core/sdk/api/data_api.dart';
 import 'package:pyrite_ide/core/sdk/api/message_api.dart';
+import 'package:pyrite_ide/core/sdk/api/clipboard_api.dart';
 import 'package:pyrite_ide/core/sdk/api/serial.dart';
 import 'package:pyrite_ide/core/sdk/api/dialog.dart';
+import 'package:pyrite_ide/core/sdk/api/events_api.dart';
+import 'package:pyrite_ide/core/sdk/api/document_api.dart';
+import 'package:pyrite_ide/core/sdk/api/runtime_api.dart';
+import 'package:pyrite_ide/core/sdk/api/env_api.dart';
+import 'package:pyrite_ide/core/sdk/api/view_api.dart';
+import 'package:pyrite_ide/core/sdk/api/configuration_api.dart';
+import 'package:pyrite_ide/core/sdk/component_method_registry.dart';
+import 'package:pyrite_ide/core/sdk/context_key_host.dart';
+import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
-import 'package:serious_python/serious_python.dart';
-import 'package:path/path.dart' as path;
-import 'package:freeport/freeport.dart';
-
-String _toForwardSlashes(String value) => value.replaceAll('\\', '/');
 
 class PluginRunManagerNotifier
     extends StateNotifier<Map<Plugin, PluginRunManager>> {
   final Ref ref;
   final PermissionLogService _permissionLog;
-  bool _routerListenerRegistered = false;
-  Future<void> _startupQueue = Future<void>.value();
-
-  PluginRunManagerNotifier(this.ref)
+  final PythonRuntimeHost _runtimeHost;
+  PluginRunManagerNotifier(this.ref, {PythonRuntimeHost? runtimeHost})
     : _permissionLog = ref.read(permissionLogServiceProvider),
+      _runtimeHost = runtimeHost ?? ref.read(pythonRuntimeHostProvider),
       super({}) {
     _permissionLog.load();
   }
 
-  Future<void> start(Plugin plugin) {
-    return _enqueueStartup(() => _startNow(plugin));
-  }
-
-  Future<void> _startNow(Plugin plugin) async {
-    if (state.containsKey(plugin)) return;
+  Future<void> start(Plugin plugin) async {
+    if (!_canRun(plugin)) return;
+    if (state.keys.any((candidate) => candidate.id == plugin.id)) return;
     if (plugin.type == PluginType.data) {
-      await _runOnceNow(plugin);
+      await runOnce(plugin);
       return;
     }
     final outputLog = ref.read(ideOutputLogProvider.notifier);
-
-    try {
-      final Directory root = await getApplicationSupportDirectory();
-      final Directory target = await Directory(
-        path.join(root.path, "plugin", plugin.id),
-      ).create(recursive: true);
-
-      Directory.current = target.path;
-      final int port = await freePort();
-      final String runtimeModulePaths = [
-        path.join(target.path, "__pypackages__"),
-        path.join(target.path, "site-packages"),
-      ].map(escapeForPythonString).join("::");
-      final pluginDirEnv = _toForwardSlashes(target.path);
-
-      await SeriousPython.runAsset(
-        pythonRuntimeBootAsset,
-        appFileName: "setup_sys_path.py",
-        targetPath: pythonRuntimeBootCachePath,
-        checkHash: true,
-        sync: true,
-        environmentVariables: {
-          "RUNTIME_MODULE_PATHS": runtimeModulePaths,
-          "RUNTIME_REPLACE_MODULE_PATHS": "1",
-          "RUNTIME_PLUGIN_PATH": pluginDirEnv,
-        },
-      );
-      Directory.current = target.path;
-
-      final PluginRunManager runManager = PluginRunManager(
-        port: port,
-        assetsPath: target.path,
+    final metricsRegistry = ref.read(pluginMetricsProvider);
+    final backoff = metricsRegistry.restartBackoffRemaining(plugin.id);
+    if (backoff != null) {
+      outputLog.add(
+        IdeOutputSource.plugin,
+        '[${plugin.id}] restart delayed for ${backoff.inMilliseconds} ms',
         pluginId: plugin.id,
-        pluginType: plugin.type.name,
-        pluginPermissions: plugin.permissions,
+      );
+      return;
+    }
+    PluginRunManager? liveManager;
+    try {
+      final session = await _runtimeHost.startPlugin(
+        plugin,
         permissionLog: _permissionLog,
-        onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
-      );
-      outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting');
-      runManager.onDataChanged = () {
-        state = {...state};
-      };
-      ref.read(sdkFileProvider.notifier).bind(runManager);
-      ref.read(sdkBoardProvider.notifier).bind(runManager);
-      ref.read(sdkEditorProvider.notifier).bind(runManager);
-      ref.read(sdkPersistenceProvider.notifier).bind(runManager);
-      ref.read(sdkTabProvider.notifier).bind(runManager);
-      ref.read(sdkSettingsProvider.notifier).bind(runManager);
-      ref.read(sdkDataApiProvider.notifier).bind(runManager);
-      ref.read(sdkMessageApiProvider.notifier).bind(runManager);
-      ref.read(sdkSerialProvider.notifier).bind(runManager);
-      ref.read(sdkDialogProvider.notifier).bind(runManager);
-      state = {...state, plugin: runManager};
-
-      // Fire-and-forget: Python script blocks forever with asyncio.run().
-      // On Android sync=false so runProgram returns quickly; on desktop it
-      // blocks but the WS server is the important part.
-      // ignore: unawaited_futures
-      SeriousPython.runProgram(
-        path.join(target.path, "__main__.py"),
-        environmentVariables: {
-          "PYRITE_IDE_PLUGIN_PORT": "$port",
-          "PYRITE_IDE_PLUGIN_ID": plugin.id,
-          "PYRITE_IDE_PLUGIN_DIR": pluginDirEnv,
-          "PYRITE_IDE_PLUGIN_DATA_DIR": "$pluginDirEnv/data",
-          "PYRITE_IDE_PLUGIN_CACHE_DIR": "$pluginDirEnv/cache",
-          "PYTHONUNBUFFERED": "1",
+        onOutput: (message) => outputLog.add(
+          IdeOutputSource.plugin,
+          message,
+          pluginId: plugin.id,
+          sessionId: liveManager?.sessionId,
+        ),
+        configureManager: (manager) {
+          liveManager = manager;
+          _bindManager(manager, dataOnly: false);
         },
+        onStopped: () => _removeRuntimeState(plugin.id),
       );
-
-      await runManager.sendLifecycleHook(LifecycleHook.start.value);
+      final manager = session.manager;
+      manager.onDataChanged = () {
+        if (state.values.contains(manager)) state = {...state};
+      };
+      state = {
+        for (final entry in state.entries)
+          if (entry.key.id != plugin.id) entry.key: entry.value,
+        plugin: manager,
+      };
+      metricsRegistry.markActivated(plugin.id);
+      metricsRegistry.noteRestartSuccess(plugin.id);
     } catch (error, stack) {
+      if (error is PluginStartCancelledException) return;
+      liveManager?.metrics?.markFailed(error, traceback: '$stack');
+      metricsRegistry.noteRestartFailure(plugin.id);
       outputLog.add(
         IdeOutputSource.plugin,
         '[${plugin.id}] failed to start: $error\n$stack',
+        pluginId: plugin.id,
+        sessionId: liveManager?.sessionId,
       );
     }
   }
 
   Future<void> stop(Plugin plugin) async {
-    final runManager = state[plugin];
-    if (runManager == null) return;
-    try {
-      await runManager.sendLifecycleHook(LifecycleHook.dispose.value);
-    } catch (_) {}
-    await runManager.stop();
-    // Clean up DataRegistry entries for this plugin
-    ref.read(dataRegistryProvider).removePlugin(plugin.id);
-    state = {...state}..remove(plugin);
+    final manager =
+        state[state.keys.firstWhere(
+          (candidate) => candidate.id == plugin.id,
+          orElse: () => plugin,
+        )];
+    manager?.metrics?.markStopping();
+    await _runtimeHost.stopPlugin(plugin.id);
+    final stopTimedOut =
+        _runtimeHost.sessions[plugin.id]?.programExited == false;
+    ref
+        .read(pluginMetricsProvider)
+        .endSession(plugin.id, timedOut: stopTimedOut);
+    if (manager != null) {
+      ref
+          .read(pluginEventBusProvider)
+          .clearSession(plugin.id, manager.sessionId);
+      ref
+          .read(viewModelStoreProvider)
+          .clearSession(plugin.id, manager.sessionId);
+      ref
+          .read(componentMethodRegistryProvider)
+          .clearSession(plugin.id, manager.sessionId);
+    } else {
+      ref.read(pluginEventBusProvider).clearPlugin(plugin.id);
+      ref.read(viewModelStoreProvider).clearPlugin(plugin.id);
+      ref.read(componentMethodRegistryProvider).clearPlugin(plugin.id);
+    }
+    state = {
+      for (final entry in state.entries)
+        if (entry.key.id != plugin.id) entry.key: entry.value,
+    };
   }
 
-  Future<void> runOnce(Plugin plugin) {
-    return _enqueueStartup(() => _runOnceNow(plugin));
-  }
-
-  Future<void> _runOnceNow(Plugin plugin) async {
-    if (plugin.type != PluginType.data) return;
+  Future<void> runOnce(Plugin plugin) async {
+    if (!_canRun(plugin) || plugin.type != PluginType.data) return;
     final outputLog = ref.read(ideOutputLogProvider.notifier);
+    final metricsRegistry = ref.read(pluginMetricsProvider);
+    final backoff = metricsRegistry.restartBackoffRemaining(plugin.id);
+    if (backoff != null) return;
+    PluginRunManager? liveManager;
     try {
-      final Directory root = await getApplicationSupportDirectory();
-      final Directory target = await Directory(
-        path.join(root.path, "plugin", plugin.id),
-      ).create(recursive: true);
-      Directory.current = target.path;
-      final int port = await freePort();
-      final pluginDirEnv = _toForwardSlashes(target.path);
-
-      await SeriousPython.runAsset(
-        pythonRuntimeBootAsset,
-        appFileName: "setup_sys_path.py",
-        targetPath: pythonRuntimeBootCachePath,
-        checkHash: true,
-        sync: true,
-        environmentVariables: {
-          "RUNTIME_MODULE_PATHS": [
-            path.join(target.path, "__pypackages__"),
-            path.join(target.path, "site-packages"),
-          ].map(escapeForPythonString).join("::"),
-          "RUNTIME_REPLACE_MODULE_PATHS": "1",
-          "RUNTIME_PLUGIN_PATH": pluginDirEnv,
-        },
-      );
-      Directory.current = target.path;
-
-      final runManager = PluginRunManager(
-        port: port,
-        assetsPath: target.path,
-        pluginId: plugin.id,
-        pluginType: plugin.type.name,
-        pluginPermissions: plugin.permissions,
+      await _runtimeHost.runPluginOnce(
+        plugin,
         permissionLog: _permissionLog,
-        onOutput: (message) => outputLog.add(IdeOutputSource.plugin, message),
-      );
-      outputLog.add(IdeOutputSource.plugin, '[${plugin.id}] starting once');
-      ref.read(sdkDataApiProvider.notifier).bind(runManager);
-      ref.read(sdkSettingsProvider.notifier).bind(runManager);
-      ref.read(sdkMessageApiProvider.notifier).bind(runManager);
-      ref.read(sdkDialogProvider.notifier).bind(runManager);
-
-      // No persistent run-manager entry for data plugins.
-      // Fire-and-forget; plugin exits after contribute.
-      // ignore: unawaited_futures
-      SeriousPython.runProgram(
-        path.join(target.path, "__main__.py"),
-        environmentVariables: {
-          "PYRITE_IDE_PLUGIN_PORT": "$port",
-          "PYRITE_IDE_PLUGIN_ID": plugin.id,
-          "PYRITE_IDE_PLUGIN_DIR": pluginDirEnv,
-          "PYRITE_IDE_PLUGIN_DATA_DIR": "$pluginDirEnv/data",
-          "PYRITE_IDE_PLUGIN_CACHE_DIR": "$pluginDirEnv/cache",
-          "PYTHONUNBUFFERED": "1",
+        onOutput: (message) => outputLog.add(
+          IdeOutputSource.plugin,
+          message,
+          pluginId: plugin.id,
+          sessionId: liveManager?.sessionId,
+        ),
+        configureManager: (manager) {
+          liveManager = manager;
+          _bindManager(manager, dataOnly: true);
         },
+        onStopped: () => _removeRuntimeState(plugin.id),
       );
-      await runManager.sendLifecycleHook(LifecycleHook.start.value);
+      metricsRegistry.markActivated(plugin.id);
+      metricsRegistry.endSession(plugin.id);
+      metricsRegistry.noteRestartSuccess(plugin.id);
     } catch (error, stack) {
+      if (error is PluginStartCancelledException) return;
+      liveManager?.metrics?.markFailed(error, traceback: '$stack');
+      metricsRegistry.noteRestartFailure(plugin.id);
       outputLog.add(
         IdeOutputSource.plugin,
         '[${plugin.id}] once-run failed: $error\n$stack',
+        pluginId: plugin.id,
+        sessionId: liveManager?.sessionId,
       );
     }
   }
 
-  Future<void> _enqueueStartup(Future<void> Function() action) {
-    final next = _startupQueue.then((_) => action());
-    _startupQueue = next.catchError((_) {});
-    return next;
+  Future<void> restart(Plugin plugin) async {
+    await stop(plugin);
+    await start(plugin);
+  }
+
+  bool _canRun(Plugin plugin) {
+    final manifest = plugin.manifest;
+    if (plugin.status != PluginStatus.usable || manifest == null) return false;
+    try {
+      PluginManifestValidator().validate(manifest);
+      return true;
+    } on PluginManifestException {
+      return false;
+    }
+  }
+
+  Future<void> restartRuntime() async {
+    final plugins = ref.read(pluginManagerProvider);
+    final restoreIds = <String>{
+      ..._visiblePluginIds(),
+      for (final plugin in plugins.values)
+        if (plugin.type == PluginType.service &&
+            plugin.manifest?.autoStart == true)
+          plugin.id,
+    };
+    for (final manager in state.values) {
+      manager.metrics?.markStopping();
+    }
+    await _runtimeHost.restartRuntime();
+    ref.read(pluginEventBusProvider)
+      ..disposeAll()
+      ..clearRetained();
+    ref.read(viewModelStoreProvider).clear();
+    ref.read(componentMethodRegistryProvider).clear();
+    state = {};
+    ref
+        .read(pluginMetricsProvider)
+        .recordRuntimeRestart(_runtimeHost.generation);
+    for (final pluginId in restoreIds) {
+      final plugin = plugins[pluginId];
+      if (plugin != null) await start(plugin);
+    }
+  }
+
+  void _bindManager(PluginRunManager manager, {required bool dataOnly}) {
+    manager.metrics = ref
+        .read(pluginMetricsProvider)
+        .beginSession(
+          pluginId: manager.pluginId,
+          sessionId: manager.sessionId,
+          generation: manager.generation,
+        );
+    if (!dataOnly) {
+      ref.read(sdkFileProvider).bind(manager);
+      ref.read(sdkBoardProvider).bind(manager);
+      ref.read(sdkEditorProvider).bind(manager);
+      ref.read(sdkPersistenceProvider).bind(manager);
+      ref.read(sdkTabProvider).bind(manager);
+      ref.read(sdkSerialProvider).bind(manager);
+    }
+    ref.read(sdkSettingsProvider).bind(manager);
+    ref.read(sdkDataApiProvider).bind(manager);
+    ref.read(sdkMessageApiProvider).bind(manager);
+    ref.read(sdkClipboardApiProvider).bind(manager);
+    ref.read(sdkDialogProvider).bind(manager);
+    ref.read(sdkEventsProvider).bind(manager);
+    if (!dataOnly) {
+      ref.read(sdkEditorDocumentProvider).bind(manager);
+      // Reading the host starts its tab listener so editor.document.* events
+      // begin flowing once any UI/service plugin is running.
+      ref.read(documentHostProvider);
+      ref.read(sdkRuntimeProvider).bind(manager);
+      // Reading the host starts its serial listener so runtime.* lifecycle
+      // events begin flowing.
+      ref.read(runtimeHostProvider);
+      ref.read(sdkViewProvider).bind(manager);
+    }
+    // Every plugin type may ask about the platform and layout mode.
+    ref.read(sdkEnvProvider).bind(manager);
+    ref.read(sdkConfigurationProvider).bind(manager);
+    // Start context-key producers so Manifest when expressions stay live.
+    ref.read(contextKeyHostProvider);
+  }
+
+  void _removeRuntimeState(String pluginId) {
+    final runtimeSession = _runtimeHost.sessions[pluginId];
+    final metrics = ref.read(pluginMetricsProvider).forPlugin(pluginId);
+    if (runtimeSession?.state == PluginSessionState.failed) {
+      metrics?.markFailed('Plugin process exited unexpectedly');
+      ref.read(pluginMetricsProvider).noteRestartFailure(pluginId);
+    } else if (metrics?.state != 'stopped') {
+      metrics?.markStopped();
+    }
+    ref.read(dataRegistryProvider).removePlugin(pluginId);
+    ref.read(pluginEventBusProvider).clearPlugin(pluginId);
+    ref.read(viewModelStoreProvider).clearPlugin(pluginId);
+    ref.read(componentMethodRegistryProvider).clearPlugin(pluginId);
+    state = {
+      for (final entry in state.entries)
+        if (entry.key.id != pluginId) entry.key: entry.value,
+    };
+  }
+
+  Set<String> _visiblePluginIds() {
+    final uri = routes.state.uri;
+    if (uri.path == '/plugin-view') {
+      final id = uri.queryParameters['plugin'];
+      return id == null || id.isEmpty ? const {} : {id};
+    }
+    return const {};
+  }
+
+  void resumeDelivery(String pluginId) {
+    ref.read(pluginMetricsProvider).forPlugin(pluginId)?.resumeEventDelivery();
+    PluginRunManager? manager;
+    for (final entry in state.entries) {
+      if (entry.key.id == pluginId) {
+        manager = entry.value;
+        break;
+      }
+    }
+    if (manager == null) return;
+    final store = ref.read(viewModelStoreProvider);
+    for (final instance in store.instancesForPlugin(pluginId)) {
+      if (instance.sessionId != manager.sessionId) continue;
+      manager.sendViewFrame(IdeCommands.viewResync, {
+        'instance': instance.toJson(),
+        'revision': store.model(instance)?.revision,
+      });
+      manager.metrics?.recordViewResync();
+    }
   }
 
   Future<void> stopAllForShutdown() async {
-    final entries = state.entries.toList(growable: false);
-    await Future.wait(
-      entries.map((entry) async {
-        try {
-          await entry.value
-              .sendLifecycleHook(
-                LifecycleHook.dispose.value,
-                connectIfNeeded: false,
-              )
-              .timeout(const Duration(seconds: 1));
-        } catch (_) {}
-        try {
-          await entry.value.stop().timeout(const Duration(seconds: 1));
-        } catch (_) {}
-        try {
-          ref.read(dataRegistryProvider).removePlugin(entry.key.id);
-        } catch (_) {}
-      }),
-    );
+    await _runtimeHost.stopAll();
+    ref.read(pluginEventBusProvider).disposeAll();
+    ref.read(viewModelStoreProvider).clear();
+    ref.read(componentMethodRegistryProvider).clear();
     state = {};
-  }
-
-  void setupRouterListener() {
-    if (_routerListenerRegistered) return;
-    _routerListenerRegistered = true;
-
-    String? previousLocation;
-    String? previousPluginId;
-
-    routes.routerDelegate.addListener(() {
-      final currentLocation = routes.state.fullPath;
-      if (previousLocation == currentLocation) return;
-
-      String? currentPluginId;
-      if (currentLocation == "/plugins/body") {
-        currentPluginId = routes.state.uri.queryParameters['id'];
-      }
-
-      if (currentPluginId != null) {
-        final samePlugin = currentPluginId == previousPluginId;
-        for (final entry in state.entries) {
-          if (entry.key.id == currentPluginId) {
-            if (!samePlugin) {
-              entry.value.sendLifecycleHook(LifecycleHook.resume.value);
-              entry.value.sendPageRefresh();
-            }
-          } else if (previousPluginId != null &&
-              entry.key.id != previousPluginId) {
-            entry.value.sendLifecycleHook(LifecycleHook.pause.value);
-          }
-        }
-      }
-
-      if (previousPluginId != null && previousPluginId != currentPluginId) {
-        for (final entry in state.entries) {
-          if (entry.key.id == previousPluginId) {
-            if (entry.key.keepAlive) {
-              entry.value.sendLifecycleHook(LifecycleHook.pause.value);
-            } else {
-              entry.value.sendLifecycleHook(LifecycleHook.dispose.value);
-            }
-          }
-        }
-      }
-
-      previousLocation = currentLocation;
-      previousPluginId = currentPluginId;
-    });
   }
 
   @override
   void dispose() {
-    for (final runManager in state.values) {
-      runManager.dispose();
-    }
+    unawaited(_runtimeHost.stopAll());
     super.dispose();
   }
 }

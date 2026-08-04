@@ -6,15 +6,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/sdk/activation_manager.dart';
+import 'package:pyrite_ide/core/sdk/context_key_host.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/plugin_event_bus.dart';
+import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
-import 'package:pyrite_ide/pages/plugins/widgets/rfw_lib.dart';
+import 'package:pyrite_ide/pages/plugins/detail.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
-import 'package:rfw/formats.dart';
-import 'package:rfw/rfw.dart';
 
 class Plugins extends ConsumerWidget {
   const Plugins({super.key});
@@ -60,6 +67,15 @@ class Plugins extends ConsumerWidget {
                     ref.watch(pluginRunManagerProvider)[plugin] != null;
 
                 return ListTile(
+                  leading: plugin.manifest?.icons == null
+                      ? const Icon(Icons.extension_outlined)
+                      : PluginAssetImage(
+                          pluginId: plugin.id,
+                          assetPath: plugin.manifest!.icons!.full,
+                          width: 36,
+                          height: 36,
+                          fallback: const Icon(Icons.extension_outlined),
+                        ),
                   title: Text(plugin.name),
                   subtitle: Text(
                     [
@@ -68,17 +84,12 @@ class Plugins extends ConsumerWidget {
                       statusText,
                     ].join(' · '),
                   ),
-                  onTap: isUsable && isUi
-                      ? () {
-                          ref.read(selectedPluginId.notifier).state = plugin.id;
-                          context.push(
-                            Uri(
-                              path: '/plugins/body',
-                              queryParameters: {'id': plugin.id},
-                            ).toString(),
-                          );
-                        }
-                      : null,
+                  onTap: () => context.push(
+                    Uri(
+                      path: '/plugins/detail',
+                      queryParameters: {'id': plugin.id},
+                    ).toString(),
+                  ),
                   trailing: PopupMenuButton<String>(
                     onSelected: (value) =>
                         _handleMenuAction(context, ref, plugin, value),
@@ -233,7 +244,12 @@ class Plugins extends ConsumerWidget {
   ) {
     switch (value) {
       case 'details':
-        _showDetailsDialog(context, ref, plugin);
+        context.push(
+          Uri(
+            path: '/plugins/detail',
+            queryParameters: {'id': plugin.id},
+          ).toString(),
+        );
         break;
       case 'restart':
         ref.read(pluginManagerProvider.notifier).restart(plugin);
@@ -258,196 +274,6 @@ class Plugins extends ConsumerWidget {
         _confirmDelete(context, ref, plugin);
         break;
     }
-  }
-
-  void _showDetailsDialog(BuildContext context, WidgetRef ref, Plugin plugin) {
-    final statusText = _pluginStatusText(ref, plugin.status);
-
-    final isRunning = ref.read(pluginRunManagerProvider)[plugin] != null;
-
-    final typeText = _pluginTypeText(ref, plugin.type);
-
-    final permLabels = {
-      'ui': translateForWidget(ref, I18nKey.pluginsPermUi),
-      'file': translateForWidget(ref, I18nKey.pluginsPermFile),
-      'board': translateForWidget(ref, I18nKey.pluginsPermBoard),
-      'serial': translateForWidget(ref, I18nKey.pluginsPermSerial),
-      'editor': translateForWidget(ref, I18nKey.pluginsPermEditor),
-      'persistence': translateForWidget(ref, I18nKey.pluginsPermPersistence),
-      'tab': translateForWidget(ref, I18nKey.pluginsPermTab),
-      'settings': translateForWidget(ref, I18nKey.pluginsPermSettings),
-      'data': translateForWidget(ref, I18nKey.pluginsPermData),
-      'dialog': translateForWidget(ref, I18nKey.pluginsPermDialog),
-    };
-
-    const allResourceActions = {
-      'ui': ['view', 'navigate'],
-      'file': ['read', 'write'],
-      'board': ['read', 'write'],
-      'serial': ['read', 'write'],
-      'editor': ['read', 'write'],
-      'persistence': ['read', 'write'],
-      'tab': ['create', 'manage'],
-      'settings': ['read', 'write'],
-      'data': ['read', 'write'],
-      'dialog': ['show'],
-    };
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          Widget buildCategory(String resource) {
-            final declared = plugin.declaredPermissions[resource];
-            final isDeclared = declared != null;
-            final enabled = plugin.permissions[resource];
-
-            final masterOn =
-                isDeclared &&
-                enabled != null &&
-                declared.every((a) => enabled.contains(a));
-
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: Text(
-                    permLabels[resource] ?? resource,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  value: masterOn,
-                  onChanged: isDeclared
-                      ? (value) {
-                          final newPerms = Map<String, List<String>>.from(
-                            plugin.permissions,
-                          );
-                          if (value) {
-                            newPerms[resource] = List.from(declared);
-                          } else {
-                            newPerms.remove(resource);
-                          }
-                          ref
-                              .read(pluginManagerProvider.notifier)
-                              .updatePermissions(plugin.id, newPerms);
-                          setDialogState(() {});
-                        }
-                      : null,
-                ),
-                for (final action in allResourceActions[resource]!)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(action, style: const TextStyle(fontSize: 13)),
-                      value: enabled?.contains(action) ?? false,
-                      onChanged: isDeclared && declared.contains(action)
-                          ? (value) {
-                              final newPerms = Map<String, List<String>>.from(
-                                plugin.permissions,
-                              );
-                              final current = List<String>.from(
-                                newPerms[resource] ?? [],
-                              );
-                              if (value) {
-                                if (!current.contains(action)) {
-                                  current.add(action);
-                                }
-                              } else {
-                                current.remove(action);
-                              }
-                              if (current.isEmpty) {
-                                newPerms.remove(resource);
-                              } else {
-                                newPerms[resource] = current;
-                              }
-                              ref
-                                  .read(pluginManagerProvider.notifier)
-                                  .updatePermissions(plugin.id, newPerms);
-                              setDialogState(() {});
-                            }
-                          : null,
-                    ),
-                  ),
-              ],
-            );
-          }
-
-          return AlertDialog(
-            title: Text(plugin.name),
-            content: SizedBox(
-              width: 400,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _detailRow('ID', plugin.id),
-                    _detailRow(I18nKey.pluginsDetailVersion, plugin.version),
-                    _detailRow(I18nKey.pluginsDetailType, typeText),
-                    if (plugin.author.isNotEmpty)
-                      _detailRow(I18nKey.pluginsDetailAuthor, plugin.author),
-                    if (plugin.description.isNotEmpty)
-                      _detailRow(
-                        I18nKey.pluginsDetailDescription,
-                        plugin.description,
-                      ),
-                    _detailRow(I18nKey.pluginsDetailStatus, statusText),
-                    _detailRow(
-                      I18nKey.pluginsDetailRunning,
-                      isRunning
-                          ? translateForWidget(ref, I18nKey.commonYes)
-                          : translateForWidget(ref, I18nKey.commonNo),
-                    ),
-                    if (plugin.platforms.isNotEmpty)
-                      _detailRow(
-                        I18nKey.pluginsDetailPlatforms,
-                        plugin.platforms.join(', '),
-                      ),
-                    const SizedBox(height: 12),
-                    Text(
-                      translateForWidget(ref, I18nKey.pluginsDetailPermissions),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    for (final resource in permLabels.keys)
-                      buildCategory(resource),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const UseText(I18nKey.commonClose),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _detailRow(Object label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(width: 72, child: UseText(label, color: Colors.grey)),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref, Plugin plugin) {
@@ -492,24 +318,11 @@ class Plugins extends ConsumerWidget {
     );
   }
 
-  String _pluginStatusText(WidgetRef ref, PluginStatus status) {
-    final key = switch (status) {
-      PluginStatus.usable => I18nKey.pluginsStatusUsable,
-      PluginStatus.installing => I18nKey.pluginsStatusInstalling,
-      PluginStatus.disabled => I18nKey.pluginsStatusDisabled,
-      PluginStatus.uninstalled => I18nKey.pluginsStatusUninstalled,
-    };
-    return translateForWidget(ref, key);
-  }
+  String _pluginStatusText(WidgetRef ref, PluginStatus status) =>
+      pluginStatusText(ref, status);
 
-  String _pluginTypeText(WidgetRef ref, PluginType type) {
-    final key = switch (type) {
-      PluginType.ui => I18nKey.pluginsTypeUi,
-      PluginType.service => I18nKey.pluginsTypeService,
-      PluginType.data => I18nKey.pluginsTypeData,
-    };
-    return translateForWidget(ref, key);
-  }
+  String _pluginTypeText(WidgetRef ref, PluginType type) =>
+      pluginTypeText(ref, type);
 }
 
 class _PluginsEmptyState extends StatelessWidget {
@@ -556,222 +369,279 @@ class _PluginsEmptyState extends StatelessWidget {
   }
 }
 
-class PluginBody extends ConsumerStatefulWidget {
-  const PluginBody({super.key, required this.pluginId});
+class PluginViewHost extends ConsumerStatefulWidget {
+  const PluginViewHost({
+    super.key,
+    required this.pluginId,
+    required this.containerId,
+    this.viewId,
+  });
 
   final String pluginId;
+  final String containerId;
+  final String? viewId;
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() => _PluginBodyState();
+  ConsumerState<PluginViewHost> createState() => _PluginViewHostState();
 }
 
-class _PluginBodyState extends ConsumerState<PluginBody>
-    with WidgetsBindingObserver {
-  final Runtime _runtime = Runtime();
-  final DynamicContent _data = DynamicContent();
+class _PluginViewHostState extends ConsumerState<PluginViewHost> {
+  late final PluginEventBus _eventBus;
+  String? _selectedViewId;
+  String? _activeViewId;
 
-  static const LibraryName coreName = LibraryName(<String>['core', 'widgets']);
-  static const LibraryName materialName = LibraryName(<String>[
-    'core',
-    'material',
-  ]);
-  Map<String, LibraryName?> pagesLibNames = {};
+  Map<String, dynamic> _viewPayload(String viewId) => {
+    'pluginId': widget.pluginId,
+    'containerId': widget.containerId,
+    'viewId': viewId,
+  };
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initPluginRunManager();
+    _eventBus = ref.read(pluginEventBusProvider);
+    _selectedViewId = widget.viewId;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _activateSelected());
+  }
+
+  @override
+  void didUpdateWidget(covariant PluginViewHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pluginId != widget.pluginId ||
+        oldWidget.containerId != widget.containerId ||
+        oldWidget.viewId != widget.viewId) {
+      final activeViewId = _activeViewId;
+      if (activeViewId != null) {
+        _eventBus.emit('view.closed', {
+          'pluginId': oldWidget.pluginId,
+          'containerId': oldWidget.containerId,
+          'viewId': activeViewId,
+        });
+      }
+      _activeViewId = null;
+      _selectedViewId = widget.viewId;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _activateSelected());
+    }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    final activeViewId = _activeViewId;
+    if (activeViewId != null) {
+      _eventBus.emit('view.closed', _viewPayload(activeViewId));
+    }
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
-      if (plugin == null) return;
-      final runManager = ref.read(pluginRunManagerProvider)[plugin];
-      if (runManager == null) return;
-      runManager.sendLifecycleHook(LifecycleHook.resume.value);
-      runManager.sendPageRefresh();
-    }
+  List<PluginViewContribution> _containerViews() {
+    final views = ref
+        .read(contributionRegistryProvider)
+        .views
+        .visible
+        .where(
+          (entry) =>
+              entry.pluginId == widget.pluginId &&
+              entry.value.container == widget.containerId,
+        )
+        .map((entry) => entry.value)
+        .toList();
+    views.sort((left, right) {
+      final order = left.order.compareTo(right.order);
+      return order != 0 ? order : left.id.compareTo(right.id);
+    });
+    return views;
   }
 
-  void _loadCachedPages() {
-    final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
-    if (plugin == null) return;
-    final runManager = ref.read(pluginRunManagerProvider)[plugin];
-    if (runManager == null) return;
-    if (runManager.pages.isNotEmpty) {
-      _loadPages(runManager.pages);
+  String? _resolvedViewId([List<PluginViewContribution>? availableViews]) {
+    final views = availableViews ?? _containerViews();
+    final requested = _selectedViewId ?? widget.viewId;
+    if (requested != null && views.any((view) => view.id == requested)) {
+      return requested;
     }
-    if (runManager.vars.isNotEmpty) {
-      _applyVars(runManager.vars);
-    }
+    return views.firstOrNull?.id;
   }
 
-  Future<void> _initPluginRunManager() async {
+  Future<void> _activateSelected() async {
+    if (!mounted) return;
+    final viewId = _resolvedViewId();
+    if (viewId == null || _activeViewId == viewId) return;
     final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
     if (plugin == null) return;
-
-    _runtime.update(coreName, createPyriteCoreWidgets());
-    _runtime.update(materialName, createPyriteMaterialWidgets());
-
-    final runManager = ref.read(pluginRunManagerProvider)[plugin];
-    if (runManager != null) {
-      runManager.onRouteChanged = (currentRoute, routeStack) {
-        ref.read(page.notifier).state = currentRoute;
-      };
-      _loadCachedPages();
+    final previousViewId = _activeViewId;
+    if (previousViewId != null) {
+      _eventBus.emit('view.closed', _viewPayload(previousViewId));
+    }
+    _activeViewId = viewId;
+    _eventBus.emit('view.opened', _viewPayload(viewId));
+    final activated = await ref
+        .read(activationManagerProvider.notifier)
+        .activateForView(plugin, viewId);
+    if (!mounted || _activeViewId != viewId) return;
+    if (!activated) {
+      _activeViewId = null;
       return;
     }
-
-    await ref.read(pluginRunManagerProvider.notifier).start(plugin);
-
-    final newRunManager = ref.read(pluginRunManagerProvider)[plugin];
-    if (newRunManager != null) {
-      newRunManager.onRouteChanged = (currentRoute, routeStack) {
-        ref.read(page.notifier).state = currentRoute;
-      };
-    }
+    _eventBus.emit('view.focused', _viewPayload(viewId));
+    ref.read(contextKeyHostProvider).setActiveView(viewId);
   }
 
-  void _loadPages(Map<String, String> pages) {
-    for (var entry in pages.entries) {
-      try {
-        final remoteWidgets = parseLibraryFile(entry.value);
-        pagesLibNames.putIfAbsent(
-          entry.key,
-          () => LibraryName(<String>[entry.key]),
-        );
-        _runtime.update(pagesLibNames[entry.key]!, remoteWidgets);
-      } catch (e) {
-        debugPrint("Failed to parse RFW for page[${entry.key}]: $e");
-      }
-    }
-    setState(() {});
-  }
-
-  void _applyVars(Map<String, dynamic> vars) {
-    for (var entry in vars.entries) {
-      _data.update(entry.key, entry.value);
-    }
-    setState(() {});
+  void _selectView(String viewId) {
+    if (_resolvedViewId() == viewId) return;
+    setState(() => _selectedViewId = viewId);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _activateSelected());
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(pluginRunManagerProvider, (_, next) {
-      final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
-      if (plugin == null) return;
-      final runManager = next[plugin];
-      if (runManager == null) return;
-
-      if (runManager.pages.isNotEmpty) {
-        _loadPages(runManager.pages);
+    final container = ref
+        .watch(contributionRegistryProvider)
+        .navigation
+        .visible
+        .where(
+          (entry) =>
+              entry.pluginId == widget.pluginId &&
+              entry.value.id == widget.containerId,
+        )
+        .firstOrNull;
+    if (container == null) {
+      return const Center(child: Text('插件视图不可用'));
+    }
+    final plugin = ref.watch(pluginManagerProvider)[widget.pluginId];
+    if (plugin == null) {
+      return const Center(child: Text('插件视图不可用'));
+    }
+    final views = ref
+        .watch(contributionRegistryProvider)
+        .views
+        .visible
+        .where(
+          (entry) =>
+              entry.pluginId == widget.pluginId &&
+              entry.value.container == widget.containerId,
+        )
+        .map((entry) => entry.value)
+        .toList();
+    views.sort((left, right) {
+      final order = left.order.compareTo(right.order);
+      return order != 0 ? order : left.id.compareTo(right.id);
+    });
+    final targetView = _resolvedViewId(views);
+    if (targetView == null) {
+      return const Center(child: Text('插件视图不可用'));
+    }
+    if (_activeViewId != targetView) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _activateSelected());
+    }
+    final activation = ref.watch(activationManagerProvider)[widget.pluginId];
+    if (activation == null ||
+        activation.state == ActivationState.enabled ||
+        activation.state == ActivationState.activating) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (activation.state == ActivationState.failed) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('插件启动失败'),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: _activateSelected, child: const Text('重试')),
+          ],
+        ),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(selectedPluginId) != widget.pluginId) {
+        ref.read(selectedPluginId.notifier).state = widget.pluginId;
       }
-      if (runManager.vars.isNotEmpty) {
-        _applyVars(runManager.vars);
+      if (ref.read(page) != targetView) {
+        ref.read(page.notifier).state = targetView;
       }
     });
 
-    final currentPage = ref.watch(page);
-    if (pagesLibNames.isEmpty) {
+    // Resolve the renderer from the view contribution. Views are matched by
+    // their fully-qualified id, falling back to the container's first view so a
+    // container-level route still lands somewhere sensible.
+    final view = views.where((entry) => entry.id == targetView).firstOrNull;
+    if (view == null) {
+      return const Center(child: Text('插件视图不可用'));
+    }
+
+    final manager = ref
+        .watch(pluginRunManagerProvider)
+        .entries
+        .where((entry) => entry.key.id == widget.pluginId)
+        .map((entry) => entry.value)
+        .firstOrNull;
+    if (manager == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    final libName = pagesLibNames[currentPage] ?? pagesLibNames['home'];
-    if (libName == null) {
-      return const Center(child: CircularProgressIndicator());
+
+    final surface = PluginViewSurface(
+      instance: ViewInstanceId(
+        pluginId: widget.pluginId,
+        sessionId: manager.sessionId,
+        viewId: view.id,
+        // The sidebar placement is one instance per container; a tab host passes
+        // its own instanceId so the same view can be open in both at once.
+        instanceId: 'container:${widget.containerId}',
+      ),
+      renderer: view.renderer,
+    );
+    if (views.length == 1) return surface;
+
+    final selectedIndex = views.indexWhere((entry) => entry.id == targetView);
+    return DefaultTabController(
+      key: ValueKey('${widget.pluginId}:${widget.containerId}:$targetView'),
+      length: views.length,
+      initialIndex: selectedIndex < 0 ? 0 : selectedIndex,
+      child: Column(
+        children: [
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: SizedBox(
+              height: 38,
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                dividerHeight: 1,
+                labelStyle: Theme.of(context).textTheme.labelMedium,
+                onTap: (index) => _selectView(views[index].id),
+                tabs: [for (final entry in views) _viewTab(entry)],
+              ),
+            ),
+          ),
+          Expanded(child: surface),
+        ],
+      ),
+    );
+  }
+
+  Widget _viewTab(PluginViewContribution view) {
+    final icon = view.icon;
+    Widget? iconWidget;
+    if (icon?.kind == PluginIconKind.material) {
+      iconWidget = Icon(pluginIcon('material:${icon!.value}'), size: 16);
+    } else if (icon?.kind == PluginIconKind.asset) {
+      iconWidget = PluginAssetImage(
+        pluginId: widget.pluginId,
+        assetPath: icon!.value,
+        width: 16,
+        height: 16,
+        monochrome: true,
+        fallback: const Icon(Icons.extension_outlined, size: 16),
+      );
     }
-    final plugin = ref.read(pluginManagerProvider)[widget.pluginId];
-    final runManager = ref.read(pluginRunManagerProvider)[plugin];
-    return PopScope(
-      canPop: runManager == null || runManager.routeStack.isEmpty,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        if (runManager == null) return;
-        runManager.popRoute();
-      },
-      child: RemoteWidget(
-        runtime: _runtime,
-        widget: FullyQualifiedWidgetName(libName, "root"),
-        data: _data,
-        onEvent: (String name, DynamicMap arguments) {
-          debugPrint('user triggered event "$name" with data: $arguments');
-          final runManager = ref.read(
-            pluginRunManagerProvider,
-          )[ref.read(pluginManagerProvider)[widget.pluginId]]!;
-          final binding = runManager.consumeCallbackBinding(name, arguments);
-          if (binding != null) {
-            _data.update(binding.key, binding.value);
-            setState(() {});
-          }
-          runManager.sendCallback(name, arguments, ref.watch(page));
-        },
+    return Tab(
+      height: 38,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (iconWidget != null) ...[iconWidget, const SizedBox(width: 6)],
+          Text(view.title),
+        ],
       ),
     );
   }
 }
-
-/*
-TabBarView(
-          children: [
-            for (String pageLibName in pagesLibNames)
-              RemoteWidget(
-                runtime: _runtime,
-                data: _data,
-                widget: FullyQualifiedWidgetName(
-                  managerNameMap[managerName]!,
-                  'root',
-                ),
-                onEvent: (String name, DynamicMap arguments) {
-                  debugPrint(
-                    'user triggered event "$name" with data: $arguments',
-                  );
-                  sendCallback(name, arguments, managerName);
-                },
-              ),
-          ],
-        ),
-
-final Runtime _runtime = Runtime();
-  final DynamicContent _data = DynamicContent();
-  late RemoteWidgetLibrary _remoteWidgets;
-
-  static const LibraryName coreName = LibraryName(<String>['core', 'widgets']);
-  static const LibraryName materialName = LibraryName(<String>[
-    'core',
-    'material',
-  ]);
-  Map<String, LibraryName?> pagesLibNames = {};
-  Map<String, dynamic> pages = {};
-
-  @override
-  void initState() {
-    _loadRemoteWidgets();
-    super.initState();
-  }
-
-  Future<void> _loadRemoteWidgets(Plugin plugin) async {
-    // Local widget library:
-    _runtime.update(coreName, createCoreWidgets()); // 加载core.widgets
-    _runtime.update(materialName, createPyriteMaterialWidgets()); // core.material
-    _data.update('greet', <String, Object>{
-      'name': 'World',
-    }); // 设置一个变量 (对应sdk的data)
-    pages = await ref.read(pluginRunManagerProvider)[plugin]!.getPages();
-    for (var entry in pages.entries) {
-      String rfwCode = entry.value;
-      _remoteWidgets = parseLibraryFile(rfwCode);
-      LibraryName pageLibName = LibraryName(<String>[entry.key]);
-      _runtime.update(pageLibName, _remoteWidgets);
-      pagesLibNames[entry.key] = pageLibName;
-    }
-    setState(() {});
-  }
-  */

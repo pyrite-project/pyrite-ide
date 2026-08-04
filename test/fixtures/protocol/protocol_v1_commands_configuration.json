@@ -1,0 +1,79 @@
+{
+  "commandExecute": {
+    "protocolVersion": 1,
+    "pluginId": "debug-enhanced",
+    "sessionId": "session-1",
+    "generation": 1,
+    "requestId": "req-command-1",
+    "replyTo": null,
+    "sequence": 1,
+    "type": "ide.command.execute",
+    "payload": {
+      "commandId": "debug-enhanced.refreshVariables",
+      "args": {},
+      "context": {
+        "viewId": "debug-enhanced.device-variables",
+        "instanceId": "container:debug-enhanced"
+      }
+    }
+  },
+  "configurationGet": {
+    "protocolVersion": 1,
+    "pluginId": "debug-enhanced",
+    "sessionId": "session-1",
+    "generation": 1,
+    "requestId": "req-config-1",
+    "replyTo": null,
+    "sequence": 2,
+    "type": "sdk.configuration.get",
+    "payload": {
+      "id": "debug-enhanced.showPrivate"
+    }
+  },
+  "configurationSet": {
+    "protocolVersion": 1,
+    "pluginId": "debug-enhanced",
+    "sessionId": "session-1",
+    "generation": 1,
+    "requestId": "req-config-2",
+    "replyTo": null,
+    "sequence": 3,
+    "type": "sdk.configuration.set",
+    "payload": {
+      "id": "debug-enhanced.showPrivate",
+      "value": true
+    }
+  },
+  "configurationList": {
+    "protocolVersion": 1,
+    "pluginId": "debug-enhanced",
+    "sessionId": "session-1",
+    "generation": 1,
+    "requestId": "req-config-3",
+    "replyTo": null,
+    "sequence": 4,
+    "type": "sdk.configuration.list",
+    "payload": {}
+  },
+  "configurationChanged": {
+    "protocolVersion": 1,
+    "pluginId": "debug-enhanced",
+    "sessionId": "session-1",
+    "generation": 1,
+    "requestId": "evt-config-1",
+    "replyTo": null,
+    "sequence": 5,
+    "type": "ide.event.emit",
+    "payload": {
+      "subscriptionId": "sub-config-1",
+      "topic": "configuration.changed",
+      "events": [
+        {
+          "pluginId": "debug-enhanced",
+          "id": "debug-enhanced.showPrivate",
+          "value": true
+        }
+      ]
+    }
+  }
+}
