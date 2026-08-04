@@ -472,7 +472,6 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
       _eventBus.emit('view.closed', _viewPayload(previousViewId));
     }
     _activeViewId = viewId;
-    _eventBus.emit('view.opened', _viewPayload(viewId));
     final activated = await ref
         .read(activationManagerProvider.notifier)
         .activateForView(plugin, viewId);
@@ -481,6 +480,12 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
       _activeViewId = null;
       return;
     }
+    // Emit view.opened only after activation completes. A cold-started plugin
+    // subscribes during its on_start hook, which the activation await waits for;
+    // emitting earlier (view.opened is a non-replay topic) means the owning
+    // plugin never sees the open and never sends its first snapshot, leaving the
+    // surface stuck on the loading indicator.
+    _eventBus.emit('view.opened', _viewPayload(viewId));
     _eventBus.emit('view.focused', _viewPayload(viewId));
     ref.read(contextKeyHostProvider).setActiveView(viewId);
   }

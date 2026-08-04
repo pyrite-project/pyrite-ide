@@ -278,11 +278,7 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
     if (model == null) {
       // The plugin has not sent its first snapshot yet.
       return const Center(
-        child: SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: CircularProgressIndicator(),
       );
     }
 
