@@ -70,7 +70,7 @@ StateProvider<String> lspWebSocketPath = StateProvider<String>(
   (ref) => "127.0.0.1:2026",
 );
 StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
-StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "--stdio");
+StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>(

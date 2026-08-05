@@ -19,5 +19,5 @@ FileTransferMode resolveFileTransferMode(
 }
 
 final fileTransferModeProvider = StateProvider<FileTransferMode>(
-  (ref) => FileTransferMode.streaming,
+  (ref) => FileTransferMode.chunked,
 );
