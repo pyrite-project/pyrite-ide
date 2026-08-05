@@ -138,37 +138,39 @@ class _GitPageState extends ConsumerState<GitPage> {
     _syncCommitIdentity(snapshot);
     GitDebugLog.log('GitPage.syncCommitIdentity end');
 
-    return DefaultTabController(
-      length: 7,
-      child: Column(
-        children: [
-          _GitHeader(snapshot: snapshot, isBusy: state.isBusy),
-          const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(child: UseText(I18nKey.gitTabChanges)),
-              Tab(child: UseText(I18nKey.gitTabBranches)),
-              Tab(child: UseText(I18nKey.gitTabRemotes)),
-              Tab(child: UseText(I18nKey.gitTabConflicts)),
-              Tab(child: UseText(I18nKey.gitTabHistory)),
-              Tab(child: UseText(I18nKey.gitTabAdvanced)),
-              Tab(child: UseText(I18nKey.gitTabCredentials)),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _changesTab(context, state, snapshot),
-                Builder(builder: (_) => _branchesTab(state, snapshot)),
-                Builder(builder: (_) => _remotesTab(state, snapshot)),
-                Builder(builder: (_) => _conflictsTab(state, snapshot)),
-                Builder(builder: (_) => _historyTab(state, snapshot)),
-                Builder(builder: (_) => _advancedTab(state, snapshot)),
-                Builder(builder: (_) => _credentialsTab(state)),
+    return Scaffold(
+      body: DefaultTabController(
+        length: 7,
+        child: Column(
+          children: [
+            _GitHeader(snapshot: snapshot, isBusy: state.isBusy),
+            const TabBar(
+              isScrollable: true,
+              tabs: [
+                Tab(child: UseText(I18nKey.gitTabChanges)),
+                Tab(child: UseText(I18nKey.gitTabBranches)),
+                Tab(child: UseText(I18nKey.gitTabRemotes)),
+                Tab(child: UseText(I18nKey.gitTabConflicts)),
+                Tab(child: UseText(I18nKey.gitTabHistory)),
+                Tab(child: UseText(I18nKey.gitTabAdvanced)),
+                Tab(child: UseText(I18nKey.gitTabCredentials)),
               ],
             ),
-          ),
-        ],
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _changesTab(context, state, snapshot),
+                  Builder(builder: (_) => _branchesTab(state, snapshot)),
+                  Builder(builder: (_) => _remotesTab(state, snapshot)),
+                  Builder(builder: (_) => _conflictsTab(state, snapshot)),
+                  Builder(builder: (_) => _historyTab(state, snapshot)),
+                  Builder(builder: (_) => _advancedTab(state, snapshot)),
+                  Builder(builder: (_) => _credentialsTab(state)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

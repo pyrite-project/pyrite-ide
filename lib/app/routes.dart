@@ -109,19 +109,22 @@ GoRouter routes = GoRouter(
         ),
         GoRoute(
           path: '/plugin-view',
-          builder: (context, state) {
+          pageBuilder: (context, state) {
             final pluginId = state.uri.queryParameters['plugin'];
             final containerId = state.uri.queryParameters['container'];
             if (pluginId == null ||
                 pluginId.isEmpty ||
                 containerId == null ||
                 containerId.isEmpty) {
-              return const Center(child: Text('插件视图不可用'));
+              return topCustomTransitionPage(child: Scaffold(body: Center(child: Text('插件视图不可用'))), state: state);
             }
-            return PluginViewHost(
-              pluginId: pluginId,
-              containerId: containerId,
-              viewId: state.uri.queryParameters['view'],
+            return topCustomTransitionPage(
+              child: PluginViewHost(
+                pluginId: pluginId,
+                containerId: containerId,
+                viewId: state.uri.queryParameters['view'],
+              ),
+              state: state
             );
           },
         ),

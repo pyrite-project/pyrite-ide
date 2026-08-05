@@ -509,11 +509,11 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
         )
         .firstOrNull;
     if (container == null) {
-      return const Center(child: Text('插件视图不可用'));
+      return const Scaffold(body: Center(child: Text('插件视图不可用')));
     }
     final plugin = ref.watch(pluginManagerProvider)[widget.pluginId];
     if (plugin == null) {
-      return const Center(child: Text('插件视图不可用'));
+      return const Scaffold(body: Center(child: Text('插件视图不可用')));
     }
     final views = ref
         .watch(contributionRegistryProvider)
@@ -532,7 +532,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     });
     final targetView = _resolvedViewId(views);
     if (targetView == null) {
-      return const Center(child: Text('插件视图不可用'));
+      return const Scaffold(body: Center(child: Text('插件视图不可用')));
     }
     if (_activeViewId != targetView) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _activateSelected());
@@ -544,7 +544,8 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
       return const Center(child: CircularProgressIndicator());
     }
     if (activation.state == ActivationState.failed) {
-      return Center(
+      return Scaffold(
+        body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -553,6 +554,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
             FilledButton(onPressed: _activateSelected, child: const Text('重试')),
           ],
         ),
+      )
       );
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -570,7 +572,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     // container-level route still lands somewhere sensible.
     final view = views.where((entry) => entry.id == targetView).firstOrNull;
     if (view == null) {
-      return const Center(child: Text('插件视图不可用'));
+      return const Scaffold(body: Center(child: Text('插件视图不可用')));
     }
 
     final manager = ref
@@ -580,7 +582,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
         .map((entry) => entry.value)
         .firstOrNull;
     if (manager == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final surface = PluginViewSurface(
@@ -594,32 +596,34 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
       ),
       renderer: view.renderer,
     );
-    if (views.length == 1) return surface;
+    if (views.length == 1) return Scaffold(body: surface);
 
     final selectedIndex = views.indexWhere((entry) => entry.id == targetView);
-    return DefaultTabController(
-      key: ValueKey('${widget.pluginId}:${widget.containerId}:$targetView'),
-      length: views.length,
-      initialIndex: selectedIndex < 0 ? 0 : selectedIndex,
-      child: Column(
-        children: [
-          Material(
-            color: Theme.of(context).colorScheme.surface,
-            child: SizedBox(
-              height: 38,
-              child: TabBar(
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                dividerHeight: 1,
-                labelStyle: Theme.of(context).textTheme.labelMedium,
-                onTap: (index) => _selectView(views[index].id),
-                tabs: [for (final entry in views) _viewTab(entry)],
+    return Scaffold(
+        body: DefaultTabController(
+        key: ValueKey('${widget.pluginId}:${widget.containerId}:$targetView'),
+        length: views.length,
+        initialIndex: selectedIndex < 0 ? 0 : selectedIndex,
+        child: Column(
+          children: [
+            Material(
+              color: Theme.of(context).colorScheme.surface,
+              child: SizedBox(
+                height: 38,
+                child: TabBar(
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  dividerHeight: 1,
+                  labelStyle: Theme.of(context).textTheme.labelMedium,
+                  onTap: (index) => _selectView(views[index].id),
+                  tabs: [for (final entry in views) _viewTab(entry)],
+                ),
               ),
             ),
-          ),
-          Expanded(child: surface),
-        ],
-      ),
+            Expanded(child: surface),
+          ],
+        ),
+      )
     );
   }
 
