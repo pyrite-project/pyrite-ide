@@ -178,7 +178,7 @@ class _BottomPanelTabs extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      height: 38,
+      height: 40,
       decoration: BoxDecoration(color: scheme.surface),
       child: Row(
         children: [
@@ -251,15 +251,7 @@ class _BottomPanelTab extends ConsumerWidget {
       onTap: () => ref.read(bottomPanelTabProvider.notifier).state = index,
       child: Container(
         height: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? scheme.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
