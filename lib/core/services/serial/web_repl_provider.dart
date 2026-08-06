@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 enum WebReplState { disconnected, waitingPassword, connected, error }
@@ -28,6 +32,7 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   final Ref ref;
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
+  SerialByteQueue? _executionQueue;
   String _password = '';
 
   WebReplNotifier(this.ref) : super(const WebReplInfo());
@@ -94,17 +99,23 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   }
 
   void _handleMessage(String text) {
+    final executionQueue = _executionQueue;
+    if (executionQueue != null) {
+      executionQueue.add(Uint8List.fromList(utf8.encode(text)));
+      return;
+    }
     if (state.state == WebReplState.waitingPassword) {
       if (text.contains('Password') || text.contains('password')) {
         _channel?.sink.add('$_password\n');
       } else if (text.contains('>>>') || text.contains('OK')) {
         state = state.copyWith(state: WebReplState.connected);
-        repl.write(text);
+        writeReplOutput(text);
+        sendText('\x03');
       } else {
-        repl.write(text);
+        writeReplOutput(text);
       }
     } else if (state.state == WebReplState.connected) {
-      repl.write(text);
+      writeReplOutput(text);
     }
   }
 
@@ -118,12 +129,70 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     _channel!.sink.add(text);
   }
 
+  Future<void> executeStreaming(
+    String source, {
+    required void Function() onStarted,
+    required void Function(Uint8List data) onStdout,
+    required void Function(Uint8List data) onStderr,
+  }) async {
+    final channel = _channel;
+    if (!isConnected || channel == null) {
+      throw StateError('WebREPL is not connected.');
+    }
+    if (_executionQueue != null) {
+      throw StateError('A WebREPL execution is already active.');
+    }
+
+    final queue = SerialByteQueue();
+    _executionQueue = queue;
+    void writeBytes(List<int> bytes) {
+      channel.sink.add(utf8.decode(bytes, allowMalformed: true));
+    }
+
+    final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+    final mode = ref.read(replModeProvider);
+    var enteredRepl = false;
+    try {
+      writeBytes(const [0x03, 0x03]);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await session.enterRepl(mode);
+      enteredRepl = true;
+      await session.executeStreaming(
+        source,
+        mode: mode,
+        onStarted: onStarted,
+        onStdout: onStdout,
+        onStderr: onStderr,
+      );
+    } finally {
+      if (enteredRepl && !queue.isCancelled) {
+        try {
+          await session.exitRepl(mode);
+          if (mode == ReplMode.rawRepl) {
+            queue.clear();
+            writeBytes(const [0x02]);
+            try {
+              await queue.readUntil(
+                utf8.encode('>>>'),
+                const Duration(seconds: 2),
+              );
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+      if (identical(_executionQueue, queue)) _executionQueue = null;
+      queue.cancel();
+    }
+  }
+
   Future<void> disconnect() async {
     state = const WebReplInfo(state: WebReplState.disconnected);
     _cleanup();
   }
 
   void _cleanup() {
+    _executionQueue?.cancel();
+    _executionQueue = null;
     _subscription?.cancel();
     _subscription = null;
     _channel?.sink.close();

@@ -115,6 +115,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     if (ok) {
       _serial = serial;
       state = state.copyWith(selectedPortName: path, isConnected: true);
+      sendCommand('\x03', chunked: false);
       if (_runConnectInitialization) ensureFilesystemMountedIfEnabled();
     } else {
       await _eventSub?.cancel();

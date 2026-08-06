@@ -11,6 +11,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
+import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -33,6 +34,7 @@ import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
+import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -120,6 +122,15 @@ class ConsolePage extends ConsumerWidget {
             onPressed: () {
               replController.clearSelection();
               repl.clear();
+              replClearSink?.call();
+              final input = ref.read(replInputControllerProvider);
+              if (replClearSink == null) {
+                if (input.mode == ReplInteractionMode.prompt) {
+                  repl.write('>>> ');
+                } else if (input.mode == ReplInteractionMode.continuation) {
+                  repl.write('... ');
+                }
+              }
             },
             icon: const Icon(Icons.cleaning_services_outlined),
           ),
@@ -994,23 +1005,11 @@ class ReplView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final webReplState = ref.watch(webReplProvider);
-    final webReplConnected = webReplState.state == WebReplState.connected;
-
-    if (webReplConnected) {
-      repl.onOutput = (String data) {
-        ref.read(webReplProvider.notifier).sendText(data);
-      };
-    }
-
     final terminalTheme = buildTerminalTheme(context);
-    final surface = Theme.of(context).colorScheme.surface;
-    return TerminalView(
-      repl,
-      controller: replController,
-      theme: terminalTheme,
-      textStyle: buildTerminalStyle(ref),
-      key: ValueKey('repl_${surface.toARGB32()}'),
+    final terminalStyle = buildTerminalStyle(ref);
+    return ReplSurface(
+      backgroundColor: terminalTheme.background,
+      textStyle: terminalStyle.toTextStyle(),
     );
   }
 }

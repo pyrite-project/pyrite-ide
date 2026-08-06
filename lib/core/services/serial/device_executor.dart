@@ -634,6 +634,10 @@ class DeviceSession {
     _write(_eot);
     onStarted();
 
+    final ack = await queue.readBytes(2, timeout);
+    if (ack.length != 2 || ack[0] != 0x4f || ack[1] != 0x4b) {
+      throw const DeviceSessionException('Raw REPL did not acknowledge code.');
+    }
     await queue.readUntilStreaming(_eot, onData: onStdout);
     await queue.readUntilStreaming(_eot, onData: onStderr);
     await queue.readUntil(_prompt, timeout);
@@ -1075,6 +1079,8 @@ Future<void> runPythonOnDeviceStreaming(
   WidgetRef ref,
   String python, {
   Duration startupTimeout = _defaultTimeout,
+  ReplMode? forceMode,
+  String runningOperationId = 'code-exec',
   required void Function() onStarted,
   required void Function(Uint8List data) onStdout,
   required void Function(Uint8List data) onStderr,
@@ -1095,6 +1101,8 @@ Future<void> runPythonOnDeviceStreaming(
       });
       return () => sub.close();
     },
+    forceMode: forceMode,
+    runningOperationId: runningOperationId,
   );
 }
 

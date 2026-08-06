@@ -45,6 +45,7 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
   bool _reconnectEnabled = false;
   bool _reconnectInProgress = false;
   ByteConversionSink? _replOutputDecoder;
+  void Function(String data)? _serialReplOutput;
 
   BaseUsbSerialNotifier(this.ref, T initialState) : super(initialState);
 
@@ -131,11 +132,25 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
 
   void bindReplOnOutputCallback() {
     _replOutputDecoder = null;
-    repl.onOutput = (String data) {
+    final previous = repl.onOutput;
+    void callback(String data) {
       if (ref.read(serialReplIoPausedProvider)) return;
       final encode = ref.read(chineseToUnicodeConversion);
-      sendCommand(encode ? _encodeForRepl(data) : data);
-    };
+      final text = encode ? encodeReplInputForDevice(data) : data;
+      final sink = replInputSink;
+      if (sink != null) {
+        sink(text);
+      } else {
+        sendCommand(text);
+      }
+    }
+
+    final hostOwnsCallback =
+        replInputSink != null &&
+        previous != null &&
+        previous != _serialReplOutput;
+    _serialReplOutput = callback;
+    if (!hostOwnsCallback) repl.onOutput = callback;
   }
 
   void handleData(Uint8List data) {
@@ -146,7 +161,9 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
     } else {
       _replOutputDecoder ??= const Utf8Decoder(allowMalformed: true)
           .startChunkedConversion(
-            StringConversionSink.fromStringSink(_ReplOutputSink(repl.write)),
+            StringConversionSink.fromStringSink(
+              _ReplOutputSink(writeReplOutput),
+            ),
           );
       _replOutputDecoder!.add(data);
     }
@@ -183,7 +200,7 @@ class _ReplOutputSink implements StringSink {
 }
 
 /// Encodes non-ASCII characters for MicroPython REPL input.
-String _encodeForRepl(String input) {
+String encodeReplInputForDevice(String input) {
   final buffer = StringBuffer();
   for (final rune in input.runes) {
     if (rune < 0x80) {
