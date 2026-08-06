@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
+import 'package:pyrite_ide/core/services/editor/repl_lsp_completion_source.dart';
 import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
@@ -47,10 +51,15 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   final _scrollController = ScrollController();
   final _selectionKey = GlobalKey<SelectionAreaState>();
   final _inputBlockKey = GlobalKey();
+  final _editableTextKey = GlobalKey<EditableTextState>();
+  final _completionLayerLink = LayerLink();
 
   late final ReplInputController _input;
   late final ReplTranscriptController _transcript;
   late final ReplPromptTracker _tracker;
+  late final ReplCompletionController _completion;
+  late final ReplLspCompletionSource _lspCompletion;
+  late final ReplSignatureController _signature;
   late final void Function(String) _inputSink;
   late final void Function(String) _deviceOutputSink;
   late final void Function() _runStartedSink;
@@ -69,6 +78,14 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   String? _activePrompt;
   String? _pendingDeviceEcho;
   double? _focusScrollAnchor;
+  OverlayEntry? _completionOverlay;
+  OverlayEntry? _signatureOverlay;
+  Timer? _completionDebounce;
+  Timer? _signatureDebounce;
+  String _lastInputText = '';
+  final Map<String, List<String>> _runtimeCompletionCache = {};
+  Rect? _caretRectInTarget;
+  bool _completionOpensAbove = false;
 
   @override
   void initState() {
@@ -76,6 +93,15 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     _input = ref.read(replInputControllerProvider);
     _transcript = ref.read(replTranscriptControllerProvider);
     _tracker = ReplPromptTracker(onMode: _onPromptMode);
+    _lspCompletion = ReplLspCompletionSource(
+      currentController: () => ref
+          .read(editorControllerMapProvider.notifier)
+          .getSelectedController(),
+    );
+    _signature = ReplSignatureController(provider: _provideSignatureHint);
+    _signature.addListener(_syncSignatureOverlay);
+    _completion = ReplCompletionController(provider: _provideCompletionItems);
+    _completion.addListener(_syncCompletionOverlay);
     _scrollController.addListener(_keepFocusScrollPosition);
     _inputSink = _sendInput;
     _deviceOutputSink = _handleDeviceOutput;
@@ -111,6 +137,17 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       replRunFinishedSink = _previousRunFinishedSink;
     }
     _scrollController.removeListener(_keepFocusScrollPosition);
+    _completion.removeListener(_syncCompletionOverlay);
+    _completionDebounce?.cancel();
+    _signature.removeListener(_syncSignatureOverlay);
+    _signatureDebounce?.cancel();
+    _completionOverlay?.remove();
+    _completionOverlay = null;
+    _signatureOverlay?.remove();
+    _signatureOverlay = null;
+    _completion.dispose();
+    _signature.dispose();
+    _lspCompletion.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -119,7 +156,11 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge(<Listenable>[_input, _transcript]),
+      animation: Listenable.merge(<Listenable>[
+        _input,
+        _transcript,
+        _completion,
+      ]),
       builder: (context, _) {
         return Container(
           color: widget.backgroundColor,
@@ -128,7 +169,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
             onPointerDown: (_) => _handleSurfacePointerDown(),
             child: LayoutBuilder(
               builder: (context, _) {
-                final inputVisible = _input.isInlineEditable;
+                final inputVisible = _input.hasVisibleInput;
                 return Scrollbar(
                   controller: _scrollController,
                   child: SingleChildScrollView(
@@ -182,6 +223,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
           child: Opacity(
             opacity: 0,
             child: _InlineReplEditor(
+              editableKey: _editableTextKey,
               controller: _input,
               focusNode: _focusNode,
               style: style,
@@ -194,28 +236,33 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     }
 
     final lineCount = '\n'.allMatches(_input.text.text).length + 1;
-    return Row(
-      key: _inputBlockKey,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _PromptGutter(
-          lineCount: lineCount,
-          continuation: _input.mode == ReplInteractionMode.continuation,
-          style: _promptStyle(context),
-        ),
-        Flexible(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 20, maxHeight: 160),
-            child: _InlineReplEditor(
-              controller: _input,
-              focusNode: _focusNode,
-              style: style,
-              onKeyEvent: _handleEditorKey,
-              onChanged: _handleTextChanged,
+    return CompositedTransformTarget(
+      link: _completionLayerLink,
+      child: Row(
+        key: _inputBlockKey,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PromptGutter(
+            lineCount: lineCount,
+            showPrompt: _input.isInlineEditable,
+            continuation: _input.mode == ReplInteractionMode.continuation,
+            style: _promptStyle(context),
+          ),
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 20, maxHeight: 160),
+              child: _InlineReplEditor(
+                editableKey: _editableTextKey,
+                controller: _input,
+                focusNode: _focusNode,
+                style: style,
+                onKeyEvent: _handleEditorKey,
+                onChanged: _handleTextChanged,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -264,15 +311,22 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   void _handleSurfacePointerDown() {
     _clearOutputSelection();
-    if (_input.isInlineEditable) {
+    if (_input.hasVisibleInput) {
       _requestInputFocus(force: true, preserveScroll: true);
     }
   }
 
   void _onPromptMode(ReplInteractionMode mode) {
     if (!mounted) return;
+    if (mode != ReplInteractionMode.prompt &&
+        mode != ReplInteractionMode.continuation) {
+      _signature.dismiss();
+    }
     if (mode == ReplInteractionMode.prompt ||
         mode == ReplInteractionMode.continuation) {
+      if (mode == ReplInteractionMode.prompt) {
+        _runtimeCompletionCache.clear();
+      }
       _activePrompt = mode == ReplInteractionMode.prompt ? '>>> ' : '... ';
       _input.setMode(mode);
       _requestInputFocus(force: !_hasClaimedInitialFocus);
@@ -317,6 +371,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
         webState == WebReplState.connected ||
         webState == WebReplState.waitingPassword;
     if (!serialConnected && !webConnected) {
+      _runtimeCompletionCache.clear();
       _flushPromptFilter();
       _displayAnsiState = 0;
       _tracker.reset();
@@ -325,6 +380,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   KeyEventResult _handleEditorKey(FocusNode _, KeyEvent event) {
     if (event is KeyRepeatEvent) {
+      if (_completion.isOpen &&
+          (event.logicalKey == LogicalKeyboardKey.enter ||
+              event.logicalKey == LogicalKeyboardKey.tab ||
+              event.logicalKey == LogicalKeyboardKey.arrowUp ||
+              event.logicalKey == LogicalKeyboardKey.arrowDown)) {
+        return KeyEventResult.handled;
+      }
       return event.logicalKey == LogicalKeyboardKey.enter
           ? KeyEventResult.handled
           : KeyEventResult.ignored;
@@ -338,7 +400,50 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       return KeyEventResult.handled;
     }
 
+    if (key == LogicalKeyboardKey.escape && _signature.isOpen) {
+      _signature.dismiss();
+      return KeyEventResult.handled;
+    }
+
+    if (_completion.isOpen) {
+      switch (key) {
+        case LogicalKeyboardKey.escape:
+          _completion.dismiss();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.arrowUp:
+          _completion.move(-1);
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.arrowDown:
+          _completion.move(1);
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.enter:
+        case LogicalKeyboardKey.tab:
+          _acceptCompletion();
+          return KeyEventResult.handled;
+        default:
+          break;
+      }
+    }
+
     if (!_input.isInlineEditable) {
+      if (_input.mode == ReplInteractionMode.passthrough) {
+        if (control && key == LogicalKeyboardKey.keyC) {
+          if (!_input.text.selection.isCollapsed) return KeyEventResult.ignored;
+          if (!_interruptManagedRun()) _sendInput('\x03');
+          return KeyEventResult.handled;
+        }
+        if (control && key == LogicalKeyboardKey.keyD) {
+          if (_input.text.text.isEmpty) _sendInput('\x04');
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.enter) {
+          _submitPassthroughInput();
+          return KeyEventResult.handled;
+        }
+        // Keep arrows, backspace, delete and paste in the local line editor.
+        return KeyEventResult.ignored;
+      }
+      _completion.dismiss();
       if (_input.mode == ReplInteractionMode.submitting) {
         if (control && key == LogicalKeyboardKey.keyC) {
           if (!_interruptManagedRun()) _sendInput('\x03');
@@ -380,6 +485,10 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       _submit();
       return KeyEventResult.handled;
     }
+    if (control && key == LogicalKeyboardKey.space) {
+      unawaited(_requestCompletion(manual: true));
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.arrowUp && _input.showPreviousHistory()) {
       return KeyEventResult.handled;
     }
@@ -387,7 +496,12 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.tab) {
-      _input.insert('    ');
+      final context = _completionContext();
+      if (context.hasQuery) {
+        unawaited(_requestCompletion(manual: true));
+      } else {
+        _input.insert('    ');
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.backspace && _input.deleteIndentationUnit()) {
@@ -436,6 +550,8 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   }
 
   void _submit() {
+    _completion.dismiss();
+    _signature.dismiss();
     final wasContinuation = _input.mode == ReplInteractionMode.continuation;
     final value = _input.takeSubmission();
     if (value == null) return;
@@ -505,6 +621,29 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   void _handleTextChanged(String value) {
     if (_input.isInlineEditable) {
       _scheduleScrollToBottom(force: true);
+      final previous = _lastInputText;
+      _lastInputText = value;
+      final appendedOneCharacter =
+          value.length == previous.length + 1 && value.startsWith(previous);
+      final appendedCharacter = appendedOneCharacter
+          ? value.substring(value.length - 1)
+          : null;
+      if (appendedCharacter == '(' || appendedCharacter == ',') {
+        _signatureDebounce?.cancel();
+        _signatureDebounce = Timer(const Duration(milliseconds: 80), () {
+          if (mounted) unawaited(_requestSignature(appendedCharacter));
+        });
+      } else if (appendedCharacter == ')' || appendedCharacter == '\n') {
+        _signature.dismiss();
+      }
+      if (appendedOneCharacter && RegExp(r'[A-Za-z0-9_.]$').hasMatch(value)) {
+        _completionDebounce?.cancel();
+        _completionDebounce = Timer(const Duration(milliseconds: 120), () {
+          if (mounted) unawaited(_requestCompletion());
+        });
+      } else if (_completion.isOpen && !appendedOneCharacter) {
+        _completion.dismiss();
+      }
       return;
     }
     if (value.isEmpty) return;
@@ -513,8 +652,290 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       return;
     }
     if (!_input.text.value.composing.isCollapsed) return;
+    if (_input.mode == ReplInteractionMode.passthrough) return;
     _sendInput(value);
     _input.text.clear();
+  }
+
+  void _submitPassthroughInput() {
+    final value = _input.text.text;
+    final source = '$value\r\n';
+    _pendingDeviceEcho = encodeReplInputForDevice(source);
+    _transcript.append(source);
+    _displayAtLineStart = true;
+    _input.text.clear();
+    _sendInput(source);
+    _scheduleScrollToBottom(force: true);
+  }
+
+  ReplCompletionContext _completionContext({bool manual = false}) {
+    final selection = _input.text.selection;
+    final cursor = selection.extentOffset < 0
+        ? _input.text.text.length
+        : selection.extentOffset;
+    return ReplCompletionContext.fromText(
+      _input.text.text,
+      cursor,
+      manual: manual,
+    );
+  }
+
+  Future<void> _requestCompletion({bool manual = false}) async {
+    if (!_input.isInlineEditable) {
+      _completion.dismiss();
+      return;
+    }
+    final context = _completionContext(manual: manual);
+    if (!manual && !context.shouldAutoTrigger) {
+      _completion.dismiss();
+      return;
+    }
+    await _completion.request(context);
+  }
+
+  Future<void> _requestSignature(String? triggerCharacter) async {
+    if (!_input.isInlineEditable) {
+      _signature.dismiss();
+      return;
+    }
+    final selection = _input.text.selection;
+    final cursor = selection.extentOffset < 0
+        ? _input.text.text.length
+        : selection.extentOffset;
+    final context = ReplSignatureContext.fromText(
+      _input.text.text,
+      cursor,
+      triggerCharacter: triggerCharacter,
+    );
+    if (context == null) {
+      _signature.dismiss();
+      return;
+    }
+    await _signature.request(context);
+  }
+
+  Future<ReplSignatureHint?> _provideSignatureHint(
+    ReplSignatureContext context,
+  ) async {
+    final lsp = await _lspCompletion
+        .signature(context)
+        .timeout(const Duration(milliseconds: 700), onTimeout: () => null);
+    return lsp ?? ReplSignatureCatalog.find(context);
+  }
+
+  Future<List<ReplCompletionItem>> _provideCompletionItems(
+    ReplCompletionContext context,
+  ) async {
+    final staticItems = await ReplCompletionCatalog.complete(context);
+    final backendAllowed = context.manual || context.isMemberAccess;
+    final lspFuture = backendAllowed
+        ? _lspCompletion
+              .complete(context)
+              .timeout(
+                const Duration(milliseconds: 700),
+                onTimeout: () => const <ReplCompletionItem>[],
+              )
+        : Future.value(const <ReplCompletionItem>[]);
+    final dynamicAllowed = context.shouldQueryRuntime;
+    final serial = ref.read(serialProvider);
+    final web = ref.read(webReplProvider);
+    final runtimeFuture =
+        dynamicAllowed &&
+            serial.isConnected &&
+            web.state != WebReplState.connected &&
+            web.state != WebReplState.waitingPassword
+        ? _runtimeCompletionItems(context)
+        : Future.value(const <ReplCompletionItem>[]);
+    final results = await Future.wait([lspFuture, runtimeFuture]);
+    return _mergeCompletionItems([staticItems, results[0], results[1]]);
+  }
+
+  Future<List<ReplCompletionItem>> _runtimeCompletionItems(
+    ReplCompletionContext context,
+  ) async {
+    final key = context.owner ?? '<globals>';
+    var names = _runtimeCompletionCache[key];
+    if (names == null) {
+      names = await queryReplNamesAtPrompt(ref, owner: context.owner);
+      if (names != null) _runtimeCompletionCache[key] = names;
+    }
+    if (names == null) return const [];
+    return [
+      for (final name in names)
+        if (name.startsWith(context.token))
+          ReplCompletionItem(
+            label: name,
+            insertText: name,
+            replaceStart: context.replaceStart,
+            replaceEnd: context.replaceEnd,
+            kind: context.owner == null
+                ? ReplCompletionKind.variable
+                : ReplCompletionKind.property,
+            source: ReplCompletionSource.runtime,
+            detail: 'device',
+          ),
+    ];
+  }
+
+  List<ReplCompletionItem> _mergeCompletionItems(
+    List<List<ReplCompletionItem>> groups,
+  ) {
+    final merged = <String, ReplCompletionItem>{
+      for (final group in groups)
+        for (final item in group) item.label: item,
+    };
+    final result = merged.values.toList()
+      ..sort((a, b) {
+        final source = a.source.index.compareTo(b.source.index);
+        return source != 0 ? source : a.label.compareTo(b.label);
+      });
+    return result.take(80).toList(growable: false);
+  }
+
+  void _acceptCompletion() {
+    final selected = _completion.selected;
+    if (selected == null) return;
+    _completion.dismiss();
+    _input.applyCompletion(selected);
+    _lastInputText = _input.text.text;
+    _scheduleScrollToBottom(force: true);
+  }
+
+  void _syncCompletionOverlay() {
+    if (!mounted) return;
+    if (_completion.isOpen && _completionOverlay == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_completion.isOpen || _completionOverlay != null) {
+          return;
+        }
+        _updateCaretAnchor();
+        final caret = _caretRectInTarget;
+        final target = _inputBlockKey.currentContext?.findRenderObject();
+        final targetWidth = target is RenderBox ? target.size.width : 320.0;
+        final viewport = MediaQuery.sizeOf(context);
+        final popupWidth = math.min(
+          360.0,
+          math.max(1.0, math.min(targetWidth, viewport.width - 24.0)),
+        );
+        final popupHeight = math.min(
+          math.max(1.0, viewport.height - 24.0),
+          math.max(36.0, math.min(_completion.items.length * 36.0, 240.0)),
+        );
+        final left = (caret?.left ?? 0).clamp(
+          0.0,
+          (targetWidth - popupWidth).clamp(0.0, targetWidth),
+        );
+        final anchor = _completionOpensAbove
+            ? (caret?.topLeft ?? Offset.zero)
+            : (caret?.bottomLeft ?? Offset.zero);
+        final overlay = Overlay.of(context, rootOverlay: true);
+        final entry = OverlayEntry(
+          builder: (_) => Positioned(
+            left: 0,
+            top: 0,
+            width: popupWidth,
+            height: popupHeight,
+            child: CompositedTransformFollower(
+              link: _completionLayerLink,
+              targetAnchor: Alignment.topLeft,
+              followerAnchor: _completionOpensAbove
+                  ? Alignment.bottomLeft
+                  : Alignment.topLeft,
+              offset: Offset(
+                left,
+                anchor.dy + (_completionOpensAbove ? -4 : 4),
+              ),
+              showWhenUnlinked: false,
+              child: _ReplCompletionPopup(
+                controller: _completion,
+                onSelected: (index) {
+                  _completion.select(index);
+                  _acceptCompletion();
+                },
+              ),
+            ),
+          ),
+        );
+        _completionOverlay = entry;
+        overlay.insert(entry);
+      });
+    } else if (!_completion.isOpen && _completionOverlay != null) {
+      _completionOverlay!.remove();
+      _completionOverlay = null;
+    }
+  }
+
+  void _syncSignatureOverlay() {
+    if (!mounted) return;
+    if (_signature.isOpen && _signatureOverlay == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_signature.isOpen || _signatureOverlay != null) {
+          return;
+        }
+        _updateCaretAnchor();
+        final caret = _caretRectInTarget ?? Rect.zero;
+        final target = _inputBlockKey.currentContext?.findRenderObject();
+        final targetWidth = target is RenderBox ? target.size.width : 320.0;
+        final viewport = MediaQuery.sizeOf(context);
+        final popupWidth = math.min(
+          480.0,
+          math.max(1.0, math.min(targetWidth, viewport.width - 24.0)),
+        );
+        final popupHeight = math.min(
+          64.0,
+          math.max(1.0, viewport.height - 24.0),
+        );
+        final left = caret.left.clamp(
+          0.0,
+          (targetWidth - popupWidth).clamp(0.0, targetWidth),
+        );
+        final overlay = Overlay.of(context, rootOverlay: true);
+        final entry = OverlayEntry(
+          builder: (_) => Positioned(
+            left: 0,
+            top: 0,
+            width: popupWidth,
+            height: popupHeight,
+            child: CompositedTransformFollower(
+              link: _completionLayerLink,
+              targetAnchor: Alignment.topLeft,
+              followerAnchor: Alignment.bottomLeft,
+              offset: Offset(left, caret.top - 4),
+              showWhenUnlinked: false,
+              child: _ReplSignaturePopup(controller: _signature),
+            ),
+          ),
+        );
+        _signatureOverlay = entry;
+        overlay.insert(entry);
+      });
+    } else if (!_signature.isOpen && _signatureOverlay != null) {
+      _signatureOverlay!.remove();
+      _signatureOverlay = null;
+    }
+  }
+
+  void _updateCaretAnchor() {
+    final editable = _editableTextKey.currentState?.renderEditable;
+    final target = _inputBlockKey.currentContext?.findRenderObject();
+    if (editable == null || target is! RenderBox) return;
+    final selection = _input.text.selection;
+    final offset = selection.extentOffset < 0
+        ? _input.text.text.length
+        : selection.extentOffset.clamp(0, _input.text.text.length);
+    final caret = editable.getLocalRectForCaret(TextPosition(offset: offset));
+    final globalTopLeft = editable.localToGlobal(caret.topLeft);
+    final globalBottomRight = editable.localToGlobal(caret.bottomRight);
+    final targetTopLeft = target.localToGlobal(Offset.zero);
+    _caretRectInTarget = Rect.fromLTRB(
+      globalTopLeft.dx - targetTopLeft.dx,
+      globalTopLeft.dy - targetTopLeft.dy,
+      globalBottomRight.dx - targetTopLeft.dx,
+      globalBottomRight.dy - targetTopLeft.dy,
+    );
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    _completionOpensAbove =
+        screenHeight - globalBottomRight.dy < 200 && globalTopLeft.dy > 200;
   }
 
   bool _copyOutputSelection() {
@@ -533,9 +954,12 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   void _clearTranscript() {
     _clearOutputSelection();
+    _completion.dismiss();
+    _signature.dismiss();
     _promptFilterPending = '';
     _displayAnsiState = 0;
     _pendingDeviceEcho = null;
+    _runtimeCompletionCache.clear();
     _displayAtLineStart = true;
     _managedOutputAtLineStart = true;
     _transcript.clear();
@@ -543,10 +967,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   void _handleExternalRunStarted() {
     if (!mounted) return;
+    _completion.dismiss();
+    _signature.dismiss();
     if (_input.isInlineEditable) {
       _transcript.append('${_takeActivePrompt()}\r\n');
     }
     _pendingDeviceEcho = null;
+    _runtimeCompletionCache.clear();
     _managedOutputAtLineStart = true;
     _input.setMode(ReplInteractionMode.passthrough);
     _scheduleScrollToBottom(force: true);
@@ -554,8 +981,11 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   void _handleExternalRunFinished() {
     if (!mounted) return;
+    _completion.dismiss();
+    _signature.dismiss();
     if (!_managedOutputAtLineStart) _transcript.append('\r\n');
     _managedOutputAtLineStart = true;
+    _runtimeCompletionCache.clear();
     _activePrompt = '>>> ';
     _input.setMode(ReplInteractionMode.prompt);
     _requestInputFocus();
@@ -747,11 +1177,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 class _PromptGutter extends StatelessWidget {
   const _PromptGutter({
     required this.lineCount,
+    required this.showPrompt,
     required this.continuation,
     required this.style,
   });
 
   final int lineCount;
+  final bool showPrompt;
   final bool continuation;
   final TextStyle style;
 
@@ -762,13 +1194,13 @@ class _PromptGutter extends StatelessWidget {
       fontWeight: FontWeight.normal,
     );
     return SizedBox(
-      width: 42,
+      width: showPrompt ? 42 : 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var index = 0; index < lineCount; index++)
             Text(
-              index == 0 && !continuation ? '>>> ' : '... ',
+              showPrompt ? (index == 0 && !continuation ? '>>> ' : '... ') : '',
               style: continuation || index > 0 ? continuationStyle : style,
               maxLines: 1,
             ),
@@ -778,8 +1210,166 @@ class _PromptGutter extends StatelessWidget {
   }
 }
 
+class _ReplSignaturePopup extends StatelessWidget {
+  const _ReplSignaturePopup({required this.controller});
+
+  final ReplSignatureController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final hint = controller.hint;
+        if (hint == null) return const SizedBox.shrink();
+        return TapRegion(
+          onTapOutside: (_) => controller.dismiss(),
+          child: Material(
+            key: const ValueKey('repl-signature-popup'),
+            elevation: 6,
+            color: scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(4),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Row(
+                children: [
+                  Icon(Icons.functions, size: 16, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hint.label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${hint.activeParameter + 1}',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ReplCompletionPopup extends StatelessWidget {
+  const _ReplCompletionPopup({
+    required this.controller,
+    required this.onSelected,
+  });
+
+  final ReplCompletionController controller;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final items = controller.items;
+        if (items.isEmpty) return const SizedBox.shrink();
+        return TapRegion(
+          onTapOutside: (_) => controller.dismiss(),
+          child: Material(
+            key: const ValueKey('repl-completion-popup'),
+            elevation: 8,
+            color: scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(4),
+            clipBehavior: Clip.antiAlias,
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final selected = index == controller.selectedIndex;
+                return InkWell(
+                  onTap: () => onSelected(index),
+                  child: Container(
+                    height: 34,
+                    color: selected
+                        ? scheme.primary.withValues(alpha: .14)
+                        : Colors.transparent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _completionIcon(item.kind),
+                          size: 16,
+                          color: selected
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: scheme.onSurface,
+                              fontWeight: selected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                        if (item.detail != null)
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 130),
+                            child: Text(
+                              item.detail!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+IconData _completionIcon(ReplCompletionKind kind) => switch (kind) {
+  ReplCompletionKind.keyword => Icons.code,
+  ReplCompletionKind.builtin => Icons.functions,
+  ReplCompletionKind.module => Icons.folder_open,
+  ReplCompletionKind.function => Icons.functions_outlined,
+  ReplCompletionKind.className => Icons.category_outlined,
+  ReplCompletionKind.variable => Icons.data_object,
+  ReplCompletionKind.property => Icons.tune,
+  ReplCompletionKind.constant => Icons.pin,
+  ReplCompletionKind.text => Icons.text_fields,
+};
+
 class _InlineReplEditor extends StatelessWidget {
   const _InlineReplEditor({
+    required this.editableKey,
     required this.controller,
     required this.focusNode,
     required this.style,
@@ -787,6 +1377,7 @@ class _InlineReplEditor extends StatelessWidget {
     required this.onChanged,
   });
 
+  final GlobalKey<EditableTextState> editableKey;
   final ReplInputController controller;
   final FocusNode focusNode;
   final TextStyle style;
@@ -798,6 +1389,7 @@ class _InlineReplEditor extends StatelessWidget {
     return Focus(
       onKeyEvent: onKeyEvent,
       child: EditableText(
+        key: editableKey,
         controller: controller.text,
         focusNode: focusNode,
         style: style,

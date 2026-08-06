@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 
 enum ReplInteractionMode {
   unknown,
@@ -25,6 +26,8 @@ class ReplInputController extends ChangeNotifier {
   bool get isInlineEditable =>
       _mode == ReplInteractionMode.prompt ||
       _mode == ReplInteractionMode.continuation;
+  bool get hasVisibleInput =>
+      isInlineEditable || _mode == ReplInteractionMode.passthrough;
 
   void setMode(ReplInteractionMode mode) {
     if (_mode == mode) return;
@@ -70,6 +73,21 @@ class ReplInputController extends ChangeNotifier {
       selection: TextSelection.collapsed(offset: start + value.length),
       composing: TextRange.empty,
     );
+  }
+
+  void applyCompletion(ReplCompletionItem item) {
+    final start = item.replaceStart.clamp(0, text.text.length);
+    final end = item.replaceEnd.clamp(start, text.text.length);
+    final nextText = text.text.replaceRange(start, end, item.insertText);
+    _restoringHistory = true;
+    text.value = text.value.copyWith(
+      text: nextText,
+      selection: TextSelection.collapsed(
+        offset: start + item.insertText.length,
+      ),
+      composing: TextRange.empty,
+    );
+    _restoringHistory = false;
   }
 
   bool deleteIndentationUnit({int width = 4}) {

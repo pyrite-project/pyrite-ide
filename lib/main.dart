@@ -24,6 +24,7 @@ import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
@@ -231,7 +232,7 @@ void _startAutoSave() {
 void main() async {
   GitDebugLog.startSession();
   GitDebugLog.log('main start');
-  WidgetsFlutterBinding.ensureInitialized();
+  PyriteWidgetsBinding.ensureInitialized();
   VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
   GitDebugLog.log('WidgetsFlutterBinding initialized');
   await GitDebugLog.timeAsync(

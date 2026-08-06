@@ -141,6 +141,149 @@ void main() {
     expect(input.mode, ReplInteractionMode.prompt);
   });
 
+  testWidgets(
+    'shows and focuses passthrough input while a program is running',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await _pumpSurface(tester, container: container);
+      writeReplOutput('>>> ');
+      await tester.pump();
+      await tester.pump();
+
+      final editor = find.byType(EditableText);
+      await tester.enterText(editor, 'input("Name: ")');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      writeReplOutput('Name: ');
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        container.read(replInputControllerProvider).mode,
+        ReplInteractionMode.passthrough,
+      );
+      expect(tester.getSize(editor).width, greaterThan(100));
+
+      await tester.enterText(editor, 'abc');
+      final input = container.read(replInputControllerProvider);
+      expect(input.text.text, 'abc');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(input.text.selection.extentOffset, 2);
+      await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+      await tester.pump();
+      expect(input.text.text, 'ac');
+
+      final focusNode = tester.widget<EditableText>(editor).focusNode;
+      focusNode.unfocus();
+      await tester.pump();
+      await tester.tap(find.textContaining('Name:'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(FocusManager.instance.primaryFocus, same(focusNode));
+    },
+  );
+
+  testWidgets('Tab opens static completion and Enter accepts it', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.enterText(find.byType(EditableText), 'pri');
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('print'), findsOneWidget);
+    expect(find.text('MicroPython builtin'), findsWidgets);
+    // Keep the popup bounded even though the root Overlay is full-screen.
+    final popupSize = tester.getSize(
+      find.byKey(const ValueKey('repl-completion-popup')),
+    );
+    expect(popupSize.width, lessThanOrEqualTo(360));
+    expect(popupSize.height, lessThanOrEqualTo(240));
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(container.read(replInputControllerProvider).text.text, 'print');
+    expect(find.text('MicroPython builtin'), findsNothing);
+  });
+
+  testWidgets('completion navigation takes precedence over REPL history', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.enterText(find.byType(EditableText), 'pr');
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(container.read(replInputControllerProvider).text.text, 'property');
+  });
+
+  testWidgets('clicking outside dismisses the completion popup', (
+    tester,
+  ) async {
+    await _pumpSurface(tester);
+    writeReplOutput('boot\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.enterText(find.byType(EditableText), 'pri');
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('repl-completion-popup')), findsOneWidget);
+
+    await tester.tap(find.textContaining('boot'));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('repl-completion-popup')), findsNothing);
+  });
+
+  testWidgets('shows and dismisses a function signature without losing focus', (
+    tester,
+  ) async {
+    await _pumpSurface(tester);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    final editor = find.byType(EditableText);
+    await tester.enterText(editor, 'print');
+    await tester.enterText(editor, 'print(');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+
+    expect(find.textContaining('print(*objects'), findsOneWidget);
+    final popupSize = tester.getSize(
+      find.byKey(const ValueKey('repl-signature-popup')),
+    );
+    expect(popupSize.width, lessThanOrEqualTo(480));
+    expect(popupSize.height, lessThanOrEqualTo(64));
+    final focusNode = tester.widget<EditableText>(editor).focusNode;
+    expect(FocusManager.instance.primaryFocus, same(focusNode));
+
+    await tester.enterText(editor, 'print()');
+    await tester.pump();
+    expect(find.textContaining('print(*objects'), findsNothing);
+  });
+
   testWidgets('routes internal REPL output into the transcript', (
     tester,
   ) async {

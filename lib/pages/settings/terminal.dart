@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
@@ -393,8 +394,8 @@ class TerminalSettings extends ConsumerWidget {
             trailing: selected ? const Icon(Icons.check) : null,
             minTileHeight: 0,
             onTap: () {
-              ref.read(terminalFontFamily.notifier).state = name;
-              Navigator.pop(context);
+              customizationTerminalTextFont();
+              context.pop(context);
             },
           ),
         ),
@@ -436,8 +437,10 @@ class TerminalSettings extends ConsumerWidget {
                   divisions: 18,
                   value: size,
                   label: size.toStringAsFixed(0),
-                  onChanged: (value) =>
-                      ref.read(terminalFontSize.notifier).state = value,
+                  onChanged: (value) {
+                    customizationTerminalTextFont();
+                    context.pop();
+                  }
                 ),
               ),
             ],

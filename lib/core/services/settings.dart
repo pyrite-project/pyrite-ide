@@ -47,6 +47,18 @@ void customizationEditorTextFont() async {
   }
 }
 
+void customizationTerminalTextFont() async {
+  Future<ByteData> data = loadFontData();
+  ByteData data0 = await data;
+
+  if (data0 != _null) {
+    final FontLoader font = FontLoader("custom");
+    font.addFont(data);
+    await font.load();
+    container.read(terminalFontFamily.notifier).state = "custom";
+  }
+}
+
 StateProvider<double> editorFontSize = StateProvider<double>((ref) => 15);
 StateProvider<bool> editorWordWrap = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorLineNumber = StateProvider<bool>((ref) => true);

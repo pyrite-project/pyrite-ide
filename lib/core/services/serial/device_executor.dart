@@ -21,6 +21,8 @@ class ReplMutex {
   bool _locked = false;
   final List<Completer<void>> _waitQueue = [];
 
+  bool get isLocked => _locked;
+
   Future<T> runExclusive<T>(Future<T> Function() action) async {
     while (_locked) {
       final completer = Completer<void>();
@@ -35,6 +37,19 @@ class ReplMutex {
       if (_waitQueue.isNotEmpty) {
         final next = _waitQueue.removeAt(0);
         next.complete();
+      }
+    }
+  }
+
+  Future<T?> tryRunExclusive<T>(Future<T> Function() action) async {
+    if (_locked || _waitQueue.isNotEmpty) return null;
+    _locked = true;
+    try {
+      return await action();
+    } finally {
+      _locked = false;
+      if (_waitQueue.isNotEmpty) {
+        _waitQueue.removeAt(0).complete();
       }
     }
   }
@@ -1024,6 +1039,113 @@ void _ensureConnected(ProviderReader read) {
   if (serialState.isConnected != true) {
     throw const DeviceNotReadyException('Device not connected.');
   }
+}
+
+const replCompletionOperationId = 'repl-completion';
+const _replCompletionMarker = '__PYRITE_COMPLETION__';
+
+/// Queries names while the device is already showing a friendly prompt.
+///
+/// This path deliberately avoids the regular transaction handshake because
+/// completion must never interrupt a program or clear the user's local input.
+Future<List<String>?> queryReplNamesAtPrompt(
+  WidgetRef ref, {
+  String? owner,
+  Duration timeout = const Duration(milliseconds: 900),
+}) async {
+  if (owner != null && !RegExp(r'^[A-Za-z_]\w*$').hasMatch(owner)) {
+    return null;
+  }
+  if (!ref.read(serialProvider).isConnected ||
+      ref.read(runningOperationsProvider).isNotEmpty) {
+    return null;
+  }
+
+  final mutex = ref.read(replMutexProvider);
+  return mutex.tryRunExclusive<List<String>?>(() async {
+    if (!ref.read(serialProvider).isConnected ||
+        ref.read(runningOperationsProvider).isNotEmpty) {
+      return null;
+    }
+
+    final queue = SerialByteQueue();
+    void callback(Uint8List data) => queue.add(data);
+    final disconnect = ref.listenManual<SerialProviderState>(serialProvider, (
+      _,
+      next,
+    ) {
+      if (!next.isConnected) queue.cancel();
+    });
+    ref.read(serialReplIoPausedProvider.notifier).state = true;
+    ref.read(serialDataCallbacksProvider.notifier).add(callback);
+    ref
+        .read(runningOperationsProvider.notifier)
+        .start(
+          const RunningOperation(
+            id: replCompletionOperationId,
+            label: 'REPL completion',
+            icon: Icons.manage_search,
+          ),
+        );
+
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      queue.clear();
+      final command = buildReplCompletionProbe(owner);
+      ref.read(serialProvider.notifier).sendCommand(command, chunked: false);
+      final response = await queue.readUntil(utf8.encode('>>> '), timeout);
+      return parseReplCompletionProbeResponse(
+        utf8.decode(response, allowMalformed: true),
+      );
+    } on TimeoutException {
+      return null;
+    } on SerialCancelledException {
+      return null;
+    } finally {
+      queue.cancel();
+      disconnect.close();
+      ref.read(serialDataCallbacksProvider.notifier).remove(callback);
+      ref
+          .read(runningOperationsProvider.notifier)
+          .stop(replCompletionOperationId);
+      ref.read(serialReplIoPausedProvider.notifier).state = false;
+    }
+  });
+}
+
+@visibleForTesting
+String buildReplCompletionProbe(String? owner) {
+  if (owner != null && !RegExp(r'^[A-Za-z_]\w*$').hasMatch(owner)) {
+    throw ArgumentError.value(owner, 'owner', 'Only a direct name is allowed');
+  }
+  final expression = owner == null
+      ? 'dir()'
+      : "dir($owner) if '$owner' in globals() else []";
+  return "print('$_replCompletionMarker'+__import__('ujson').dumps($expression))\r\n";
+}
+
+@visibleForTesting
+List<String>? parseReplCompletionProbeResponse(String response) {
+  final normalized = response.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  for (final line in normalized.split('\n').reversed) {
+    final trimmed = line.trim();
+    if (!trimmed.startsWith(_replCompletionMarker)) continue;
+    try {
+      final decoded = jsonDecode(
+        trimmed.substring(_replCompletionMarker.length),
+      );
+      if (decoded is! List) return null;
+      return decoded
+          .whereType<String>()
+          .where((name) => !name.startsWith('__'))
+          .toSet()
+          .toList()
+        ..sort();
+    } on FormatException {
+      return null;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

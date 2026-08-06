@@ -1,9 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 
 void main() {
   group('ReplInputController', () {
+    test('keeps an input surface available while a program is running', () {
+      final controller = ReplInputController();
+      addTearDown(controller.dispose);
+
+      controller.setMode(ReplInteractionMode.passthrough);
+
+      expect(controller.hasVisibleInput, isTrue);
+      expect(controller.isInlineEditable, isFalse);
+    });
+
     late ReplInputController controller;
 
     setUp(() {
@@ -59,6 +70,27 @@ void main() {
 
       expect(controller.deleteIndentationUnit(), isFalse);
       expect(controller.text.text, '    print');
+    });
+
+    test('completion replaces only the active token', () {
+      controller.text.value = const TextEditingValue(
+        text: 'value = pri + 1',
+        selection: TextSelection.collapsed(offset: 11),
+      );
+
+      controller.applyCompletion(
+        const ReplCompletionItem(
+          label: 'print',
+          insertText: 'print',
+          replaceStart: 8,
+          replaceEnd: 11,
+          kind: ReplCompletionKind.builtin,
+          source: ReplCompletionSource.staticCatalog,
+        ),
+      );
+
+      expect(controller.text.text, 'value = print + 1');
+      expect(controller.text.selection.baseOffset, 13);
     });
 
     test('submits compound input only after an empty line', () {
