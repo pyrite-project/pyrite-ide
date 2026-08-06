@@ -327,13 +327,18 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
 
   final stdoutDecoder = const Utf8Decoder(allowMalformed: true)
       .startChunkedConversion(
-        StringConversionSink.fromStringSink(_TerminalStringSink(repl.write)),
+        StringConversionSink.fromStringSink(
+          _TerminalStringSink(writeReplOutput),
+        ),
       );
   final stderrDecoder = const Utf8Decoder(allowMalformed: true)
       .startChunkedConversion(
-        StringConversionSink.fromStringSink(_TerminalStringSink(repl.write)),
+        StringConversionSink.fromStringSink(
+          _TerminalStringSink(writeReplOutput),
+        ),
       );
   var started = false;
+  beginReplRunOutput();
 
   try {
     await saveFile(context, ref, quiet: true);
@@ -357,7 +362,7 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
     );
   } catch (error) {
     if (!started) {
-      repl.write(
+      writeReplOutput(
         "\r\n${translateForWidget(ref, I18nKey.editorRunFailedTerminal).replaceAll('{error}', error.toString())}\r\n",
       );
     }
@@ -372,6 +377,7 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   } finally {
     stdoutDecoder.close();
     stderrDecoder.close();
+    finishReplRunOutput();
   }
 }
 

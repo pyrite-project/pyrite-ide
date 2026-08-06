@@ -53,9 +53,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   late final ReplPromptTracker _tracker;
   late final void Function(String) _inputSink;
   late final void Function(String) _deviceOutputSink;
+  late final void Function() _runStartedSink;
+  late final void Function() _runFinishedSink;
   void Function(String)? _previousOutput;
   void Function(String)? _previousDeviceOutputSink;
   void Function()? _previousClearSink;
+  void Function()? _previousRunStartedSink;
+  void Function()? _previousRunFinishedSink;
   String? _selectedOutput;
   String _promptFilterPending = '';
   int _displayAnsiState = 0;
@@ -64,6 +68,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   bool _hasClaimedInitialFocus = false;
   String? _activePrompt;
   String? _pendingDeviceEcho;
+  double? _focusScrollAnchor;
 
   @override
   void initState() {
@@ -71,15 +76,22 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     _input = ref.read(replInputControllerProvider);
     _transcript = ref.read(replTranscriptControllerProvider);
     _tracker = ReplPromptTracker(onMode: _onPromptMode);
+    _scrollController.addListener(_keepFocusScrollPosition);
     _inputSink = _sendInput;
     _deviceOutputSink = _handleDeviceOutput;
+    _runStartedSink = _handleExternalRunStarted;
+    _runFinishedSink = _handleExternalRunFinished;
     _previousOutput = repl.onOutput;
     _previousDeviceOutputSink = replOutputSink;
     _previousClearSink = replClearSink;
+    _previousRunStartedSink = replRunStartedSink;
+    _previousRunFinishedSink = replRunFinishedSink;
     repl.onOutput = _inputSink;
     replInputSink = _inputSink;
     replOutputSink = _deviceOutputSink;
     replClearSink = _clearTranscript;
+    replRunStartedSink = _runStartedSink;
+    replRunFinishedSink = _runFinishedSink;
     ref.listenManual(serialProvider, (_, _) => _syncConnection());
     ref.listenManual(webReplProvider, (_, _) => _syncConnection());
   }
@@ -92,6 +104,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       replOutputSink = _previousDeviceOutputSink;
     }
     if (replClearSink == _clearTranscript) replClearSink = _previousClearSink;
+    if (replRunStartedSink == _runStartedSink) {
+      replRunStartedSink = _previousRunStartedSink;
+    }
+    if (replRunFinishedSink == _runFinishedSink) {
+      replRunFinishedSink = _previousRunFinishedSink;
+    }
+    _scrollController.removeListener(_keepFocusScrollPosition);
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -106,7 +125,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
           color: widget.backgroundColor,
           child: Listener(
             behavior: HitTestBehavior.translucent,
-            onPointerDown: (_) => _clearOutputSelection(),
+            onPointerDown: (_) => _handleSurfacePointerDown(),
             child: LayoutBuilder(
               builder: (context, _) {
                 final inputVisible = _input.isInlineEditable;
@@ -176,31 +195,28 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
     final lineCount = '\n'.allMatches(_input.text.text).length + 1;
     return Row(
-          key: _inputBlockKey,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _PromptGutter(
-              lineCount: lineCount,
-              continuation: _input.mode == ReplInteractionMode.continuation,
-              style: _promptStyle(context),
+      key: _inputBlockKey,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _PromptGutter(
+          lineCount: lineCount,
+          continuation: _input.mode == ReplInteractionMode.continuation,
+          style: _promptStyle(context),
+        ),
+        Flexible(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 20, maxHeight: 160),
+            child: _InlineReplEditor(
+              controller: _input,
+              focusNode: _focusNode,
+              style: style,
+              onKeyEvent: _handleEditorKey,
+              onChanged: _handleTextChanged,
             ),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: 20,
-                  maxHeight: 160,
-                ),
-                child: _InlineReplEditor(
-                  controller: _input,
-                  focusNode: _focusNode,
-                  style: style,
-                  onKeyEvent: _handleEditorKey,
-                  onChanged: _handleTextChanged,
-                ),
-              ),
-            ),
-          ],
-        );
+          ),
+        ),
+      ],
+    );
   }
 
   TextStyle _outputStyle(BuildContext context) {
@@ -246,6 +262,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     return TextSpan(children: spans, style: outputStyle);
   }
 
+  void _handleSurfacePointerDown() {
+    _clearOutputSelection();
+    if (_input.isInlineEditable) {
+      _requestInputFocus(force: true, preserveScroll: true);
+    }
+  }
+
   void _onPromptMode(ReplInteractionMode mode) {
     if (!mounted) return;
     if (mode == ReplInteractionMode.prompt ||
@@ -278,6 +301,9 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   }
 
   void _handleDeviceOutput(String data) {
+    if (data.isNotEmpty) {
+      _managedOutputAtLineStart = data.endsWith('\n') || data.endsWith('\r');
+    }
     _tracker.add(data);
     _appendFilteredDeviceOutput(data);
     _scheduleScrollToBottom();
@@ -298,6 +324,11 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   }
 
   KeyEventResult _handleEditorKey(FocusNode _, KeyEvent event) {
+    if (event is KeyRepeatEvent) {
+      return event.logicalKey == LogicalKeyboardKey.enter
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
     final control =
@@ -425,13 +456,49 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     unawaited(_executeManagedSubmission(value));
   }
 
-  void _requestInputFocus({bool force = false}) {
+  void _requestInputFocus({bool force = false, bool preserveScroll = false}) {
     final primary = FocusManager.instance.primaryFocus;
     if (!force && primary != null && primary != _focusNode) return;
+    final preservedOffset = preserveScroll && _scrollController.hasClients
+        ? _scrollController.offset
+        : null;
+    _focusScrollAnchor = preservedOffset;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _hasClaimedInitialFocus = true;
       _focusNode.requestFocus();
+      if (preservedOffset != null) {
+        _restoreFocusScrollOffset(preservedOffset, 4);
+      }
+    });
+  }
+
+  void _keepFocusScrollPosition() {
+    final anchor = _focusScrollAnchor;
+    if (anchor == null || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if ((position.pixels - anchor).abs() < .5) return;
+    final target = anchor.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    position.jumpTo(target.toDouble());
+  }
+
+  void _restoreFocusScrollOffset(double offset, int framesRemaining) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final target = offset.clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      position.jumpTo(target.toDouble());
+      if (framesRemaining > 1) {
+        _restoreFocusScrollOffset(offset, framesRemaining - 1);
+      } else {
+        _focusScrollAnchor = null;
+      }
     });
   }
 
@@ -472,6 +539,27 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     _displayAtLineStart = true;
     _managedOutputAtLineStart = true;
     _transcript.clear();
+  }
+
+  void _handleExternalRunStarted() {
+    if (!mounted) return;
+    if (_input.isInlineEditable) {
+      _transcript.append('${_takeActivePrompt()}\r\n');
+    }
+    _pendingDeviceEcho = null;
+    _managedOutputAtLineStart = true;
+    _input.setMode(ReplInteractionMode.passthrough);
+    _scheduleScrollToBottom(force: true);
+  }
+
+  void _handleExternalRunFinished() {
+    if (!mounted) return;
+    if (!_managedOutputAtLineStart) _transcript.append('\r\n');
+    _managedOutputAtLineStart = true;
+    _activePrompt = '>>> ';
+    _input.setMode(ReplInteractionMode.prompt);
+    _requestInputFocus();
+    _scheduleScrollToBottom(force: true);
   }
 
   String _takeActivePrompt() {
@@ -717,6 +805,7 @@ class _InlineReplEditor extends StatelessWidget {
         backgroundCursorColor: Colors.transparent,
         keyboardType: TextInputType.multiline,
         textInputAction: TextInputAction.newline,
+        scrollPadding: EdgeInsets.zero,
         maxLines: null,
         autofocus: false,
         onChanged: onChanged,

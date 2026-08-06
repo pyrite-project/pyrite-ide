@@ -13,11 +13,26 @@ void Function(String data)? replOutputSink;
 /// Host-owned clear action for the custom REPL surface.
 void Function()? replClearSink;
 
+/// Host-owned lifecycle hooks for IDE-triggered runs which write into REPL.
+void Function()? replRunStartedSink;
+void Function()? replRunFinishedSink;
+
 void writeReplOutput(String data) {
   final sink = replOutputSink;
   if (sink != null) {
     sink(data);
   } else {
     repl.write(data);
+  }
+}
+
+void beginReplRunOutput() => replRunStartedSink?.call();
+
+void finishReplRunOutput() {
+  final sink = replRunFinishedSink;
+  if (sink != null) {
+    sink();
+  } else {
+    repl.write('\r\n>>> ');
   }
 }

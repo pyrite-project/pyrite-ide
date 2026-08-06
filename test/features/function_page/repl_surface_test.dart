@@ -12,6 +12,8 @@ void main() {
     replInputSink = null;
     replOutputSink = null;
     replClearSink = null;
+    replRunStartedSink = null;
+    replRunFinishedSink = null;
   });
 
   testWidgets('shows one inline editor only at a friendly prompt', (
@@ -41,6 +43,55 @@ void main() {
     final surfaceRect = tester.getRect(find.byType(ReplSurface));
     final editorRect = tester.getRect(find.byType(EditableText));
     expect(editorRect.top, lessThan(surfaceRect.top + 24));
+  });
+
+  testWidgets('clicking the panel restores focus to the active REPL input', (
+    tester,
+  ) async {
+    await _pumpSurface(tester, height: 300);
+    writeReplOutput('boot\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    final editor = find.byType(EditableText);
+    expect(editor, findsOneWidget);
+    final focusNode = tester.widget<EditableText>(editor).focusNode;
+    focusNode.unfocus();
+    await tester.pump();
+
+    await tester.tap(find.textContaining('boot'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(FocusManager.instance.primaryFocus, same(focusNode));
+  });
+
+  testWidgets('restoring focus does not scroll the panel to the input', (
+    tester,
+  ) async {
+    await _pumpSurface(tester, height: 120);
+    writeReplOutput(
+      '${List.generate(40, (index) => 'line $index\r\n').join()}>>> ',
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final scroll = tester
+        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
+        .controller!;
+    scroll.jumpTo(scroll.position.maxScrollExtent / 2);
+    final before = scroll.offset;
+    final focusNode = tester
+        .widget<EditableText>(find.byType(EditableText))
+        .focusNode;
+    focusNode.unfocus();
+    await tester.pump();
+
+    await tester.tap(find.textContaining('line 20'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(scroll.offset, closeTo(before, 1));
   });
 
   testWidgets('filters ANSI-wrapped prompts without duplicating the gutter', (
@@ -89,6 +140,72 @@ void main() {
     );
     expect(input.mode, ReplInteractionMode.prompt);
   });
+
+  testWidgets('routes internal REPL output into the transcript', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+
+    writeReplOutput('internal run output\r\n');
+    await tester.pump();
+
+    expect(
+      container.read(replTranscriptControllerProvider).text,
+      'internal run output\n',
+    );
+  });
+
+  testWidgets('separates consecutive internal runs with a REPL prompt', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    beginReplRunOutput();
+    writeReplOutput('first failure');
+    finishReplRunOutput();
+    await tester.pump();
+
+    expect(
+      container.read(replTranscriptControllerProvider).text,
+      '>>> \nfirst failure\n',
+    );
+
+    beginReplRunOutput();
+    await tester.pump();
+    expect(
+      container.read(replTranscriptControllerProvider).text,
+      '>>> \nfirst failure\n>>> \n',
+    );
+  });
+
+  testWidgets(
+    'ignores repeated Enter events instead of inserting extra lines',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await _pumpSurface(tester, container: container);
+      writeReplOutput('>>> ');
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(EditableText), 'if ready:');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      final input = container.read(replInputControllerProvider);
+      expect(input.text.text, 'if ready:\n    ');
+      expect(input.mode, ReplInteractionMode.prompt);
+    },
+  );
 
   testWidgets(
     'keeps Chinese source in the transcript when device echo is encoded',
