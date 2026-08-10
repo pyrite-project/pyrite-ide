@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -184,20 +185,36 @@ Future<Stream<FileSystemEntity>> getFileList(String path) async {
   return Directory(path).list();
 }
 
-Future<void> renameDir(String path, String newName) async {
-  final directory = Directory(path);
-  final newPath0 = path.split(getPattern());
-  newPath0.last = newName;
-  final newPath = newPath0.join(getPattern());
-  await directory.rename(newPath);
+Future<String> renameDir(String sourcePath, String newName) async {
+  final targetPath = renamedLocalSiblingPath(sourcePath, newName);
+  await _ensureRenameTargetAvailable(sourcePath, targetPath);
+  if (path.normalize(sourcePath) != path.normalize(targetPath)) {
+    await Directory(sourcePath).rename(targetPath);
+  }
+  return targetPath;
 }
 
-Future<void> renameFile(String path, String newName) async {
-  final file = File(path);
-  final newPath0 = path.split(getPattern());
-  newPath0.last = newName;
-  final newPath = newPath0.join(getPattern());
-  await file.rename(newPath);
+Future<String> renameFile(String sourcePath, String newName) async {
+  final targetPath = renamedLocalSiblingPath(sourcePath, newName);
+  await _ensureRenameTargetAvailable(sourcePath, targetPath);
+  if (path.normalize(sourcePath) != path.normalize(targetPath)) {
+    await File(sourcePath).rename(targetPath);
+  }
+  return targetPath;
+}
+
+Future<void> _ensureRenameTargetAvailable(
+  String sourcePath,
+  String targetPath,
+) async {
+  if (path.equals(sourcePath, targetPath)) return;
+  final targetType = await FileSystemEntity.type(
+    targetPath,
+    followLinks: false,
+  );
+  if (targetType != FileSystemEntityType.notFound) {
+    throw FileRenameTargetExistsException(targetPath);
+  }
 }
 
 Future<void> deleteDir(String path) async {

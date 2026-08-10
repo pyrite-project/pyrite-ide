@@ -218,6 +218,11 @@ enum I18nKey {
     'file.message.overwrite_local_file',
     '已覆盖本地文件：{path}',
   ),
+  fileMessageRenameTargetExists(
+    'file.message.rename_target_exists',
+    '目标名称已存在：{path}',
+  ),
+  fileMessageRenameFailed('file.message.rename_failed', '重命名失败：{error}'),
   fileMessageMoveFailed('file.message.move_failed', '移动失败：{error}'),
   fileMessageDownloadFailed('file.message.download_failed', '下载失败：{error}'),
   fileMessageUploadFailed('file.message.upload_failed', '上传失败：{error}'),

@@ -1,6 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -49,14 +54,38 @@ final localFileTreeViewControllerProvider = StateProvider(
         local.deleteFile(node.id);
       }
     },
-    onNodeRenamed: (node, newName) {
-      node.data.name = newName;
-      if (node.data is FolderItem) {
-        local.renameDir(node.id, newName);
-      } else {
-        local.renameFile(node.id, newName);
+    onNodeRenamed: (node, newName) async {
+      final oldPath = node.id;
+      try {
+        final newPath = node.data is FolderItem
+            ? await local.renameDir(oldPath, newName)
+            : await local.renameFile(oldPath, newName);
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .renameLocalOpenPath(oldPath, newPath);
+        node.data.name = newName;
+        await ref
+            .read(localFileItemsProvider.notifier)
+            .buildRootFileListItems();
+      } on FileRenameTargetExistsException catch (error) {
+        ref
+            .read(ideMessageProvider.notifier)
+            .error(
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageRenameTargetExists,
+                {'path': error.targetPath},
+              ),
+            );
+      } catch (error) {
+        ref
+            .read(ideMessageProvider.notifier)
+            .error(
+              translateWithReplacements(ref, I18nKey.fileMessageRenameFailed, {
+                'error': error.toString(),
+              }),
+            );
       }
-      ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     },
     loadChildren: (node) async {
       if (node.canLoadChildren == true) {

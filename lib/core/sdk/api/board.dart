@@ -5,10 +5,13 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
 
 abstract class SdkBoardCommands {
   static const String getDirList = 'sdk.board.get_dir_list';
@@ -214,7 +217,12 @@ class SdkBoard {
     final newName = payload['new_name']?.toString();
 
     if (filePath != null && newName != null) {
+      final newPath = renamedBoardSiblingPath(filePath, newName);
       await ref.read(boardProvider).ops.rename(filePath, newName);
+      await ref
+          .read(tabbedViewControllerProvider.notifier)
+          .renameBoardOpenPath(filePath, newPath);
+      await ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
     }
     _respondOk(envelope, respond);
   }

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
@@ -101,6 +102,7 @@ class BoardFileProtocolException extends BoardFileBackendException {
 
 class SerialBoardFileBackend implements BoardFileBackend {
   static const _resultMarker = '__PYRITE_BOARD_FILE_RESULT__';
+  static const _renameTargetExistsMarker = '__PYRITE_RENAME_TARGET_EXISTS__';
 
   /// Device signals readiness for data transfer (matches CLI's 'READY').
   static const _writeReadyMarker = 'PYRITE_WRITE_READY';
@@ -756,17 +758,31 @@ _emit_ok('DeleteDirSuccessfully')
   }
 
   @override
-  Future<void> rename(String path, String newName) async {
-    final parent = _boardPath.dirname(path);
-    final target = parent == '/'
-        ? '/$newName'
-        : _boardPath.join(parent, newName);
-    await _runJsonValue(
-      _wrapSimplePython('''
-os.rename(${boardFileTextExpression(path)}, ${boardFileTextExpression(target)})
+  Future<void> rename(String sourcePath, String newName) async {
+    final targetPath = renamedBoardSiblingPath(sourcePath, newName);
+    if (_boardPath.equals(sourcePath, targetPath)) return;
+
+    try {
+      await _runJsonValue(
+        _wrapSimplePython('''
+target = ${boardFileTextExpression(targetPath)}
+target_exists = True
+try:
+  os.stat(target)
+except OSError:
+  target_exists = False
+if target_exists:
+  raise Exception('$_renameTargetExistsMarker')
+os.rename(${boardFileTextExpression(sourcePath)}, target)
 _emit_ok('RenameSuccessfully')
 '''),
-    );
+      );
+    } on BoardFileBackendException catch (error) {
+      if (error.message.contains(_renameTargetExistsMarker)) {
+        throw FileRenameTargetExistsException(targetPath);
+      }
+      rethrow;
+    }
   }
 
   @override

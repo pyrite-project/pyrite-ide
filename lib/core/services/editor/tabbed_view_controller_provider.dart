@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -14,6 +16,7 @@ import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
@@ -234,6 +237,139 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           ref.read(tabletSelectedIndex.notifier).state = 3;
         }
       }
+    }
+  }
+
+  void renameLocalOpenPath(String oldPath, String newPath) {
+    var changed = false;
+    for (final tab in state.tabs) {
+      final value = tab.value;
+      if (value is! TabDataValue ||
+          value.type != 'file' ||
+          value.isBoardFile == true) {
+        continue;
+      }
+      final renamedPath = rebaseLocalPath(
+        value.filePath,
+        oldRoot: oldPath,
+        newRoot: newPath,
+      );
+      if (renamedPath == null) continue;
+      _replaceFileTab(tab, value, renamedPath, value.boardFilePath);
+      changed = true;
+    }
+    if (changed) _publishRenamedTabs();
+  }
+
+  Future<void> renameBoardOpenPath(String oldPath, String newPath) async {
+    var changed = false;
+    final cacheMigrations = <Future<void>>[];
+    for (final tab in state.tabs) {
+      final value = tab.value;
+      final boardFilePath = value is TabDataValue ? value.boardFilePath : null;
+      if (value is! TabDataValue ||
+          value.type != 'file' ||
+          value.isBoardFile != true ||
+          boardFilePath == null) {
+        continue;
+      }
+      final renamedBoardPath = rebaseBoardPath(
+        boardFilePath,
+        oldRoot: oldPath,
+        newRoot: newPath,
+      );
+      if (renamedBoardPath == null) continue;
+      final renamedCachePath = rebaseBoardCachePath(
+        oldCachePath: value.filePath,
+        oldBoardPath: boardFilePath,
+        newBoardPath: renamedBoardPath,
+      );
+      final controller = value.editorController;
+      if (controller != null) {
+        cacheMigrations.add(
+          _writeBoardCache(
+            oldPath: value.filePath,
+            newPath: renamedCachePath,
+            content: controller.text,
+          ),
+        );
+      }
+      _replaceFileTab(tab, value, renamedCachePath, renamedBoardPath);
+      changed = true;
+    }
+    if (changed) _publishRenamedTabs();
+    await Future.wait(cacheMigrations);
+  }
+
+  void _replaceFileTab(
+    TabData tab,
+    TabDataValue value,
+    String newFilePath,
+    String? newBoardFilePath,
+  ) {
+    final newFile = File(newFilePath);
+    ref
+        .read(editorControllerMapProvider.notifier)
+        .movePath(value.filePath, newFilePath);
+    _movePendingFileProviders(value.filePath, newFilePath);
+    tab.value = TabDataValue(
+      type: value.type,
+      filePath: newFilePath,
+      file: newFile,
+      editorController: value.editorController,
+      undoRedoController: value.undoRedoController,
+      isBoardFile: value.isBoardFile,
+      boardFilePath: newBoardFilePath,
+      isSaved: value.isSaved,
+      pluginId: value.pluginId,
+      viewId: value.viewId,
+      viewInstanceId: value.viewInstanceId,
+      renderer: value.renderer,
+    );
+    final editorController = value.editorController;
+    if (editorController != null) {
+      tab.content = EditCore(
+        file: newFile,
+        editorController: editorController,
+        undoController: value.undoRedoController,
+      );
+    }
+  }
+
+  void _movePendingFileProviders(String oldPath, String newPath) {
+    if (oldPath == newPath) return;
+    pendingUploadProviderMap[newPath] =
+        pendingUploadProviderMap.remove(oldPath) ??
+        StateProvider<PendingUpload?>((ref) => null);
+    pendingDownloadProviderMap[newPath] =
+        pendingDownloadProviderMap.remove(oldPath) ??
+        StateProvider<PendingDownload?>((ref) => null);
+  }
+
+  void _publishRenamedTabs() {
+    final selectedIndex = state.selectedIndex;
+    refreshFileTabTitles(state.tabs);
+    final newController = TabbedViewController(List.from(state.tabs));
+    if (selectedIndex != null && selectedIndex < newController.tabs.length) {
+      newController.selectedIndex = selectedIndex;
+    }
+    state = newController;
+  }
+
+  Future<void> _writeBoardCache({
+    required String oldPath,
+    required String newPath,
+    required String content,
+  }) async {
+    if (path.equals(oldPath, newPath)) return;
+    try {
+      final newFile = File(newPath);
+      await newFile.parent.create(recursive: true);
+      await newFile.writeAsString(content);
+      final oldFile = File(oldPath);
+      if (await oldFile.exists()) await oldFile.delete();
+    } catch (error) {
+      debugPrint('[editor] failed to migrate board cache: $error');
     }
   }
 

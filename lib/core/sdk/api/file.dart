@@ -256,11 +256,13 @@ class SdkFile {
 
     if (filePath != null && newName != null) {
       final isDir = FileSystemEntity.isDirectorySync(filePath);
-      if (isDir) {
-        await local.renameDir(filePath, newName);
-      } else {
-        await local.renameFile(filePath, newName);
-      }
+      final newPath = isDir
+          ? await local.renameDir(filePath, newName)
+          : await local.renameFile(filePath, newName);
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .renameLocalOpenPath(filePath, newPath);
+      await ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
     _respondOk(envelope, respond);
   }
