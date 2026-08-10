@@ -19,6 +19,8 @@ import 'package:pyrite_ide/features/plugin_view/component_builder.dart';
 import 'package:pyrite_ide/features/plugin_view/component_error_boundary.dart';
 import 'package:pyrite_ide/features/plugin_view/component_host_state.dart';
 import 'package:pyrite_ide/features/plugin_view/native_view_registry.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_menu.dart';
 
 /// Renders one plugin view instance.
 ///
@@ -35,6 +37,7 @@ class PluginViewSurface extends ConsumerStatefulWidget {
     super.key,
     required this.instance,
     required this.renderer,
+    this.title,
     this.viewProps = const {},
   });
 
@@ -42,6 +45,9 @@ class PluginViewSurface extends ConsumerStatefulWidget {
 
   /// Renderer token from the view contribution, e.g. `native.outline`.
   final String renderer;
+
+  /// Display title from the view contribution, when the host knows it.
+  final String? title;
 
   /// Renderer-level props from the contribution (table columns, and so on).
   final Map<String, dynamic> viewProps;
@@ -277,9 +283,7 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
 
     if (model == null) {
       // The plugin has not sent its first snapshot yet.
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (model.state == ViewState.disconnected) {
@@ -301,11 +305,14 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
       );
     }
 
+    final titleMenuItems = _titleMenuItems();
+    final manifestTitleActions = _manifestTitleActions(titleMenuItems);
     final builder = ComponentBuilder(
       registry: _components,
       hostState: _hostState,
       onEvent: _emit,
       onContextMenuRequest: _requestContextMenu,
+      hostAppBarActions: manifestTitleActions,
       pluginRootPath: _manager?.assetsPath,
     );
     _hostState.beginBuild();
@@ -316,7 +323,14 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
     if (componentTree != null) {
       final result = builder.build(context, componentTree);
       _hostState.endBuild();
-      return result;
+      return builder.hostAppBarActionsConsumed || manifestTitleActions.isEmpty
+          ? result
+          : _withHostAppBar(
+              context,
+              title: _viewTitle(model),
+              actions: manifestTitleActions,
+              body: result,
+            );
     }
 
     final result = _registry.build(
@@ -329,20 +343,102 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
         builder: builder,
         onEvent: _emit,
         props: widget.viewProps,
-        titleMenuItems: _titleMenuItems(),
-        onCommand: (commandId) => _runCommand(
-          commandId,
-          context: {
-            'viewId': widget.instance.viewId,
-            'instanceId': widget.instance.instanceId,
-            'pluginId': widget.instance.pluginId,
-          },
-        ),
       ),
     );
     _hostState.endBuild();
-    return result;
+    return _withHostAppBar(
+      context,
+      title: _viewTitle(model),
+      actions: [...manifestTitleActions, ..._sdkTitleActions(model)],
+      body: result,
+    );
   }
+
+  String _viewTitle(ViewModel model) {
+    final actionTitle = model.nodes
+        .where((node) => node['role'] == 'appBarAction')
+        .map((node) => node['appBarTitle']?.toString())
+        .whereType<String>()
+        .firstOrNull;
+    if (actionTitle != null && actionTitle.isNotEmpty) return actionTitle;
+
+    final configTitle = model.nodes
+        .where((node) => node['role'] == 'viewConfig')
+        .map((node) => (node['props'] as Map?)?['title']?.toString())
+        .whereType<String>()
+        .firstOrNull;
+    if (configTitle != null && configTitle.isNotEmpty) return configTitle;
+
+    final contribution = ref
+        .watch(contributionRegistryProvider)
+        .views
+        .byId(widget.instance.viewId);
+    return widget.title ?? contribution?.value.title ?? widget.instance.viewId;
+  }
+
+  List<Widget> _manifestTitleActions(List<NativeTitleMenuItem> items) => [
+    for (final item in items)
+      IconButton(
+        icon: Icon(pluginIcon(item.icon ?? 'material:more_horiz'), size: 18),
+        tooltip: item.title,
+        onPressed: !item.enabled
+            ? null
+            : () => _runCommand(
+                item.commandId,
+                context: {
+                  'viewId': widget.instance.viewId,
+                  'instanceId': widget.instance.instanceId,
+                  'pluginId': widget.instance.pluginId,
+                },
+              ),
+      ),
+  ];
+
+  List<Widget> _sdkTitleActions(ViewModel model) => [
+    for (final action in model.nodes.where(
+      (node) => node['role'] == 'appBarAction' || node['role'] == 'appBarMenu',
+    ))
+      if (action['role'] == 'appBarMenu')
+        PluginMenuButton(
+          items: pluginMenuEntries(action['items']),
+          icon: action['icon']?.toString() ?? 'material:more_vert',
+          tooltip: action['label']?.toString(),
+          iconOnly: true,
+          onSelected: (payload) => _emit(widget.instance.viewId, 'select', {
+            'nodeId': action['id']?.toString(),
+            ...payload,
+          }),
+        )
+      else
+        IconButton(
+          icon: Icon(pluginIcon(action['icon']?.toString()), size: 18),
+          tooltip: action['label']?.toString(),
+          onPressed: () => _emit(widget.instance.viewId, 'select', {
+            'nodeId': action['id']?.toString(),
+          }),
+        ),
+  ];
+
+  Widget _withHostAppBar(
+    BuildContext context, {
+    required String title,
+    required List<Widget> actions,
+    required Widget body,
+  }) => Column(
+    children: [
+      AppBar(
+        primary: false,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 40,
+        titleSpacing: 12,
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+        actions: actions,
+      ),
+      Expanded(child: body),
+    ],
+  );
 
   List<NativeTitleMenuItem> _titleMenuItems() {
     final enabledPlugins = ref
