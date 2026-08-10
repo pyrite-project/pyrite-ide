@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
@@ -1019,6 +1020,12 @@ class ProjectFiles extends ConsumerWidget {
                   .ops
                   .writeFileBytes(boardFileTarget!.id, bytes);
               ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .warnOpenFilesOverwritten(
+                    boardFiles: true,
+                    filePaths: [boardFileTarget.id],
+                  );
+              ref
                   .read(boardFileItemsProvider.notifier)
                   .buildRootFileListItems();
 
@@ -1175,6 +1182,12 @@ class ProjectFiles extends ConsumerWidget {
                   .ops
                   .getFileBytes(node.id);
               await File(localFileTarget!.id).writeAsBytes(bytes);
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .warnOpenFilesOverwritten(
+                    boardFiles: false,
+                    filePaths: [localFileTarget.id],
+                  );
               ref
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems();

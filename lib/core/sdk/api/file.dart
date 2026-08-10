@@ -459,6 +459,9 @@ class SdkFile {
           bytes,
           onProgress: progress.updateBytes,
         );
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .warnOpenFilesOverwritten(boardFiles: true, filePaths: [boardPath]);
         progress.updateBytes(bytes.length, bytes.length);
         progress.complete(
           message: translateWithReplacements(

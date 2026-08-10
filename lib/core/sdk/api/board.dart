@@ -450,6 +450,12 @@ class SdkBoard {
         await file.parent.create(recursive: true);
         await file.writeAsBytes(bytes);
         ref
+            .read(tabbedViewControllerProvider.notifier)
+            .warnOpenFilesOverwritten(
+              boardFiles: false,
+              filePaths: [localPath],
+            );
+        ref
             .read(fileTransferProgressProvider.notifier)
             .complete(
               message: translateWithReplacements(

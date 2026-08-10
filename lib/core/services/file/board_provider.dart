@@ -248,102 +248,116 @@ class BoardNotifier {
     FileConflictAction? conflictPolicy;
     var downloaded = 0;
     var skipped = 0;
+    final transferredFiles = <String>[];
+    final transferredFolders = <String>[];
 
-    for (var i = 0; i < nodes.length; i++) {
-      final node = nodes[i];
-      final targetPath = path.join(
-        targetFolder,
-        BoardFileOps.boardPath.basename(node.id),
-      );
-      final exists = node.data is FolderItem
-          ? await Directory(targetPath).exists()
-          : await File(targetPath).exists();
-      if (exists) {
-        final canShowDiff = node.data is! FolderItem;
-        final action = await resolveConflict(
-          context,
-          policy: conflictPolicy,
-          sourcePath: node.id,
-          targetPath: targetPath,
-          isUpload: false,
-          canShowDiff: canShowDiff,
+    try {
+      for (var i = 0; i < nodes.length; i++) {
+        final node = nodes[i];
+        final targetPath = path.join(
+          targetFolder,
+          BoardFileOps.boardPath.basename(node.id),
         );
-        switch (action) {
-          case FileConflictAction.cancel:
-            showEditorSnackBar(
-              context,
-              translateWithReplacements(
-                ref,
-                I18nKey.fileMessageCanceledDownload,
-              ),
-            );
-            return;
-          case FileConflictAction.showDiff:
-            if (!canShowDiff) {
+        final exists = node.data is FolderItem
+            ? await Directory(targetPath).exists()
+            : await File(targetPath).exists();
+        if (exists) {
+          final canShowDiff = node.data is! FolderItem;
+          final action = await resolveConflict(
+            context,
+            policy: conflictPolicy,
+            sourcePath: node.id,
+            targetPath: targetPath,
+            isUpload: false,
+            canShowDiff: canShowDiff,
+          );
+          switch (action) {
+            case FileConflictAction.cancel:
               showEditorSnackBar(
                 context,
                 translateWithReplacements(
                   ref,
-                  I18nKey.fileMessageCannotShowFolderDiff,
+                  I18nKey.fileMessageCanceledDownload,
                 ),
               );
               return;
-            }
-            final shown = await _showDownloadDiff(
-              context,
-              boardPath: node.id,
-              localPath: targetPath,
-            );
-            if (!shown) {
-              showEditorSnackBar(
+            case FileConflictAction.showDiff:
+              if (!canShowDiff) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCannotShowFolderDiff,
+                  ),
+                );
+                return;
+              }
+              final shown = await _showDownloadDiff(
                 context,
-                translateWithReplacements(
+                boardPath: node.id,
+                localPath: targetPath,
+              );
+              if (!shown) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCannotShowDiff,
+                  ),
+                );
+              }
+              return;
+            case FileConflictAction.skip:
+              skipped++;
+              continue;
+            case FileConflictAction.skipAll:
+              conflictPolicy = FileConflictAction.skipAll;
+              skipped++;
+              continue;
+            case FileConflictAction.overwriteAll:
+              conflictPolicy = FileConflictAction.overwriteAll;
+              break;
+            case FileConflictAction.overwrite:
+              break;
+          }
+        }
+
+        if (node.data is FolderItem) {
+          await transfer.downloadFolder(node.id, targetPath);
+          transferredFolders.add(targetPath);
+        } else {
+          ref
+              .read(fileTransferProgressProvider.notifier)
+              .start(
+                direction: FileTransferDirection.download,
+                scope: FileTransferScope.file,
+                totalFiles: nodes.length,
+                message: translateWithReplacements(
                   ref,
-                  I18nKey.fileMessageCannotShowDiff,
+                  I18nKey.fileTransferPrepareDownloadFile,
                 ),
               );
-            }
-            return;
-          case FileConflictAction.skip:
-            skipped++;
-            continue;
-          case FileConflictAction.skipAll:
-            conflictPolicy = FileConflictAction.skipAll;
-            skipped++;
-            continue;
-          case FileConflictAction.overwriteAll:
-            conflictPolicy = FileConflictAction.overwriteAll;
-            break;
-          case FileConflictAction.overwrite:
-            break;
+          final bytes = await ops.getFileBytesWithProgress(
+            node.id,
+            currentFile: node.id,
+            index: i + 1,
+            totalFiles: nodes.length,
+          );
+          final file = File(targetPath);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes);
+          transferredFiles.add(targetPath);
         }
+        downloaded++;
       }
-
-      if (node.data is FolderItem) {
-        await transfer.downloadFolder(node.id, targetPath);
-      } else {
-        ref
-            .read(fileTransferProgressProvider.notifier)
-            .start(
-              direction: FileTransferDirection.download,
-              scope: FileTransferScope.file,
-              totalFiles: nodes.length,
-              message: translateWithReplacements(
-                ref,
-                I18nKey.fileTransferPrepareDownloadFile,
-              ),
-            );
-        final bytes = await ops.getFileBytesWithProgress(
-          node.id,
-          currentFile: node.id,
-          index: i + 1,
-          totalFiles: nodes.length,
-        );
-        final file = File(targetPath);
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes);
-      }
-      downloaded++;
+    } finally {
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(
+            boardFiles: false,
+            filePaths: transferredFiles,
+            folderPaths: transferredFolders,
+          );
     }
 
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
@@ -438,7 +452,7 @@ class BoardNotifier {
       } else {
         await value.file!.writeAsString(value.editorController!.text);
       }
-      ref.read(tabbedViewControllerProvider.notifier).afterFileSave();
+      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
     }
   }
 
@@ -635,6 +649,9 @@ class BoardNotifier {
       await file.parent.create(recursive: true);
       await file.writeAsBytes(bytes);
       ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(boardFiles: false, filePaths: [targetPath]);
+      ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
             message: translateWithReplacements(
@@ -653,6 +670,12 @@ class BoardNotifier {
       final filePath = selected?.id ?? selectedTab?.value.filePath;
       try {
         await transfer.downloadFolder(filePath, targetPath);
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .warnOpenFilesOverwritten(
+              boardFiles: false,
+              folderPaths: [targetPath],
+            );
         ref
             .read(fileTransferProgressProvider.notifier)
             .complete(

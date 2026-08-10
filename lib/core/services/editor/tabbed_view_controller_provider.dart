@@ -19,6 +19,7 @@ import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
@@ -95,16 +96,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     );
 
     final tab = TabData(
-      leading: (context, status) => Padding(
-        padding: EdgeInsetsGeometry.only(right: 4),
-        child: Icon(
-          (isBoardFile)
-              ? Icons.developer_board_outlined
-              : Icons.description_outlined,
-          size: 16,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
+      leading: (context, status) =>
+          _buildFileTabLeading(context, isBoardFile: isBoardFile),
       value: value,
       text: file.path.split(pattern).last,
       content: EditCore(
@@ -121,30 +114,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         final currentText = editorController.text;
         if (currentText == savedText) return;
         savedText = currentText;
-        if (val.isSaved) {
-          val.isSaved = false;
-          tab.leading = (context, status) => Padding(
-            padding: EdgeInsets.only(right: 4),
-            child: Row(
-              children: [
-                Icon(Icons.circle, size: 8, color: Colors.orange),
-                SizedBox(width: 4),
-                Padding(
-                  padding: EdgeInsetsGeometry.only(right: 4),
-                  child: Icon(
-                    (isBoardFile)
-                        ? Icons.developer_board_outlined
-                        : Icons.description_outlined,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-          );
-          final idx = state.selectedIndex;
-          state = TabbedViewController(List.from(state.tabs));
-          if (idx != null) state.selectedIndex = idx;
+        if (_markFileTabUnsaved(tab, val)) {
+          _publishTabsPreservingSelection();
           onUnsavedChange?.call();
         }
       }
@@ -299,6 +270,46 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
     if (changed) _publishRenamedTabs();
     await Future.wait(cacheMigrations);
+  }
+
+  void warnOpenFilesOverwritten({
+    required bool boardFiles,
+    Iterable<String> filePaths = const [],
+    Iterable<String> folderPaths = const [],
+  }) {
+    final result = markOpenFilesAffectedByTransferUnsaved(
+      state.tabs,
+      boardFiles: boardFiles,
+      filePaths: filePaths,
+      folderPaths: folderPaths,
+    );
+    final affectedPaths = result.affectedPaths;
+    if (affectedPaths.isEmpty) return;
+    _publishTabsPreservingSelection();
+    if (result.newlyUnsaved) onUnsavedChange?.call();
+    final key = boardFiles
+        ? I18nKey.fileMessageOpenBoardFilesOverwritten
+        : I18nKey.fileMessageOpenLocalFilesOverwritten;
+    ref
+        .read(ideMessageProvider.notifier)
+        .show(
+          translateWithReplacements(ref, key, {
+            'count': affectedPaths.length.toString(),
+            'path': affectedPaths.first,
+          }),
+          type: IdeMessageType.warning,
+          duration: const Duration(seconds: 12),
+          closeable: true,
+        );
+  }
+
+  void _publishTabsPreservingSelection() {
+    final selectedIndex = state.selectedIndex;
+    final newController = TabbedViewController(List.from(state.tabs));
+    if (selectedIndex != null && selectedIndex < newController.tabs.length) {
+      newController.selectedIndex = selectedIndex;
+    }
+    state = newController;
   }
 
   void _replaceFileTab(
@@ -569,14 +580,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
   }
 
-  void afterFileSave() {
-    final TabData nowTab = state.selectedTab!;
-    if (nowTab.value is TabDataValue) {
-      (nowTab.value as TabDataValue).isSaved = true;
-    }
-    nowTab.leading = (context, status) {
-      return null;
-    };
+  void afterFileSave(TabData tab) {
+    if (!state.tabs.contains(tab) || !markFileTabSaved(tab)) return;
+    _publishTabsPreservingSelection();
   }
 
   Future<void> restoreTabs(
@@ -610,24 +616,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         isSaved: persisted.isSaved,
       );
       if (tab != null) {
-        if (!persisted.isSaved && persisted.unsavedContent != null) {
-          tab.leading = (context, status) => Padding(
-            padding: EdgeInsets.only(right: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.circle, size: 8, color: Colors.orange),
-                SizedBox(width: 4),
-                Icon(
-                  persisted.isBoardFile
-                      ? Icons.developer_board_outlined
-                      : Icons.description_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ],
-            ),
-          );
+        if (!persisted.isSaved) {
+          _markFileTabUnsaved(tab, tab.value as TabDataValue);
         }
         tabs.add(tab);
       }
@@ -654,3 +644,119 @@ final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>
 tabbedViewControllerProvider = StateNotifierProvider(
   (ref) => TabbedViewControllerNotifier(ref),
 );
+
+final _boardTransferPath = path.Context(style: path.Style.posix);
+
+Set<String> findOpenFilesAffectedByTransfer(
+  Iterable<TabData> tabs, {
+  required bool boardFiles,
+  Iterable<String> filePaths = const [],
+  Iterable<String> folderPaths = const [],
+}) {
+  return _visitOpenFilesAffectedByTransfer(
+    tabs,
+    boardFiles: boardFiles,
+    filePaths: filePaths,
+    folderPaths: folderPaths,
+  );
+}
+
+({Set<String> affectedPaths, bool newlyUnsaved})
+markOpenFilesAffectedByTransferUnsaved(
+  Iterable<TabData> tabs, {
+  required bool boardFiles,
+  Iterable<String> filePaths = const [],
+  Iterable<String> folderPaths = const [],
+}) {
+  var newlyUnsaved = false;
+  final affectedPaths = _visitOpenFilesAffectedByTransfer(
+    tabs,
+    boardFiles: boardFiles,
+    filePaths: filePaths,
+    folderPaths: folderPaths,
+    onMatch: (tab, value) {
+      newlyUnsaved = _markFileTabUnsaved(tab, value) || newlyUnsaved;
+    },
+  );
+  return (affectedPaths: affectedPaths, newlyUnsaved: newlyUnsaved);
+}
+
+Set<String> _visitOpenFilesAffectedByTransfer(
+  Iterable<TabData> tabs, {
+  required bool boardFiles,
+  required Iterable<String> filePaths,
+  required Iterable<String> folderPaths,
+  void Function(TabData tab, TabDataValue value)? onMatch,
+}) {
+  bool pathsEqual(String first, String second) => boardFiles
+      ? _boardTransferPath.equals(first, second)
+      : path.equals(first, second);
+  bool isWithin(String parent, String child) => boardFiles
+      ? _boardTransferPath.isWithin(parent, child)
+      : path.isWithin(parent, child);
+
+  final files = filePaths.toList(growable: false);
+  final folders = folderPaths.toList(growable: false);
+  final affected = <String>{};
+  for (final tab in tabs) {
+    final value = tab.value;
+    if (value is! TabDataValue || value.type != 'file') continue;
+    if (boardFiles != (value.isBoardFile == true)) continue;
+    final candidate = boardFiles ? value.boardFilePath : value.filePath;
+    if (candidate == null || candidate.isEmpty) continue;
+    final matchesFile = files.any((target) => pathsEqual(target, candidate));
+    final matchesFolder = folders.any(
+      (target) => pathsEqual(target, candidate) || isWithin(target, candidate),
+    );
+    if (matchesFile || matchesFolder) {
+      affected.add(candidate);
+      onMatch?.call(tab, value);
+    }
+  }
+  return affected;
+}
+
+bool _markFileTabUnsaved(TabData tab, TabDataValue value) {
+  final newlyUnsaved = value.isSaved;
+  value.isSaved = false;
+  tab.leading = (context, status) => _buildFileTabLeading(
+    context,
+    isBoardFile: value.isBoardFile == true,
+    isUnsaved: true,
+  );
+  return newlyUnsaved;
+}
+
+bool markFileTabSaved(TabData tab) {
+  final value = tab.value;
+  if (value is! TabDataValue || value.type != 'file') return false;
+  value.isSaved = true;
+  tab.leading = (context, status) =>
+      _buildFileTabLeading(context, isBoardFile: value.isBoardFile == true);
+  return true;
+}
+
+Widget _buildFileTabLeading(
+  BuildContext context, {
+  required bool isBoardFile,
+  bool isUnsaved = false,
+}) {
+  final fileIcon = Icon(
+    isBoardFile ? Icons.developer_board_outlined : Icons.description_outlined,
+    size: 16,
+    color: Theme.of(context).colorScheme.primary,
+  );
+  return Padding(
+    padding: const EdgeInsets.only(right: 4),
+    child: isUnsaved
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.circle, size: 8, color: Colors.orange),
+              const SizedBox(width: 4),
+              fileIcon,
+            ],
+          )
+        : fileIcon,
+  );
+}

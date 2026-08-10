@@ -326,6 +326,14 @@ enum I18nKey {
     'file.message.device_request_pending',
     '设备操作已收到，正在等待设备响应，请勿重复点击',
   ),
+  fileMessageOpenBoardFilesOverwritten(
+    'file.message.open_board_files_overwritten',
+    '上传覆盖了 {count} 个当前已打开的设备文件（例如：{path}）。编辑器仍保留操作前的内容，再次保存前请重新打开或核对内容。',
+  ),
+  fileMessageOpenLocalFilesOverwritten(
+    'file.message.open_local_files_overwritten',
+    '下载覆盖了 {count} 个当前已打开的本地文件（例如：{path}）。编辑器仍保留操作前的内容，再次保存前请重新打开或核对内容。',
+  ),
   fileNoBoardFileSelected('file.no_board_file_selected', '（未选择设备文件）'),
   fileNoLocalFileSelected('file.no_local_file_selected', '（未选择本地文件）'),
   fileNoLocalProject('file.no_local_project', '（未打开本地项目）'),

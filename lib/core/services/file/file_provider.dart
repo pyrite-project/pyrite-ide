@@ -92,7 +92,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       } else {
         await value.file!.writeAsString(value.editorController!.text);
       }
-      ref.read(tabbedViewControllerProvider.notifier).afterFileSave();
+      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
     }
   }
 
@@ -103,7 +103,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         nowTab.value.editorController!.text,
       );
       if (state) {
-        ref.read(tabbedViewControllerProvider.notifier).afterFileSave();
+        ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab);
       }
     }
   }
@@ -235,6 +235,8 @@ class FileNotifier extends StateNotifier<Directory?> {
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
+    final transferredFiles = <String>[];
+    final transferredFolders = <String>[];
 
     try {
       for (var i = 0; i < nodes.length; i++) {
@@ -314,6 +316,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               .read(boardProvider)
               .transfer
               .uploadFolder(node.id, targetPath);
+          transferredFolders.add(targetPath);
         } else {
           final bytes = await File(node.id).readAsBytes();
           ref
@@ -337,6 +340,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 index: i + 1,
                 totalFiles: nodes.length,
               );
+          transferredFiles.add(targetPath);
         }
         uploaded++;
       }
@@ -367,6 +371,14 @@ class FileNotifier extends StateNotifier<Directory?> {
             }),
           );
       rethrow;
+    } finally {
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(
+            boardFiles: true,
+            filePaths: transferredFiles,
+            folderPaths: transferredFolders,
+          );
     }
   }
 
@@ -383,6 +395,8 @@ class FileNotifier extends StateNotifier<Directory?> {
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
+    final transferredFiles = <String>[];
+    final transferredFolders = <String>[];
 
     try {
       for (var i = 0; i < sourcePaths.length; i++) {
@@ -441,6 +455,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               .read(boardProvider)
               .transfer
               .uploadFolder(sourcePath, targetPath);
+          transferredFolders.add(targetPath);
         } else {
           final bytes = await File(sourcePath).readAsBytes();
           ref
@@ -464,6 +479,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 index: i + 1,
                 totalFiles: sourcePaths.length,
               );
+          transferredFiles.add(targetPath);
         }
         uploaded++;
       }
@@ -494,6 +510,14 @@ class FileNotifier extends StateNotifier<Directory?> {
             }),
           );
       rethrow;
+    } finally {
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(
+            boardFiles: true,
+            filePaths: transferredFiles,
+            folderPaths: transferredFolders,
+          );
     }
   }
 
@@ -1021,6 +1045,12 @@ class FileNotifier extends StateNotifier<Directory?> {
               index: 1,
               totalFiles: 1,
             );
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .warnOpenFilesOverwritten(
+              boardFiles: true,
+              filePaths: [targetPath],
+            );
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
@@ -1058,6 +1088,12 @@ class FileNotifier extends StateNotifier<Directory?> {
             .read(boardProvider)
             .transfer
             .uploadFolder(selected.id, targetPath);
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .warnOpenFilesOverwritten(
+              boardFiles: true,
+              folderPaths: [targetPath],
+            );
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
@@ -1209,6 +1245,9 @@ class FileNotifier extends StateNotifier<Directory?> {
             index: 1,
             totalFiles: 1,
           );
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(boardFiles: true, filePaths: [targetPath]);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
