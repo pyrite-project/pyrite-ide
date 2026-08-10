@@ -47,6 +47,7 @@ class ComponentBuilder {
     required this.hostState,
     required this.onEvent,
     this.onContextMenuRequest,
+    this.hostAppBarActions = const [],
     this.limits = const ComponentLimits(),
     this.pluginRootPath,
   });
@@ -55,12 +56,20 @@ class ComponentBuilder {
   final ComponentHostState hostState;
   final ComponentEventSink onEvent;
   final ComponentContextMenuRequest? onContextMenuRequest;
+
+  /// Host-owned actions to merge into the first plugin-provided AppBar.
+  final List<Widget> hostAppBarActions;
   final ComponentLimits limits;
   final String? pluginRootPath;
+
+  bool _hostAppBarActionsConsumed = false;
+
+  bool get hostAppBarActionsConsumed => _hostAppBarActionsConsumed;
 
   /// Validates [node] and builds it, returning an error boundary when the tree
   /// is malformed so a bad plugin can't crash the page.
   Widget build(BuildContext context, Map<String, dynamic> node) {
+    _hostAppBarActionsConsumed = false;
     final validation = registry.validate(node, limits: limits);
     if (!validation.isValid) {
       return ComponentErrorBoundary(diagnostics: validation.diagnostics);
@@ -202,25 +211,30 @@ class ComponentBuilder {
         );
 
       // -- Page scaffolding --------------------------------------------------
-      // Reuses the exact visual from native_view_registry's
-      // `_modelViewWithAppBar`, but renders ONLY the plugin's own action
-      // children. The manifest/title command menu is intentionally absent here:
-      // ComponentBuilder has no access to `view.titleMenuItems`, so keeping it
-      // out is structural, not a runtime check.
+      // Reuses the compact title-bar visual used by native renderer views.
+      // Host-owned command actions are merged into the first plugin AppBar.
       case 'AppBar':
-        return AppBar(
-          primary: false,
-          automaticallyImplyLeading: false,
-          toolbarHeight: 40,
-          titleSpacing: 12,
-          elevation: 0,
-          scrolledUnderElevation: 1,
-          title: Text(
-            props['title']?.toString() ?? '',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          actions: [for (final child in children) _build(context, child)],
-        );
+        {
+          final hostActions = hostAppBarActionsConsumed
+              ? const <Widget>[]
+              : _consumeHostAppBarActions();
+          return AppBar(
+            primary: false,
+            automaticallyImplyLeading: false,
+            toolbarHeight: 40,
+            titleSpacing: 12,
+            elevation: 0,
+            scrolledUnderElevation: 1,
+            title: Text(
+              props['title']?.toString() ?? '',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            actions: [
+              ...hostActions,
+              for (final child in children) _build(context, child),
+            ],
+          );
+        }
       case 'Scaffold':
         {
           // First child of type AppBar is the top bar; the rest is the body.
@@ -278,6 +292,27 @@ class ComponentBuilder {
         );
 
       // -- Content -----------------------------------------------------------
+      case 'Card':
+        return Card(
+          elevation: props['elevation'] is num
+              ? (props['elevation'] as num).toDouble()
+              : null,
+          // color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          shape: RoundedRectangleBorder(
+            borderRadius: props['borderRadius'] is num
+                ? BorderRadius.circular(
+                    (props['borderRadius'] as num).toDouble(),
+                  )
+                : BorderRadius.zero,
+            // side: BorderSide(color: Theme.of(context).dividerColor, width: 0.5),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(
+              (props['padding'] as num?)?.toDouble() ?? 8,
+            ),
+            child: _build(context, children.isEmpty ? {} : children.first),
+          ),
+        );
       case 'Text':
         return Text(
           props['value']?.toString() ?? '',
@@ -494,6 +529,11 @@ class ComponentBuilder {
         ),
       ],
     );
+  }
+
+  List<Widget> _consumeHostAppBarActions() {
+    _hostAppBarActionsConsumed = true;
+    return hostAppBarActions;
   }
 
   Future<Object?> _invokeBuiltComponent(
@@ -1032,7 +1072,10 @@ class ComponentBuilder {
               _tabHeader(context, children[i], i == index, scheme),
           ],
         ),
-        _build(context, children[index]),
+        IndexedStack(
+          index: index,
+          children: [for (final child in children) _build(context, child)],
+        ),
       ],
     );
   }

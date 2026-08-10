@@ -395,6 +395,15 @@ class ComponentRegistry {
 
     // -- Content -------------------------------------------------------------
     const ComponentSpec(
+      name: 'Card',
+      // props: {
+      //   'elevation': PropSpec(PropType.number),
+      //   'borderRadius': PropSpec(PropType.number),
+      //   'padding': PropSpec(PropType.number),
+      // },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
       name: 'Text',
       props: {
         'value': PropSpec(PropType.string, required: true),

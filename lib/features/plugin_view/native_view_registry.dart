@@ -5,7 +5,6 @@ import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/features/plugin_view/component_builder.dart';
 import 'package:pyrite_ide/features/plugin_view/component_error_boundary.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
-import 'package:pyrite_ide/features/plugin_view/plugin_menu.dart';
 
 /// Everything a renderer builder needs to draw one view instance.
 class NativeViewContext {
@@ -16,8 +15,6 @@ class NativeViewContext {
     required this.builder,
     required this.onEvent,
     this.props = const {},
-    this.titleMenuItems = const [],
-    this.onCommand,
   });
 
   final ViewInstanceId instance;
@@ -32,15 +29,9 @@ class NativeViewContext {
 
   /// Renderer-level props supplied by the view contribution.
   final Map<String, dynamic> props;
-
-  /// Manifest `view/title` menu items merged into the host AppBar.
-  final List<NativeTitleMenuItem> titleMenuItems;
-
-  /// Runs a Manifest command from a title-menu action.
-  final Future<void> Function(String commandId)? onCommand;
 }
 
-/// A resolved Manifest menu item ready for the native AppBar.
+/// A resolved Manifest menu item ready for the host view title bar.
 class NativeTitleMenuItem {
   const NativeTitleMenuItem({
     required this.commandId,
@@ -131,10 +122,9 @@ class NativePluginViewRegistry {
         },
       });
     },
-    RendererTokens.outline: (context, view) => _modelViewWithAppBar(
+    RendererTokens.outline: (context, view) => _modelView(
       context,
       view,
-      defaultTitle: 'Outline',
       componentType: 'TreeView',
       itemsProp: 'nodes',
       emptyLabel: 'No symbols',
@@ -150,19 +140,14 @@ class NativePluginViewRegistry {
         },
       });
     },
-    RendererTokens.log: (context, view) {
-      final props = _rendererProps(view);
-      return view.builder.build(context, {
-        'type': 'VirtualList',
-        'props': {
-          'id': view.instance.viewId,
-          'items': _rendererNodes(view),
-          'itemHeight': 18.0,
-          'emptyLabel': 'No output',
-          ...props,
-        },
-      });
-    },
+    RendererTokens.log: (context, view) => _modelView(
+      context,
+      view,
+      componentType: 'VirtualList',
+      itemsProp: 'items',
+      emptyLabel: 'No output',
+      defaultItemHeight: 18.0,
+    ),
     RendererTokens.table: (context, view) {
       final props = _rendererProps(view);
       return view.builder.build(context, {
@@ -175,10 +160,9 @@ class NativePluginViewRegistry {
         },
       });
     },
-    RendererTokens.variableInspector: (context, view) => _modelViewWithAppBar(
+    RendererTokens.variableInspector: (context, view) => _modelView(
       context,
       view,
-      defaultTitle: 'Device Variables',
       componentType: 'PropertyGrid',
       itemsProp: 'entries',
       emptyLabel: 'No device variables',
@@ -203,7 +187,12 @@ class NativePluginViewRegistry {
 
   static List<Map<String, dynamic>> _rendererNodes(NativeViewContext view) =>
       view.nodes
-          .where((node) => node['role'] != 'viewConfig')
+          .where(
+            (node) =>
+                node['role'] != 'viewConfig' &&
+                node['role'] != 'appBarAction' &&
+                node['role'] != 'appBarMenu',
+          )
           .toList(growable: false);
 
   static Map<String, dynamic> _rendererProps(NativeViewContext view) {
@@ -219,47 +208,32 @@ class NativePluginViewRegistry {
     return result;
   }
 
-  /// Builds domain views with a host-owned title bar. Model nodes with
-  /// `role=appBarAction` become icon actions, `role=appBarMenu` becomes a menu,
-  /// and `role=placeholder` becomes a
-  /// centred status message; neither is passed to the data component.
-  static Widget _modelViewWithAppBar(
+  /// Builds renderer content while keeping view-chrome metadata out of its
+  /// data component. The shared surface owns the title bar and its actions.
+  static Widget _modelView(
     BuildContext context,
     NativeViewContext view, {
-    required String defaultTitle,
     required String componentType,
     required String itemsProp,
     required String emptyLabel,
+    double? defaultItemHeight,
   }) {
     final rendererProps = _rendererProps(view);
-    final actions = view.nodes
-        .where(
-          (node) =>
-              node['role'] == 'appBarAction' || node['role'] == 'appBarMenu',
-        )
-        .toList(growable: false);
     final placeholders = view.nodes
         .where((node) => node['role'] == 'placeholder')
         .toList(growable: false);
     final contextMenuProviders = view.nodes
         .where((node) => node['role'] == 'contextMenuProvider')
         .toList(growable: false);
-    final content = view.nodes
+    final content = _rendererNodes(view)
         .where(
           (node) =>
-              node['role'] != 'appBarAction' &&
               node['role'] != 'placeholder' &&
-              node['role'] != 'appBarMenu' &&
-              node['role'] != 'contextMenuProvider' &&
-              node['role'] != 'viewConfig',
+              node['role'] != 'contextMenuProvider',
         )
         .toList(growable: false);
-    final title =
-        actions.firstOrNull?['appBarTitle']?.toString() ??
-        rendererProps['title']?.toString() ??
-        defaultTitle;
 
-    final body = placeholders.isNotEmpty && content.isEmpty
+    return placeholders.isNotEmpty && content.isEmpty
         ? _placeholder(context, placeholders.first)
         : view.builder.build(context, {
             'type': componentType,
@@ -268,61 +242,13 @@ class NativePluginViewRegistry {
               itemsProp: content,
               'emptyLabel': emptyLabel,
               ...rendererProps,
+              if (defaultItemHeight != null &&
+                  rendererProps['itemHeight'] == null)
+                'itemHeight': defaultItemHeight,
             },
             if (contextMenuProviders.isNotEmpty)
               'events': {'contextMenuRequest': true},
           });
-
-    return Column(
-      children: [
-        AppBar(
-          primary: false,
-          automaticallyImplyLeading: false,
-          toolbarHeight: 40,
-          titleSpacing: 12,
-          elevation: 0,
-          scrolledUnderElevation: 1,
-          title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-          actions: [
-            for (final item in view.titleMenuItems)
-              IconButton(
-                icon: Icon(
-                  pluginIcon(item.icon ?? 'material:more_horiz'),
-                  size: 18,
-                ),
-                tooltip: item.title,
-                onPressed: !item.enabled || view.onCommand == null
-                    ? null
-                    : () => view.onCommand!(item.commandId),
-              ),
-            for (final action in actions)
-              if (action['role'] == 'appBarMenu')
-                PluginMenuButton(
-                  items: pluginMenuEntries(action['items']),
-                  icon: action['icon']?.toString() ?? 'material:more_vert',
-                  tooltip: action['label']?.toString(),
-                  iconOnly: true,
-                  onSelected: (payload) => view.onEvent(
-                    view.instance.viewId,
-                    'select',
-                    {'nodeId': action['id']?.toString(), ...payload},
-                  ),
-                )
-              else
-                IconButton(
-                  icon: Icon(pluginIcon(action['icon']?.toString()), size: 18),
-                  tooltip: action['label']?.toString(),
-                  onPressed: () => view.onEvent(
-                    view.instance.viewId,
-                    'select',
-                    {'nodeId': action['id']?.toString()},
-                  ),
-                ),
-          ],
-        ),
-        Expanded(child: body),
-      ],
-    );
   }
 
   static Widget _placeholder(BuildContext context, Map<String, dynamic> node) {

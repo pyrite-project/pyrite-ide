@@ -358,6 +358,62 @@ void main() {
       expect(harness.hostState.hasFocus('query'), isTrue);
     });
 
+    testWidgets('Tabs keep TextField state mounted across tab changes', (
+      tester,
+    ) async {
+      Widget tabs(String selected) => _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Tabs',
+            'props': {'id': 'editor-tabs', 'selected': selected},
+            'children': [
+              {
+                'type': 'Tab',
+                'props': {'id': 'tab-a', 'label': 'Tab A'},
+                'children': [
+                  {
+                    'type': 'TextField',
+                    'props': {'id': 'draft', 'value': ''},
+                  },
+                ],
+              },
+              {
+                'type': 'Tab',
+                'props': {'id': 'tab-b', 'label': 'Tab B'},
+                'children': [
+                  {
+                    'type': 'Text',
+                    'props': {'value': 'Tab B content'},
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      );
+
+      await tester.pumpWidget(tabs('tab-a'));
+      final fieldState = tester.state(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), 'unsaved draft');
+      await tester.pump();
+
+      await tester.pumpWidget(tabs('tab-b'));
+      await tester.pump();
+
+      expect(fieldState.mounted, isTrue);
+      final hiddenField = tester.widget<TextField>(
+        find.byType(TextField, skipOffstage: false),
+      );
+      expect(hiddenField.controller?.text, 'unsaved draft');
+
+      await tester.pumpWidget(tabs('tab-a'));
+      await tester.pump();
+
+      expect(tester.state(find.byType(TextField)), same(fieldState));
+      expect(find.text('unsaved draft'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
     testWidgets('submitting flushes without waiting for the debounce', (
       tester,
     ) async {
@@ -478,6 +534,51 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+
+    testWidgets('host title actions merge into the first plugin AppBar', (
+      tester,
+    ) async {
+      final hostAction = IconButton(
+        icon: const Icon(Icons.content_copy),
+        tooltip: 'Copy',
+        onPressed: () {},
+      );
+      final builder = ComponentBuilder(
+        registry: ComponentRegistry(),
+        hostState: harness.hostState,
+        onEvent: harness.builder.onEvent,
+        hostAppBarActions: [hostAction],
+      );
+
+      await tester.pumpWidget(
+        _wrap(
+          SizedBox(
+            width: 360,
+            height: 240,
+            child: Builder(
+              builder: (context) => builder.build(context, {
+                'type': 'Scaffold',
+                'children': [
+                  {
+                    'type': 'AppBar',
+                    'props': {'title': 'Plugin page'},
+                  },
+                  {
+                    'type': 'Text',
+                    'props': {'value': 'Body'},
+                  },
+                ],
+              }),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byIcon(Icons.content_copy), findsOneWidget);
+      expect(builder.hostAppBarActionsConsumed, isTrue);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('Canvas invoke mutates only ephemeral overlay layers', (
       tester,
@@ -987,7 +1088,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('outline app bar renders actions outside placeholder content', (
+    testWidgets('outline content excludes app bar actions and placeholders', (
       tester,
     ) async {
       final registry = NativePluginViewRegistry();
@@ -1021,11 +1122,9 @@ void main() {
         ),
       );
 
-      expect(find.byType(AppBar), findsOneWidget);
       expect(find.text('Open a text file'), findsOneWidget);
-      expect(find.byIcon(Icons.vertical_split_outlined), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.vertical_split_outlined));
-      expect(harness.events.single.payload['nodeId'], 'open-expansion');
+      expect(find.byType(AppBar), findsNothing);
+      expect(find.byIcon(Icons.vertical_split_outlined), findsNothing);
     });
 
     testWidgets('model nodes missing a required field are reported', (

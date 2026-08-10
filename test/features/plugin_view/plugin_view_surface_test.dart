@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manifest.dart';
 import 'package:pyrite_ide/core/sdk/renderer_registry.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
@@ -19,6 +22,50 @@ const _tabInstance = ViewInstanceId(
   sessionId: 's',
   viewId: 'outline',
   instanceId: 'tab:1',
+);
+
+const _menuInstance = ViewInstanceId(
+  pluginId: 'p',
+  sessionId: 's',
+  viewId: 'p.log',
+  instanceId: 'container:p',
+);
+
+const _menuManifest = PluginManifestV2(
+  id: 'p',
+  name: 'Plugin',
+  version: '1.0.0',
+  type: PluginType.ui,
+  activationEvents: ['onView:p.log', 'onCommand:p.copyLog'],
+  permissions: ['ui.view'],
+  platforms: ['windows'],
+  contributes: PluginContributions(
+    navigationContainers: [
+      PluginNavigationContainerContribution(id: 'p', title: 'Plugin'),
+    ],
+    views: [
+      PluginViewContribution(
+        id: 'p.log',
+        container: 'p',
+        title: 'Runtime log',
+        renderer: RendererTokens.virtualList,
+      ),
+    ],
+    commands: [
+      PluginCommandContribution(
+        id: 'p.copyLog',
+        title: 'Copy log',
+        icon: PluginIconReference.material('content_copy'),
+      ),
+    ],
+    menus: [
+      PluginMenuContribution(
+        location: 'view/title',
+        view: 'p.log',
+        command: 'p.copyLog',
+      ),
+    ],
+  ),
 );
 
 class _ReentrantListenable extends ChangeNotifier {
@@ -58,6 +105,12 @@ void main() {
     store = container.read(viewModelStoreProvider);
   });
   tearDown(() => container.dispose());
+
+  void installMenuPlugin() {
+    container.read(pluginManagerProvider.notifier).loadPersisted([
+      PluginPersistedData(id: 'p', name: 'Plugin', manifest: _menuManifest),
+    ]);
+  }
 
   testWidgets('shows a spinner until the first snapshot arrives', (
     tester,
@@ -122,6 +175,106 @@ void main() {
 
     expect(find.text('Widget'), findsOneWidget);
     expect(find.text('build'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('view/title commands render on a headerless native renderer', (
+    tester,
+  ) async {
+    installMenuPlugin();
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _menuInstance,
+          renderer: RendererTokens.virtualList,
+        ),
+      ),
+    );
+    store.installSnapshot(
+      instance: _menuInstance,
+      revision: 1,
+      nodes: [
+        {'id': 'line-1', 'label': 'ready'},
+      ],
+    );
+    await tester.pump();
+
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('Runtime log'), findsOneWidget);
+    expect(find.byTooltip('Copy log'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('view/title commands merge into a component tree AppBar', (
+    tester,
+  ) async {
+    installMenuPlugin();
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _menuInstance,
+          renderer: RendererTokens.form,
+        ),
+      ),
+    );
+    store.installSnapshot(
+      instance: _menuInstance,
+      revision: 1,
+      nodes: [
+        {
+          'type': 'Scaffold',
+          'children': [
+            {
+              'type': 'AppBar',
+              'props': {'title': 'Plugin page'},
+            },
+            {
+              'type': 'Text',
+              'props': {'value': 'Body'},
+            },
+          ],
+        },
+      ],
+    );
+    await tester.pump();
+
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('Plugin page'), findsOneWidget);
+    expect(find.byTooltip('Copy log'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('view/title commands add an AppBar to a component-only view', (
+    tester,
+  ) async {
+    installMenuPlugin();
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _menuInstance,
+          renderer: RendererTokens.form,
+        ),
+      ),
+    );
+    store.installSnapshot(
+      instance: _menuInstance,
+      revision: 1,
+      nodes: [
+        {
+          'type': 'Text',
+          'props': {'value': 'Component body'},
+        },
+      ],
+    );
+    await tester.pump();
+
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('Runtime log'), findsOneWidget);
+    expect(find.text('Component body'), findsOneWidget);
+    expect(find.byTooltip('Copy log'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

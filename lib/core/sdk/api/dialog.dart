@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 abstract class SdkDialogCommands {
   // File selection
   static const String openFolder = 'sdk.dialog.open_folder';
+  static const String openFile = 'sdk.dialog.open_file';
 }
 
 class SdkDialog {
@@ -15,6 +16,7 @@ class SdkDialog {
   void bind(PluginRunManager runManager) {
     // File selection
     runManager.registerHandler(SdkDialogCommands.openFolder, _handleOpenFolder);
+    runManager.registerHandler(SdkDialogCommands.openFile, _handleOpenFile);
   }
 
   void _respondOk(
@@ -62,6 +64,29 @@ class SdkDialog {
 
     try {
       final selectedPath = await FilePicker.getDirectoryPath(
+        dialogTitle: title,
+        initialDirectory: initialDirectory,
+        lockParentWindow: true,
+      );
+      _respondOk(envelope, respond, data: selectedPath);
+    } catch (error) {
+      _respondError(envelope, respond, '打开文件夹选择器失败：$error');
+    }
+  }
+
+  Future<void> _handleOpenFile(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) async {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final title = _stringOrNull(payload['title']) ?? '选择文件';
+    final initialDirectory =
+        _stringOrNull(payload['initial_directory']) ??
+        _stringOrNull(payload['initialDirectory']) ??
+        ref.read(fileProvider)?.path;
+
+    try {
+      final selectedPath = await FilePicker.saveFile(
         dialogTitle: title,
         initialDirectory: initialDirectory,
         lockParentWindow: true,

@@ -341,7 +341,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         renderer: renderer,
       ),
       text: (title == null || title.isEmpty) ? viewId : title,
-      content: PluginViewSurface(instance: instance, renderer: renderer),
+      content: PluginViewSurface(
+        instance: instance,
+        renderer: renderer,
+        title: title,
+      ),
     );
 
     if (expansion) {

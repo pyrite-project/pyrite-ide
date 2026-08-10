@@ -595,6 +595,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
         instanceId: 'container:${widget.containerId}',
       ),
       renderer: view.renderer,
+      title: view.title,
     );
     if (views.length == 1) return Scaffold(body: surface);
 
