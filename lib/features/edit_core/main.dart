@@ -25,7 +25,7 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:re_highlight/languages/python.dart';
@@ -343,7 +343,7 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   try {
     await saveFile(context, ref, quiet: true);
     ref.read(consolePageShow.notifier).state = true;
-    await runPythonOnDeviceStreaming(
+    await runPythonOnActiveDeviceStreaming(
       ref,
       controller.text,
       onStarted: () {

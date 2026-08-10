@@ -317,6 +317,10 @@ enum I18nKey {
     'file.transfer.prepare_move_board_file',
     '准备移动设备文件',
   ),
+  fileMessageDeviceRequestPending(
+    'file.message.device_request_pending',
+    '设备操作已收到，正在等待设备响应，请勿重复点击',
+  ),
   fileNoBoardFileSelected('file.no_board_file_selected', '（未选择设备文件）'),
   fileNoLocalFileSelected('file.no_local_file_selected', '（未选择本地文件）'),
   fileNoLocalProject('file.no_local_project', '（未打开本地项目）'),

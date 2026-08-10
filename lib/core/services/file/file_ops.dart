@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:super_tree/super_tree.dart';
 
@@ -563,6 +564,19 @@ List<TreeNode<FileSystemItem>> getSelectedNodesFromProvider(
 
 void showEditorSnackBar(BuildContext context, String message) {
   showIdeSuccess(context, message);
+}
+
+void showDeviceRequestPending(BuildContext context, Ref ref) {
+  if (ref.read(activeDeviceTransportProvider) !=
+      ActiveDeviceTransport.webRepl) {
+    return;
+  }
+  ref
+      .read(ideMessageProvider.notifier)
+      .show(
+        translate(ref, I18nKey.fileMessageDeviceRequestPending),
+        duration: const Duration(seconds: 5),
+      );
 }
 
 Future<bool> showDeviceNotReadyDialog(

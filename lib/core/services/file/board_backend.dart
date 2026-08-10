@@ -8,11 +8,13 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:super_tree/super_tree.dart';
 
@@ -119,6 +121,9 @@ class SerialBoardFileBackend implements BoardFileBackend {
 
   SerialBoardFileBackend(this.ref);
 
+  bool get _usesWebRepl =>
+      ref.read(activeDeviceTransportProvider) == ActiveDeviceTransport.webRepl;
+
   /// Returns a safe chunk size for file I/O based on cached device memory.
   ///
   /// Probes `gc.mem_free()` on the device once, then caches the result.
@@ -153,7 +158,7 @@ class SerialBoardFileBackend implements BoardFileBackend {
   Future<void> _probeFreeHeap() async {
     if (_cachedFreeHeap != null) return;
     try {
-      final raw = await runPythonOnDevice(
+      final raw = await runPythonOnActiveDevice(
         ref,
         _wrapSimplePython('''
 import gc
@@ -270,6 +275,10 @@ _emit_ok(walk(base))
     void Function(int received, int total)? onProgress,
   }) async {
     return _withRetry(() async {
+      if (_usesWebRepl) {
+        await _probeFreeHeap();
+        return _readFileBytesWebRepl(path, onProgress: onProgress);
+      }
       final effectiveMode = resolveFileTransferMode(
         ref.read(replModeProvider),
         ref.read(fileTransferModeProvider),
@@ -280,6 +289,27 @@ _emit_ok(walk(base))
       }
       return runPythonReadDeviceFile(ref, path, onProgress: onProgress);
     });
+  }
+
+  Future<Uint8List> _readFileBytesWebRepl(
+    String path, {
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final sizeValue = await _runJsonValue(
+      _wrapSimplePython('''
+_emit_ok(os.stat(${boardFileTextExpression(path)})[6])
+'''),
+    );
+    if (sizeValue is! num || sizeValue < 0) {
+      throw BoardFileProtocolException(
+        'File size response is not a number: $sizeValue',
+      );
+    }
+
+    final fileSize = sizeValue.toInt();
+    return ref
+        .read(webReplProvider.notifier)
+        .getFile(path, expectedSize: fileSize, onProgress: onProgress);
   }
 
   /// Thonny-style chunked download. Size lookup, open, reads, and close all
@@ -354,6 +384,14 @@ del __pyrite_read_path
     List<int> bytes, {
     void Function(int sent, int total)? onProgress,
   }) async {
+    if (_usesWebRepl) {
+      await _probeFreeHeap();
+      await _withRetry(
+        () => _writeFileBytesWebRepl(path, bytes, onProgress: onProgress),
+      );
+      return;
+    }
+
     final mode = ref.read(replModeProvider);
     final preferredMode = ref.read(fileTransferModeProvider);
     final transferMode = resolveFileTransferMode(mode, preferredMode);
@@ -401,6 +439,56 @@ del __pyrite_read_path
         onProgress: onProgress,
       ),
     );
+  }
+
+  Future<void> _writeFileBytesWebRepl(
+    String targetPath,
+    List<int> bytes, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    final totalSize = payload.length;
+    final tempPath = _temporaryPathFor(targetPath);
+    final transferPath = utf8.encode(tempPath).length <= 64
+        ? tempPath
+        : targetPath;
+    var committed = false;
+    try {
+      await ref
+          .read(webReplProvider.notifier)
+          .putFile(transferPath, payload, onProgress: onProgress);
+      if (transferPath != targetPath) {
+        await _runJsonValue(
+          _wrapSimplePython('''
+actual = os.stat(${boardFileTextExpression(tempPath)})[6]
+if actual != $totalSize:
+  raise Exception('file size mismatch: expected $totalSize, got ' + str(actual))
+try:
+  os.remove(${boardFileTextExpression(targetPath)})
+except OSError:
+  pass
+os.rename(${boardFileTextExpression(tempPath)}, ${boardFileTextExpression(targetPath)})
+_emit_ok(True)
+'''),
+          timeout: _longTimeout,
+        );
+      }
+      committed = true;
+    } finally {
+      if (!committed && transferPath != targetPath) {
+        try {
+          await _runJsonValue(
+            _wrapSimplePython('''
+try:
+  os.remove(${boardFileTextExpression(tempPath)})
+except OSError:
+  pass
+_emit_ok(True)
+'''),
+          );
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _writeFileBytesChunked(
@@ -721,7 +809,12 @@ _emit_ok(True)
     String python, {
     Duration timeout = const Duration(seconds: 20),
   }) async {
-    final output = await runPythonOnDevice(ref, python, timeout: timeout);
+    final output = await runPythonOnActiveDevice(
+      ref,
+      python,
+      timeout: timeout,
+      runningOperationId: 'board-file',
+    );
     String? line;
     for (final candidate in output.split('\n').map((line) => line.trim())) {
       if (candidate.startsWith(_resultMarker)) {
@@ -1274,7 +1367,7 @@ print('FS_READY' if _fs_ready() else 'FS_NOT_READY')
 
 Future<void> ensureBoardFilesystemMountedOnce(Ref ref) async {
   try {
-    final output = await runPythonOnDevice(
+    final output = await runPythonOnActiveDevice(
       ref,
       _ensureFilesystemMountedScript,
       timeout: const Duration(seconds: 5),

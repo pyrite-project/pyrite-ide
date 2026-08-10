@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -31,6 +32,10 @@ class _ToolsState extends ConsumerState<Tools> {
 
   Widget buildBoardManager(BuildContext context) {
     final state = ref.watch(serialProvider);
+    final webReplState = ref.watch(webReplProvider).state;
+    final webReplActive =
+        webReplState == WebReplState.waitingPassword ||
+        webReplState == WebReplState.connected;
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -90,11 +95,13 @@ class _ToolsState extends ConsumerState<Tools> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: () {
-                        ref
-                            .read(serialProvider.notifier)
-                            .connectPort(portInfo.path);
-                      },
+                      onPressed: webReplActive
+                          ? null
+                          : () {
+                              ref
+                                  .read(serialProvider.notifier)
+                                  .connectPort(portInfo.path);
+                            },
                       icon: const Icon(Icons.power_settings_new),
                       label: const UseText(I18nKey.devicesConnectSerial),
                     ),

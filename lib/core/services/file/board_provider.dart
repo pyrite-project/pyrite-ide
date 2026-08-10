@@ -239,6 +239,7 @@ class BoardNotifier {
       );
       return;
     }
+    showDeviceRequestPending(context, ref);
 
     final localFolderTarget =
         localFolderPath ??
@@ -415,6 +416,7 @@ class BoardNotifier {
     ref.read(boardFileTreeViewControllerProvider).setSelectedNodeId(id);
     final node = ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
+    showDeviceRequestPending(context, ref);
     final file = await getLocalFile(node.id);
     final content = await ops.getFileContent(id);
     await file.writeAsString(content);

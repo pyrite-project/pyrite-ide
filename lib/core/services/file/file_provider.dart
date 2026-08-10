@@ -228,6 +228,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       );
       return;
     }
+    showDeviceRequestPending(context, ref);
 
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
@@ -375,6 +376,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     String? boardFolderPath,
   }) async {
     if (sourcePaths.isEmpty) return;
+    showDeviceRequestPending(context, ref);
 
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;

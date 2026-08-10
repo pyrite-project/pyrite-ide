@@ -20,6 +20,9 @@ class SerialByteQueue {
 
   bool get hasData => availableLength > 0;
 
+  /// Returns the next buffered byte without consuming it.
+  int? get firstByte => hasData ? _buffer[_readOffset] : null;
+
   /// Whether this queue has been cancelled (by disconnect or user interrupt).
   bool get isCancelled => _cancelled;
 

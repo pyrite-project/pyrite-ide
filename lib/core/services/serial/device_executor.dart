@@ -137,10 +137,12 @@ class DeviceSession {
   DeviceSession({
     required this.queue,
     required void Function(List<int>) writeBytes,
+    this.waitForPasteEcho = false,
   }) : _writeBytes = writeBytes;
 
   final SerialByteQueue queue;
   final void Function(List<int>) _writeBytes;
+  final bool waitForPasteEcho;
   bool _pasteReady = false;
 
   // -- Shared protocol tokens -----------------------------------------------
@@ -448,25 +450,48 @@ class DeviceSession {
   // -- Paste mode -----------------------------------------------------------
 
   Future<void> _enterPasteMode(Duration timeout) async {
-    // Wait for the device to finish processing CTRL-C and show ">>>",
-    // then clear any leftover output before entering paste mode.
+    // Wait for the device to finish processing CTRL-C. Some WebREPL
+    // implementations deliver the normal prompt and the paste banner in
+    // separate packets, so preserve a paste marker if it is already present.
     try {
-      await queue.readUntil(_prompt3, timeout);
+      await _waitForNormalPromptOrPasteReady(timeout);
     } on SerialCancelledException {
       rethrow;
     } catch (_) {}
-    queue.clear();
-    _write([0x05]); // Ctrl-E
-    await _waitForPasteReady(timeout);
+    if (queue.indexOf(_pastePrompt) < 0) {
+      queue.clear();
+      _write([0x05]); // Ctrl-E
+      await _waitForPasteReady(timeout);
+    } else {
+      await _consumePastePrompt();
+    }
   }
 
-  Future<void> _waitForPasteReady(Duration timeout) async {
-    final eqPrompt = Uint8List.fromList([0x3D, 0x3D, 0x3D]); // "==="
+  static final _pastePrompt = Uint8List.fromList([0x3D, 0x3D, 0x3D]);
+
+  Future<void> _waitForNormalPromptOrPasteReady(Duration timeout) async {
     final stopwatch = Stopwatch()..start();
     while (true) {
       if (queue.isCancelled) throw const SerialCancelledException();
-      if (queue.indexOf(eqPrompt) >= 0) {
-        await queue.readUntil(eqPrompt, Duration.zero);
+      if (queue.indexOf(_pastePrompt) >= 0) return;
+      if (queue.indexOf(_prompt3) >= 0) {
+        await queue.readUntil(_prompt3, Duration.zero);
+        return;
+      }
+      final remaining = timeout - stopwatch.elapsed;
+      if (remaining <= Duration.zero) {
+        throw TimeoutException('Timed out waiting for REPL prompt', timeout);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  Future<void> _waitForPasteReady(Duration timeout) async {
+    final stopwatch = Stopwatch()..start();
+    while (true) {
+      if (queue.isCancelled) throw const SerialCancelledException();
+      if (queue.indexOf(_pastePrompt) >= 0) {
+        await _consumePastePrompt();
         return;
       }
       if (queue.indexOf(_dotsPrompt) >= 0) {
@@ -474,8 +499,11 @@ class DeviceSession {
         return;
       }
       if (queue.indexOf(_prompt3) >= 0) {
+        // A prompt can arrive before the paste banner over WebREPL. Consume
+        // it and keep waiting instead of reporting a false unsupported-mode
+        // error.
         await queue.readUntil(_prompt3, Duration.zero);
-        throw TimeoutException('Paste mode not available', timeout);
+        continue;
       }
       final remaining = timeout - stopwatch.elapsed;
       if (remaining <= Duration.zero) {
@@ -489,7 +517,10 @@ class DeviceSession {
     // _enterPasteMode already entered paste mode (Ctrl-E + waited for ===).
     final script =
         '${_markerPrint(_startMarker)}\n$code\n${_markerPrint(_endMarker)}\n';
-    _write(utf8.encode(script));
+    await _writePasteScript(
+      Uint8List.fromList(utf8.encode(script)),
+      timeout: timeout,
+    );
     _write([0x04]); // Ctrl-D
 
     try {
@@ -510,7 +541,10 @@ class DeviceSession {
     // _enterPasteMode already entered paste mode (Ctrl-E + waited for ===).
     final script =
         '${_markerPrint(_startMarker)}\n$code\n${_markerPrint(_endMarker)}\n';
-    _write(utf8.encode(script));
+    await _writePasteScript(
+      Uint8List.fromList(utf8.encode(script)),
+      timeout: timeout,
+    );
     _write([0x04]); // Ctrl-D
     onStarted();
 
@@ -659,6 +693,153 @@ class DeviceSession {
   }
 
   // -- Helpers --------------------------------------------------------------
+
+  /// Sends paste-mode input in conservative blocks. WebREPL implementations
+  /// on ESP-class boards may accept the Paste Mode banner but fail to process
+  /// a large text frame followed immediately by Ctrl-D. Keeping blocks below
+  /// the common 128-byte boundary and yielding between them mirrors Thonny's
+  /// WebREPL behavior without requiring echo parsing on the shared queue.
+  Future<void> _writePasteScript(
+    Uint8List bytes, {
+    required Duration timeout,
+  }) async {
+    if (waitForPasteEcho) {
+      bytes = _normalizePasteNewlines(bytes);
+    }
+    const blockSize = 127;
+    var offset = 0;
+    while (offset < bytes.length) {
+      var end = math.min(offset + blockSize, bytes.length);
+      // Do not split a multi-byte UTF-8 sequence between WebSocket frames.
+      while (end > offset &&
+          end < bytes.length &&
+          (bytes[end] & 0xC0) == 0x80) {
+        end--;
+      }
+      if (end > offset && end < bytes.length && bytes[end - 1] == 0x0D) {
+        end--;
+      }
+      if (end == offset) end = math.min(offset + blockSize, bytes.length);
+      final block = bytes.sublist(offset, end);
+      _write(block);
+      if (waitForPasteEcho) {
+        await _waitForPasteEcho(block, timeout);
+      }
+      offset = end;
+      if (offset < bytes.length) {
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+    }
+  }
+
+  Uint8List _normalizePasteNewlines(Uint8List bytes) {
+    final normalized = <int>[];
+    for (var index = 0; index < bytes.length; index++) {
+      final byte = bytes[index];
+      if (byte == 0x0A && (index == 0 || bytes[index - 1] != 0x0D)) {
+        normalized.add(0x0D);
+      }
+      normalized.add(byte);
+    }
+    return Uint8List.fromList(normalized);
+  }
+
+  Future<void> _waitForPasteEcho(List<int> block, Duration timeout) async {
+    final expected = block.where((byte) => byte != 0x0D).toList();
+    final stopwatch = Stopwatch()..start();
+    var matched = 0;
+    var mayHaveLinePrefix = false;
+    final prefixCandidate = <int>[];
+    const linePrefix = [0x3D, 0x3D, 0x3D, 0x20];
+
+    Future<int> nextByte() async {
+      final remaining = timeout - stopwatch.elapsed;
+      if (remaining <= Duration.zero) {
+        throw TimeoutException(
+          'Timed out waiting for paste echo at $matched/${expected.length} bytes',
+          timeout,
+        );
+      }
+      try {
+        return (await queue.readBytes(1, remaining)).single;
+      } on TimeoutException {
+        throw TimeoutException(
+          'Timed out waiting for paste echo at $matched/${expected.length} bytes',
+          timeout,
+        );
+      }
+    }
+
+    void matchByte(int byte) {
+      if (byte == 0x0D) return;
+      // A few WebREPL builds duplicate LF while echoing CRLF input. Treat an
+      // LF where source expects a regular character as transport noise; real
+      // source newlines are still matched normally.
+      if (byte == 0x0A &&
+          matched < expected.length &&
+          expected[matched] != 0x0A) {
+        return;
+      }
+      if (matched >= expected.length || byte != expected[matched]) {
+        final expectedByte = matched < expected.length
+            ? '0x${expected[matched].toRadixString(16).padLeft(2, '0')}'
+            : 'end of echo';
+        throw DeviceSessionException(
+          'Unexpected paste echo at byte $matched: expected $expectedByte, '
+          'got 0x${byte.toRadixString(16).padLeft(2, '0')}.',
+        );
+      }
+      matched++;
+      mayHaveLinePrefix = byte == 0x0A;
+    }
+
+    while (matched < expected.length || mayHaveLinePrefix) {
+      final byte = await nextByte();
+      if (byte == 0x0D) continue;
+
+      if (mayHaveLinePrefix) {
+        // Some WebREPL builds emit an additional line ending before the
+        // continuation prefix. It is transport echo, not source content.
+        if (byte == 0x0A && prefixCandidate.isEmpty) {
+          continue;
+        }
+        prefixCandidate.add(byte);
+        var prefixStillMatches = prefixCandidate.length <= linePrefix.length;
+        for (
+          var index = 0;
+          prefixStillMatches && index < prefixCandidate.length;
+          index++
+        ) {
+          prefixStillMatches = prefixCandidate[index] == linePrefix[index];
+        }
+        if (prefixStillMatches && prefixCandidate.length < linePrefix.length) {
+          continue;
+        }
+        if (prefixStillMatches) {
+          prefixCandidate.clear();
+          mayHaveLinePrefix = false;
+          continue;
+        }
+
+        final replay = List<int>.from(prefixCandidate);
+        prefixCandidate.clear();
+        mayHaveLinePrefix = false;
+        for (final replayByte in replay) {
+          matchByte(replayByte);
+        }
+        continue;
+      }
+
+      matchByte(byte);
+    }
+  }
+
+  Future<void> _consumePastePrompt() async {
+    await queue.readUntil(_pastePrompt, Duration.zero);
+    if (queue.firstByte == 0x20) {
+      await queue.readBytes(1, Duration.zero);
+    }
+  }
 
   Future<Uint8List> _readUntilEot(Duration timeout) async {
     final data = await queue.readUntil(_eot, timeout);

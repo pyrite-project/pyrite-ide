@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
@@ -31,7 +32,8 @@ class Editor extends ConsumerWidget {
         ? selectedValue
         : null;
     final canSave = fileValue != null;
-    final isConnected = ref.watch(serialProvider).isConnected;
+    final isConnected = ref.watch(deviceConnectedProvider);
+    final serialConnected = ref.watch(serialProvider).isConnected;
     final hardwareResetStrategy = ref.watch(hardwareResetStrategyProvider);
     return Scaffold(
       appBar: AppBar(
@@ -94,14 +96,14 @@ class Editor extends ConsumerWidget {
                 icon: const Icon(Icons.stop_circle_outlined, size: 20),
                 onPressed: isConnected
                     ? () {
-                        ref.read(serialProvider.notifier).sendCommand("\x03");
+                        sendCommandToActiveDevice(ref.read, "\x03");
                       }
                     : null,
               ),
               IconButton(
                 tooltip: translateForWidget(
                   ref,
-                  isConnected &&
+                  serialConnected &&
                           hardwareResetStrategy !=
                               HardwareResetStrategy.disabled
                       ? I18nKey.editorToolbarHardwareReset
@@ -109,7 +111,7 @@ class Editor extends ConsumerWidget {
                 ),
                 icon: const Icon(Icons.power_settings_new, size: 20),
                 onPressed:
-                    isConnected &&
+                    serialConnected &&
                         hardwareResetStrategy != HardwareResetStrategy.disabled
                     ? () async {
                         final accepted = await hardwareResetDevice(ref.read);
@@ -139,7 +141,7 @@ class Editor extends ConsumerWidget {
                 icon: const Icon(Icons.restart_alt, size: 20),
                 onPressed: isConnected
                     ? () {
-                        ref.read(serialProvider.notifier).sendCommand("\x04");
+                        sendCommandToActiveDevice(ref.read, "\x04");
                       }
                     : null,
               ),

@@ -29,6 +29,12 @@ class TerminalSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final webReplInfo = ref.watch(webReplProvider);
+    final webReplHostValue = ref.watch(webReplHost);
+    final webReplPortValue = ref.watch(webReplPort);
+    final webReplEndpoint = webReplHostValue.isEmpty
+        ? null
+        : _tryBuildWebReplEndpoint(webReplHostValue, webReplPortValue);
     final body = ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -181,11 +187,13 @@ class TerminalSettings extends ConsumerWidget {
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsTerminalWebReplEnable),
-              subtitle: const UseText(
-                I18nKey.settingsTerminalWebReplEnableSubtitle,
-              ),
-              value:
-                  ref.watch(webReplProvider).state != WebReplState.disconnected,
+              subtitle: webReplInfo.errorMessage == null
+                  ? const UseText(I18nKey.settingsTerminalWebReplEnableSubtitle)
+                  : Text(webReplInfo.errorMessage!),
+              value: switch (webReplInfo.state) {
+                WebReplState.waitingPassword || WebReplState.connected => true,
+                _ => false,
+              },
               onChanged: (value) {
                 if (value) {
                   ref.read(webReplProvider.notifier).connect();
@@ -199,9 +207,7 @@ class TerminalSettings extends ConsumerWidget {
               leading: const Icon(Icons.wifi),
               title: const UseText(I18nKey.settingsTerminalDeviceIp),
               subtitle: Text(
-                ref.watch(webReplHost).isEmpty
-                    ? I18nKey.settingsTerminalUnset.fallback
-                    : ref.watch(webReplHost),
+                webReplEndpoint ?? I18nKey.settingsTerminalUnset.fallback,
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
@@ -250,6 +256,14 @@ class TerminalSettings extends ConsumerWidget {
       appBar: AppBar(title: const UseText(I18nKey.settingsTerminalTitle)),
       body: body,
     );
+  }
+
+  String? _tryBuildWebReplEndpoint(String host, int port) {
+    try {
+      return buildWebReplUri(host, port).toString();
+    } on FormatException {
+      return host;
+    }
   }
 
   void _showBaudRateDialog(BuildContext context, WidgetRef ref, int current) {
@@ -393,10 +407,15 @@ class TerminalSettings extends ConsumerWidget {
             ),
             trailing: selected ? const Icon(Icons.check) : null,
             minTileHeight: 0,
-            onTap: () {
-              customizationTerminalTextFont();
-              context.pop(context);
-            },
+            onTap: (name == "custom")
+                ? () {
+                    customizationTerminalTextFont();
+                    context.pop(name);
+                  }
+                : () {
+                    ref.read(terminalFontFamily.notifier).state = name;
+                    context.pop(name);
+                  },
           ),
         ),
       );
@@ -438,9 +457,9 @@ class TerminalSettings extends ConsumerWidget {
                   value: size,
                   label: size.toStringAsFixed(0),
                   onChanged: (value) {
-                    customizationTerminalTextFont();
+                    ref.read(terminalFontSize.notifier).state = value;
                     context.pop();
-                  }
+                  },
                 ),
               ),
             ],

@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
@@ -55,7 +56,7 @@ class ConsolePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isConnected = ref.watch(serialProvider).isConnected;
+    final isConnected = ref.watch(deviceConnectedProvider);
     final webReplState = ref.watch(webReplProvider);
     final webReplConnected = webReplState.state == WebReplState.connected;
     final useWebRepl =
@@ -106,7 +107,7 @@ class ConsolePage extends ConsumerWidget {
         return const [];
       default:
         return [
-          if (!isConnected && !webReplConnected)
+          if (!isConnected && !useWebRepl)
             IconButton(
               tooltip: translateForWidget(
                 ref,
@@ -1505,18 +1506,16 @@ class EditorToolsBar extends ConsumerWidget {
   }
 
   Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
-    final usb = ref.watch(serialProvider);
-    final isConnected = usb.isConnected;
+    final isConnected = ref.watch(deviceConnectedProvider);
+    final deviceLabel = ref.watch(activeDeviceLabelProvider);
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final label = isMobile
         ? (isConnected
-              ? usb.selectedPortName!
+              ? (deviceLabel ?? translateForWidget(ref, I18nKey.statusDeviceShort))
               : translateForWidget(ref, I18nKey.statusDeviceShort))
         : (isConnected
-              ? translateForWidget(
-                  ref,
-                  I18nKey.statusDevicePort,
-                ).replaceAll('{port}', usb.selectedPortName!)
+              ? (deviceLabel ??
+                    translateForWidget(ref, I18nKey.statusDeviceShort))
               : translateForWidget(ref, I18nKey.statusDeviceDisconnected));
     return StatusBarButton(
       label: label,
