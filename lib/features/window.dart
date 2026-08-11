@@ -26,6 +26,7 @@ class UseWindow with WindowListener {
       WidgetsFlutterBinding.ensureInitialized();
       await windowManager.ensureInitialized();
       await windowManager.setPreventClose(true);
+      await windowManager.setAlwaysOnTop(_container?.read(alwaysOnTopProvider) ?? false);
       windowManager.addListener(this);
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
@@ -302,14 +303,21 @@ class AppActionBar extends ConsumerWidget {
   }
 }
 
-class WindowActionBar extends StatelessWidget {
+class WindowActionBar extends ConsumerWidget {
   const WindowActionBar({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        IconButton(
+          icon: (ref.watch(alwaysOnTopProvider)) ? Icon(Icons.push_pin, size: 18) : Icon(Icons.push_pin_outlined, size: 18),
+          onPressed: () async {
+            ref.read(alwaysOnTopProvider.notifier).state = !ref.read(alwaysOnTopProvider);
+            await windowManager.setAlwaysOnTop(ref.read(alwaysOnTopProvider));
+          },
+        ),
         IconButton(
           icon: Icon(Icons.minimize, size: 18),
           onPressed: () => windowManager.minimize(),

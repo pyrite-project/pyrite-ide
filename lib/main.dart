@@ -110,6 +110,7 @@ void _applyData(PersistedData data) {
   container.read(welcomeCompletedProvider.notifier).state =
       data.welcomeCompleted;
   container.read(activeLocaleProvider.notifier).state = data.activeLocale;
+  container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;

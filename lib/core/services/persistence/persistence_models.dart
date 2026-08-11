@@ -43,6 +43,7 @@ class PersistedData {
   final String? activePluginThemeId;
   final bool welcomeCompleted;
   final String activeLocale;
+  final bool alwaysOnTop;
   final String editorTextFont;
   final double editorFontSize;
   final bool editorWordWrap;
@@ -114,6 +115,7 @@ class PersistedData {
     this.activePluginThemeId,
     this.welcomeCompleted = false,
     this.activeLocale = 'zh-CN',
+    this.alwaysOnTop = false,
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,
     this.editorWordWrap = false,

@@ -11,6 +11,7 @@ class AppPersistedData {
   final String? activePluginThemeId;
   final bool welcomeCompleted;
   final String activeLocale;
+  final bool alwaysOnTop;
 
   AppPersistedData({
     required this.themeMode,
@@ -20,6 +21,7 @@ class AppPersistedData {
     this.activePluginThemeId,
     this.welcomeCompleted = false,
     this.activeLocale = 'zh-CN',
+    this.alwaysOnTop = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -30,6 +32,7 @@ class AppPersistedData {
     'activePluginThemeId': activePluginThemeId,
     'welcomeCompleted': welcomeCompleted,
     'activeLocale': activeLocale,
+    'alwaysOnTop': alwaysOnTop,
   };
 
   factory AppPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -41,6 +44,7 @@ class AppPersistedData {
         activePluginThemeId: json['activePluginThemeId'] as String?,
         welcomeCompleted: json['welcomeCompleted'] as bool? ?? false,
         activeLocale: json['activeLocale'] as String? ?? 'zh-CN',
+        alwaysOnTop: json['alwaysOnTop'] as bool? ?? false,
       );
 }
 

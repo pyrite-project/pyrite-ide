@@ -75,6 +75,7 @@ class _WelcomeOobePageState extends ConsumerState<WelcomeOobePage> {
         activePluginThemeId: ref.read(activePluginThemeId),
         welcomeCompleted: true,
         activeLocale: ref.read(activeLocaleProvider),
+        alwaysOnTop: ref.read(alwaysOnTopProvider),
       ),
     );
     if (!mounted) return;
