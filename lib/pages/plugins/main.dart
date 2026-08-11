@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/sdk/context_key_host.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
@@ -33,6 +34,7 @@ class Plugins extends ConsumerWidget {
         .values
         .where((p) => p.status != PluginStatus.uninstalled)
         .toList();
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
     return Scaffold(
       appBar: AppBar(
         title: const UseText(I18nKey.pluginsTitle),
@@ -52,7 +54,7 @@ class Plugins extends ConsumerWidget {
       body: showPlugins.isEmpty
           ? _PluginsEmptyState(onInstall: () => _installPlugin(context, ref))
           : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: EdgeInsets.symmetric(vertical: compact ? 4 : 8),
               itemCount: showPlugins.length,
               itemBuilder: (context, index) {
                 final plugin = showPlugins[index];
@@ -67,13 +69,14 @@ class Plugins extends ConsumerWidget {
                     ref.watch(pluginRunManagerProvider)[plugin] != null;
 
                 return ListTile(
+                  visualDensity: compact ? VisualDensity.compact : null,
                   leading: plugin.manifest?.icons == null
                       ? const Icon(Icons.extension_outlined)
                       : PluginAssetImage(
                           pluginId: plugin.id,
                           assetPath: plugin.manifest!.icons!.full,
-                          width: 36,
-                          height: 36,
+                          width: compact ? 28 : 36,
+                          height: compact ? 28 : 36,
                           fallback: const Icon(Icons.extension_outlined),
                         ),
                   title: Text(plugin.name),
@@ -546,15 +549,18 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     if (activation.state == ActivationState.failed) {
       return Scaffold(
         body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('插件启动失败'),
-            const SizedBox(height: 8),
-            FilledButton(onPressed: _activateSelected, child: const Text('重试')),
-          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('插件启动失败'),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: _activateSelected,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
         ),
-      )
       );
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -601,7 +607,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
 
     final selectedIndex = views.indexWhere((entry) => entry.id == targetView);
     return Scaffold(
-        body: DefaultTabController(
+      body: DefaultTabController(
         key: ValueKey('${widget.pluginId}:${widget.containerId}:$targetView'),
         length: views.length,
         initialIndex: selectedIndex < 0 ? 0 : selectedIndex,
@@ -624,7 +630,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
             Expanded(child: surface),
           ],
         ),
-      )
+      ),
     );
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
@@ -36,6 +37,8 @@ class _ToolsState extends ConsumerState<Tools> {
     final webReplActive =
         webReplState == WebReplState.waitingPassword ||
         webReplState == WebReplState.connected;
+    final compact =
+        widget.compact || ref.watch(themeStyle) == ThemeStyle.compact;
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -43,7 +46,7 @@ class _ToolsState extends ConsumerState<Tools> {
             context,
             state.isConnected,
             state.selectedPortName,
-            compact: widget.compact,
+            compact: compact,
             onDisconnect: state.isConnected
                 ? () => ref.read(serialProvider.notifier).disconnectPort()
                 : null,
@@ -62,7 +65,7 @@ class _ToolsState extends ConsumerState<Tools> {
             title: I18nKey.devicesAvailableSerialTitle,
             subtitle: I18nKey.devicesAvailableSerialSubtitle,
             leadingIcon: Icons.usb,
-            compact: widget.compact,
+            compact: compact,
           ),
         ),
         if (state.portNames.isEmpty)
@@ -82,14 +85,15 @@ class _ToolsState extends ConsumerState<Tools> {
             itemBuilder: (context, index) {
               final portInfo = state.portInfos[index];
               return ExpansionTile(
+                visualDensity: compact ? VisualDensity.compact : null,
                 leading: const Icon(Icons.developer_board_outlined),
                 title: Text(portInfo.path),
                 subtitle: Text(portInfo.description),
-                childrenPadding: const EdgeInsetsDirectional.fromSTEB(
+                childrenPadding: EdgeInsetsDirectional.fromSTEB(
                   16,
                   0,
                   16,
-                  12,
+                  compact ? 8 : 12,
                 ),
                 children: [
                   SizedBox(
@@ -130,8 +134,8 @@ class _ToolsState extends ConsumerState<Tools> {
   }) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: EdgeInsets.all(compact ? 8 : 16),
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isConnected
             ? scheme.primaryContainer
