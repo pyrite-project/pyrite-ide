@@ -569,7 +569,7 @@ enum I18nKey {
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
   settingsTerminalDisplayDescription(
     'settings.terminal.display.description',
-    '影响 REPL、输出和桌面终端的字体呈现。',
+    '影响 REPL、日志和桌面终端的字体呈现。',
   ),
   settingsTerminalFont('settings.terminal.font', '字体'),
   settingsTerminalFontSize('settings.terminal.font_size', '字体大小'),

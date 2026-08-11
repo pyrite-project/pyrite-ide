@@ -163,7 +163,7 @@ void _applyData(PersistedData data) {
       ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
   container.read(fileTransferModeProvider.notifier).state =
       FileTransferMode.values.asNameMap()[data.fileTransferMode] ??
-      FileTransferMode.streaming;
+      FileTransferMode.chunked;
   container.read(hardwareResetStrategyProvider.notifier).state =
       HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
       HardwareResetStrategy.disabled;
