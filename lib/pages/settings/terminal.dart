@@ -1,5 +1,4 @@
 import 'package:flex_color_picker/flex_color_picker.dart';
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -668,11 +667,9 @@ class _TerminalCustomColors extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final foreground = Color(ref.watch(terminalCustomForeground));
     final background = Color(ref.watch(terminalCustomBackground));
-    final palette = ref.watch(terminalCustomPalette);
     final isModified =
         foreground.toARGB32() != kDefaultTerminalCustomForeground ||
-        background.toARGB32() != kDefaultTerminalCustomBackground ||
-        !listEquals(palette, kDefaultTerminalCustomPalette);
+        background.toARGB32() != kDefaultTerminalCustomBackground;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -694,11 +691,7 @@ class _TerminalCustomColors extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 8),
-          _TerminalColorPreview(
-            foreground: foreground,
-            background: background,
-            palette: palette,
-          ),
+          _TerminalColorPreview(foreground: foreground, background: background),
           const SizedBox(height: 20),
           const UseText(I18nKey.settingsTerminalCustomBaseColors),
           const SizedBox(height: 8),
@@ -734,38 +727,6 @@ class _TerminalCustomColors extends ConsumerWidget {
               );
             },
           ),
-          // const SizedBox(height: 20),
-          // const UseText(I18nKey.settingsTerminalCustomPalette),
-          // const SizedBox(height: 8),
-          // LayoutBuilder(
-          //   builder: (context, constraints) {
-          //     final columns = constraints.maxWidth >= 720
-          //         ? 8
-          //         : constraints.maxWidth >= 360
-          //         ? 4
-          //         : 2;
-          //     return GridView.builder(
-          //       shrinkWrap: true,
-          //       physics: const NeverScrollableScrollPhysics(),
-          //       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          //         crossAxisCount: columns,
-          //         crossAxisSpacing: 8,
-          //         mainAxisSpacing: 8,
-          //         childAspectRatio: 1.2,
-          //       ),
-          //       itemCount: palette.length,
-          //       itemBuilder: (context, index) => _PaletteColorButton(
-          //         index: index,
-          //         color: Color(palette[index]),
-          //         onChanged: (color) {
-          //           final updated = [...palette];
-          //           updated[index] = color.toARGB32();
-          //           ref.read(terminalCustomPalette.notifier).state = updated;
-          //         },
-          //       ),
-          //     );
-          //   },
-          // ),
         ],
       ),
     );
@@ -778,48 +739,65 @@ class _TerminalCustomColorsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ExpansionTile(
-      key: const Key('terminal-custom-colors-expansion'),
-      initiallyExpanded: false,
-      leading: Icon(Icons.palette_outlined, color: scheme.primary),
-      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-      childrenPadding: EdgeInsets.zero,
-      shape: const Border(),
-      collapsedShape: const Border(),
-      title: UseText(
-        I18nKey.settingsTerminalCustomSection,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: scheme.primary,
-          fontWeight: FontWeight.w600,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: ExpansionTile(
+        key: const Key('terminal-custom-colors-expansion'),
+        initiallyExpanded: false,
+        leading: Icon(Icons.palette_outlined, color: scheme.primary),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+        childrenPadding: EdgeInsets.zero,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        title: UseText(
+          I18nKey.settingsTerminalCustomSection,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: scheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
+        subtitle: UseText(
+          I18nKey.settingsTerminalCustomSectionDescription,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        children: const [_TerminalCustomColors()],
       ),
-      subtitle: UseText(
-        I18nKey.settingsTerminalCustomSectionDescription,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-      ),
-      children: const [_TerminalCustomColors()],
     );
   }
 }
+
+// const _terminalPreviewPalette = <Color>[
+//   Color(0xFF000000),
+//   Color(0xFFCD3131),
+//   Color(0xFF0DBC79),
+//   Color(0xFFE5E510),
+//   Color(0xFF2472C8),
+//   Color(0xFFBC3FBC),
+//   Color(0xFF11A8CD),
+//   Color(0xFFE5E5E5),
+//   Color(0xFF666666),
+//   Color(0xFFF14C4C),
+//   Color(0xFF23D18B),
+//   Color(0xFFF5F543),
+//   Color(0xFF3B8EEA),
+//   Color(0xFFD670D6),
+//   Color(0xFF29B8DB),
+//   Color(0xFFFFFFFF),
+// ];
 
 class _TerminalColorPreview extends StatelessWidget {
   const _TerminalColorPreview({
     required this.foreground,
     required this.background,
-    required this.palette,
   });
 
   final Color foreground;
   final Color background;
-  final List<int> palette;
 
   @override
   Widget build(BuildContext context) {
-    final colors = palette.length == 16
-        ? palette.map(Color.new).toList()
-        : kDefaultTerminalCustomPalette.map(Color.new).toList();
     final terminalStyle = TextStyle(
       color: foreground,
       fontFamily: 'JetBrainsMapleMono',
@@ -841,28 +819,8 @@ class _TerminalColorPreview extends StatelessWidget {
           text: TextSpan(
             style: terminalStyle,
             children: [
-              TextSpan(
-                text: 'pyrite',
-                style: TextStyle(color: colors[2]),
-              ),
-              TextSpan(
-                text: '@workspace',
-                style: TextStyle(color: colors[6]),
-              ),
-              const TextSpan(text: ':~\$ '),
-              TextSpan(
-                text: 'flutter test\n',
-                style: TextStyle(color: colors[4]),
-              ),
-              TextSpan(
-                text: 'PASS',
-                style: TextStyle(color: colors[10]),
-              ),
-              const TextSpan(text: ' 10 tests  '),
-              TextSpan(
-                text: '0 failed',
-                style: TextStyle(color: colors[11]),
-              ),
+              const TextSpan(text: ">>> print('Pyrite IDE')\n"),
+              const TextSpan(text: 'Pyrite IDE'),
             ],
           ),
         ),
@@ -926,68 +884,6 @@ class _ColorSettingTile extends StatelessWidget {
   }
 }
 
-// class _PaletteColorButton extends StatelessWidget {
-//   const _PaletteColorButton({
-//     required this.index,
-//     required this.color,
-//     required this.onChanged,
-//   });
-
-//   final int index;
-//   final Color color;
-//   final ValueChanged<Color> onChanged;
-
-//   @override
-//   Widget build(BuildContext context) {
-//     final label = 'ANSI $index';
-//     return Tooltip(
-//       message: '$label · ${_colorHex(color)}',
-//       child: InkWell(
-//         onTap: () => _showColorDialog(context, label, color, onChanged),
-//         borderRadius: BorderRadius.circular(6),
-//         child: Container(
-//           padding: const EdgeInsets.all(6),
-//           decoration: BoxDecoration(
-//             borderRadius: BorderRadius.circular(6),
-//             border: Border.all(
-//               color: Theme.of(context).colorScheme.outlineVariant,
-//             ),
-//           ),
-//           child: Column(
-//             crossAxisAlignment: CrossAxisAlignment.start,
-//             children: [
-//               Expanded(
-//                 child: Container(
-//                   width: double.infinity,
-//                   decoration: BoxDecoration(
-//                     color: color,
-//                     borderRadius: BorderRadius.circular(3),
-//                     border: Border.all(
-//                       color: Theme.of(context).colorScheme.outline,
-//                     ),
-//                   ),
-//                 ),
-//               ),
-//               const SizedBox(height: 4),
-//               Text(label, style: Theme.of(context).textTheme.labelSmall),
-//               Text(
-//                 _colorHex(color),
-//                 maxLines: 1,
-//                 overflow: TextOverflow.ellipsis,
-//                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-//                   color: Theme.of(context).colorScheme.onSurfaceVariant,
-//                   fontFamily: 'JetBrainsMapleMono',
-//                   fontSize: 10,
-//                 ),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
-
 Future<void> _confirmResetCustomColors(
   BuildContext context,
   WidgetRef ref,
@@ -1016,8 +912,6 @@ Future<void> _confirmResetCustomColors(
       kDefaultTerminalCustomForeground;
   ref.read(terminalCustomBackground.notifier).state =
       kDefaultTerminalCustomBackground;
-  ref.read(terminalCustomPalette.notifier).state =
-      kDefaultTerminalCustomPalette;
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(content: UseText(I18nKey.settingsTerminalCustomResetDone)),
   );

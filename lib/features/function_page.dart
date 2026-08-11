@@ -1094,6 +1094,7 @@ class ReplView extends ConsumerWidget {
     final terminalStyle = buildTerminalStyle(ref);
     return ReplSurface(
       backgroundColor: terminalTheme.background,
+      foregroundColor: terminalTheme.foreground,
       textStyle: terminalStyle.toTextStyle(),
     );
   }
@@ -1323,13 +1324,10 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
   final appearance = ref.watch(terminalAppearance);
   final minimumContrastRatio = ref.watch(terminalMinimumContrast) ? 4.5 : 1.0;
   if (appearance == TerminalAppearance.custom) {
-    final palette = ref.watch(terminalCustomPalette);
     return _terminalThemeFromPalette(
       foreground: Color(ref.watch(terminalCustomForeground)),
       background: Color(ref.watch(terminalCustomBackground)),
-      palette: palette.length == 16
-          ? palette.map(Color.new).toList()
-          : kDefaultTerminalCustomPalette.map(Color.new).toList(),
+      palette: _paletteFromTheme(TerminalThemes.defaultTheme),
       minimumContrastRatio: minimumContrastRatio,
     );
   }
@@ -1355,7 +1353,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
   return _terminalThemeFromPalette(
     foreground: appearance == TerminalAppearance.followIde
         ? scheme.onSurface
-        : defaultTheme.foreground,
+        : const Color(0xFFFFFFFF),
     background: appearance == TerminalAppearance.followIde
         ? scheme.surface
         : defaultTheme.background,

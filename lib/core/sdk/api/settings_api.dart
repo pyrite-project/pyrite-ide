@@ -571,20 +571,6 @@ class SettingsRegistry {
           _requireArgbColor(v),
     ),
     _SettingEntry(
-      name: 'terminal.custom_palette',
-      type: 'list',
-      provider: terminalCustomPalette,
-      getter: (ref) => ref.read(terminalCustomPalette),
-      setter: (ref, v) {
-        if (v is! List || v.length != 16) {
-          throw ArgumentError.value(v, 'value', 'Expected 16 ARGB32 colors');
-        }
-        ref.read(terminalCustomPalette.notifier).state = v
-            .map(_requireArgbColor)
-            .toList();
-      },
-    ),
-    _SettingEntry(
       name: 'micropython.stubs.enabled',
       type: 'bool',
       provider: microPythonStubsEnabled,

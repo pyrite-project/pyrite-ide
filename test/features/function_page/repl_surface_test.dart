@@ -45,6 +45,71 @@ void main() {
     expect(editorRect.top, lessThan(surfaceRect.top + 24));
   });
 
+  testWidgets('background fills the entire REPL panel when empty', (
+    tester,
+  ) async {
+    const background = Color(0xFF102030);
+    await _pumpSurface(
+      tester,
+      backgroundColor: background,
+      looseConstraints: true,
+    );
+
+    final surfaceRect = tester.getRect(find.byType(ReplSurface));
+    final backgroundFinder = find.byKey(const ValueKey('repl-background'));
+    final backgroundRect = tester.getRect(backgroundFinder);
+    final backgroundWidget = tester.widget<Container>(backgroundFinder);
+
+    expect(backgroundRect, surfaceRect);
+    expect(backgroundRect.size, const Size(500, 300));
+    expect(backgroundWidget.color, background);
+  });
+
+  testWidgets('uses the supplied REPL background and foreground colors', (
+    tester,
+  ) async {
+    const background = Color(0xFF102030);
+    const foreground = Color(0xFFE1E2E3);
+    await _pumpSurface(
+      tester,
+      backgroundColor: background,
+      foregroundColor: foreground,
+    );
+
+    writeReplOutput('boot\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    final coloredContainers = tester.widgetList<Container>(
+      find.descendant(
+        of: find.byType(ReplSurface),
+        matching: find.byType(Container),
+      ),
+    );
+    expect(
+      coloredContainers.any((widget) => widget.color == background),
+      isTrue,
+    );
+
+    final editor = tester.widget<EditableText>(find.byType(EditableText));
+    expect(editor.style.color, foreground);
+
+    final transcript = tester.widget<Text>(
+      find.descendant(
+        of: find.byType(SelectionArea),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              widget.textSpan?.toPlainText().contains('boot') == true,
+        ),
+      ),
+    );
+    expect(
+      transcript.textSpan?.style?.color,
+      foreground.withValues(alpha: .78),
+    );
+  });
+
   testWidgets('clicking the panel restores focus to the active REPL input', (
     tester,
   ) async {
@@ -457,22 +522,29 @@ Future<void> _pumpSurface(
   WidgetTester tester, {
   double width = 500,
   double height = 300,
+  Color backgroundColor = const Color(0xFF101010),
+  Color foregroundColor = Colors.white,
+  bool looseConstraints = false,
   ProviderContainer? container,
 }) async {
+  final surface = ReplSurface(
+    backgroundColor: backgroundColor,
+    foregroundColor: foregroundColor,
+    textStyle: const TextStyle(
+      color: Colors.white,
+      fontFamily: 'monospace',
+      fontSize: 14,
+      height: 1,
+    ),
+  );
   final sized = MaterialApp(
     home: Scaffold(
       body: SizedBox(
         width: width,
         height: height,
-        child: const ReplSurface(
-          backgroundColor: Color(0xFF101010),
-          textStyle: TextStyle(
-            color: Colors.white,
-            fontFamily: 'monospace',
-            fontSize: 14,
-            height: 1,
-          ),
-        ),
+        child: looseConstraints
+            ? Align(alignment: Alignment.topLeft, child: surface)
+            : surface,
       ),
     ),
   );

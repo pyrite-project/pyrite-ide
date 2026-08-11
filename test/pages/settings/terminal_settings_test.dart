@@ -58,7 +58,7 @@ void main() {
     expect(container.read(terminalLigatures), isFalse);
   });
 
-  testWidgets('custom terminal appearance exposes foreground and palette', (
+  testWidgets('custom appearance exposes foreground and background only', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(800, 2400);
@@ -83,12 +83,13 @@ void main() {
     await tester.tap(find.text('自定义终端颜色'));
     await tester.pumpAndSettle();
 
+    expect(find.text('终端预览'), findsOneWidget);
     expect(find.text('默认前景色'), findsOneWidget);
     expect(find.text('默认背景色'), findsOneWidget);
-    expect(find.text('ANSI 颜色'), findsOneWidget);
+    expect(find.text('ANSI 颜色'), findsNothing);
   });
 
-  testWidgets('reset restores every custom terminal color after confirmation', (
+  testWidgets('reset restores foreground and background after confirmation', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(800, 2400);
@@ -101,10 +102,6 @@ void main() {
         TerminalAppearance.custom;
     container.read(terminalCustomForeground.notifier).state = 0xFF123456;
     container.read(terminalCustomBackground.notifier).state = 0xFF654321;
-    container.read(terminalCustomPalette.notifier).state = List<int>.generate(
-      16,
-      (index) => 0xFF000000 | index,
-    );
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -129,10 +126,6 @@ void main() {
     expect(
       container.read(terminalCustomBackground),
       kDefaultTerminalCustomBackground,
-    );
-    expect(
-      container.read(terminalCustomPalette),
-      kDefaultTerminalCustomPalette,
     );
     expect(find.text('终端颜色已恢复默认值'), findsOneWidget);
   });
@@ -165,8 +158,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('终端预览'), findsOneWidget);
 
-    for (var i = 0; i < 4; i++) {
-      await tester.drag(find.byType(ListView), const Offset(0, -700));
+    for (var i = 0; i < 3; i++) {
+      await tester.drag(find.byType(ListView), const Offset(0, -500));
       await tester.pump();
       expect(tester.takeException(), isNull);
     }

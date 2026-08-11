@@ -174,18 +174,13 @@ void _applyData(PersistedData data) {
   container.read(terminalLigatures.notifier).state = data.terminalLigatures;
   container.read(terminalAppearance.notifier).state =
       TerminalAppearance.values.asNameMap()[data.terminalAppearance] ??
-      TerminalAppearance.followIde;
+      TerminalAppearance.dark;
   container.read(terminalMinimumContrast.notifier).state =
       data.terminalMinimumContrast;
   container.read(terminalCustomForeground.notifier).state =
       data.terminalCustomForeground;
   container.read(terminalCustomBackground.notifier).state =
       data.terminalCustomBackground;
-  container
-      .read(terminalCustomPalette.notifier)
-      .state = data.terminalCustomPalette.length == 16
-      ? data.terminalCustomPalette
-      : kDefaultTerminalCustomPalette;
   container.read(useMaterialContextMenu.notifier).state =
       data.useMaterialContextMenu;
   container

@@ -606,14 +606,13 @@ enum I18nKey {
     'settings.terminal.custom.background',
     '默认背景色',
   ),
-  settingsTerminalCustomPalette('settings.terminal.custom.palette', 'ANSI 颜色'),
   settingsTerminalCustomSection(
     'settings.terminal.custom.section.title',
     '自定义终端颜色',
   ),
   settingsTerminalCustomSectionDescription(
     'settings.terminal.custom.section.description',
-    '调整默认前景、背景和 ANSI 16 色调色板。',
+    '调整默认前景色和背景色。',
   ),
   settingsTerminalCustomPreview('settings.terminal.custom.preview', '终端预览'),
   settingsTerminalCustomBaseColors(
@@ -627,7 +626,7 @@ enum I18nKey {
   ),
   settingsTerminalCustomResetConfirmMessage(
     'settings.terminal.custom.reset_confirm.message',
-    '前景、背景和 ANSI 调色板将恢复为默认值。',
+    '前景色和背景色将恢复为默认值。',
   ),
   settingsTerminalCustomResetDone(
     'settings.terminal.custom.reset_done',
@@ -1465,7 +1464,10 @@ enum I18nKey {
   statusInterrupt('status.interrupt', '中断'),
   statusForceReset('status.force_reset', '强制重置'),
   statusInterruptDevice('status.interrupt.device', '中断设备运行'),
-  statusForceResetDevice('status.force_reset.device', '强制重置设备连接');
+  statusForceResetDevice('status.force_reset.device', '强制重置设备连接'),
+  sdkDefaultOpenFolderTitle('sdk.dialog.open_folder_title', '选择文件夹'),
+  sdkDefaultOpenFileTitle('sdk.dialog.open_file_title', '选择文件'),
+  sdkDefaultOpenFilesTitle('sdk.dialog.open_files_title', '选择多个文件');
 
   const I18nKey(this.key, this.fallback);
 

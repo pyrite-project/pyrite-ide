@@ -48,7 +48,6 @@ class SettingsPersistedData {
   final bool terminalMinimumContrast;
   final int terminalCustomForeground;
   final int terminalCustomBackground;
-  final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
@@ -103,11 +102,10 @@ class SettingsPersistedData {
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
-    this.terminalAppearance = 'followIde',
-    this.terminalMinimumContrast = false,
+    this.terminalAppearance = 'dark',
+    this.terminalMinimumContrast = true,
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
-    this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
@@ -167,7 +165,6 @@ class SettingsPersistedData {
     'terminalMinimumContrast': terminalMinimumContrast,
     'terminalCustomForeground': terminalCustomForeground,
     'terminalCustomBackground': terminalCustomBackground,
-    'terminalCustomPalette': terminalCustomPalette,
     'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
@@ -231,20 +228,14 @@ class SettingsPersistedData {
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     terminalLigatures: json['terminalLigatures'] as bool? ?? true,
-    terminalAppearance: json['terminalAppearance'] as String? ?? 'followIde',
-    terminalMinimumContrast: json['terminalMinimumContrast'] as bool? ?? false,
+    terminalAppearance: json['terminalAppearance'] as String? ?? 'dark',
+    terminalMinimumContrast: json['terminalMinimumContrast'] as bool? ?? true,
     terminalCustomForeground:
         json['terminalCustomForeground'] as int? ??
         kDefaultTerminalCustomForeground,
     terminalCustomBackground:
         json['terminalCustomBackground'] as int? ??
         kDefaultTerminalCustomBackground,
-    terminalCustomPalette:
-        (json['terminalCustomPalette'] as List?)
-            ?.whereType<num>()
-            .map((value) => value.toInt())
-            .toList() ??
-        kDefaultTerminalCustomPalette,
     useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',

@@ -118,18 +118,15 @@ StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);
 StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
 
 StateProvider<TerminalAppearance> terminalAppearance =
-    StateProvider<TerminalAppearance>((ref) => TerminalAppearance.followIde);
+    StateProvider<TerminalAppearance>((ref) => TerminalAppearance.dark);
 StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
-  (ref) => false,
+  (ref) => true,
 );
 StateProvider<int> terminalCustomForeground = StateProvider<int>(
   (ref) => kDefaultTerminalCustomForeground,
 );
 StateProvider<int> terminalCustomBackground = StateProvider<int>(
   (ref) => kDefaultTerminalCustomBackground,
-);
-StateProvider<List<int>> terminalCustomPalette = StateProvider<List<int>>(
-  (ref) => kDefaultTerminalCustomPalette,
 );
 
 StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(

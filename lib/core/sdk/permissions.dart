@@ -172,6 +172,7 @@ abstract class Permissions {
     // dialog
     'sdk.dialog.open_folder': 'dialog:show',
     'sdk.dialog.open_file': 'dialog:show',
+    'sdk.dialog.open_files': 'dialog:show',
 
     // message
     'sdk.message.show': 'ui:notify',

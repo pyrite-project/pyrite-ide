@@ -36,10 +36,12 @@ class ReplSurface extends ConsumerStatefulWidget {
   const ReplSurface({
     super.key,
     required this.backgroundColor,
+    required this.foregroundColor,
     required this.textStyle,
   });
 
   final Color backgroundColor;
+  final Color foregroundColor;
   final TextStyle textStyle;
 
   @override
@@ -155,48 +157,49 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge(<Listenable>[
-        _input,
-        _transcript,
-        _completion,
-      ]),
-      builder: (context, _) {
-        return Container(
-          width: double.infinity,
-          height: double.infinity,
-          color: widget.backgroundColor,
-          child: Listener(
-            behavior: HitTestBehavior.translucent,
-            onPointerDown: (_) => _handleSurfacePointerDown(),
-            child: LayoutBuilder(
-              builder: (context, _) {
-                final inputVisible = _input.hasVisibleInput;
-                return Scrollbar(
-                  controller: _scrollController,
-                  child: SingleChildScrollView(
+    return SizedBox.expand(
+      child: AnimatedBuilder(
+        animation: Listenable.merge(<Listenable>[
+          _input,
+          _transcript,
+          _completion,
+        ]),
+        builder: (context, _) {
+          return Container(
+            key: const ValueKey('repl-background'),
+            color: widget.backgroundColor,
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => _handleSurfacePointerDown(),
+              child: LayoutBuilder(
+                builder: (context, _) {
+                  final inputVisible = _input.hasVisibleInput;
+                  return Scrollbar(
                     controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!_transcript.isEmpty) _buildTranscript(context),
-                        _buildInputBlock(context, visible: inputVisible),
-                      ],
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!_transcript.isEmpty) _buildTranscript(context),
+                          _buildInputBlock(context, visible: inputVisible),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
   Widget _buildTranscript(BuildContext context) {
-    final outputStyle = _outputStyle(context);
+    final outputStyle = _outputStyle();
     final promptStyle = _promptStyle(context);
     return SelectionArea(
       key: _selectionKey,
@@ -213,7 +216,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   }
 
   Widget _buildInputBlock(BuildContext context, {required bool visible}) {
-    final style = _inputStyle(context);
+    final style = _inputStyle();
     if (_input.mode == ReplInteractionMode.unknown) {
       return const SizedBox.shrink();
     }
@@ -268,24 +271,26 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     );
   }
 
-  TextStyle _outputStyle(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  TextStyle _outputStyle() {
     return widget.textStyle.copyWith(
-      color: scheme.onSurface.withValues(alpha: .78),
+      color: widget.foregroundColor.withValues(alpha: .78),
       height: 1.15,
     );
   }
 
-  TextStyle _inputStyle(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return widget.textStyle.copyWith(color: scheme.onSurface, height: 1.15);
+  TextStyle _inputStyle() {
+    return widget.textStyle.copyWith(
+      color: widget.foregroundColor,
+      height: 1.15,
+    );
   }
 
   TextStyle _promptStyle(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return _inputStyle(
-      context,
-    ).copyWith(color: scheme.primary, fontWeight: FontWeight.w600);
+    return _inputStyle().copyWith(
+      color: scheme.primary,
+      fontWeight: FontWeight.w600,
+    );
   }
 
   TextSpan _buildTranscriptSpan(TextStyle outputStyle, TextStyle promptStyle) {

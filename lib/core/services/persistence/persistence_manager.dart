@@ -95,16 +95,14 @@ class PersistenceManager {
       terminalFontSize: settings?.terminalFontSize ?? 13,
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
       terminalLigatures: settings?.terminalLigatures ?? true,
-      terminalAppearance: settings?.terminalAppearance ?? 'followIde',
-      terminalMinimumContrast: settings?.terminalMinimumContrast ?? false,
+      terminalAppearance: settings?.terminalAppearance ?? 'dark',
+      terminalMinimumContrast: settings?.terminalMinimumContrast ?? true,
       terminalCustomForeground:
           settings?.terminalCustomForeground ??
           kDefaultTerminalCustomForeground,
       terminalCustomBackground:
           settings?.terminalCustomBackground ??
           kDefaultTerminalCustomBackground,
-      terminalCustomPalette:
-          settings?.terminalCustomPalette ?? kDefaultTerminalCustomPalette,
       useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
@@ -187,7 +185,6 @@ class PersistenceManager {
           terminalMinimumContrast: container.read(terminalMinimumContrast),
           terminalCustomForeground: container.read(terminalCustomForeground),
           terminalCustomBackground: container.read(terminalCustomBackground),
-          terminalCustomPalette: container.read(terminalCustomPalette),
           useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
           confirmShortcut: container.read(confirmShortcutProvider),
