@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/sdk/environment_broadcaster.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -82,50 +83,207 @@ class PyriteIDE extends ConsumerWidget {
     required ThemeStyle style,
     PluginThemeData? pluginTheme,
   }) {
+    final tokens = ThemeDensityTokens.forStyle(style);
+    ThemeData baseTheme;
     if (pluginTheme != null) {
-      return pluginTheme.toThemeData(brightness: brightness);
-    }
-
-    final scheme = _resolveColorScheme(
-      dynamicScheme: dynamicScheme,
-      seedColor: seedColor,
-      brightness: brightness,
-    );
-
-    if (Platform.isAndroid) {
-      SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: scheme.surfaceContainer,
+      baseTheme = pluginTheme.toThemeData(brightness: brightness);
+    } else {
+      final scheme = _resolveColorScheme(
+        dynamicScheme: dynamicScheme,
+        seedColor: seedColor,
+        brightness: brightness,
       );
-      SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+      if (Platform.isAndroid) {
+        SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: scheme.surfaceContainer,
+        );
+        SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+      baseTheme = FlexColorScheme(
+        colorScheme: scheme,
+        useMaterial3: true,
+        fontFamily: "HarmonyOS Sans SC",
+        visualDensity: tokens.visualDensity,
+        subThemesData: _subThemes(style),
+      ).toTheme.copyWith(
+        scaffoldBackgroundColor: scheme.surface,
+        appBarTheme: AppBarTheme(
+          backgroundColor: scheme.surface,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: scheme.onSurface,
+        ),
+        navigationRailTheme: NavigationRailThemeData(
+          backgroundColor: scheme.surfaceContainerLowest,
+          indicatorColor: scheme.secondaryContainer,
+          selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
+          selectedLabelTextStyle: TextStyle(color: scheme.onSurface),
+          unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
+          unselectedLabelTextStyle: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: scheme.surfaceContainer,
+          indicatorColor: scheme.secondaryContainer,
+        ),
+      );
     }
-    return FlexColorScheme(
-      colorScheme: scheme,
-      useMaterial3: true,
-      fontFamily: "HarmonyOS Sans SC",
-      visualDensity: style == ThemeStyle.compact
-          ? VisualDensity.compact
-          : VisualDensity.standard,
-      subThemesData: _subThemes(style),
-    ).toTheme.copyWith(
-      scaffoldBackgroundColor: scheme.surface,
-      appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: scheme.onSurface,
+
+    return _applyDensityTokens(baseTheme, tokens);
+  }
+
+  /// Applies the desktop density/typography overlay on top of any base theme
+  /// (built-in or plugin-provided) so the selected style tier always wins.
+  ThemeData _applyDensityTokens(
+    ThemeData theme,
+    ThemeDensityTokens tokens,
+  ) {
+    return theme.copyWith(
+      visualDensity: tokens.visualDensity,
+      materialTapTargetSize: tokens.materialTapTargetSize,
+      textTheme: scaleTextTheme(theme.textTheme, tokens.fontSizeDelta),
+      appBarTheme: theme.appBarTheme.copyWith(
+        toolbarHeight: tokens.toolbarHeight,
       ),
-      navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: scheme.surfaceContainerLowest,
-        indicatorColor: scheme.secondaryContainer,
-        selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
-        selectedLabelTextStyle: TextStyle(color: scheme.onSurface),
-        unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
-        unselectedLabelTextStyle: TextStyle(color: scheme.onSurfaceVariant),
+      iconButtonTheme: _overlayIconButtonTheme(
+        theme.iconButtonTheme,
+        tokens.iconButtonTheme,
       ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: scheme.surfaceContainer,
-        indicatorColor: scheme.secondaryContainer,
+      buttonTheme: theme.buttonTheme.copyWith(
+        minWidth: tokens.buttonMinimumSize.width,
+        height: tokens.buttonMinimumSize.height,
+        materialTapTargetSize: tokens.materialTapTargetSize,
+      ),
+      navigationRailTheme: _overlayNavRailTheme(
+        theme.navigationRailTheme,
+        tokens.navIconSize,
+        tokens.navRailWidth,
+      ),
+      navigationDrawerTheme: _overlayNavDrawerTheme(
+        theme.navigationDrawerTheme,
+        tokens.navIconSize,
+        tokens.drawerTileHeight,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: tokens.buttonMinimumSize,
+          visualDensity: tokens.visualDensity,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: tokens.buttonMinimumSize,
+          visualDensity: tokens.visualDensity,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          minimumSize: tokens.buttonMinimumSize,
+          visualDensity: tokens.visualDensity,
+        ),
+      ),
+      inputDecorationTheme: tokens.fontSizeDelta > 0
+          ? theme.inputDecorationTheme.copyWith(isDense: true)
+          : theme.inputDecorationTheme,
+    );
+  }
+
+  /// Merges the tier [tokens] onto the base theme's icon button theme so that
+  /// plugin/base colors and shapes are preserved while the tier's size,
+  /// padding and tap target win.
+  IconButtonThemeData? _overlayIconButtonTheme(
+    IconButtonThemeData? base,
+    IconButtonThemeData tokens,
+  ) {
+    if (base == null || base.style == null) return tokens;
+    final b = base.style!;
+    final t = tokens.style!;
+    return IconButtonThemeData(
+      style: ButtonStyle(
+        animationDuration: t.animationDuration ?? b.animationDuration,
+        visualDensity: t.visualDensity ?? b.visualDensity,
+        foregroundColor: t.foregroundColor ?? b.foregroundColor,
+        backgroundColor: t.backgroundColor ?? b.backgroundColor,
+        overlayColor: t.overlayColor ?? b.overlayColor,
+        shadowColor: t.shadowColor ?? b.shadowColor,
+        surfaceTintColor: t.surfaceTintColor ?? b.surfaceTintColor,
+        elevation: t.elevation ?? b.elevation,
+        padding: t.padding ?? b.padding,
+        minimumSize: t.minimumSize ?? b.minimumSize,
+        fixedSize: t.fixedSize ?? b.fixedSize,
+        maximumSize: t.maximumSize ?? b.maximumSize,
+        iconSize: t.iconSize ?? b.iconSize,
+        iconColor: t.iconColor ?? b.iconColor,
+        side: t.side ?? b.side,
+        shape: t.shape ?? b.shape,
+        mouseCursor: t.mouseCursor ?? b.mouseCursor,
+        tapTargetSize: t.tapTargetSize ?? b.tapTargetSize,
+        textStyle: t.textStyle ?? b.textStyle,
+        enableFeedback: t.enableFeedback ?? b.enableFeedback,
+        alignment: t.alignment ?? b.alignment,
+        splashFactory: t.splashFactory ?? b.splashFactory,
+      ),
+    );
+  }
+
+  /// Overlays the tier's [navIconSize]/[navRailWidth] onto the base navigation
+  /// rail theme while keeping its colors.
+  NavigationRailThemeData? _overlayNavRailTheme(
+    NavigationRailThemeData? base,
+    double navIconSize,
+    double navRailWidth,
+  ) {
+    if (base == null) {
+      return NavigationRailThemeData(
+        minWidth: navRailWidth,
+        useIndicator: false,
+        selectedIconTheme: IconThemeData(size: navIconSize),
+        unselectedIconTheme: IconThemeData(size: navIconSize),
+      );
+    }
+    return NavigationRailThemeData(
+      backgroundColor: base.backgroundColor,
+      elevation: base.elevation,
+      selectedLabelTextStyle: base.selectedLabelTextStyle,
+      unselectedLabelTextStyle: base.unselectedLabelTextStyle,
+      selectedIconTheme: IconThemeData(
+        size: navIconSize,
+        color: base.selectedIconTheme?.color,
+      ),
+      unselectedIconTheme: IconThemeData(
+        size: navIconSize,
+        color: base.unselectedIconTheme?.color,
+      ),
+      groupAlignment: base.groupAlignment,
+      minWidth: base.minWidth ?? navRailWidth,
+      useIndicator: false,
+      minExtendedWidth: base.minExtendedWidth,
+      labelType: base.labelType,
+      indicatorColor: base.indicatorColor,
+      indicatorShape: base.indicatorShape,
+    );
+  }
+
+  /// Overlays the tier's [navIconSize]/[drawerTileHeight] onto the navigation
+  /// drawer theme while keeping its colors.
+  NavigationDrawerThemeData? _overlayNavDrawerTheme(
+    NavigationDrawerThemeData? base,
+    double navIconSize,
+    double drawerTileHeight,
+  ) {
+    if (base == null) {
+      return NavigationDrawerThemeData(
+        tileHeight: drawerTileHeight,
+        iconTheme: WidgetStatePropertyAll<IconThemeData?>(
+          IconThemeData(size: navIconSize),
+        ),
+      );
+    }
+    return base.copyWith(
+      tileHeight: drawerTileHeight,
+      iconTheme: WidgetStatePropertyAll<IconThemeData?>(
+        IconThemeData(size: navIconSize),
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 extension BuildContextRadius on BuildContext {
@@ -13,7 +15,7 @@ extension BuildContextRadius on BuildContext {
   }
 }
 
-class PaneHeader extends StatelessWidget {
+class PaneHeader extends ConsumerWidget {
   const PaneHeader({
     super.key,
     required this.title,
@@ -27,19 +29,37 @@ class PaneHeader extends StatelessWidget {
   final Object? subtitle;
   final IconData? leadingIcon;
   final List<Widget> actions;
+
+  /// Forces the tightest header regardless of the selected style tier.
   final bool compact;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final tier = ref.watch(themeStyle);
+    final isCompact = compact || tier == ThemeStyle.compact;
+    final comfortable = !isCompact && tier == ThemeStyle.comfortable;
+    final tokens = ThemeDensityTokens.forStyle(tier);
+    final titleStyle = tier == ThemeStyle.compact
+        ? Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: scheme.onSurface,
+        )
+        : null;
     return Container(
-      constraints: BoxConstraints(minHeight: 40),
-      padding: EdgeInsetsDirectional.fromSTEB(12, compact ? 4 : 6, 8, 6),
+      constraints: BoxConstraints(
+        minHeight: isCompact ? 32 : (comfortable ? 48 : 40),
+      ),
+      padding: EdgeInsetsDirectional.fromSTEB(
+        12,
+        isCompact ? 2 : (comfortable ? 8 : 6),
+        8,
+        isCompact ? 2 : (comfortable ? 8 : 6),
+      ),
 
       child: Row(
         children: [
           if (leadingIcon != null) ...[
-            Icon(leadingIcon, size: 18, color: scheme.onSurfaceVariant),
+            Icon(leadingIcon, size: tokens.headerIconSize, color: scheme.onSurfaceVariant),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -47,8 +67,8 @@ class PaneHeader extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                UseText(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (subtitle != null && !compact)
+                UseText(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                if (subtitle != null && !isCompact)
                   UseText(
                     subtitle!,
                     maxLines: 1,
@@ -200,10 +220,11 @@ class StatusBarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final iconSize = compact ? 14.0 : 16.0;
     final statusIcon = Stack(
       clipBehavior: Clip.none,
       children: [
-        Icon(icon, size: 16),
+        Icon(icon, size: iconSize),
         if (statusColor != null)
           PositionedDirectional(
             end: -3,
@@ -214,7 +235,10 @@ class StatusBarButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(99),
                 border: Border.all(color: scheme.surfaceContainer, width: 1.5),
               ),
-              child: const SizedBox(width: 8, height: 8),
+              child: SizedBox(
+                width: compact ? 6 : 8,
+                height: compact ? 6 : 8,
+              ),
             ),
           ),
       ],
@@ -223,7 +247,7 @@ class StatusBarButton extends StatelessWidget {
     final child = LayoutBuilder(
       builder: (context, constraints) {
         final hasBoundedWidth = constraints.maxWidth.isFinite;
-        final minLabelWidth = compact ? 72.0 : 96.0;
+        final minLabelWidth = compact ? 56.0 : 96.0;
         final showLabel =
             !hasBoundedWidth || constraints.maxWidth >= minLabelWidth;
         final availableWidth = hasBoundedWidth ? constraints.maxWidth : 24.0;
@@ -240,20 +264,33 @@ class StatusBarButton extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: compact
+                      ? TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        )
+                      : null,
                 ),
               )
             else
-              UseText(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+              UseText(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: compact
+                    ? TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)
+                    : null,
+              ),
           ],
         );
         return TextButton(
           style: TextButton.styleFrom(
             foregroundColor: scheme.onSurfaceVariant,
-            minimumSize: Size(showLabel ? (compact ? 44 : 56) : 0, 32),
+            minimumSize: Size(showLabel ? (compact ? 36 : 56) : 0, 32),
             padding: showLabel
                 ? EdgeInsetsDirectional.only(
-                    start: compact ? 8 : 10,
-                    end: compact ? 8 : 12,
+                    start: compact ? 6 : 10,
+                    end: compact ? 6 : 12,
                   )
                 : EdgeInsets.zero,
             shape: RoundedRectangleBorder(
@@ -271,7 +308,11 @@ class StatusBarButton extends StatelessWidget {
         : Tooltip(message: tooltip!, child: child);
 
     if (fixedWidth != null) {
-      return SizedBox(width: fixedWidth, height: 32, child: result);
+      return SizedBox(
+        width: fixedWidth,
+        height: compact ? 28 : 32,
+        child: result,
+      );
     }
     return result;
   }

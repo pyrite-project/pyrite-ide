@@ -6,8 +6,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
@@ -162,6 +164,12 @@ class _RenderDragHandleBounds extends RenderProxyBox {
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
 
+  static final MaterialFileSystemIconProvider _compactFileIcons =
+      MaterialFileSystemIconProvider(
+        iconSize: 16,
+        folderColor: const Color(0xFF3B82F6),
+      );
+
   String tr(
     WidgetRef ref,
     I18nKey key, [
@@ -214,6 +222,33 @@ class ProjectFiles extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// Tight, desktop-friendly tree style shared by the local and board trees.
+  /// Scaling follows the selected density tier so comfortable/standard keep
+  /// the default roomy Material layout instead of the compact overrides.
+  TreeViewStyle _compactTreeStyle(BuildContext context, WidgetRef ref) {
+    final base = SuperTreeThemes.material().treeStyle;
+    final style = ref.watch(themeStyle);
+    if (style == ThemeStyle.comfortable) {
+      return base.copyWith(
+        selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+      );
+    }
+    if (style == ThemeStyle.standard) {
+      return base.copyWith(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+        nodeGap: 8,
+        selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+      );
+    }
+    return base.copyWith(
+      padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 4),
+      indentAmount: 16,
+      nodeGap: 4,
+      labelStyle: Theme.of(context).textTheme.bodySmall,
+      selectedColor: Theme.of(context).colorScheme.secondaryContainer,
     );
   }
 
@@ -889,9 +924,9 @@ class ProjectFiles extends ConsumerWidget {
         message: translateForWidget(ref, I18nKey.fileActionDragSelected),
         child: _DragHandleBounds(
           handleId: handleId,
-          child: const SizedBox.square(
-            dimension: 28,
-            child: Icon(Icons.drag_indicator, size: 18),
+          child: SizedBox.square(
+            dimension: 24,
+            child: const Icon(Icons.drag_indicator, size: 16),
           ),
         ),
       ),
@@ -1584,16 +1619,10 @@ class ProjectFiles extends ConsumerWidget {
                           ref.read(fileProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
-              style: SuperTreeThemes.material().treeStyle.copyWith(
-                selectedColor: Theme.of(context).colorScheme.secondaryContainer,
-              ),
+              style: _compactTreeStyle(context, ref),
               controller: ref.watch(localFileTreeViewControllerProvider),
               scrollController: ref.watch(localFileScrollControllerProvider),
-              prefixBuilder:
-                  (BuildContext context, TreeNode<FileSystemItem> node) {
-                    return SuperTreeThemes.material().fileSystemIconProvider!
-                        .getIcon(node);
-                  },
+              prefixBuilder: (_, node) => _compactFileIcons.getIcon(node),
               contentBuilder:
                   (
                     BuildContext context,
@@ -1610,23 +1639,28 @@ class ProjectFiles extends ConsumerWidget {
                     final isSelected = localController.selectedNodeIds.contains(
                       node.id,
                     );
+                    final treeLabelStyle = _compactTreeStyle(
+                      context,
+                      ref,
+                    ).labelStyle;
                     final label = Text(
                       node.data.name,
                       style: isGitIgnored
-                          ? TextStyle(
+                          ? treeLabelStyle?.copyWith(
                               color: Theme.of(context).colorScheme.outline,
                             )
-                          : null,
+                          : treeLabelStyle,
                     );
                     final row = Row(
                       children: [
                         if (selectionMode)
                           SizedBox.square(
-                            dimension: 28,
+                            dimension: 24,
                             child: IgnorePointer(
                               child: Checkbox(
                                 value: isSelected,
                                 onChanged: (_) {},
+                                visualDensity: VisualDensity.compact,
                               ),
                             ),
                           ),
@@ -1695,7 +1729,10 @@ class ProjectFiles extends ConsumerWidget {
                       }
                     }
                   : null,
-              icon: const Icon(Icons.upload_outlined, size: 18),
+              icon: Icon(
+                Icons.upload_outlined,
+                size: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).headerIconSize,
+              ),
               label: const UseText(I18nKey.fileActionUploadSelected),
             ),
             const SizedBox(width: 6),
@@ -1703,7 +1740,10 @@ class ProjectFiles extends ConsumerWidget {
               onPressed: () => ref
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems(),
-              icon: const Icon(Icons.refresh, size: 18),
+              icon: Icon(
+                Icons.refresh,
+                size: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).headerIconSize,
+              ),
               label: const UseText(I18nKey.fileActionRefresh),
             ),
           ],
@@ -1762,16 +1802,10 @@ class ProjectFiles extends ConsumerWidget {
                     : (id) => ref.read(boardProvider).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
-              style: SuperTreeThemes.material().treeStyle.copyWith(
-                selectedColor: Theme.of(context).colorScheme.secondaryContainer,
-              ),
+              style: _compactTreeStyle(context, ref),
               controller: ref.watch(boardFileTreeViewControllerProvider),
               scrollController: ref.watch(boardFileScrollControllerProvider),
-              prefixBuilder:
-                  (BuildContext context, TreeNode<FileSystemItem> node) {
-                    return SuperTreeThemes.material().fileSystemIconProvider!
-                        .getIcon(node);
-                  },
+              prefixBuilder: (_, node) => _compactFileIcons.getIcon(node),
               contentBuilder:
                   (
                     BuildContext context,
@@ -1787,16 +1821,20 @@ class ProjectFiles extends ConsumerWidget {
                     final isSelected = boardController.selectedNodeIds.contains(
                       node.id,
                     );
-                    final label = Text(node.data.name);
+                    final label = Text(
+                      node.data.name,
+                      style: _compactTreeStyle(context, ref).labelStyle,
+                    );
                     final row = Row(
                       children: [
                         if (selectionMode)
                           SizedBox.square(
-                            dimension: 28,
+                            dimension: 24,
                             child: IgnorePointer(
                               child: Checkbox(
                                 value: isSelected,
                                 onChanged: (_) {},
+                                visualDensity: VisualDensity.compact,
                               ),
                             ),
                           ),

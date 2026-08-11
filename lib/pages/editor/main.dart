@@ -93,7 +93,7 @@ class Editor extends ConsumerWidget {
                       ? I18nKey.editorToolbarInterruptDevice
                       : I18nKey.editorToolbarInterruptNeedsDevice,
                 ),
-                icon: const Icon(Icons.stop_circle_outlined, size: 20),
+                icon: const Icon(Icons.stop_circle_outlined),
                 onPressed: isConnected
                     ? () {
                         sendCommandToActiveDevice(ref.read, "\x03");
@@ -109,7 +109,7 @@ class Editor extends ConsumerWidget {
                       ? I18nKey.editorToolbarHardwareReset
                       : I18nKey.editorToolbarHardwareResetUnavailable,
                 ),
-                icon: const Icon(Icons.power_settings_new, size: 20),
+                icon: const Icon(Icons.power_settings_new),
                 onPressed:
                     serialConnected &&
                         hardwareResetStrategy != HardwareResetStrategy.disabled
@@ -138,7 +138,7 @@ class Editor extends ConsumerWidget {
                       ? I18nKey.editorToolbarSoftReboot
                       : I18nKey.editorToolbarSoftRebootNeedsDevice,
                 ),
-                icon: const Icon(Icons.restart_alt, size: 20),
+                icon: const Icon(Icons.restart_alt),
                 onPressed: isConnected
                     ? () {
                         sendCommandToActiveDevice(ref.read, "\x04");
@@ -194,7 +194,6 @@ class Editor extends ConsumerWidget {
             ],
           ),
         ),
-        toolbarHeight: 50,
       ),
       body: body(context, ref),
     );

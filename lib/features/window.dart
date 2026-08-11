@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
@@ -12,6 +13,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -75,14 +77,17 @@ class UseWindow with WindowListener {
   }
 }
 
-class UseTitleBar extends StatelessWidget {
+class UseTitleBar extends ConsumerWidget {
   const UseTitleBar({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final double titleBarHeight = Platform.isMacOS ? 36 : 45;
-    final double leftPadding = Platform.isMacOS ? 80 : 22;
     final double appIconSize = Platform.isMacOS ? 14 : 28;
+    final double leftPadding = Platform.isMacOS
+        ? 80
+        : ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth / 2 -
+            appIconSize / 2;
     return GestureDetector(
       onPanStart: (details) => windowManager.startDragging(),
       child: Container(
