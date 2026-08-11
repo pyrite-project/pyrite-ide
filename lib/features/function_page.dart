@@ -884,6 +884,9 @@ class TabletView extends ConsumerWidget {
           child: IntrinsicHeight(
             child: Theme(
               data: Theme.of(context).copyWith(
+                colorScheme: Theme.of(
+                  context,
+                ).colorScheme.copyWith(primary: Colors.transparent),
                 splashFactory: NoSplash.splashFactory,
                 hoverColor: Colors.transparent,
                 highlightColor: Colors.transparent,
@@ -976,6 +979,9 @@ class DesktopView extends ConsumerWidget {
           child: IntrinsicHeight(
             child: Theme(
               data: Theme.of(context).copyWith(
+                colorScheme: Theme.of(
+                  context,
+                ).colorScheme.copyWith(primary: Colors.transparent),
                 splashFactory: NoSplash.splashFactory,
                 hoverColor: Colors.transparent,
                 highlightColor: Colors.transparent,
@@ -1728,9 +1734,8 @@ class EditorToolsBar extends ConsumerWidget {
     final isConnected = ref.watch(deviceConnectedProvider);
     final deviceLabel = ref.watch(activeDeviceLabelProvider);
     final label = isConnected
-              ? (deviceLabel ??
-                    translateForWidget(ref, I18nKey.statusDeviceShort))
-              : translateForWidget(ref, I18nKey.statusDeviceDisconnected);
+        ? (deviceLabel ?? translateForWidget(ref, I18nKey.statusDeviceShort))
+        : translateForWidget(ref, I18nKey.statusDeviceDisconnected);
     return StatusBarButton(
       label: label,
       icon: Icons.usb,
