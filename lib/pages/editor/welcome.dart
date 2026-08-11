@@ -100,7 +100,7 @@ class EditorWelcome extends ConsumerWidget {
                       label: const UseText(I18nKey.editorWelcomeConnectDevice),
                     ),
                     OutlinedButton.icon(
-                      onPressed: () async {
+                      onPressed: (ref.watch(fileProvider) != null) ? () async {
                         final parentPath = ref.read(fileProvider)?.path ?? '';
                         final uniquePath = await local.getUniqueFilePath(
                           path.join(parentPath, "new_file"),
@@ -114,7 +114,7 @@ class EditorWelcome extends ConsumerWidget {
                             I18nKey.fileMessageCreatedLocalFile,
                           ).replaceAll('{path}', uniquePath),
                         );
-                      },
+                      } : null,
                       icon: const Icon(Icons.add),
                       label: const UseText(I18nKey.menuNewFile),
                     ),
@@ -193,7 +193,7 @@ class QuickStartStep extends StatelessWidget {
                   title,
                   style: Theme.of(
                     context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  ).textTheme.titleSmall?.copyWith(),
                 ),
                 const SizedBox(height: 2),
                 UseText(

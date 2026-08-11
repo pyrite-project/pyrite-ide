@@ -1271,7 +1271,7 @@ enum I18nKey {
   editorWelcomeConnectDevice('editor.welcome.connect_device', '连接设备'),
   editorWelcomeStepOpenProject(
     'editor.welcome.step.open_project',
-    '1. 打开保存脚本的项目文件夹',
+    '打开保存脚本的项目文件夹',
   ),
   editorWelcomeStepOpenProjectDescription(
     'editor.welcome.step.open_project.description',
@@ -1279,14 +1279,14 @@ enum I18nKey {
   ),
   editorWelcomeStepConnectDevice(
     'editor.welcome.step.connect_device',
-    '2. 连接 MicroPython 设备',
+    '连接 MicroPython 设备',
   ),
   editorWelcomeCurrentDevice('editor.welcome.current_device', '当前设备：{port}'),
   editorWelcomeStepConnectDeviceDescription(
     'editor.welcome.step.connect_device.description',
     '连接后可以同步板端文件并使用 REPL。',
   ),
-  editorWelcomeStepEditRun('editor.welcome.step.edit_run', '3. 编辑、上传并运行脚本'),
+  editorWelcomeStepEditRun('editor.welcome.step.edit_run', '编辑、上传并运行脚本'),
   editorWelcomeStepEditRunDescription(
     'editor.welcome.step.edit_run.description',
     '保存、上传、运行和中断都在编辑器顶部工具栏中。',
