@@ -163,6 +163,8 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       ]),
       builder: (context, _) {
         return Container(
+          width: double.infinity,
+          height: double.infinity,
           color: widget.backgroundColor,
           child: Listener(
             behavior: HitTestBehavior.translucent,
