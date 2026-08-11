@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,7 +55,6 @@ const _dragSourceKey = 'source';
 const _dragPathsKey = 'paths';
 const _localDragSourceValue = 'local';
 const _boardDragSourceValue = 'board';
-final Map<String, Rect> _dragHandleRects = <String, Rect>{};
 final Map<_FileDragSource, Rect> _dropRegionRects = <_FileDragSource, Rect>{};
 
 class _DropRegionBounds extends SingleChildRenderObjectWidget {
@@ -114,93 +112,6 @@ void _scrollControllerBy(ScrollController controller, double delta) {
   );
   if (next == position.pixels) return;
   position.jumpTo(next);
-}
-
-class _DragHandleBounds extends SingleChildRenderObjectWidget {
-  const _DragHandleBounds({required this.handleId, required super.child});
-
-  final String handleId;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) {
-    return _RenderDragHandleBounds(handleId);
-  }
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    covariant _RenderDragHandleBounds renderObject,
-  ) {
-    renderObject.handleId = handleId;
-  }
-}
-
-class _RenderDragHandleBounds extends RenderProxyBox {
-  _RenderDragHandleBounds(this._handleId);
-
-  String _handleId;
-
-  set handleId(String value) {
-    if (_handleId == value) return;
-    _dragHandleRects.remove(_handleId);
-    _handleId = value;
-    markNeedsPaint();
-  }
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    super.paint(context, offset);
-    if (hasSize) {
-      _dragHandleRects[_handleId] = localToGlobal(Offset.zero) & size;
-    }
-  }
-
-  @override
-  void detach() {
-    _dragHandleRects.remove(_handleId);
-    super.detach();
-  }
-}
-
-/// Shows a drag handle only while the pointer hovers the row, keeping rows
-/// free of permanent drag chrome in compact mode. Touch platforms have no
-/// hover, so [alwaysVisible] forces the handle on for them.
-class _HoverDragHandle extends StatefulWidget {
-  const _HoverDragHandle({
-    required this.child,
-    this.alwaysVisible = false,
-    this.boxSize = 24,
-  });
-
-  final Widget child;
-  final bool alwaysVisible;
-  final double boxSize;
-
-  @override
-  State<_HoverDragHandle> createState() => _HoverDragHandleState();
-}
-
-class _HoverDragHandleState extends State<_HoverDragHandle> {
-  bool _hovering = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = widget.alwaysVisible || _hovering;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: SizedBox(
-        width: widget.boxSize,
-        height: widget.boxSize,
-        child: visible ? widget.child : null,
-      ),
-    );
-  }
-}
-
-bool _isTouchPlatform() {
-  final p = defaultTargetPlatform;
-  return p == TargetPlatform.android || p == TargetPlatform.iOS;
 }
 
 class ProjectFiles extends ConsumerWidget {
@@ -973,45 +884,11 @@ class ProjectFiles extends ConsumerWidget {
         item.add(Formats.plainText(paths.join('\n')));
         return item;
       },
-      child: child,
-    );
-  }
-
-  Widget _buildDragHandle(
-    _FileDragSource source,
-    String nodeId,
-    WidgetRef ref, {
-    double size = 24,
-  }) {
-    final handleId = _dragHandleId(source, nodeId);
-    return DraggableWidget(
-      hitTestBehavior: HitTestBehavior.opaque,
-      child: Tooltip(
-        message: translateForWidget(ref, I18nKey.fileActionDragSelected),
-        child: _DragHandleBounds(
-          handleId: handleId,
-          child: SizedBox.square(
-            dimension: size,
-            child: const Icon(Icons.drag_indicator, size: 16),
-          ),
-        ),
+      child: DraggableWidget(
+        hitTestBehavior: HitTestBehavior.opaque,
+        child: child,
       ),
     );
-  }
-
-  String _dragHandleId(_FileDragSource source, String nodeId) {
-    return '${source.name}:$nodeId';
-  }
-
-  bool _isDragHandlePointer(
-    _FileDragSource source,
-    String nodeId,
-    Offset globalPosition,
-  ) {
-    return _dragHandleRects[_dragHandleId(source, nodeId)]?.contains(
-          globalPosition,
-        ) ??
-        false;
   }
 
   List<String> _localDragPaths(WidgetRef ref, TreeNode<FileSystemItem> node) {
@@ -1646,11 +1523,6 @@ class ProjectFiles extends ConsumerWidget {
                 expansionTrigger: selectionMode
                     ? ExpansionTrigger.iconTap
                     : ExpansionTrigger.tap,
-                ignorePrimaryPointerDown: (node, event) => _isDragHandlePointer(
-                  _FileDragSource.local,
-                  node.id,
-                  event.position,
-                ),
                 rowWrapperBuilder: (context, node, child) =>
                     PyriteContextMenuWidget(
                       menuProvider: (_) => _buildLocalNodeMenu(
@@ -1694,16 +1566,6 @@ class ProjectFiles extends ConsumerWidget {
               expansionBuilder: compact
                   ? (_, _) => const Icon(Icons.keyboard_arrow_right, size: 18)
                   : null,
-              trailingBuilder: (context, node) => _HoverDragHandle(
-                alwaysVisible: _isTouchPlatform(),
-                boxSize: compact ? 18 : 24,
-                child: _buildDragHandle(
-                  _FileDragSource.local,
-                  node.id,
-                  ref,
-                  size: compact ? 18 : 24,
-                ),
-              ),
               contentBuilder:
                   (
                     BuildContext context,
@@ -1851,11 +1713,6 @@ class ProjectFiles extends ConsumerWidget {
                 expansionTrigger: selectionMode
                     ? ExpansionTrigger.iconTap
                     : ExpansionTrigger.tap,
-                ignorePrimaryPointerDown: (node, event) => _isDragHandlePointer(
-                  _FileDragSource.board,
-                  node.id,
-                  event.position,
-                ),
                 rowWrapperBuilder: (context, node, child) =>
                     PyriteContextMenuWidget(
                       menuProvider: (_) =>
@@ -1894,16 +1751,6 @@ class ProjectFiles extends ConsumerWidget {
               expansionBuilder: compact
                   ? (_, _) => const Icon(Icons.keyboard_arrow_right, size: 18)
                   : null,
-              trailingBuilder: (context, node) => _HoverDragHandle(
-                alwaysVisible: _isTouchPlatform(),
-                boxSize: compact ? 18 : 24,
-                child: _buildDragHandle(
-                  _FileDragSource.board,
-                  node.id,
-                  ref,
-                  size: compact ? 18 : 24,
-                ),
-              ),
               contentBuilder:
                   (
                     BuildContext context,
