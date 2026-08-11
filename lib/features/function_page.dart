@@ -1578,13 +1578,12 @@ class EditorToolsBar extends ConsumerWidget {
 
   Widget buildFileState(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
     if (value is! TabDataValue || value.type != "file") {
       return StatusBarButton(
         label: I18nKey.statusWelcomePage,
         icon: Icons.home_outlined,
-        compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
+        compact: ref.watch(themeStyle) == ThemeStyle.compact,
         tooltip: translateForWidget(ref, I18nKey.statusNoCodeFile),
         onPressed: () {},
       );
@@ -1601,12 +1600,12 @@ class EditorToolsBar extends ConsumerWidget {
       saved ? I18nKey.statusSaved : I18nKey.statusUnsaved,
     );
     return StatusBarButton(
-      label: isMobile ? savedLabel : "$source · $savedLabel · $fileName",
+      label: "$source · $savedLabel · $fileName",
       icon: value.isBoardFile == true
           ? Icons.developer_board_outlined
           : Icons.description_outlined,
       statusColor: saved ? scheme.primary : scheme.tertiary,
-      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
       tooltip: translateForWidget(
         ref,
         saved ? I18nKey.statusSaveAgain : I18nKey.statusSaveCurrent,
@@ -1730,20 +1729,14 @@ class EditorToolsBar extends ConsumerWidget {
   Widget buildBoardConnectState(BuildContext context, WidgetRef ref) {
     final isConnected = ref.watch(deviceConnectedProvider);
     final deviceLabel = ref.watch(activeDeviceLabelProvider);
-    final isMobile = ResponsiveBreakpoints.of(context).isMobile;
-    final label = isMobile
-        ? (isConnected
+    final label = isConnected
               ? (deviceLabel ??
                     translateForWidget(ref, I18nKey.statusDeviceShort))
-              : translateForWidget(ref, I18nKey.statusDeviceShort))
-        : (isConnected
-              ? (deviceLabel ??
-                    translateForWidget(ref, I18nKey.statusDeviceShort))
-              : translateForWidget(ref, I18nKey.statusDeviceDisconnected));
+              : translateForWidget(ref, I18nKey.statusDeviceDisconnected);
     return StatusBarButton(
       label: label,
       icon: Icons.usb,
-      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
       statusColor: isConnected
           ? Theme.of(context).colorScheme.primary
           : Theme.of(context).colorScheme.outline,
@@ -1765,7 +1758,7 @@ class EditorToolsBar extends ConsumerWidget {
       return StatusBarButton(
         label: 'Git',
         icon: Icons.account_tree_outlined,
-        compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
+        compact: ref.watch(themeStyle) == ThemeStyle.compact,
         statusColor: scheme.outline,
         tooltip: translateForWidget(ref, I18nKey.statusOpenSourceControl),
         onPressed: () => context.go('/git'),
@@ -1778,7 +1771,7 @@ class EditorToolsBar extends ConsumerWidget {
     return StatusBarButton(
       label: label,
       icon: Icons.account_tree_outlined,
-      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
       statusColor: scheme.primary,
       tooltip: translateForWidget(ref, I18nKey.statusOpenSourceControl),
       onPressed: () => context.go('/git'),
@@ -1793,7 +1786,7 @@ class EditorToolsBar extends ConsumerWidget {
           ? "REPL"
           : (visible ? I18nKey.statusShowConsole : I18nKey.statusHideConsole),
       icon: Icons.terminal,
-      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
       tooltip: translateForWidget(
         ref,
         isMobile
