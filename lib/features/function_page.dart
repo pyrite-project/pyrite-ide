@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -24,6 +25,7 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
@@ -190,8 +192,12 @@ class _BottomPanelTabs extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final statusBarHeight = ThemeDensityTokens.forStyle(
+      ref.watch(themeStyle),
+    ).statusBarHeight;
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
     return Container(
-      height: 40,
+      height: statusBarHeight,
       decoration: BoxDecoration(color: scheme.surface),
       child: Row(
         children: [
@@ -222,13 +228,15 @@ class _BottomPanelTabs extends ConsumerWidget {
             const SizedBox(width: 4),
             for (final action in actions)
               SizedBox.square(
-                dimension: 30,
+                dimension: compact ? 26 : 30,
                 child: IconButtonTheme(
-                  data: const IconButtonThemeData(
+                  data: IconButtonThemeData(
                     style: ButtonStyle(
-                      iconSize: WidgetStatePropertyAll(17),
+                      iconSize: WidgetStatePropertyAll(compact ? 15 : 17),
                       padding: WidgetStatePropertyAll(EdgeInsets.zero),
-                      minimumSize: WidgetStatePropertyAll(Size.square(30)),
+                      minimumSize: WidgetStatePropertyAll(
+                        Size.square(compact ? 26 : 30),
+                      ),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
@@ -260,6 +268,7 @@ class _BottomPanelTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = index == selectedIndex;
     final scheme = Theme.of(context).colorScheme;
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
     return InkWell(
       onTap: () => ref.read(bottomPanelTabProvider.notifier).state = index,
       child: Container(
@@ -270,15 +279,16 @@ class _BottomPanelTab extends ConsumerWidget {
           children: [
             Icon(
               icon,
-              size: 16,
+              size: compact ? 14 : 16,
               color: selected ? scheme.primary : scheme.onSurfaceVariant,
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: compact ? 4 : 6),
             UseText(
               label,
               style: TextStyle(
                 color: selected ? scheme.primary : scheme.onSurfaceVariant,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                fontSize: compact ? 12 : null,
               ),
             ),
           ],
@@ -506,7 +516,10 @@ List<_PluginNavigationItem> _pluginNavigationItems(WidgetRef ref) {
 }
 
 Widget _pluginNavigationIcon(WidgetRef ref, _PluginNavigationItem item) {
-  final icon = _pluginNavigationIconCore(item);
+  final icon = _pluginNavigationIconCore(
+    item,
+    iconSize: _navIconSize(ref),
+  );
   final enabledPlugins = ref
       .watch(pluginManagerProvider)
       .values
@@ -540,7 +553,10 @@ Widget _pluginNavigationIcon(WidgetRef ref, _PluginNavigationItem item) {
   );
 }
 
-Widget _pluginNavigationIconCore(_PluginNavigationItem item) {
+Widget _pluginNavigationIconCore(
+  _PluginNavigationItem item, {
+  double iconSize = 24,
+}) {
   final icon = item.container.icon;
   if (icon?.kind == PluginIconKind.material) {
     return Icon(pluginIcon('material:${icon!.value}'));
@@ -552,11 +568,15 @@ Widget _pluginNavigationIconCore(_PluginNavigationItem item) {
   return PluginAssetImage(
     pluginId: item.pluginId,
     assetPath: asset,
-    width: 24,
-    height: 24,
+    width: iconSize,
+    height: iconSize,
     monochrome: true,
     fallback: const Icon(Icons.extension_outlined),
   );
+}
+
+double _navIconSize(WidgetRef ref) {
+  return ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navIconSize;
 }
 
 Future<void> _showNavigationContextMenu(
@@ -654,6 +674,45 @@ List<NavigationDrawerDestination> pluginNavigationDrawerDestinations(
   for (final item in _pluginNavigationItems(ref))
     _pluginDrawerDestination(ref, item),
 ];
+
+String? _destinationTooltip(WidgetRef ref, Widget label) {
+  if (label is UseText) return resolveI18nText(ref, label.data);
+  if (label is Text) return label.data;
+  return null;
+}
+
+Widget _selectedRailIcon(BuildContext context, Widget icon) {
+  final scheme = Theme.of(context).colorScheme;
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: scheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: icon,
+  );
+}
+
+NavigationRailDestination _tooltippedDestination(
+  BuildContext context,
+  WidgetRef ref,
+  NavigationRailDestination destination,
+) {
+  final tooltip = _destinationTooltip(ref, destination.label);
+  if (tooltip == null) return destination;
+  return NavigationRailDestination(
+    icon: Tooltip(message: tooltip, child: destination.icon),
+    selectedIcon: Tooltip(
+      message: tooltip,
+      child: _selectedRailIcon(context, destination.selectedIcon),
+    ),
+    label: destination.label,
+    padding: destination.padding ?? const EdgeInsets.symmetric(vertical: 3),
+    indicatorColor: destination.indicatorColor,
+    indicatorShape: destination.indicatorShape,
+    disabled: destination.disabled,
+  );
+}
 
 class MobileView extends ConsumerWidget {
   const MobileView({super.key, required this.child, required this.state});
@@ -810,8 +869,8 @@ class TabletView extends ConsumerWidget {
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     final pluginItems = _pluginNavigationItems(ref);
     final destinations = [
-      ...tabletRailItems,
-      ...pluginNavigationRailDestinations(ref),
+      for (final destination in [...tabletRailItems, ...pluginNavigationRailDestinations(ref)])
+        _tooltippedDestination(context, ref, destination),
     ];
     final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     return LayoutBuilder(
@@ -819,22 +878,29 @@ class TabletView extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
           child: IntrinsicHeight(
-            child: NavigationRail(
-              minWidth: 72,
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              labelType: NavigationRailLabelType.selected,
-              destinations: destinations,
-              selectedIndex: ref.watch(tabletSelectedIndex),
-              onDestinationSelected: (value) {
-                selectedIndexValue = value;
-                ref.read(desktopSelectedIndex.notifier).state =
-                    selectedIndexValue;
-                ref.read(mobileSelectedIndex.notifier).state =
-                    selectedIndexValue;
-                ref.read(tabletSelectedIndex.notifier).state =
-                    selectedIndexValue;
-                context.go(navigationRoutes[selectedIndexValue]);
-              },
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                splashFactory: NoSplash.splashFactory,
+                hoverColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
+              child: NavigationRail(
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                labelType: NavigationRailLabelType.none,
+                minWidth: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth,
+                destinations: destinations,
+                selectedIndex: ref.watch(tabletSelectedIndex),
+                onDestinationSelected: (value) {
+                  selectedIndexValue = value;
+                  ref.read(desktopSelectedIndex.notifier).state =
+                      selectedIndexValue;
+                  ref.read(mobileSelectedIndex.notifier).state =
+                      selectedIndexValue;
+                  ref.read(tabletSelectedIndex.notifier).state =
+                      selectedIndexValue;
+                  context.go(navigationRoutes[selectedIndexValue]);
+                },
+              ),
             ),
           ),
         ),
@@ -890,8 +956,8 @@ class DesktopView extends ConsumerWidget {
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     final pluginItems = _pluginNavigationItems(ref);
     final destinations = [
-      ...desktopRailItems,
-      ...pluginNavigationRailDestinations(ref),
+      for (final destination in [...desktopRailItems, ...pluginNavigationRailDestinations(ref)])
+        _tooltippedDestination(context, ref, destination),
     ];
     final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
     return LayoutBuilder(
@@ -899,23 +965,30 @@ class DesktopView extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
           child: IntrinsicHeight(
-            child: NavigationRail(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              minWidth: 72,
-              labelType: NavigationRailLabelType.selected,
-              destinations: destinations,
-              selectedIndex: ref.watch(desktopSelectedIndex),
-              trailing: const RailTrailingActions(),
-              onDestinationSelected: (value) {
-                selectedIndexValue = value;
-                ref.read(desktopSelectedIndex.notifier).state =
-                    selectedIndexValue;
-                ref.read(mobileSelectedIndex.notifier).state =
-                    selectedIndexValue;
-                ref.read(tabletSelectedIndex.notifier).state =
-                    selectedIndexValue;
-                context.go(navigationRoutes[selectedIndexValue]);
-              },
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                splashFactory: NoSplash.splashFactory,
+                hoverColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
+              child: NavigationRail(
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                labelType: NavigationRailLabelType.none,
+                minWidth: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth,
+                destinations: destinations,
+                selectedIndex: ref.watch(desktopSelectedIndex),
+                trailing: const RailTrailingActions(),
+                onDestinationSelected: (value) {
+                  selectedIndexValue = value;
+                  ref.read(desktopSelectedIndex.notifier).state =
+                      selectedIndexValue;
+                  ref.read(mobileSelectedIndex.notifier).state =
+                      selectedIndexValue;
+                  ref.read(tabletSelectedIndex.notifier).state =
+                      selectedIndexValue;
+                  context.go(navigationRoutes[selectedIndexValue]);
+                },
+              ),
             ),
           ),
         ),
@@ -928,10 +1001,9 @@ class DesktopView extends ConsumerWidget {
     WidgetRef ref,
   ) {
     final List<shadcn.ResizablePane> children = [];
-    final width = MediaQuery.sizeOf(context).width;
     final isEditorRoute = state.matchedLocation.startsWith('/editor');
     final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
-    final showExpansionPanel = ref.watch(expansionPageShow) && width >= 1280;
+    final showExpansionPanel = ref.watch(expansionPageShow);
     final isGitRoute = state.matchedLocation.startsWith('/git');
 
     // The desktop workspace already owns the central editor pane. Mounting the
@@ -1431,7 +1503,7 @@ class EditorToolsBar extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      height: 40,
+      height: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).statusBarHeight,
       padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
@@ -1499,7 +1571,7 @@ class EditorToolsBar extends ConsumerWidget {
       return StatusBarButton(
         label: I18nKey.statusWelcomePage,
         icon: Icons.home_outlined,
-        compact: isMobile,
+        compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
         tooltip: translateForWidget(ref, I18nKey.statusNoCodeFile),
         onPressed: () {},
       );
@@ -1521,7 +1593,7 @@ class EditorToolsBar extends ConsumerWidget {
           ? Icons.developer_board_outlined
           : Icons.description_outlined,
       statusColor: saved ? scheme.primary : scheme.tertiary,
-      compact: isMobile,
+      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
       tooltip: translateForWidget(
         ref,
         saved ? I18nKey.statusSaveAgain : I18nKey.statusSaveCurrent,
@@ -1564,6 +1636,7 @@ class EditorToolsBar extends ConsumerWidget {
         transfer.message ??
         '${translateForWidget(ref, dirKey)}$index · $file$percent$speed';
     final color = transfer.failed ? scheme.error : scheme.primary;
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
 
     return Tooltip(
       message: transfer.currentFile ?? label,
@@ -1581,10 +1654,10 @@ class EditorToolsBar extends ConsumerWidget {
                   transfer.direction == FileTransferDirection.download
                       ? Icons.file_download_outlined
                       : Icons.file_upload_outlined,
-                  size: 16,
+                  size: compact ? 14 : 16,
                   color: color,
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: compact ? 4 : 6),
                 Flexible(
                   child: Text(
                     label,
@@ -1592,6 +1665,7 @@ class EditorToolsBar extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
+                      fontSize: compact ? 12 : null,
                     ),
                   ),
                 ),
@@ -1634,6 +1708,7 @@ class EditorToolsBar extends ConsumerWidget {
       label: label,
       icon: Icons.data_object,
       statusColor: color,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
       tooltip: translateForWidget(ref, I18nKey.settingsLspPageTitle),
       onPressed: () => context.go("/settings/lsp"),
     );
@@ -1655,7 +1730,7 @@ class EditorToolsBar extends ConsumerWidget {
     return StatusBarButton(
       label: label,
       icon: Icons.usb,
-      compact: isMobile,
+      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
       statusColor: isConnected
           ? Theme.of(context).colorScheme.primary
           : Theme.of(context).colorScheme.outline,
@@ -1677,7 +1752,7 @@ class EditorToolsBar extends ConsumerWidget {
       return StatusBarButton(
         label: 'Git',
         icon: Icons.account_tree_outlined,
-        compact: isMobile,
+        compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
         statusColor: scheme.outline,
         tooltip: translateForWidget(ref, I18nKey.statusOpenSourceControl),
         onPressed: () => context.go('/git'),
@@ -1690,7 +1765,7 @@ class EditorToolsBar extends ConsumerWidget {
     return StatusBarButton(
       label: label,
       icon: Icons.account_tree_outlined,
-      compact: isMobile,
+      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
       statusColor: scheme.primary,
       tooltip: translateForWidget(ref, I18nKey.statusOpenSourceControl),
       onPressed: () => context.go('/git'),
@@ -1705,7 +1780,7 @@ class EditorToolsBar extends ConsumerWidget {
           ? "REPL"
           : (visible ? I18nKey.statusShowConsole : I18nKey.statusHideConsole),
       icon: Icons.terminal,
-      compact: isMobile,
+      compact: isMobile || ref.watch(themeStyle) == ThemeStyle.compact,
       tooltip: translateForWidget(
         ref,
         isMobile
@@ -1729,6 +1804,9 @@ class EditorToolsBar extends ConsumerWidget {
   ) {
     final scheme = Theme.of(context).colorScheme;
     final color = op.failed ? scheme.error : scheme.primary;
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
+    final spinnerSize = compact ? 14.0 : 16.0;
+    final iconButtonSize = compact ? 20.0 : 24.0;
     return Container(
       height: 32,
       padding: const EdgeInsetsDirectional.symmetric(horizontal: 8),
@@ -1737,8 +1815,8 @@ class EditorToolsBar extends ConsumerWidget {
         children: [
           if (op.progress != null)
             SizedBox(
-              width: 16,
-              height: 16,
+              width: spinnerSize,
+              height: spinnerSize,
               child: CircularProgressIndicator(
                 value: op.progress,
                 strokeWidth: 2,
@@ -1747,25 +1825,26 @@ class EditorToolsBar extends ConsumerWidget {
             )
           else
             SizedBox(
-              width: 16,
-              height: 16,
+              width: spinnerSize,
+              height: spinnerSize,
               child: CircularProgressIndicator(strokeWidth: 2, color: color),
             ),
-          const SizedBox(width: 6),
+          SizedBox(width: compact ? 4 : 6),
           Text(
             op.label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontSize: compact ? 12 : null,
+            ),
           ),
           if (op.canInterrupt) ...[
-            const SizedBox(width: 4),
+            SizedBox(width: compact ? 2 : 4),
             SizedBox(
-              width: 24,
-              height: 24,
+              width: iconButtonSize,
+              height: iconButtonSize,
               child: IconButton(
                 padding: EdgeInsets.zero,
-                iconSize: 17,
+                iconSize: compact ? 15 : 17,
                 tooltip: translateForWidget(ref, I18nKey.statusInterrupt),
                 icon: const Icon(Icons.stop_circle_outlined),
                 onPressed: op.onInterrupt,
@@ -1774,11 +1853,11 @@ class EditorToolsBar extends ConsumerWidget {
           ],
           if (op.canForceReset) ...[
             SizedBox(
-              width: 24,
-              height: 24,
+              width: iconButtonSize,
+              height: iconButtonSize,
               child: IconButton(
                 padding: EdgeInsets.zero,
-                iconSize: 17,
+                iconSize: compact ? 15 : 17,
                 tooltip: translateForWidget(ref, I18nKey.statusForceReset),
                 icon: const Icon(Icons.refresh),
                 onPressed: op.onForceReset,

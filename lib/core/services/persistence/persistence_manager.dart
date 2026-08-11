@@ -45,6 +45,7 @@ class PersistenceManager {
       activePluginThemeId: app?.activePluginThemeId,
       welcomeCompleted: app?.welcomeCompleted ?? false,
       activeLocale: app?.activeLocale ?? defaultLocale,
+      alwaysOnTop: app?.alwaysOnTop ?? false,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
       editorWordWrap: settings?.editorWordWrap ?? false,
@@ -135,6 +136,7 @@ class PersistenceManager {
           activePluginThemeId: container.read(activePluginThemeId),
           welcomeCompleted: container.read(welcomeCompletedProvider),
           activeLocale: container.read(activeLocaleProvider),
+          alwaysOnTop: container.read(alwaysOnTopProvider),
         ),
       ),
       settingsPersistence.save(

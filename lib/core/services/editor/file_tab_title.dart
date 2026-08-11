@@ -22,7 +22,9 @@ void refreshFileTabTitles(Iterable<TabData> tabs) {
 
   final titles = buildFileTabTitles(paths);
   for (var index = 0; index < fileTabs.length; index++) {
-    fileTabs[index].text = titles[index];
+    fileTabs[index]
+      ..text = titles[index]
+      ..tooltip = paths[index];
   }
 }
 

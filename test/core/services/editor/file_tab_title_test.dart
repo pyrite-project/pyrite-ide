@@ -106,6 +106,10 @@ void main() {
     expect(boardTab.text, 'lib/main.py');
     expect(diffTab.text, 'main.py - staged');
 
+    expect(localTab.tooltip, r'C:\workspace\src\main.py');
+    expect(boardTab.tooltip, '/device/lib/main.py');
+    expect(diffTab.tooltip, isNull);
+
     tabs.remove(boardTab);
     refreshFileTabTitles(tabs);
     expect(localTab.text, 'main.py');

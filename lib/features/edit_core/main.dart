@@ -259,6 +259,12 @@ class _EditCoreState extends ConsumerState<EditCore> {
           .read(boardProvider)
           .ops
           .writeFile(pending.targetPath, currentContent);
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(
+            boardFiles: true,
+            filePaths: [pending.targetPath],
+          );
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
 
       ref
@@ -288,6 +294,12 @@ class _EditCoreState extends ConsumerState<EditCore> {
     try {
       final currentContent = pending.content;
       await File(pending.localPath).writeAsString(currentContent);
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .warnOpenFilesOverwritten(
+            boardFiles: false,
+            filePaths: [pending.localPath],
+          );
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(editorControllerMapProvider.notifier)

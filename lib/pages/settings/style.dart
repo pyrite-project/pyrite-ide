@@ -68,9 +68,7 @@ class StyleSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsStyleThemeStyle,
-          description: hasPluginTheme
-              ? I18nKey.settingsStylePluginThemeDisabledDescription
-              : I18nKey.settingsStyleThemeStyleDescription,
+          description: I18nKey.settingsStyleThemeStyleDescription,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -93,11 +91,9 @@ class StyleSettings extends ConsumerWidget {
                   ),
                 ],
                 selected: {ref.watch(themeStyle)},
-                onSelectionChanged: hasPluginTheme
-                    ? null
-                    : (value) {
-                        ref.read(themeStyle.notifier).state = value.first;
-                      },
+                onSelectionChanged: (value) {
+                  ref.read(themeStyle.notifier).state = value.first;
+                },
               ),
             ),
           ],

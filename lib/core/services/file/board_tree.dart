@@ -2,8 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:super_tree/super_tree.dart';
@@ -73,12 +78,35 @@ final boardFileTreeViewControllerProvider = StateProvider(
       }
     },
     onNodeRenamed: (node, newName) async {
-      node.data.name = newName;
+      final oldPath = node.id;
+      final newPath = renamedBoardSiblingPath(oldPath, newName);
       try {
-        await ref.read(boardProvider).ops.rename(node.id, newName);
-        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
-      } on DeviceNotReadyException {
-        // Error handled by UI layer
+        await ref.read(boardProvider).ops.rename(oldPath, newName);
+        await ref
+            .read(tabbedViewControllerProvider.notifier)
+            .renameBoardOpenPath(oldPath, newPath);
+        node.data.name = newName;
+        await ref
+            .read(boardFileItemsProvider.notifier)
+            .buildRootFileListItems();
+      } on FileRenameTargetExistsException catch (error) {
+        ref
+            .read(ideMessageProvider.notifier)
+            .error(
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageRenameTargetExists,
+                {'path': error.targetPath},
+              ),
+            );
+      } catch (error) {
+        ref
+            .read(ideMessageProvider.notifier)
+            .error(
+              translateWithReplacements(ref, I18nKey.fileMessageRenameFailed, {
+                'error': error.toString(),
+              }),
+            );
       }
     },
     loadChildren: (node) async {

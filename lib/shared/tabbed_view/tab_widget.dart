@@ -24,6 +24,10 @@ import 'package:pyrite_ide/shared/tabbed_view/tab_header_widget.dart';
 /// Listener for the tabs with the mouse over.
 typedef UpdateHoveredIndex = void Function(int? tabIndex);
 
+/// Default maximum size of the tab on its main axis when the theme does not
+/// define one. Keeps long tab titles from growing without limit.
+const double _defaultMaxTabMainSize = 240;
+
 /// The tab widget. Displays the tab text and its buttons.
 class TabWidget extends ConsumerWidget {
   const TabWidget({
@@ -88,23 +92,21 @@ class TabWidget extends ConsumerWidget {
       decorationBuilder = tabDecoration.wrapperBorderBuilder;
     }
 
-    final maxWidth = tabTheme.maxMainSize;
-    if (maxWidth != null) {
-      BoxConstraints constraints;
-      if (theme.tabsArea.position.isHorizontal) {
-        constraints = BoxConstraints(maxWidth: maxWidth);
+    final maxMainSize = tabTheme.maxMainSize ?? _defaultMaxTabMainSize;
+    BoxConstraints constraints;
+    if (theme.tabsArea.position.isHorizontal) {
+      constraints = BoxConstraints(maxWidth: maxMainSize);
+    } else {
+      // For vertical tab bars, the constraint depends on the layout.
+      if (theme.tabsArea.sideTabsLayout == SideTabsLayout.stacked) {
+        // Stacked tabs are not rotated, so their main axis is width.
+        constraints = BoxConstraints(maxWidth: maxMainSize);
       } else {
-        // For vertical tab bars, the constraint depends on the layout.
-        if (theme.tabsArea.sideTabsLayout == SideTabsLayout.stacked) {
-          // Stacked tabs are not rotated, so their main axis is width.
-          constraints = BoxConstraints(maxWidth: maxWidth);
-        } else {
-          // Rotated tabs have their logical width as physical height.
-          constraints = BoxConstraints(maxHeight: maxWidth);
-        }
+        // Rotated tabs have their logical width as physical height.
+        constraints = BoxConstraints(maxHeight: maxMainSize);
       }
-      widget = ConstrainedBox(constraints: constraints, child: widget);
     }
+    widget = ConstrainedBox(constraints: constraints, child: widget);
 
     MouseCursor cursor = MouseCursor.defer;
     if (provider.draggingTabIndex == null && status == TabStatus.selected) {

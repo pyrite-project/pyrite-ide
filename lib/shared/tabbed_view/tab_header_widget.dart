@@ -243,14 +243,6 @@ class TabHeaderWidget extends StatelessWidget {
                             .read(ideMessageProvider.notifier)
                             .success(tr(I18nKey.tabSavedCurrentFile));
 
-                        if (identical(
-                          provider.controller,
-                          container.read(tabbedViewControllerProvider),
-                        )) {
-                          container
-                              .read(tabbedViewControllerProvider.notifier)
-                              .afterFileSave();
-                        }
                         if (!dialogContext.mounted) return;
                         // ignore: use_build_context_synchronously
                         dialogContext.pop();

@@ -218,6 +218,11 @@ enum I18nKey {
     'file.message.overwrite_local_file',
     '已覆盖本地文件：{path}',
   ),
+  fileMessageRenameTargetExists(
+    'file.message.rename_target_exists',
+    '目标名称已存在：{path}',
+  ),
+  fileMessageRenameFailed('file.message.rename_failed', '重命名失败：{error}'),
   fileMessageMoveFailed('file.message.move_failed', '移动失败：{error}'),
   fileMessageDownloadFailed('file.message.download_failed', '下载失败：{error}'),
   fileMessageUploadFailed('file.message.upload_failed', '上传失败：{error}'),
@@ -320,6 +325,14 @@ enum I18nKey {
   fileMessageDeviceRequestPending(
     'file.message.device_request_pending',
     '设备操作已收到，正在等待设备响应，请勿重复点击',
+  ),
+  fileMessageOpenBoardFilesOverwritten(
+    'file.message.open_board_files_overwritten',
+    '上传覆盖了 {count} 个当前已打开的设备文件（例如：{path}）。编辑器仍保留操作前的内容，再次保存前请重新打开或核对内容。',
+  ),
+  fileMessageOpenLocalFilesOverwritten(
+    'file.message.open_local_files_overwritten',
+    '下载覆盖了 {count} 个当前已打开的本地文件（例如：{path}）。编辑器仍保留操作前的内容，再次保存前请重新打开或核对内容。',
   ),
   fileNoBoardFileSelected('file.no_board_file_selected', '（未选择设备文件）'),
   fileNoLocalFileSelected('file.no_local_file_selected', '（未选择本地文件）'),
@@ -556,7 +569,7 @@ enum I18nKey {
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
   settingsTerminalDisplayDescription(
     'settings.terminal.display.description',
-    '影响 REPL、输出和桌面终端的字体呈现。',
+    '影响 REPL、日志和桌面终端的字体呈现。',
   ),
   settingsTerminalFont('settings.terminal.font', '字体'),
   settingsTerminalFontSize('settings.terminal.font_size', '字体大小'),

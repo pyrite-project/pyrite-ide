@@ -39,3 +39,5 @@ final StateProvider<String?> activePluginThemeId = StateProvider((ref) => null);
 final StateProvider<bool> welcomeCompletedProvider = StateProvider(
   (ref) => false,
 );
+
+final StateProvider<bool> alwaysOnTopProvider = StateProvider((ref) => false);

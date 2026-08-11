@@ -138,38 +138,40 @@ class _GitPageState extends ConsumerState<GitPage> {
     _syncCommitIdentity(snapshot);
     GitDebugLog.log('GitPage.syncCommitIdentity end');
 
-    return Scaffold(
-      body: DefaultTabController(
-        length: 7,
-        child: Column(
-          children: [
-            _GitHeader(snapshot: snapshot, isBusy: state.isBusy),
-            const TabBar(
-              isScrollable: true,
-              tabs: [
-                Tab(child: UseText(I18nKey.gitTabChanges)),
-                Tab(child: UseText(I18nKey.gitTabBranches)),
-                Tab(child: UseText(I18nKey.gitTabRemotes)),
-                Tab(child: UseText(I18nKey.gitTabConflicts)),
-                Tab(child: UseText(I18nKey.gitTabHistory)),
-                Tab(child: UseText(I18nKey.gitTabAdvanced)),
-                Tab(child: UseText(I18nKey.gitTabCredentials)),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _changesTab(context, state, snapshot),
-                  Builder(builder: (_) => _branchesTab(state, snapshot)),
-                  Builder(builder: (_) => _remotesTab(state, snapshot)),
-                  Builder(builder: (_) => _conflictsTab(state, snapshot)),
-                  Builder(builder: (_) => _historyTab(state, snapshot)),
-                  Builder(builder: (_) => _advancedTab(state, snapshot)),
-                  Builder(builder: (_) => _credentialsTab(state)),
+    return Theme(
+      data: _compactChromeTheme(context),
+      child: Scaffold(
+        body: DefaultTabController(
+          length: 5,
+          child: Column(
+            children: [
+              _GitHeader(snapshot: snapshot, isBusy: state.isBusy),
+              const TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                dividerHeight: 0,
+                labelPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                tabs: [
+                  Tab(child: UseText(I18nKey.gitTabChanges)),
+                  Tab(child: UseText(I18nKey.gitTabBranches)),
+                  Tab(child: UseText(I18nKey.gitTabRemotes)),
+                  Tab(child: UseText(I18nKey.gitTabHistory)),
+                  Tab(child: UseText(I18nKey.gitTabAdvanced)),
                 ],
               ),
-            ),
-          ],
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _changesTab(context, state, snapshot),
+                    Builder(builder: (_) => _branchesTab(state, snapshot)),
+                    Builder(builder: (_) => _remotesTab(state, snapshot)),
+                    Builder(builder: (_) => _historyTab(state, snapshot)),
+                    Builder(builder: (_) => _advancedTab(state, snapshot)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -191,11 +193,90 @@ class _GitPageState extends ConsumerState<GitPage> {
       diffFiles,
       staged: false,
     );
+    final conflicts = snapshot.conflicts;
+    final empty = snapshot.statusEntries.isEmpty && conflicts.isEmpty;
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
+    return Column(
       children: [
-        _CommitBox(
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+            children: [
+              if (snapshot.stateLabel.contains('Rebase'))
+                _RebaseActions(
+                  isBusy: state.isBusy,
+                  onContinue: () => _continueRebase(),
+                  onAbort: () => ref.read(gitProvider.notifier).abortRebase(),
+                ),
+              if (empty)
+                const _EmptyPanel(
+                  icon: Icons.check_circle_outline,
+                  title: I18nKey.gitCleanTitle,
+                  message: I18nKey.gitCleanMessage,
+                )
+              else ...[
+                if (stagedItems.isNotEmpty) ...[
+                  _ChangeSectionHeader(
+                    title: I18nKey.gitStagedChanges,
+                    count: stagedItems.length,
+                  ),
+                  for (final item in stagedItems)
+                    _StatusTile(
+                      entry: item.entry,
+                      diffFile: item.diffFile,
+                      stagedSide: true,
+                      isBusy: state.isBusy,
+                      onOpenDiff: () => _openChangeItemDiff(item, diffFiles),
+                    ),
+                ],
+                if (unstagedItems.isNotEmpty) ...[
+                  _ChangeSectionHeader(
+                    title: I18nKey.gitChanges,
+                    count: unstagedItems.length,
+                  ),
+                  for (final item in unstagedItems)
+                    _StatusTile(
+                      entry: item.entry,
+                      diffFile: item.diffFile,
+                      stagedSide: false,
+                      isBusy: state.isBusy,
+                      onOpenDiff: () => _openChangeItemDiff(item, diffFiles),
+                    ),
+                ],
+                if (conflicts.isNotEmpty) ...[
+                  _ChangeSectionHeader(
+                    title: I18nKey.gitTabConflicts,
+                    count: conflicts.length,
+                  ),
+                  for (final conflict in conflicts)
+                    _ThreeWayConflictCard(
+                      title: conflict.path,
+                      isBusy: state.isBusy,
+                      onAcceptOurs: () => ref
+                          .read(gitProvider.notifier)
+                          .acceptConflictSide(
+                            conflict.path,
+                            GitConflictSide.ours,
+                          ),
+                      onAcceptTheirs: () => ref
+                          .read(gitProvider.notifier)
+                          .acceptConflictSide(
+                            conflict.path,
+                            GitConflictSide.theirs,
+                          ),
+                      onMarkResolved: state.isBusy
+                          ? null
+                          : () => ref
+                                .read(gitProvider.notifier)
+                                .markResolved(conflict.path),
+                      child: _ThreeWayConflictPreview(conflict: conflict),
+                    ),
+                ],
+              ],
+            ],
+          ),
+        ),
+        _CommitBar(
           messageController: _messageController,
           authorController: _authorController,
           emailController: _emailController,
@@ -203,64 +284,6 @@ class _GitPageState extends ConsumerState<GitPage> {
           onStash: () => _stash(),
           isBusy: state.isBusy,
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.tonalIcon(
-              onPressed: state.isBusy || snapshot.unstagedCount == 0
-                  ? null
-                  : () => ref.read(gitProvider.notifier).stageAll(),
-              icon: const Icon(Icons.add_task),
-              label: const UseText(I18nKey.gitStageAll),
-            ),
-            OutlinedButton.icon(
-              onPressed: state.isBusy || snapshot.stagedCount == 0
-                  ? null
-                  : () => ref.read(gitProvider.notifier).unstageAll(),
-              icon: const Icon(Icons.remove_done_outlined),
-              label: const UseText(I18nKey.gitUnstageAll),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (snapshot.statusEntries.isEmpty)
-          const _EmptyPanel(
-            icon: Icons.check_circle_outline,
-            title: I18nKey.gitCleanTitle,
-            message: I18nKey.gitCleanMessage,
-          )
-        else ...[
-          if (stagedItems.isNotEmpty) ...[
-            _ChangeSectionHeader(
-              title: I18nKey.gitStagedChanges,
-              count: stagedItems.length,
-            ),
-            for (final item in stagedItems)
-              _StatusTile(
-                entry: item.entry,
-                diffFile: item.diffFile,
-                stagedSide: true,
-                isBusy: state.isBusy,
-                onOpenDiff: () => _openChangeItemDiff(item, diffFiles),
-              ),
-          ],
-          if (unstagedItems.isNotEmpty) ...[
-            _ChangeSectionHeader(
-              title: I18nKey.gitChanges,
-              count: unstagedItems.length,
-            ),
-            for (final item in unstagedItems)
-              _StatusTile(
-                entry: item.entry,
-                diffFile: item.diffFile,
-                stagedSide: false,
-                isBusy: state.isBusy,
-                onOpenDiff: () => _openChangeItemDiff(item, diffFiles),
-              ),
-          ],
-        ],
       ],
     );
   }
@@ -349,8 +372,12 @@ class _GitPageState extends ConsumerState<GitPage> {
         const SizedBox(height: 12),
         for (final branch in snapshot.branches)
           ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: const EdgeInsetsDirectional.only(start: 4),
             leading: Icon(
               branch.isRemote ? Icons.cloud_outlined : Icons.account_tree,
+              size: 18,
             ),
             title: Text(branch.name, overflow: TextOverflow.ellipsis),
             subtitle: Text(
@@ -364,11 +391,14 @@ class _GitPageState extends ConsumerState<GitPage> {
             ),
             trailing: branch.isCurrent
                 ? const PillBadge(label: I18nKey.gitCurrentBranch)
-                : TextButton(
-                    onPressed: state.isBusy
-                        ? null
-                        : () => _checkoutBranch(branch),
-                    child: const UseText(I18nKey.gitCheckout),
+                : SizedBox(
+                    height: 32,
+                    child: TextButton(
+                      onPressed: state.isBusy
+                          ? null
+                          : () => _checkoutBranch(branch),
+                      child: const UseText(I18nKey.gitCheckout),
+                    ),
                   ),
           ),
       ],
@@ -402,163 +432,18 @@ class _GitPageState extends ConsumerState<GitPage> {
       );
     }
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       children: [
-        Wrap(spacing: 8, runSpacing: 8, children: [addRemoteButton]),
-        const SizedBox(height: 12),
+        addRemoteButton,
+        const SizedBox(height: 6),
         for (final remote in snapshot.remotes)
-          Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.cloud_queue, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          remote.name,
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(remote.url, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.tonalIcon(
-                        onPressed: state.isBusy
-                            ? null
-                            : () => ref
-                                  .read(gitProvider.notifier)
-                                  .fetch(remote.name),
-                        icon: const Icon(Icons.cloud_download_outlined),
-                        label: const UseText(I18nKey.gitFetch),
-                      ),
-                      FilledButton.tonalIcon(
-                        onPressed: state.isBusy
-                            ? null
-                            : () => ref
-                                  .read(gitProvider.notifier)
-                                  .pull(remote.name),
-                        icon: const Icon(Icons.download_for_offline_outlined),
-                        label: const UseText(I18nKey.gitPull),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: state.isBusy
-                            ? null
-                            : () => ref
-                                  .read(gitProvider.notifier)
-                                  .push(remote.name),
-                        icon: const Icon(Icons.cloud_upload_outlined),
-                        label: const UseText(I18nKey.gitPush),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          _RemoteTile(
+            remote: remote,
+            isBusy: state.isBusy,
+            onFetch: () => ref.read(gitProvider.notifier).fetch(remote.name),
+            onPull: () => ref.read(gitProvider.notifier).pull(remote.name),
+            onPush: () => ref.read(gitProvider.notifier).push(remote.name),
           ),
-      ],
-    );
-  }
-
-  Widget _conflictsTab(GitViewState state, GitRepositorySnapshot snapshot) {
-    final conflicts = snapshot.conflicts;
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        if (snapshot.stateLabel.contains('Rebase'))
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: state.isBusy ? null : () => _continueRebase(),
-                icon: const Icon(Icons.play_arrow),
-                label: const UseText(I18nKey.gitContinueRebase),
-              ),
-              OutlinedButton.icon(
-                onPressed: state.isBusy
-                    ? null
-                    : () => ref.read(gitProvider.notifier).abortRebase(),
-                icon: const Icon(Icons.cancel_outlined),
-                label: const UseText(I18nKey.gitAbortRebase),
-              ),
-            ],
-          ),
-        if (conflicts.isEmpty)
-          const _EmptyPanel(
-            icon: Icons.merge_type_outlined,
-            title: I18nKey.gitNoConflictsTitle,
-            message: I18nKey.gitNoConflictsMessage,
-          )
-        else
-          for (final conflict in conflicts)
-            Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      conflict.path,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: state.isBusy
-                              ? null
-                              : () => ref
-                                    .read(gitProvider.notifier)
-                                    .acceptConflictSide(
-                                      conflict.path,
-                                      GitConflictSide.ours,
-                                    ),
-                          icon: const Icon(Icons.looks_one_outlined),
-                          label: const UseText(I18nKey.gitAcceptOurs),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: state.isBusy
-                              ? null
-                              : () => ref
-                                    .read(gitProvider.notifier)
-                                    .acceptConflictSide(
-                                      conflict.path,
-                                      GitConflictSide.theirs,
-                                    ),
-                          icon: const Icon(Icons.looks_two_outlined),
-                          label: const UseText(I18nKey.gitAcceptTheirs),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: state.isBusy
-                              ? null
-                              : () => ref
-                                    .read(gitProvider.notifier)
-                                    .markResolved(conflict.path),
-                          icon: const Icon(Icons.add_task),
-                          label: const UseText(I18nKey.gitMarkResolved),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _ThreeWayConflictPreview(conflict: conflict),
-                  ],
-                ),
-              ),
-            ),
       ],
     );
   }
@@ -656,6 +541,9 @@ class _GitPageState extends ConsumerState<GitPage> {
         ),
         for (final stash in snapshot.stashes)
           ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: const EdgeInsetsDirectional.only(start: 4),
             leading: const Icon(Icons.inventory_2_outlined),
             title: Text(stash.message, overflow: TextOverflow.ellipsis),
             subtitle: Text(stash.sha.substring(0, 7)),
@@ -701,6 +589,9 @@ class _GitPageState extends ConsumerState<GitPage> {
         ),
         for (final submodule in snapshot.submodules)
           ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: const EdgeInsetsDirectional.only(start: 4),
             leading: const Icon(Icons.account_tree_outlined),
             title: Text(submodule.path, overflow: TextOverflow.ellipsis),
             subtitle: Text(submodule.url, overflow: TextOverflow.ellipsis),
@@ -733,6 +624,9 @@ class _GitPageState extends ConsumerState<GitPage> {
         ),
         for (final worktree in snapshot.worktrees)
           ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: const EdgeInsetsDirectional.only(start: 4),
             leading: const Icon(Icons.folder_copy_outlined),
             title: Text(worktree.name, overflow: TextOverflow.ellipsis),
             subtitle: Text(worktree.path, overflow: TextOverflow.ellipsis),
@@ -757,16 +651,20 @@ class _GitPageState extends ConsumerState<GitPage> {
             leading: const Icon(Icons.sell_outlined),
             title: Text(tag.name, overflow: TextOverflow.ellipsis),
             subtitle: Text(tag.targetSha, overflow: TextOverflow.ellipsis),
+            contentPadding: const EdgeInsetsDirectional.only(start: 4),
           ),
+        const SectionDivider(),
+        _SectionTitle(title: I18nKey.gitTabCredentials),
+        _credentialsSection(state),
       ],
     );
   }
 
-  Widget _credentialsTab(GitViewState state) {
+  Widget _credentialsSection(GitViewState state) {
     final draft = state.credentials;
     _syncCredentialControllers(draft);
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SegmentedButton<GitCredentialMode>(
           segments: const [
@@ -1208,6 +1106,45 @@ class _GitPageState extends ConsumerState<GitPage> {
   }
 }
 
+/// Page-scoped theme that tightens git action buttons while keeping a
+/// comfortable 40px height (not flat): buttons use tight horizontal padding
+/// and shrink-wrap tap targets, and icon buttons are 30px with 18px icons.
+ThemeData _compactChromeTheme(BuildContext context) {
+  final base = Theme.of(context);
+  return base.copyWith(
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 14),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 14),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(30, 30)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsetsDirectional.symmetric(horizontal: 2),
+        ),
+        iconSize: const WidgetStatePropertyAll(18),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+  );
+}
+
 class _GitHeader extends ConsumerWidget {
   const _GitHeader({required this.snapshot, required this.isBusy});
 
@@ -1224,6 +1161,20 @@ class _GitHeader extends ConsumerWidget {
       actions: [
         if (snapshot.ahead > 0 || snapshot.behind > 0)
           PillBadge(label: '↑${snapshot.ahead} ↓${snapshot.behind}'),
+        IconButton(
+          tooltip: translateForWidget(ref, I18nKey.gitStageAll),
+          onPressed: isBusy || snapshot.unstagedCount == 0
+              ? null
+              : () => ref.read(gitProvider.notifier).stageAll(),
+          icon: const Icon(Icons.add_task),
+        ),
+        IconButton(
+          tooltip: translateForWidget(ref, I18nKey.gitUnstageAll),
+          onPressed: isBusy || snapshot.stagedCount == 0
+              ? null
+              : () => ref.read(gitProvider.notifier).unstageAll(),
+          icon: const Icon(Icons.remove_done_outlined),
+        ),
         IconButton(
           tooltip: translateForWidget(ref, I18nKey.commonRefresh),
           onPressed: isBusy
@@ -1274,8 +1225,8 @@ class _BlockedPathList extends StatelessWidget {
   }
 }
 
-class _CommitBox extends StatelessWidget {
-  const _CommitBox({
+class _CommitBar extends ConsumerStatefulWidget {
+  const _CommitBar({
     required this.messageController,
     required this.authorController,
     required this.emailController,
@@ -1292,61 +1243,282 @@ class _CommitBox extends StatelessWidget {
   final bool isBusy;
 
   @override
+  ConsumerState<_CommitBar> createState() => _CommitBarState();
+}
+
+class _CommitBarState extends ConsumerState<_CommitBar> {
+  bool _showIdentity = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    final scheme = Theme.of(context).colorScheme;
+    final canCommit =
+        !widget.isBusy && widget.messageController.text.trim().isNotEmpty;
+    return Material(
+      color: scheme.surfaceContainerLow,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: messageController,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                label: UseText(I18nKey.gitCommitMessage),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: TextField(
-                    controller: authorController,
-                    decoration: const InputDecoration(
-                      label: UseText(I18nKey.gitAuthor),
+                    controller: widget.messageController,
+                    minLines: 1,
+                    maxLines: 2,
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) {
+                      if (canCommit) widget.onCommit();
+                    },
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: translateForWidget(
+                        ref,
+                        I18nKey.gitCommitMessage,
+                      ),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: emailController,
-                    decoration: const InputDecoration(
-                      label: UseText(I18nKey.gitEmail),
-                    ),
+                IconButton(
+                  tooltip: translateForWidget(ref, I18nKey.gitAuthor),
+                  onPressed: () =>
+                      setState(() => _showIdentity = !_showIdentity),
+                  icon: Icon(
+                    _showIdentity ? Icons.badge : Icons.badge_outlined,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: isBusy ? null : onCommit,
-                    icon: const Icon(Icons.check),
-                    label: const UseText(I18nKey.gitCommit),
-                  ),
-                ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 IconButton.outlined(
                   tooltip: 'Stash',
-                  onPressed: isBusy ? null : onStash,
+                  onPressed: widget.isBusy ? null : widget.onStash,
                   icon: const Icon(Icons.inventory_2_outlined),
+                ),
+                const SizedBox(width: 4),
+                FilledButton.icon(
+                  onPressed: canCommit ? widget.onCommit : null,
+                  icon: const Icon(Icons.check),
+                  label: const UseText(I18nKey.gitCommit),
                 ),
               ],
             ),
+            if (_showIdentity)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(top: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: widget.authorController,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          label: UseText(I18nKey.gitAuthor),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: widget.emailController,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          label: UseText(I18nKey.gitEmail),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RemoteTile extends ConsumerWidget {
+  const _RemoteTile({
+    required this.remote,
+    required this.isBusy,
+    required this.onFetch,
+    required this.onPull,
+    required this.onPush,
+  });
+
+  final GitRemoteInfo remote;
+  final bool isBusy;
+  final VoidCallback onFetch;
+  final VoidCallback onPull;
+  final VoidCallback onPush;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsetsDirectional.only(bottom: 4),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(8, 4, 2, 4),
+        child: Row(
+          children: [
+            Icon(Icons.cloud_queue, size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    remote.name,
+                    style: textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    remote.url,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: translateForWidget(ref, I18nKey.gitFetch),
+              onPressed: isBusy ? null : onFetch,
+              icon: const Icon(Icons.cloud_download_outlined),
+            ),
+            IconButton(
+              tooltip: translateForWidget(ref, I18nKey.gitPull),
+              onPressed: isBusy ? null : onPull,
+              icon: const Icon(Icons.download_for_offline_outlined),
+            ),
+            IconButton(
+              tooltip: translateForWidget(ref, I18nKey.gitPush),
+              onPressed: isBusy ? null : onPush,
+              icon: const Icon(Icons.cloud_upload_outlined),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RebaseActions extends StatelessWidget {
+  const _RebaseActions({
+    required this.isBusy,
+    required this.onContinue,
+    required this.onAbort,
+  });
+
+  final bool isBusy;
+  final VoidCallback onContinue;
+  final VoidCallback onAbort;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(bottom: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: isBusy ? null : onContinue,
+            icon: const Icon(Icons.play_arrow),
+            label: const UseText(I18nKey.gitContinueRebase),
+          ),
+          OutlinedButton.icon(
+            onPressed: isBusy ? null : onAbort,
+            icon: const Icon(Icons.cancel_outlined),
+            label: const UseText(I18nKey.gitAbortRebase),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThreeWayConflictCard extends StatelessWidget {
+  const _ThreeWayConflictCard({
+    required this.title,
+    required this.isBusy,
+    required this.onAcceptOurs,
+    required this.onAcceptTheirs,
+    required this.onMarkResolved,
+    required this.child,
+  });
+
+  final Object title;
+  final bool isBusy;
+  final VoidCallback onAcceptOurs;
+  final VoidCallback onAcceptTheirs;
+  final VoidCallback? onMarkResolved;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_outlined,
+                  size: 18,
+                  color: scheme.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: UseText(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: isBusy ? null : onAcceptOurs,
+                  icon: const Icon(Icons.looks_one_outlined),
+                  label: const UseText(I18nKey.gitAcceptOurs),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: isBusy ? null : onAcceptTheirs,
+                  icon: const Icon(Icons.looks_two_outlined),
+                  label: const UseText(I18nKey.gitAcceptTheirs),
+                ),
+                OutlinedButton.icon(
+                  onPressed: isBusy ? null : onMarkResolved,
+                  icon: const Icon(Icons.add_task),
+                  label: const UseText(I18nKey.gitMarkResolved),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            child,
           ],
         ),
       ),
@@ -1402,10 +1574,7 @@ class _CommitHistoryTile extends StatelessWidget {
                     commit.summary,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.06,
-                    ),
+                    style: textTheme.bodySmall?.copyWith(height: 1.06),
                   ),
                   Text(
                     '${commit.shortSha} · ${commit.author} · $dateLabel',
@@ -1426,7 +1595,7 @@ class _CommitHistoryTile extends StatelessWidget {
   }
 }
 
-const double _commitHistoryRowHeight = 36;
+const double _commitHistoryRowHeight = 32;
 
 class _CommitGraphRow {
   const _CommitGraphRow({
@@ -1952,7 +2121,7 @@ class _ChangeSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(4, 12, 4, 6),
+      padding: const EdgeInsetsDirectional.fromSTEB(4, 8, 4, 4),
       child: Row(
         children: [
           Expanded(
@@ -1994,51 +2163,87 @@ class _StatusTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final brightness = Theme.of(context).brightness;
-    final addColor = brightness == Brightness.dark
-        ? Colors.greenAccent.shade200
-        : Colors.green.shade700;
-    final removeColor = scheme.error;
+    final file = diffFile;
+    final changeSummary = switch (file) {
+      null => null,
+      _ when file.isBinary => 'Binary',
+      _ => [
+        if (file.additions > 0) '+${file.additions}',
+        if (file.deletions > 0) '-${file.deletions}',
+      ].join(' '),
+    };
     final canDiscard = !stagedSide && entry.isUnstaged && !entry.isConflicted;
     final stageActionKey = stagedSide ? I18nKey.gitUnstage : I18nKey.gitStage;
     final stageActionLabel = translateForWidget(ref, stageActionKey);
-    final tile = ListTile(
-      dense: true,
-      leading: Icon(_statusIcon),
-      title: Text(entry.path, overflow: TextOverflow.ellipsis),
-      subtitle: _StatusTileSubtitle(entry: entry, diffFile: diffFile),
-      onTap: isBusy ? null : onOpenDiff,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (diffFile != null)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
-              child: _ChangeSummary(
-                file: diffFile!,
-                addColor: addColor,
-                removeColor: removeColor,
+    final row = SizedBox(
+      height: 28,
+      child: InkWell(
+        onTap: isBusy ? null : onOpenDiff,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
+          child: Row(
+            children: [
+              Icon(_statusIcon, size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  entry.path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+                ),
               ),
-            ),
-          if (canDiscard)
-            IconButton(
-              tooltip: translateForWidget(ref, I18nKey.gitDiscardChanges),
-              onPressed: isBusy ? null : () => _confirmDiscard(context, ref),
-              icon: const Icon(Icons.restore_outlined),
-            ),
-          IconButton(
-            tooltip: stageActionLabel,
-            onPressed: isBusy ? null : () => _toggleStage(ref),
-            icon: Icon(
-              stagedSide ? Icons.remove_done_outlined : Icons.add_task_outlined,
-            ),
+              if (changeSummary != null)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 6),
+                  child: Text(
+                    changeSummary,
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              if (canDiscard)
+                IconButton(
+                  tooltip: translateForWidget(ref, I18nKey.gitDiscardChanges),
+                  onPressed: isBusy
+                      ? null
+                      : () => _confirmDiscard(context, ref),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(22, 22),
+                    padding: EdgeInsets.zero,
+                    iconSize: 15,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.restore_outlined),
+                ),
+              IconButton(
+                tooltip: stageActionLabel,
+                onPressed: isBusy ? null : () => _toggleStage(ref),
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(22, 22),
+                  padding: EdgeInsets.zero,
+                  iconSize: 15,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: Icon(
+                  stagedSide
+                      ? Icons.remove_done_outlined
+                      : Icons.add_task_outlined,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
 
     return PyriteContextMenuWidget(
-      child: tile,
+      child: row,
       menuProvider: (request) {
         return Menu(
           children: [
@@ -2107,125 +2312,6 @@ class _StatusTile extends ConsumerWidget {
     if (confirmed == true) {
       await ref.read(gitProvider.notifier).discardChanges(entry);
     }
-  }
-}
-
-class _StatusTileSubtitle extends StatelessWidget {
-  const _StatusTileSubtitle({required this.entry, required this.diffFile});
-
-  final GitStatusEntry entry;
-  final _DiffFileItem? diffFile;
-
-  @override
-  Widget build(BuildContext context) {
-    final file = diffFile;
-    if (file == null) {
-      return Text(entry.summary, overflow: TextOverflow.ellipsis);
-    }
-
-    final scheme = Theme.of(context).colorScheme;
-    return Wrap(
-      spacing: 6,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        _DiffInfoPill(
-          label: file.stageLabelKey,
-          color: file.staged ? scheme.primary : scheme.tertiary,
-        ),
-        if (entry.summary.isNotEmpty)
-          Text(
-            entry.summary,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-        if (file.isBinary)
-          _DiffInfoPill(label: 'Binary', color: scheme.onSurfaceVariant),
-      ],
-    );
-  }
-}
-
-class _ChangeSummary extends StatelessWidget {
-  const _ChangeSummary({
-    required this.file,
-    required this.addColor,
-    required this.removeColor,
-  });
-
-  final _DiffFileItem file;
-  final Color addColor;
-  final Color removeColor;
-
-  @override
-  Widget build(BuildContext context) {
-    if (file.isBinary) {
-      return Text(
-        'Binary',
-        textAlign: TextAlign.end,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: 48,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '+${file.additions}',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: addColor,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Text(
-            '-${file.deletions}',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: removeColor,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiffInfoPill extends StatelessWidget {
-  const _DiffInfoPill({required this.label, required this.color});
-
-  final Object label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(6, 2, 6, 3),
-        child: UseText(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -2481,7 +2567,7 @@ class _ThreeWayConflictPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 320,
+      height: 200,
       child: DefaultTabController(
         length: 4,
         child: Column(
@@ -2542,7 +2628,7 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(4, 16, 4, 8),
+      padding: const EdgeInsetsDirectional.fromSTEB(4, 12, 4, 6),
       child: Row(
         children: [
           Expanded(
@@ -2576,12 +2662,12 @@ class _EmptyPanel extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 36, color: scheme.secondary),
-            const SizedBox(height: 10),
+            Icon(icon, size: 28, color: scheme.secondary),
+            const SizedBox(height: 8),
             UseText(title, style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 4),
             UseText(

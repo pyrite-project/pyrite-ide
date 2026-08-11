@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
@@ -158,8 +162,55 @@ class _RenderDragHandleBounds extends RenderProxyBox {
   }
 }
 
+/// Shows a drag handle only while the pointer hovers the row, keeping rows
+/// free of permanent drag chrome in compact mode. Touch platforms have no
+/// hover, so [alwaysVisible] forces the handle on for them.
+class _HoverDragHandle extends StatefulWidget {
+  const _HoverDragHandle({
+    required this.child,
+    this.alwaysVisible = false,
+    this.boxSize = 24,
+  });
+
+  final Widget child;
+  final bool alwaysVisible;
+  final double boxSize;
+
+  @override
+  State<_HoverDragHandle> createState() => _HoverDragHandleState();
+}
+
+class _HoverDragHandleState extends State<_HoverDragHandle> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = widget.alwaysVisible || _hovering;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: SizedBox(
+        width: widget.boxSize,
+        height: widget.boxSize,
+        child: visible ? widget.child : null,
+      ),
+    );
+  }
+}
+
+bool _isTouchPlatform() {
+  final p = defaultTargetPlatform;
+  return p == TargetPlatform.android || p == TargetPlatform.iOS;
+}
+
 class ProjectFiles extends ConsumerWidget {
   const ProjectFiles({super.key});
+
+  static final MaterialFileSystemIconProvider _compactFileIcons =
+      MaterialFileSystemIconProvider(
+        iconSize: 16,
+        folderColor: const Color(0xFF3B82F6),
+      );
 
   String tr(
     WidgetRef ref,
@@ -213,6 +264,33 @@ class ProjectFiles extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// Tight, desktop-friendly tree style shared by the local and board trees.
+  /// Scaling follows the selected density tier so comfortable/standard keep
+  /// the default roomy Material layout instead of the compact overrides.
+  TreeViewStyle _compactTreeStyle(BuildContext context, WidgetRef ref) {
+    final base = SuperTreeThemes.material().treeStyle;
+    final style = ref.watch(themeStyle);
+    if (style == ThemeStyle.comfortable) {
+      return base.copyWith(
+        selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+      );
+    }
+    if (style == ThemeStyle.standard) {
+      return base.copyWith(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+        nodeGap: 8,
+        selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+      );
+    }
+    return base.copyWith(
+      padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
+      indentAmount: 16,
+      nodeGap: 4,
+      labelStyle: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.25),
+      selectedColor: Theme.of(context).colorScheme.secondaryContainer,
     );
   }
 
@@ -502,7 +580,11 @@ class ProjectFiles extends ConsumerWidget {
   ) async {
     final targetFolder = _localMoveTargetFolder(ref, targetNode, position);
     final nodes = draggedNodes
-        .where((node) => !_isLocalNodeAlreadyInFolder(node, targetFolder))
+        .where(
+          (node) =>
+              !_isLocalSelfMove(node, targetFolder) &&
+              !_isLocalNodeAlreadyInFolder(node, targetFolder),
+        )
         .toList(growable: false);
     if (nodes.isEmpty) return true;
 
@@ -544,7 +626,11 @@ class ProjectFiles extends ConsumerWidget {
   ) async {
     final targetFolder = _boardMoveTargetFolder(targetNode, position);
     final nodes = draggedNodes
-        .where((node) => !_isBoardNodeAlreadyInFolder(node, targetFolder))
+        .where(
+          (node) =>
+              !_isBoardSelfMove(node, targetFolder) &&
+              !_isBoardNodeAlreadyInFolder(node, targetFolder),
+        )
         .toList(growable: false);
     if (nodes.isEmpty) return true;
 
@@ -634,6 +720,13 @@ class ProjectFiles extends ConsumerWidget {
     );
   }
 
+  bool _isLocalSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
+    return path.equals(
+      path.normalize(path.absolute(node.id)),
+      path.normalize(path.absolute(targetFolder)),
+    );
+  }
+
   bool _isBoardNodeAlreadyInFolder(
     TreeNode<FileSystemItem> node,
     String targetFolder,
@@ -643,6 +736,14 @@ class ProjectFiles extends ConsumerWidget {
       targetFolder.isEmpty ? '/' : targetFolder,
     );
     return parent == target;
+  }
+
+  bool _isBoardSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
+    final self = path.posix.normalize(node.id);
+    final target = path.posix.normalize(
+      targetFolder.isEmpty ? '/' : targetFolder,
+    );
+    return self == target;
   }
 
   Future<void> _downloadSelectedBoardItems(
@@ -879,8 +980,9 @@ class ProjectFiles extends ConsumerWidget {
   Widget _buildDragHandle(
     _FileDragSource source,
     String nodeId,
-    WidgetRef ref,
-  ) {
+    WidgetRef ref, {
+    double size = 24,
+  }) {
     final handleId = _dragHandleId(source, nodeId);
     return DraggableWidget(
       hitTestBehavior: HitTestBehavior.opaque,
@@ -888,9 +990,9 @@ class ProjectFiles extends ConsumerWidget {
         message: translateForWidget(ref, I18nKey.fileActionDragSelected),
         child: _DragHandleBounds(
           handleId: handleId,
-          child: const SizedBox.square(
-            dimension: 28,
-            child: Icon(Icons.drag_indicator, size: 18),
+          child: SizedBox.square(
+            dimension: size,
+            child: const Icon(Icons.drag_indicator, size: 16),
           ),
         ),
       ),
@@ -1018,6 +1120,12 @@ class ProjectFiles extends ConsumerWidget {
                   .read(boardProvider)
                   .ops
                   .writeFileBytes(boardFileTarget!.id, bytes);
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .warnOpenFilesOverwritten(
+                    boardFiles: true,
+                    filePaths: [boardFileTarget.id],
+                  );
               ref
                   .read(boardFileItemsProvider.notifier)
                   .buildRootFileListItems();
@@ -1175,6 +1283,12 @@ class ProjectFiles extends ConsumerWidget {
                   .ops
                   .getFileBytes(node.id);
               await File(localFileTarget!.id).writeAsBytes(bytes);
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .warnOpenFilesOverwritten(
+                    boardFiles: false,
+                    filePaths: [localFileTarget.id],
+                  );
               ref
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems();
@@ -1521,6 +1635,7 @@ class ProjectFiles extends ConsumerWidget {
     if (ref.watch(fileProvider) != null) {
       final localWorkspace = ref.watch(fileProvider)!;
       final selectionMode = ref.watch(localFileSelectionModeProvider);
+      final compact = ref.watch(themeStyle) == ThemeStyle.compact;
       return Column(
         children: [
           buildLocalHeader(context, ref, localWorkspace),
@@ -1571,16 +1686,24 @@ class ProjectFiles extends ConsumerWidget {
                           ref.read(fileProvider.notifier).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
-              style: SuperTreeThemes.material().treeStyle.copyWith(
-                selectedColor: Theme.of(context).colorScheme.secondaryContainer,
-              ),
+              style: _compactTreeStyle(context, ref),
               controller: ref.watch(localFileTreeViewControllerProvider),
               scrollController: ref.watch(localFileScrollControllerProvider),
-              prefixBuilder:
-                  (BuildContext context, TreeNode<FileSystemItem> node) {
-                    return SuperTreeThemes.material().fileSystemIconProvider!
-                        .getIcon(node);
-                  },
+              prefixBuilder: (_, node) => _compactFileIcons.getIcon(node),
+              expansionSlotSize: compact ? 18 : 20,
+              expansionBuilder: compact
+                  ? (_, _) => const Icon(Icons.keyboard_arrow_right, size: 18)
+                  : null,
+              trailingBuilder: (context, node) => _HoverDragHandle(
+                alwaysVisible: _isTouchPlatform(),
+                boxSize: compact ? 18 : 24,
+                child: _buildDragHandle(
+                  _FileDragSource.local,
+                  node.id,
+                  ref,
+                  size: compact ? 18 : 24,
+                ),
+              ),
               contentBuilder:
                   (
                     BuildContext context,
@@ -1597,28 +1720,31 @@ class ProjectFiles extends ConsumerWidget {
                     final isSelected = localController.selectedNodeIds.contains(
                       node.id,
                     );
+                    final treeLabelStyle = _compactTreeStyle(
+                      context,
+                      ref,
+                    ).labelStyle;
                     final label = Text(
                       node.data.name,
                       style: isGitIgnored
-                          ? TextStyle(
+                          ? treeLabelStyle?.copyWith(
                               color: Theme.of(context).colorScheme.outline,
                             )
-                          : null,
+                          : treeLabelStyle,
                     );
                     final row = Row(
                       children: [
                         if (selectionMode)
                           SizedBox.square(
-                            dimension: 28,
+                            dimension: 24,
                             child: IgnorePointer(
                               child: Checkbox(
                                 value: isSelected,
                                 onChanged: (_) {},
+                                visualDensity: VisualDensity.compact,
                               ),
                             ),
                           ),
-                        _buildDragHandle(_FileDragSource.local, node.id, ref),
-                        const SizedBox(width: 4),
                         Expanded(child: label),
                       ],
                     );
@@ -1682,7 +1808,12 @@ class ProjectFiles extends ConsumerWidget {
                       }
                     }
                   : null,
-              icon: const Icon(Icons.upload_outlined, size: 18),
+              icon: Icon(
+                Icons.upload_outlined,
+                size: ThemeDensityTokens.forStyle(
+                  ref.watch(themeStyle),
+                ).headerIconSize,
+              ),
               label: const UseText(I18nKey.fileActionUploadSelected),
             ),
             const SizedBox(width: 6),
@@ -1690,7 +1821,12 @@ class ProjectFiles extends ConsumerWidget {
               onPressed: () => ref
                   .read(localFileItemsProvider.notifier)
                   .buildRootFileListItems(),
-              icon: const Icon(Icons.refresh, size: 18),
+              icon: Icon(
+                Icons.refresh,
+                size: ThemeDensityTokens.forStyle(
+                  ref.watch(themeStyle),
+                ).headerIconSize,
+              ),
               label: const UseText(I18nKey.fileActionRefresh),
             ),
           ],
@@ -1704,6 +1840,7 @@ class ProjectFiles extends ConsumerWidget {
         ref.watch(boardFileItemsProvider).isNotEmpty) {
       final deviceLabel = ref.watch(activeDeviceLabelProvider);
       final selectionMode = ref.watch(boardFileSelectionModeProvider);
+      final compact = ref.watch(themeStyle) == ThemeStyle.compact;
       return Column(
         children: [
           buildBoardHeader(context, ref, deviceLabel),
@@ -1749,16 +1886,24 @@ class ProjectFiles extends ConsumerWidget {
                     : (id) => ref.read(boardProvider).openFile(context, id),
                 namingStrategy: TreeNamingStrategy.always,
               ),
-              style: SuperTreeThemes.material().treeStyle.copyWith(
-                selectedColor: Theme.of(context).colorScheme.secondaryContainer,
-              ),
+              style: _compactTreeStyle(context, ref),
               controller: ref.watch(boardFileTreeViewControllerProvider),
               scrollController: ref.watch(boardFileScrollControllerProvider),
-              prefixBuilder:
-                  (BuildContext context, TreeNode<FileSystemItem> node) {
-                    return SuperTreeThemes.material().fileSystemIconProvider!
-                        .getIcon(node);
-                  },
+              prefixBuilder: (_, node) => _compactFileIcons.getIcon(node),
+              expansionSlotSize: compact ? 18 : 20,
+              expansionBuilder: compact
+                  ? (_, _) => const Icon(Icons.keyboard_arrow_right, size: 18)
+                  : null,
+              trailingBuilder: (context, node) => _HoverDragHandle(
+                alwaysVisible: _isTouchPlatform(),
+                boxSize: compact ? 18 : 24,
+                child: _buildDragHandle(
+                  _FileDragSource.board,
+                  node.id,
+                  ref,
+                  size: compact ? 18 : 24,
+                ),
+              ),
               contentBuilder:
                   (
                     BuildContext context,
@@ -1774,21 +1919,23 @@ class ProjectFiles extends ConsumerWidget {
                     final isSelected = boardController.selectedNodeIds.contains(
                       node.id,
                     );
-                    final label = Text(node.data.name);
+                    final label = Text(
+                      node.data.name,
+                      style: _compactTreeStyle(context, ref).labelStyle,
+                    );
                     final row = Row(
                       children: [
                         if (selectionMode)
                           SizedBox.square(
-                            dimension: 28,
+                            dimension: 24,
                             child: IgnorePointer(
                               child: Checkbox(
                                 value: isSelected,
                                 onChanged: (_) {},
+                                visualDensity: VisualDensity.compact,
                               ),
                             ),
                           ),
-                        _buildDragHandle(_FileDragSource.board, node.id, ref),
-                        const SizedBox(width: 4),
                         Expanded(child: label),
                       ],
                     );

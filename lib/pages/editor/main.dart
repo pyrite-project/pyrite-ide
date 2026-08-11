@@ -42,10 +42,10 @@ class Editor extends ConsumerWidget {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              FilledButton.tonalIcon(
+              IconButton(
+                tooltip: translateForWidget(ref, I18nKey.commonSave),
+                icon: const Icon(Icons.save_outlined),
                 onPressed: canSave ? () => saveFile(context, ref) : null,
-                icon: const Icon(Icons.save_outlined, size: 18),
-                label: const UseText(I18nKey.commonSave),
               ),
               const SizedBox(width: 4),
               (ref
@@ -54,16 +54,24 @@ class Editor extends ConsumerWidget {
                           ?.value
                           .isBoardFile ==
                       true)
-                  ? OutlinedButton.icon(
+                  ? IconButton(
+                      tooltip: translateForWidget(
+                        ref,
+                        I18nKey.editorToolbarDownload,
+                      ),
+                      icon: const Icon(Icons.download_outlined),
                       onPressed: canSave && isConnected
                           ? () => ref
                                 .read(boardProvider)
                                 .downloadSelectedBoardItem(context)
                           : null,
-                      icon: const Icon(Icons.download_outlined, size: 18),
-                      label: const UseText(I18nKey.editorToolbarDownload),
                     )
-                  : OutlinedButton.icon(
+                  : IconButton(
+                      tooltip: translateForWidget(
+                        ref,
+                        I18nKey.editorToolbarUpload,
+                      ),
+                      icon: const Icon(Icons.upload_outlined),
                       onPressed: canSave && isConnected
                           ? () => ref
                                 .read(fileProvider.notifier)
@@ -74,16 +82,14 @@ class Editor extends ConsumerWidget {
                                       .selectedTab,
                                 )
                           : null,
-                      icon: const Icon(Icons.upload_outlined, size: 18),
-                      label: const UseText(I18nKey.editorToolbarUpload),
                     ),
               const SizedBox(width: 4),
-              FilledButton.icon(
+              IconButton(
+                tooltip: translateForWidget(ref, I18nKey.editorToolbarRun),
+                icon: const Icon(Icons.play_arrow),
                 onPressed: canSave && isConnected
                     ? () => runCurrentFile(context, ref)
                     : null,
-                icon: const Icon(Icons.play_arrow, size: 18),
-                label: const UseText(I18nKey.editorToolbarRun),
               ),
               const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
               IconButton(
@@ -93,7 +99,7 @@ class Editor extends ConsumerWidget {
                       ? I18nKey.editorToolbarInterruptDevice
                       : I18nKey.editorToolbarInterruptNeedsDevice,
                 ),
-                icon: const Icon(Icons.stop_circle_outlined, size: 20),
+                icon: const Icon(Icons.stop_circle_outlined),
                 onPressed: isConnected
                     ? () {
                         sendCommandToActiveDevice(ref.read, "\x03");
@@ -109,7 +115,7 @@ class Editor extends ConsumerWidget {
                       ? I18nKey.editorToolbarHardwareReset
                       : I18nKey.editorToolbarHardwareResetUnavailable,
                 ),
-                icon: const Icon(Icons.power_settings_new, size: 20),
+                icon: const Icon(Icons.power_settings_new),
                 onPressed:
                     serialConnected &&
                         hardwareResetStrategy != HardwareResetStrategy.disabled
@@ -138,7 +144,7 @@ class Editor extends ConsumerWidget {
                       ? I18nKey.editorToolbarSoftReboot
                       : I18nKey.editorToolbarSoftRebootNeedsDevice,
                 ),
-                icon: const Icon(Icons.restart_alt, size: 20),
+                icon: const Icon(Icons.restart_alt),
                 onPressed: isConnected
                     ? () {
                         sendCommandToActiveDevice(ref.read, "\x04");
@@ -194,7 +200,6 @@ class Editor extends ConsumerWidget {
             ],
           ),
         ),
-        toolbarHeight: 50,
       ),
       body: body(context, ref),
     );

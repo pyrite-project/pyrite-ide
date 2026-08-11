@@ -126,6 +126,16 @@ class EditorControllerMapNotifier
     return UndoRedoController();
   }
 
+  void movePath(String oldPath, String newPath) {
+    if (oldPath == newPath) return;
+    final controller = state[oldPath];
+    if (controller == null) return;
+    final next = Map<String, CodeForgeController>.from(state)
+      ..remove(oldPath)
+      ..[newPath] = controller;
+    state = next;
+  }
+
   void redo() {
     if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
         ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
