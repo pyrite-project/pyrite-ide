@@ -355,9 +355,13 @@ void showMobileConsoleSheet(BuildContext context) {
     context: context,
     isScrollControlled: true,
     builder: (context) {
-      return SizedBox(
-        height: MediaQuery.of(context).size.height * 0.55,
-        child: consolePage(),
+      final mediaQuery = MediaQuery.of(context);
+      return Padding(
+        padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+        child: SizedBox(
+          height: mediaQuery.size.height * 0.55,
+          child: consolePage(),
+        ),
       );
     },
   );
@@ -516,10 +520,7 @@ List<_PluginNavigationItem> _pluginNavigationItems(WidgetRef ref) {
 }
 
 Widget _pluginNavigationIcon(WidgetRef ref, _PluginNavigationItem item) {
-  final icon = _pluginNavigationIconCore(
-    item,
-    iconSize: _navIconSize(ref),
-  );
+  final icon = _pluginNavigationIconCore(item, iconSize: _navIconSize(ref));
   final enabledPlugins = ref
       .watch(pluginManagerProvider)
       .values
@@ -869,7 +870,10 @@ class TabletView extends ConsumerWidget {
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     final pluginItems = _pluginNavigationItems(ref);
     final destinations = [
-      for (final destination in [...tabletRailItems, ...pluginNavigationRailDestinations(ref)])
+      for (final destination in [
+        ...tabletRailItems,
+        ...pluginNavigationRailDestinations(ref),
+      ])
         _tooltippedDestination(context, ref, destination),
     ];
     final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
@@ -887,7 +891,9 @@ class TabletView extends ConsumerWidget {
               child: NavigationRail(
                 backgroundColor: Theme.of(context).colorScheme.surface,
                 labelType: NavigationRailLabelType.none,
-                minWidth: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth,
+                minWidth: ThemeDensityTokens.forStyle(
+                  ref.watch(themeStyle),
+                ).navRailWidth,
                 destinations: destinations,
                 selectedIndex: ref.watch(tabletSelectedIndex),
                 onDestinationSelected: (value) {
@@ -956,7 +962,10 @@ class DesktopView extends ConsumerWidget {
   Widget railNavigationBar(BuildContext context, WidgetRef ref) {
     final pluginItems = _pluginNavigationItems(ref);
     final destinations = [
-      for (final destination in [...desktopRailItems, ...pluginNavigationRailDestinations(ref)])
+      for (final destination in [
+        ...desktopRailItems,
+        ...pluginNavigationRailDestinations(ref),
+      ])
         _tooltippedDestination(context, ref, destination),
     ];
     final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
@@ -974,7 +983,9 @@ class DesktopView extends ConsumerWidget {
               child: NavigationRail(
                 backgroundColor: Theme.of(context).colorScheme.surface,
                 labelType: NavigationRailLabelType.none,
-                minWidth: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth,
+                minWidth: ThemeDensityTokens.forStyle(
+                  ref.watch(themeStyle),
+                ).navRailWidth,
                 destinations: destinations,
                 selectedIndex: ref.watch(desktopSelectedIndex),
                 trailing: const RailTrailingActions(),
@@ -1503,7 +1514,9 @@ class EditorToolsBar extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      height: ThemeDensityTokens.forStyle(ref.watch(themeStyle)).statusBarHeight,
+      height: ThemeDensityTokens.forStyle(
+        ref.watch(themeStyle),
+      ).statusBarHeight,
       padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
