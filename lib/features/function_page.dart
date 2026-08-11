@@ -10,6 +10,7 @@ import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
@@ -1006,7 +1007,7 @@ class ReplView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final terminalTheme = buildTerminalTheme(context);
+    final terminalTheme = buildTerminalTheme(context, ref);
     final terminalStyle = buildTerminalStyle(ref);
     return ReplSurface(
       backgroundColor: terminalTheme.background,
@@ -1024,7 +1025,7 @@ class OutputLogView extends ConsumerWidget {
     return TerminalView(
       ideOutputTerminal,
       controller: ideOutputController,
-      theme: buildTerminalTheme(context),
+      theme: buildTerminalTheme(context, ref),
       textStyle: buildTerminalStyle(ref),
       key: ValueKey('output_${surface.toARGB32()}'),
     );
@@ -1043,13 +1044,24 @@ class DesktopTerminalView extends ConsumerStatefulWidget {
 }
 
 class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
+  TerminalTheme? _terminalTheme;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = ref.read(desktopTerminalProvider);
       if (DesktopTerminalView.isSupported && state.sessions.isEmpty) {
-        ref.read(desktopTerminalProvider.notifier).createSession();
+        ref
+            .read(desktopTerminalProvider.notifier)
+            .createSession(
+              configureTerminal: (terminal) {
+                final theme = _terminalTheme;
+                if (theme != null) {
+                  configureTerminalColorQueries(terminal, theme);
+                }
+              },
+            );
       }
     });
   }
@@ -1058,6 +1070,8 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
   Widget build(BuildContext context) {
     final state = ref.watch(desktopTerminalProvider);
     final scheme = Theme.of(context).colorScheme;
+    final terminalTheme = buildTerminalTheme(context, ref);
+    _terminalTheme = terminalTheme;
     if (!DesktopTerminalView.isSupported) {
       return Center(
         child: FilledButton.tonalIcon(
@@ -1077,22 +1091,28 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                   child: FilledButton.icon(
                     onPressed: () => ref
                         .read(desktopTerminalProvider.notifier)
-                        .createSession(),
+                        .createSession(
+                          configureTerminal: (terminal) =>
+                              configureTerminalColorQueries(
+                                terminal,
+                                terminalTheme,
+                              ),
+                        ),
                     icon: const Icon(Icons.add),
                     label: const UseText(I18nKey.bottomPanelNewTerminal),
                   ),
                 )
               : TerminalView(
-                  session.terminal,
-                  controller: session.controller,
-                  theme: buildTerminalTheme(context),
-                  textStyle: buildTerminalStyle(
-                    ref,
-                    enableUnderline: ref.watch(desktopTerminalEnableUnderline),
+                  configureTerminalColorQueries(
+                    session.terminal,
+                    terminalTheme,
                   ),
+                  controller: session.controller,
+                  theme: terminalTheme,
+                  textStyle: buildTerminalStyle(ref),
                   hardwareKeyboardOnly: true,
                   key: ValueKey(
-                    'terminal_${session.id}_${scheme.surface.toARGB32()}',
+                    'terminal_${session.id}_${terminalTheme.background.toARGB32()}_${terminalTheme.minimumContrastRatio}',
                   ),
                 ),
         ),
@@ -1119,7 +1139,13 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                       ),
                       onPressed: () => ref
                           .read(desktopTerminalProvider.notifier)
-                          .createSession(),
+                          .createSession(
+                            configureTerminal: (terminal) =>
+                                configureTerminalColorQueries(
+                                  terminal,
+                                  terminalTheme,
+                                ),
+                          ),
                       icon: const Icon(Icons.add, size: 18),
                     ),
                   ],
@@ -1209,42 +1235,150 @@ class _TerminalSessionTile extends ConsumerWidget {
   }
 }
 
-TerminalTheme buildTerminalTheme(BuildContext context) {
+TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
   final scheme = Theme.of(context).colorScheme;
+  final appearance = ref.watch(terminalAppearance);
+  final minimumContrastRatio = ref.watch(terminalMinimumContrast) ? 4.5 : 1.0;
+  if (appearance == TerminalAppearance.custom) {
+    final palette = ref.watch(terminalCustomPalette);
+    return _terminalThemeFromPalette(
+      foreground: Color(ref.watch(terminalCustomForeground)),
+      background: Color(ref.watch(terminalCustomBackground)),
+      palette: palette.length == 16
+          ? palette.map(Color.new).toList()
+          : kDefaultTerminalCustomPalette.map(Color.new).toList(),
+      minimumContrastRatio: minimumContrastRatio,
+    );
+  }
+
+  final useLight =
+      appearance == TerminalAppearance.light ||
+      appearance == TerminalAppearance.followIde &&
+          Theme.of(context).brightness == Brightness.light;
+  if (useLight) {
+    return _terminalThemeFromPalette(
+      foreground: appearance == TerminalAppearance.followIde
+          ? scheme.onSurface
+          : const Color(0xFF1F2328),
+      background: appearance == TerminalAppearance.followIde
+          ? scheme.surface
+          : const Color(0xFFFFFFFF),
+      palette: _lightTerminalPalette,
+      minimumContrastRatio: minimumContrastRatio,
+    );
+  }
+
   final defaultTheme = TerminalThemes.defaultTheme;
-  return TerminalTheme(
-    cursor: defaultTheme.cursor,
-    selection: defaultTheme.selection,
-    foreground: scheme.onSurface,
-    background: scheme.surface,
-    black: defaultTheme.black,
-    white: defaultTheme.white,
-    red: defaultTheme.red,
-    green: defaultTheme.green,
-    yellow: defaultTheme.yellow,
-    blue: defaultTheme.blue,
-    magenta: defaultTheme.magenta,
-    cyan: defaultTheme.cyan,
-    brightBlack: defaultTheme.brightBlack,
-    brightRed: defaultTheme.brightRed,
-    brightGreen: defaultTheme.brightGreen,
-    brightYellow: defaultTheme.brightYellow,
-    brightBlue: defaultTheme.brightBlue,
-    brightMagenta: defaultTheme.brightMagenta,
-    brightCyan: defaultTheme.brightCyan,
-    brightWhite: defaultTheme.brightWhite,
-    searchHitBackground: defaultTheme.searchHitBackground,
-    searchHitBackgroundCurrent: defaultTheme.searchHitBackgroundCurrent,
-    searchHitForeground: defaultTheme.searchHitForeground,
+  return _terminalThemeFromPalette(
+    foreground: appearance == TerminalAppearance.followIde
+        ? scheme.onSurface
+        : defaultTheme.foreground,
+    background: appearance == TerminalAppearance.followIde
+        ? scheme.surface
+        : defaultTheme.background,
+    palette: _paletteFromTheme(defaultTheme),
+    minimumContrastRatio: minimumContrastRatio,
   );
 }
 
-TerminalStyle buildTerminalStyle(WidgetRef ref, {bool enableUnderline = true}) {
+const _lightTerminalPalette = <Color>[
+  Color(0xFF000000),
+  Color(0xFFCD3131),
+  Color(0xFF008000),
+  Color(0xFF795E00),
+  Color(0xFF0451A5),
+  Color(0xFFAF00DB),
+  Color(0xFF00838F),
+  Color(0xFF666666),
+  Color(0xFF767676),
+  Color(0xFFE51400),
+  Color(0xFF16C60C),
+  Color(0xFFB89500),
+  Color(0xFF0066BF),
+  Color(0xFFBC05BC),
+  Color(0xFF0598BC),
+  Color(0xFF333333),
+];
+
+List<Color> _paletteFromTheme(TerminalTheme theme) => [
+  theme.black,
+  theme.red,
+  theme.green,
+  theme.yellow,
+  theme.blue,
+  theme.magenta,
+  theme.cyan,
+  theme.white,
+  theme.brightBlack,
+  theme.brightRed,
+  theme.brightGreen,
+  theme.brightYellow,
+  theme.brightBlue,
+  theme.brightMagenta,
+  theme.brightCyan,
+  theme.brightWhite,
+];
+
+TerminalTheme _terminalThemeFromPalette({
+  required Color foreground,
+  required Color background,
+  required List<Color> palette,
+  required double minimumContrastRatio,
+}) {
+  return TerminalTheme(
+    cursor: foreground.withValues(alpha: 0.8),
+    selection: foreground.withValues(alpha: 0.3),
+    foreground: foreground,
+    background: background,
+    black: palette[0],
+    red: palette[1],
+    green: palette[2],
+    yellow: palette[3],
+    blue: palette[4],
+    magenta: palette[5],
+    cyan: palette[6],
+    white: palette[7],
+    brightBlack: palette[8],
+    brightRed: palette[9],
+    brightGreen: palette[10],
+    brightYellow: palette[11],
+    brightBlue: palette[12],
+    brightMagenta: palette[13],
+    brightCyan: palette[14],
+    brightWhite: palette[15],
+    searchHitBackground: const Color(0xFFFFFF2B),
+    searchHitBackgroundCurrent: const Color(0xFF31FF26),
+    searchHitForeground: const Color(0xFF000000),
+    minimumContrastRatio: minimumContrastRatio,
+  );
+}
+
+Terminal configureTerminalColorQueries(Terminal terminal, TerminalTheme theme) {
+  terminal.onPrivateOSC = (code, args) {
+    if ((code == '10' || code == '11') && args.firstOrNull == '?') {
+      final color = code == '10' ? theme.foreground : theme.background;
+      terminal.textInput('\x1b]$code;${_oscRgb(color)}\x1b\\');
+    }
+  };
+  return terminal;
+}
+
+String _oscRgb(Color color) {
+  String expand(double component) {
+    final byte = (component * 255).round().clamp(0, 255);
+    final hex = byte.toRadixString(16).padLeft(2, '0');
+    return '$hex$hex';
+  }
+
+  return 'rgb:${expand(color.r)}/${expand(color.g)}/${expand(color.b)}';
+}
+
+TerminalStyle buildTerminalStyle(WidgetRef ref) {
   return TerminalStyle(
     fontSize: ref.watch(terminalFontSize),
-    height: 1.0,
+    height: ref.watch(terminalLineHeight),
     fontFamily: editorTextFonts[ref.watch(terminalFontFamily)] ?? 'monospace',
-    enableUnderline: enableUnderline,
+    enableLigatures: ref.watch(terminalLigatures),
   );
 }
 
@@ -1511,7 +1645,8 @@ class EditorToolsBar extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final label = isMobile
         ? (isConnected
-              ? (deviceLabel ?? translateForWidget(ref, I18nKey.statusDeviceShort))
+              ? (deviceLabel ??
+                    translateForWidget(ref, I18nKey.statusDeviceShort))
               : translateForWidget(ref, I18nKey.statusDeviceShort))
         : (isConnected
               ? (deviceLabel ??

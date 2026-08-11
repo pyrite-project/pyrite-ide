@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
@@ -546,15 +547,18 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     if (activation.state == ActivationState.failed) {
       return Scaffold(
         body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('插件启动失败'),
-            const SizedBox(height: 8),
-            FilledButton(onPressed: _activateSelected, child: const Text('重试')),
-          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('插件启动失败'),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: _activateSelected,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
         ),
-      )
       );
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -585,26 +589,22 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final surface = PluginViewSurface(
-      instance: ViewInstanceId(
-        pluginId: widget.pluginId,
-        sessionId: manager.sessionId,
-        viewId: view.id,
-        // The sidebar placement is one instance per container; a tab host passes
-        // its own instanceId so the same view can be open in both at once.
-        instanceId: 'container:${widget.containerId}',
-      ),
-      renderer: view.renderer,
-      title: view.title,
-    );
-    if (views.length == 1) return Scaffold(body: surface);
-
     final selectedIndex = views.indexWhere((entry) => entry.id == targetView);
+    final activeIndex = selectedIndex < 0 ? 0 : selectedIndex;
+    final surfaces = [
+      for (var index = 0; index < views.length; index++)
+        _buildSurface(manager, views[index], visible: index == activeIndex),
+    ];
+    if (views.length == 1) return Scaffold(body: surfaces.single);
+
     return Scaffold(
-        body: DefaultTabController(
-        key: ValueKey('${widget.pluginId}:${widget.containerId}:$targetView'),
+      body: DefaultTabController(
+        // This key must remain stable while only the selected view changes.
+        // Otherwise Flutter disposes the whole subtree (and each surface's
+        // TextEditingController) on every tab switch.
+        key: ValueKey('${widget.pluginId}:${widget.containerId}'),
         length: views.length,
-        initialIndex: selectedIndex < 0 ? 0 : selectedIndex,
+        initialIndex: activeIndex,
         child: Column(
           children: [
             Material(
@@ -621,12 +621,33 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
                 ),
               ),
             ),
-            Expanded(child: surface),
+            Expanded(
+              child: IndexedStack(index: activeIndex, children: surfaces),
+            ),
           ],
         ),
-      )
+      ),
     );
   }
+
+  PluginViewSurface _buildSurface(
+    PluginRunManager manager,
+    PluginViewContribution view, {
+    required bool visible,
+  }) => PluginViewSurface(
+    key: ValueKey('plugin-view:${view.id}'),
+    instance: ViewInstanceId(
+      pluginId: widget.pluginId,
+      sessionId: manager.sessionId,
+      viewId: view.id,
+      // The sidebar placement is one instance per container; a tab host passes
+      // its own instanceId so the same view can be open in both at once.
+      instanceId: 'container:${widget.containerId}',
+    ),
+    renderer: view.renderer,
+    title: view.title,
+    visible: visible,
+  );
 
   Widget _viewTab(PluginViewContribution view) {
     final icon = view.icon;

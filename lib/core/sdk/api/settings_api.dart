@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
@@ -521,12 +522,67 @@ class SettingsRegistry {
           ref.read(terminalLineHeight.notifier).state = (v as num).toDouble(),
     ),
     _SettingEntry(
-      name: 'terminal.desktop_underline',
+      name: 'terminal.ligatures',
       type: 'bool',
-      provider: desktopTerminalEnableUnderline,
-      getter: (ref) => ref.read(desktopTerminalEnableUnderline),
+      provider: terminalLigatures,
+      getter: (ref) => ref.read(terminalLigatures),
       setter: (ref, v) =>
-          ref.read(desktopTerminalEnableUnderline.notifier).state = v == true,
+          ref.read(terminalLigatures.notifier).state = v == true,
+    ),
+    _SettingEntry(
+      name: 'terminal.appearance',
+      type: 'string',
+      provider: terminalAppearance,
+      getter: (ref) => ref.read(terminalAppearance).name,
+      setter: (ref, v) {
+        final parsed = TerminalAppearance.values.asNameMap()[v?.toString()];
+        if (parsed == null) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected followIde, light, dark, or custom',
+          );
+        }
+        ref.read(terminalAppearance.notifier).state = parsed;
+      },
+    ),
+    _SettingEntry(
+      name: 'terminal.minimum_contrast',
+      type: 'bool',
+      provider: terminalMinimumContrast,
+      getter: (ref) => ref.read(terminalMinimumContrast),
+      setter: (ref, v) =>
+          ref.read(terminalMinimumContrast.notifier).state = v == true,
+    ),
+    _SettingEntry(
+      name: 'terminal.custom_foreground',
+      type: 'int',
+      provider: terminalCustomForeground,
+      getter: (ref) => ref.read(terminalCustomForeground),
+      setter: (ref, v) => ref.read(terminalCustomForeground.notifier).state =
+          _requireArgbColor(v),
+    ),
+    _SettingEntry(
+      name: 'terminal.custom_background',
+      type: 'int',
+      provider: terminalCustomBackground,
+      getter: (ref) => ref.read(terminalCustomBackground),
+      setter: (ref, v) => ref.read(terminalCustomBackground.notifier).state =
+          _requireArgbColor(v),
+    ),
+    _SettingEntry(
+      name: 'terminal.custom_palette',
+      type: 'list',
+      provider: terminalCustomPalette,
+      getter: (ref) => ref.read(terminalCustomPalette),
+      setter: (ref, v) {
+        if (v is! List || v.length != 16) {
+          throw ArgumentError.value(v, 'value', 'Expected 16 ARGB32 colors');
+        }
+        ref.read(terminalCustomPalette.notifier).state = v
+            .map(_requireArgbColor)
+            .toList();
+      },
     ),
     _SettingEntry(
       name: 'micropython.stubs.enabled',
@@ -589,6 +645,17 @@ class SettingsRegistry {
   static _SettingEntry? _find(String name) => _byName[name];
   static List<Map<String, String>> listAll() =>
       _settings.map((e) => {'name': e.name, 'type': e.type}).toList();
+}
+
+int _requireArgbColor(dynamic value) {
+  if (value is! int || value < 0 || value > 0xFFFFFFFF) {
+    throw ArgumentError.value(
+      value,
+      'value',
+      'Expected an ARGB32 integer between 0 and 0xFFFFFFFF',
+    );
+  }
+  return value;
 }
 
 class SdkSettings {

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 
 class SettingsPersistedData {
   final String editorTextFont;
@@ -42,7 +43,12 @@ class SettingsPersistedData {
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
-  final bool desktopTerminalEnableUnderline;
+  final bool terminalLigatures;
+  final String terminalAppearance;
+  final bool terminalMinimumContrast;
+  final int terminalCustomForeground;
+  final int terminalCustomBackground;
+  final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
@@ -96,7 +102,12 @@ class SettingsPersistedData {
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
-    this.desktopTerminalEnableUnderline = false,
+    this.terminalLigatures = true,
+    this.terminalAppearance = 'followIde',
+    this.terminalMinimumContrast = false,
+    this.terminalCustomForeground = kDefaultTerminalCustomForeground,
+    this.terminalCustomBackground = kDefaultTerminalCustomBackground,
+    this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
@@ -151,7 +162,12 @@ class SettingsPersistedData {
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
     'terminalLineHeight': terminalLineHeight,
-    'desktopTerminalEnableUnderline': desktopTerminalEnableUnderline,
+    'terminalLigatures': terminalLigatures,
+    'terminalAppearance': terminalAppearance,
+    'terminalMinimumContrast': terminalMinimumContrast,
+    'terminalCustomForeground': terminalCustomForeground,
+    'terminalCustomBackground': terminalCustomBackground,
+    'terminalCustomPalette': terminalCustomPalette,
     'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
@@ -214,8 +230,21 @@ class SettingsPersistedData {
         json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
-    desktopTerminalEnableUnderline:
-        json['desktopTerminalEnableUnderline'] as bool? ?? false,
+    terminalLigatures: json['terminalLigatures'] as bool? ?? true,
+    terminalAppearance: json['terminalAppearance'] as String? ?? 'followIde',
+    terminalMinimumContrast: json['terminalMinimumContrast'] as bool? ?? false,
+    terminalCustomForeground:
+        json['terminalCustomForeground'] as int? ??
+        kDefaultTerminalCustomForeground,
+    terminalCustomBackground:
+        json['terminalCustomBackground'] as int? ??
+        kDefaultTerminalCustomBackground,
+    terminalCustomPalette:
+        (json['terminalCustomPalette'] as List?)
+            ?.whereType<num>()
+            .map((value) => value.toInt())
+            .toList() ??
+        kDefaultTerminalCustomPalette,
     useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',

@@ -38,6 +38,7 @@ class PluginViewSurface extends ConsumerStatefulWidget {
     required this.instance,
     required this.renderer,
     this.title,
+    this.visible = true,
     this.viewProps = const {},
   });
 
@@ -48,6 +49,14 @@ class PluginViewSurface extends ConsumerStatefulWidget {
 
   /// Display title from the view contribution, when the host knows it.
   final String? title;
+
+  /// Whether this surface is the currently visible placement of its view.
+  ///
+  /// Hidden surfaces stay mounted so their host-local widget state (for
+  /// example, a TextField controller) survives switching between contributed
+  /// views. The value is also forwarded to the plugin as a visibility signal so
+  /// it can pause work for views that are kept alive but not displayed.
+  final bool visible;
 
   /// Renderer-level props from the contribution (table columns, and so on).
   final Map<String, dynamic> viewProps;
@@ -80,7 +89,7 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
     _visibilityManager = _manager;
     _subscribe();
     _componentMethods.attach(widget.instance, _hostState);
-    _scheduleVisibility(widget.instance, true);
+    _scheduleVisibility(widget.instance, widget.visible);
   }
 
   @override
@@ -94,7 +103,9 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
       _listenable?.removeListener(_onModelChanged);
       _subscribe();
       _visibilityManager = _manager;
-      _scheduleVisibility(widget.instance, true);
+      _scheduleVisibility(widget.instance, widget.visible);
+    } else if (oldWidget.visible != widget.visible) {
+      _scheduleVisibility(widget.instance, widget.visible);
     }
   }
 

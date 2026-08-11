@@ -70,7 +70,9 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
   bool get isSupported =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
-  Future<void> createSession() async {
+  Future<void> createSession({
+    void Function(Terminal)? configureTerminal,
+  }) async {
     if (!isSupported) {
       state = state.copyWith(
         error: translate(ref, I18nKey.terminalUnsupportedPlatform),
@@ -80,6 +82,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
     final id = _nextId++;
     final terminal = Terminal(maxLines: 10000);
+    configureTerminal?.call(terminal);
     final controller = TerminalController();
     final shell = _defaultShell();
 

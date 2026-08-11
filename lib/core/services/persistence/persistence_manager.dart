@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
@@ -92,8 +93,17 @@ class PersistenceManager {
           settings?.terminalFontFamily ?? 'JetBrains Maple Mono',
       terminalFontSize: settings?.terminalFontSize ?? 13,
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
-      desktopTerminalEnableUnderline:
-          settings?.desktopTerminalEnableUnderline ?? false,
+      terminalLigatures: settings?.terminalLigatures ?? true,
+      terminalAppearance: settings?.terminalAppearance ?? 'followIde',
+      terminalMinimumContrast: settings?.terminalMinimumContrast ?? false,
+      terminalCustomForeground:
+          settings?.terminalCustomForeground ??
+          kDefaultTerminalCustomForeground,
+      terminalCustomBackground:
+          settings?.terminalCustomBackground ??
+          kDefaultTerminalCustomBackground,
+      terminalCustomPalette:
+          settings?.terminalCustomPalette ?? kDefaultTerminalCustomPalette,
       useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
@@ -170,9 +180,12 @@ class PersistenceManager {
           terminalFontFamily: container.read(terminalFontFamily),
           terminalFontSize: container.read(terminalFontSize),
           terminalLineHeight: container.read(terminalLineHeight),
-          desktopTerminalEnableUnderline: container.read(
-            desktopTerminalEnableUnderline,
-          ),
+          terminalLigatures: container.read(terminalLigatures),
+          terminalAppearance: container.read(terminalAppearance).name,
+          terminalMinimumContrast: container.read(terminalMinimumContrast),
+          terminalCustomForeground: container.read(terminalCustomForeground),
+          terminalCustomBackground: container.read(terminalCustomBackground),
+          terminalCustomPalette: container.read(terminalCustomPalette),
           useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
           confirmShortcut: container.read(confirmShortcutProvider),

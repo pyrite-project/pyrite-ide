@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 
@@ -114,8 +115,21 @@ StateProvider<String> terminalFontFamily = StateProvider<String>(
 );
 StateProvider<double> terminalFontSize = StateProvider<double>((ref) => 13);
 StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);
-StateProvider<bool> desktopTerminalEnableUnderline = StateProvider<bool>(
+StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
+
+StateProvider<TerminalAppearance> terminalAppearance =
+    StateProvider<TerminalAppearance>((ref) => TerminalAppearance.followIde);
+StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
   (ref) => false,
+);
+StateProvider<int> terminalCustomForeground = StateProvider<int>(
+  (ref) => kDefaultTerminalCustomForeground,
+);
+StateProvider<int> terminalCustomBackground = StateProvider<int>(
+  (ref) => kDefaultTerminalCustomBackground,
+);
+StateProvider<List<int>> terminalCustomPalette = StateProvider<List<int>>(
+  (ref) => kDefaultTerminalCustomPalette,
 );
 
 StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(

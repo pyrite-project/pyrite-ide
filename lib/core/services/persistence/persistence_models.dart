@@ -1,4 +1,5 @@
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 
 class PersistedTab {
   final String filePath;
@@ -86,7 +87,12 @@ class PersistedData {
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
-  final bool desktopTerminalEnableUnderline;
+  final bool terminalLigatures;
+  final String terminalAppearance;
+  final bool terminalMinimumContrast;
+  final int terminalCustomForeground;
+  final int terminalCustomBackground;
+  final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
@@ -157,7 +163,12 @@ class PersistedData {
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
-    this.desktopTerminalEnableUnderline = false,
+    this.terminalLigatures = true,
+    this.terminalAppearance = 'followIde',
+    this.terminalMinimumContrast = false,
+    this.terminalCustomForeground = kDefaultTerminalCustomForeground,
+    this.terminalCustomBackground = kDefaultTerminalCustomBackground,
+    this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',

@@ -26,6 +26,7 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
@@ -169,8 +170,21 @@ void _applyData(PersistedData data) {
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
-  container.read(desktopTerminalEnableUnderline.notifier).state =
-      data.desktopTerminalEnableUnderline;
+  container.read(terminalLigatures.notifier).state = data.terminalLigatures;
+  container.read(terminalAppearance.notifier).state =
+      TerminalAppearance.values.asNameMap()[data.terminalAppearance] ??
+      TerminalAppearance.followIde;
+  container.read(terminalMinimumContrast.notifier).state =
+      data.terminalMinimumContrast;
+  container.read(terminalCustomForeground.notifier).state =
+      data.terminalCustomForeground;
+  container.read(terminalCustomBackground.notifier).state =
+      data.terminalCustomBackground;
+  container
+      .read(terminalCustomPalette.notifier)
+      .state = data.terminalCustomPalette.length == 16
+      ? data.terminalCustomPalette
+      : kDefaultTerminalCustomPalette;
   container.read(useMaterialContextMenu.notifier).state =
       data.useMaterialContextMenu;
   container

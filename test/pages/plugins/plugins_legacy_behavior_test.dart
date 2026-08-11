@@ -12,6 +12,8 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/plugins/detail.dart';
@@ -318,6 +320,105 @@ void main() {
       'debug-enhanced.device-variables',
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('plugin view tabs preserve inactive TextField state', (
+    tester,
+  ) async {
+    final manager = _legacyManager(_multiViewPlugin);
+    final store = ViewModelStore();
+    final outlineInstance = ViewInstanceId(
+      pluginId: _multiViewPlugin.id,
+      sessionId: manager.sessionId,
+      viewId: 'debug-enhanced.outline',
+      instanceId: 'container:debug-enhanced',
+    );
+    final variablesInstance = ViewInstanceId(
+      pluginId: _multiViewPlugin.id,
+      sessionId: manager.sessionId,
+      viewId: 'debug-enhanced.device-variables',
+      instanceId: 'container:debug-enhanced',
+    );
+    store.installSnapshot(
+      instance: outlineInstance,
+      revision: 1,
+      nodes: [
+        {
+          'type': 'TextField',
+          'props': {'id': 'draft', 'value': ''},
+        },
+      ],
+    );
+    store.installSnapshot(
+      instance: variablesInstance,
+      revision: 1,
+      nodes: [
+        {
+          'type': 'Text',
+          'props': {'value': 'Device view'},
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pluginManagerProvider.overrideWith((ref) {
+            final notifier = PluginManagerNotifier(ref);
+            notifier.loadPersisted([
+              PluginPersistedData.fromPlugin(_multiViewPlugin),
+            ]);
+            return notifier;
+          }),
+          pluginRunManagerProvider.overrideWith(
+            (ref) => _FixtureRunManagers(ref, _multiViewPlugin, manager),
+          ),
+          contributionRegistryProvider.overrideWith((ref) {
+            final registry = ContributionRegistry(
+              ref.read(contextKeyServiceProvider),
+            );
+            registry.registerPlugin(_multiViewPlugin.manifest!);
+            return registry;
+          }),
+          activationManagerProvider.overrideWith(
+            (ref) => _ActiveActivationManager(_multiViewPlugin),
+          ),
+          viewModelStoreProvider.overrideWithValue(store),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: PluginViewHost(
+              pluginId: 'debug-enhanced',
+              containerId: 'debug-enhanced',
+              viewId: 'debug-enhanced.outline',
+            ),
+          ),
+        ),
+      ),
+    );
+    addTearDown(store.clear);
+    await tester.pump();
+
+    final fieldState = tester.state(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'unsaved draft');
+    await tester.pump();
+
+    await tester.tap(find.text('Device Variables'));
+    await tester.pump();
+
+    expect(find.text('Device view'), findsOneWidget);
+    expect(fieldState.mounted, isTrue);
+    final hiddenField = tester.widget<TextField>(
+      find.byType(TextField, skipOffstage: false),
+    );
+    expect(hiddenField.controller?.text, 'unsaved draft');
+
+    await tester.tap(find.text('Outline'));
+    await tester.pump();
+
+    expect(tester.state(find.byType(TextField)), same(fieldState));
+    expect(find.text('unsaved draft'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
   testWidgets('plugin list item opens the detail page, not plugin UI', (

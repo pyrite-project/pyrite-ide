@@ -113,7 +113,7 @@ class StyleSettings extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ChoiceChip(
-                      avatar: const Icon(Icons.auto_awesome),
+                      // avatar: const Icon(Icons.auto_awesome),
                       label: const UseText(I18nKey.settingsStyleFollowSystem),
                       selected: themeColorValue == null,
                       onSelected: (v) {

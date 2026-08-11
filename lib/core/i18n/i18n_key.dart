@@ -561,10 +561,64 @@ enum I18nKey {
   settingsTerminalFont('settings.terminal.font', '字体'),
   settingsTerminalFontSize('settings.terminal.font_size', '字体大小'),
   settingsTerminalLineHeight('settings.terminal.line_height', '行高'),
-  settingsTerminalUnderline('settings.terminal.underline.title', '桌面终端下划线'),
-  settingsTerminalUnderlineSubtitle(
-    'settings.terminal.underline.subtitle',
-    '开启后显示 ANSI 下划线；关闭可改善 Claude 等 TUI 的显示',
+  settingsTerminalLigatures('settings.terminal.ligatures.title', '编程连体字'),
+  settingsTerminalLigaturesSubtitle(
+    'settings.terminal.ligatures.subtitle',
+    '合并显示 =>、!= 等编程符号（需要字体支持）',
+  ),
+  settingsTerminalAppearance('settings.terminal.appearance.title', '终端外观'),
+  settingsTerminalAppearanceFollowIde(
+    'settings.terminal.appearance.follow_ide',
+    '跟随 IDE',
+  ),
+  settingsTerminalAppearanceLight('settings.terminal.appearance.light', '浅色'),
+  settingsTerminalAppearanceDark('settings.terminal.appearance.dark', '深色'),
+  settingsTerminalAppearanceCustom(
+    'settings.terminal.appearance.custom',
+    '自定义',
+  ),
+  settingsTerminalMinimumContrast(
+    'settings.terminal.minimum_contrast.title',
+    '增强低对比度文字',
+  ),
+  settingsTerminalMinimumContrastSubtitle(
+    'settings.terminal.minimum_contrast.subtitle',
+    '必要时调整前景色，保证与背景清晰可辨',
+  ),
+  settingsTerminalCustomForeground(
+    'settings.terminal.custom.foreground',
+    '默认前景色',
+  ),
+  settingsTerminalCustomBackground(
+    'settings.terminal.custom.background',
+    '默认背景色',
+  ),
+  settingsTerminalCustomPalette('settings.terminal.custom.palette', 'ANSI 颜色'),
+  settingsTerminalCustomSection(
+    'settings.terminal.custom.section.title',
+    '自定义终端颜色',
+  ),
+  settingsTerminalCustomSectionDescription(
+    'settings.terminal.custom.section.description',
+    '调整默认前景、背景和 ANSI 16 色调色板。',
+  ),
+  settingsTerminalCustomPreview('settings.terminal.custom.preview', '终端预览'),
+  settingsTerminalCustomBaseColors(
+    'settings.terminal.custom.base_colors',
+    '基础颜色',
+  ),
+  settingsTerminalCustomReset('settings.terminal.custom.reset', '重置颜色'),
+  settingsTerminalCustomResetConfirmTitle(
+    'settings.terminal.custom.reset_confirm.title',
+    '重置自定义颜色？',
+  ),
+  settingsTerminalCustomResetConfirmMessage(
+    'settings.terminal.custom.reset_confirm.message',
+    '前景、背景和 ANSI 调色板将恢复为默认值。',
+  ),
+  settingsTerminalCustomResetDone(
+    'settings.terminal.custom.reset_done',
+    '终端颜色已恢复默认值',
   ),
   settingsTerminalWebReplDescription(
     'settings.terminal.webrepl.description',
