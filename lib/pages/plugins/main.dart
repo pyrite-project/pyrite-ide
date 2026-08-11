@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -29,6 +30,8 @@ class Plugins extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tier = ref.watch(themeStyle);
+    final tokens = ThemeDensityTokens.forStyle(tier);
     final showPlugins = ref
         .watch(pluginManagerProvider)
         .values
@@ -40,12 +43,12 @@ class Plugins extends ConsumerWidget {
         title: const UseText(I18nKey.pluginsTitle),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_box_outlined),
+            icon: Icon(Icons.add_box_outlined, size: tokens.headerIconSize,),
             tooltip: translateForWidget(ref, I18nKey.pluginsInstall),
             onPressed: () => _installPlugin(context, ref),
           ),
           IconButton(
-            icon: const Icon(Icons.monitor),
+            icon: Icon(Icons.monitor, size: tokens.headerIconSize),
             tooltip: translateForWidget(ref, I18nKey.pluginsPermissionMonitor),
             onPressed: () => context.push('/plugins/monitor'),
           ),
