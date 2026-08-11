@@ -42,7 +42,7 @@ jobs:
             command: |
               export SERIOUS_PYTHON_SITE_PACKAGES="$GITHUB_WORKSPACE/assets/python_runtime_boot"
               dart run serious_python:main package "assets/python_runtime_boot" --platform Android --asset "assets/python_runtime_boot.zip" --verbose
-              flutter build apk --release --split-per-abi --no-tree-shake-icons --verbose
+              flutter build apk --release --split-per-abi --verbose
             output_path: build/app/outputs/flutter-apk/*.apk
 
           - os: windows-latest
@@ -58,7 +58,7 @@ jobs:
             target: macos
             command: |
               dart run serious_python:main package "assets/python_runtime_boot" --platform Darwin --asset "assets/python_runtime_boot.zip" --verbose
-              flutter build macos --release --no-tree-shake-icons --verbose
+              flutter build macos --release --verbose
               cd build/macos/Build/Products/Release
               zip -r pyride-macos-darwin.zip PyriteIDE.app
               cd -
