@@ -274,14 +274,14 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   TextStyle _outputStyle() {
     return widget.textStyle.copyWith(
       color: widget.foregroundColor.withValues(alpha: .78),
-      height: 1.15,
+      height: ref.watch(terminalLineHeight),
     );
   }
 
   TextStyle _inputStyle() {
     return widget.textStyle.copyWith(
       color: widget.foregroundColor,
-      height: 1.15,
+      height: ref.watch(terminalLineHeight),
     );
   }
 
