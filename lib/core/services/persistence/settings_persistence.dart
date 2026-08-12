@@ -103,7 +103,7 @@ class SettingsPersistedData {
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
     this.terminalAppearance = 'dark',
-    this.terminalMinimumContrast = true,
+    this.terminalMinimumContrast = false,
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
     this.useMaterialContextMenu = false,
@@ -229,7 +229,7 @@ class SettingsPersistedData {
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     terminalLigatures: json['terminalLigatures'] as bool? ?? true,
     terminalAppearance: json['terminalAppearance'] as String? ?? 'dark',
-    terminalMinimumContrast: json['terminalMinimumContrast'] as bool? ?? true,
+    terminalMinimumContrast: json['terminalMinimumContrast'] as bool? ?? false,
     terminalCustomForeground:
         json['terminalCustomForeground'] as int? ??
         kDefaultTerminalCustomForeground,

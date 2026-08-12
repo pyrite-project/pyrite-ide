@@ -598,6 +598,14 @@ enum I18nKey {
     'settings.terminal.minimum_contrast.subtitle',
     '必要时调整前景色，保证与背景清晰可辨',
   ),
+  settingsTerminalOverrideBackground(
+    'settings.terminal.override_background.title',
+    '覆盖终端背景颜色',
+  ),
+  settingsTerminalOverrideBackgroundSubtitle(
+    'settings.terminal.override_background.subtitle',
+    '忽略终端程序设置的默认背景色，仅影响桌面 Shell 终端',
+  ),
   settingsTerminalCustomForeground(
     'settings.terminal.custom.foreground',
     '默认前景色',

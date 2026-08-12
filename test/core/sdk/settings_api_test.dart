@@ -301,6 +301,29 @@ void main() {
     });
   });
 
+  test('terminal background override can be set, read, and listed', () async {
+    final harness = await _SettingsHarness.start();
+    addTearDown(harness.close);
+
+    final listResponse = await harness.list();
+    final settings = listResponse['payload']['data'] as List<dynamic>;
+    expect(
+      settings.whereType<Map>().any(
+        (item) =>
+            item['name'] == 'terminal.override_background' &&
+            item['type'] == 'bool',
+      ),
+      isTrue,
+    );
+
+    _expectOk(await harness.set('terminal.override_background', true), true);
+    expect(harness.container.read(terminalOverrideBackground), isTrue);
+    _expectOk(await harness.get('terminal.override_background'), {
+      'name': 'terminal.override_background',
+      'value': true,
+    });
+  });
+
   test('invalid theme values return errors without changing state', () async {
     final harness = await _SettingsHarness.start();
     addTearDown(harness.close);

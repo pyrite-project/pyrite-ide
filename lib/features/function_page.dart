@@ -1145,10 +1145,14 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
         ref
             .read(desktopTerminalProvider.notifier)
             .createSession(
-              configureTerminal: (terminal) {
+              configureTerminal: (terminal, backgroundColor) {
                 final theme = _terminalTheme;
                 if (theme != null) {
-                  configureTerminalColorQueries(terminal, theme);
+                  configureTerminalColorQueries(
+                    terminal,
+                    theme,
+                    backgroundColor: backgroundColor,
+                  );
                 }
               },
             );
@@ -1161,7 +1165,6 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
     final state = ref.watch(desktopTerminalProvider);
     final scheme = Theme.of(context).colorScheme;
     final terminalTheme = buildTerminalTheme(context, ref);
-    _terminalTheme = terminalTheme;
     if (!DesktopTerminalView.isSupported) {
       return Center(
         child: FilledButton.tonalIcon(
@@ -1182,28 +1185,42 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                     onPressed: () => ref
                         .read(desktopTerminalProvider.notifier)
                         .createSession(
-                          configureTerminal: (terminal) =>
+                          configureTerminal: (terminal, backgroundColor) =>
                               configureTerminalColorQueries(
                                 terminal,
                                 terminalTheme,
+                                backgroundColor: backgroundColor,
                               ),
                         ),
                     icon: const Icon(Icons.add),
                     label: const UseText(I18nKey.bottomPanelNewTerminal),
                   ),
                 )
-              : TerminalView(
-                  configureTerminalColorQueries(
-                    session.terminal,
-                    terminalTheme,
-                  ),
-                  controller: session.controller,
-                  theme: terminalTheme,
-                  textStyle: buildTerminalStyle(ref),
-                  hardwareKeyboardOnly: true,
-                  key: ValueKey(
-                    'terminal_${session.id}_${terminalTheme.background.toARGB32()}_${terminalTheme.minimumContrastRatio}',
-                  ),
+              : ValueListenableBuilder<Color?>(
+                  valueListenable: session.backgroundColor,
+                  builder: (context, programBackground, _) {
+                    final effectiveTheme = programBackground != null
+                        ? terminalThemeWithBackground(
+                            terminalTheme,
+                            programBackground,
+                          )
+                        : terminalTheme;
+                    return TerminalView(
+                      configureTerminalColorQueries(
+                        session.terminal,
+                        terminalTheme,
+                        backgroundColor: session.backgroundColor,
+                        
+                      ),
+                      controller: session.controller,
+                      theme: effectiveTheme,
+                      textStyle: buildTerminalStyle(ref),
+                      hardwareKeyboardOnly: true,
+                      key: ValueKey(
+                        'terminal_${session.id}_${terminalTheme.background.toARGB32()}_${terminalTheme.minimumContrastRatio}',
+                      ),
+                    );
+                  },
                 ),
         ),
         Container(
@@ -1230,10 +1247,11 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                       onPressed: () => ref
                           .read(desktopTerminalProvider.notifier)
                           .createSession(
-                            configureTerminal: (terminal) =>
+                            configureTerminal: (terminal, backgroundColor) =>
                                 configureTerminalColorQueries(
                                   terminal,
                                   terminalTheme,
+                                  backgroundColor: backgroundColor,
                                 ),
                           ),
                       icon: const Icon(Icons.add, size: 18),
@@ -1440,14 +1458,94 @@ TerminalTheme _terminalThemeFromPalette({
   );
 }
 
-Terminal configureTerminalColorQueries(Terminal terminal, TerminalTheme theme) {
+Terminal configureTerminalColorQueries(
+  Terminal terminal,
+  TerminalTheme theme, {
+  ValueNotifier<Color?>? backgroundColor,
+}) {
   terminal.onPrivateOSC = (code, args) {
-    if ((code == '10' || code == '11') && args.firstOrNull == '?') {
-      final color = code == '10' ? theme.foreground : theme.background;
+    final value = args.firstOrNull;
+    if ((code == '10' || code == '11') && value == '?') {
+      final color = code == '10'
+          ? theme.foreground
+          : backgroundColor?.value != null
+          ? backgroundColor!.value!
+          : theme.background;
       terminal.textInput('\x1b]$code;${_oscRgb(color)}\x1b\\');
+      return;
+    }
+    if (code == '11' && value != null && backgroundColor != null) {
+      final parsed = parseTerminalOscColor(value);
+      if (parsed != null) backgroundColor.value = parsed;
+      return;
+    }
+    if (code == '111' && backgroundColor != null) {
+      backgroundColor.value = null;
     }
   };
   return terminal;
+}
+
+Color? parseTerminalOscColor(String value) {
+  List<String> components;
+  if (value.startsWith('rgb:')) {
+    components = value.substring(4).split('/');
+  } else if (value.startsWith('#')) {
+    final hex = value.substring(1);
+    if (hex.length % 3 != 0) return null;
+    final width = hex.length ~/ 3;
+    if (width < 1 || width > 4) return null;
+    components = [
+      hex.substring(0, width),
+      hex.substring(width, width * 2),
+      hex.substring(width * 2),
+    ];
+  } else {
+    return null;
+  }
+
+  if (components.length != 3) return null;
+  final bytes = <int>[];
+  for (final component in components) {
+    if (component.isEmpty || component.length > 4) return null;
+    final parsed = int.tryParse(component, radix: 16);
+    if (parsed == null) return null;
+    final maximum = (1 << (component.length * 4)) - 1;
+    bytes.add((parsed * 255 / maximum).round());
+  }
+  return Color.fromARGB(0xff, bytes[0], bytes[1], bytes[2]);
+}
+
+TerminalTheme terminalThemeWithBackground(
+  TerminalTheme theme,
+  Color background,
+) {
+  return TerminalTheme(
+    cursor: theme.cursor,
+    selection: theme.selection,
+    foreground: theme.foreground,
+    background: background,
+    black: theme.black,
+    red: theme.red,
+    green: theme.green,
+    yellow: theme.yellow,
+    blue: theme.blue,
+    magenta: theme.magenta,
+    cyan: theme.cyan,
+    white: theme.white,
+    brightBlack: theme.brightBlack,
+    brightRed: theme.brightRed,
+    brightGreen: theme.brightGreen,
+    brightYellow: theme.brightYellow,
+    brightBlue: theme.brightBlue,
+    brightMagenta: theme.brightMagenta,
+    brightCyan: theme.brightCyan,
+    brightWhite: theme.brightWhite,
+    searchHitBackground: theme.searchHitBackground,
+    searchHitBackgroundCurrent: theme.searchHitBackgroundCurrent,
+    searchHitForeground: theme.searchHitForeground,
+    minimumContrastRatio: theme.minimumContrastRatio,
+  );
 }
 
 String _oscRgb(Color color) {

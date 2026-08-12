@@ -58,6 +58,29 @@ void main() {
     expect(container.read(terminalLigatures), isFalse);
   });
 
+  testWidgets('terminal background override is disabled by default', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: TerminalSettings()),
+      ),
+    );
+
+    expect(container.read(terminalOverrideBackground), isFalse);
+    await tester.tap(find.widgetWithText(SwitchListTile, '覆盖终端背景颜色'));
+    await tester.pump();
+    expect(container.read(terminalOverrideBackground), isTrue);
+  });
+
   testWidgets('custom appearance exposes foreground and background only', (
     tester,
   ) async {

@@ -114,13 +114,13 @@ StateProvider<String> terminalFontFamily = StateProvider<String>(
   (ref) => "JetBrains Maple Mono",
 );
 StateProvider<double> terminalFontSize = StateProvider<double>((ref) => 13);
-StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.2);
+StateProvider<double> terminalLineHeight = StateProvider<double>((ref) => 1.3);
 StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
 
 StateProvider<TerminalAppearance> terminalAppearance =
     StateProvider<TerminalAppearance>((ref) => TerminalAppearance.dark);
 StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
-  (ref) => true,
+  (ref) => false,
 );
 StateProvider<int> terminalCustomForeground = StateProvider<int>(
   (ref) => kDefaultTerminalCustomForeground,

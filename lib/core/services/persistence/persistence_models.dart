@@ -166,7 +166,7 @@ class PersistedData {
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
     this.terminalAppearance = 'dark',
-    this.terminalMinimumContrast = true,
+    this.terminalMinimumContrast = false,
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
     this.useMaterialContextMenu = false,

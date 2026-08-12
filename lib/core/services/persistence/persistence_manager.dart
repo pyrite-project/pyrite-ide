@@ -96,7 +96,7 @@ class PersistenceManager {
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
       terminalLigatures: settings?.terminalLigatures ?? true,
       terminalAppearance: settings?.terminalAppearance ?? 'dark',
-      terminalMinimumContrast: settings?.terminalMinimumContrast ?? true,
+      terminalMinimumContrast: settings?.terminalMinimumContrast ?? false,
       terminalCustomForeground:
           settings?.terminalCustomForeground ??
           kDefaultTerminalCustomForeground,

@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' show Color;
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_pty/flutter_pty.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
@@ -18,6 +20,7 @@ class DesktopTerminalSession {
     required this.controller,
     required this.pty,
     required this.outputSubscription,
+    required this.backgroundColor,
   });
 
   final int id;
@@ -26,6 +29,7 @@ class DesktopTerminalSession {
   final TerminalController controller;
   final Pty pty;
   final StreamSubscription<List<int>> outputSubscription;
+  final ValueNotifier<Color?> backgroundColor;
 }
 
 class DesktopTerminalState {
@@ -71,7 +75,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   Future<void> createSession({
-    void Function(Terminal)? configureTerminal,
+    void Function(Terminal, ValueNotifier<Color?>)? configureTerminal,
   }) async {
     if (!isSupported) {
       state = state.copyWith(
@@ -82,7 +86,8 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
     final id = _nextId++;
     final terminal = Terminal(maxLines: 10000);
-    configureTerminal?.call(terminal);
+    final backgroundColor = ValueNotifier<Color?>(null);
+    configureTerminal?.call(terminal, backgroundColor);
     final controller = TerminalController();
     final shell = _defaultShell();
 
@@ -96,6 +101,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
+        backgroundColor: backgroundColor,
       );
       state = state.copyWith(
         sessions: [...state.sessions, session],
@@ -111,6 +117,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
                 .replaceAll('{executable}', shell.executable),
           );
     } catch (error) {
+      backgroundColor.dispose();
       final message = translate(
         ref,
         I18nKey.terminalStartFailed,
@@ -128,6 +135,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     required Terminal terminal,
     required TerminalController controller,
     required _ShellCommand shell,
+    required ValueNotifier<Color?> backgroundColor,
   }) {
     final pty = Pty.start(
       shell.executable,
@@ -165,6 +173,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       controller: controller,
       pty: pty,
       outputSubscription: subscription,
+      backgroundColor: backgroundColor,
     );
   }
 
@@ -200,6 +209,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
+        backgroundColor: current.backgroundColor,
       );
       final sessions = [
         for (final session in state.sessions)
@@ -239,6 +249,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     if (session == null) return;
     await session.outputSubscription.cancel();
     session.pty.kill();
+    session.backgroundColor.dispose();
 
     final sessions = state.sessions.where((item) => item.id != id).toList();
     final selectedId = state.selectedId == id
@@ -251,6 +262,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     for (final session in state.sessions) {
       await session.outputSubscription.cancel();
       session.pty.kill();
+      session.backgroundColor.dispose();
     }
     state = const DesktopTerminalState();
   }
@@ -263,6 +275,11 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       ]);
     }
     if (Platform.isLinux || Platform.isMacOS) {
+      // Use system default shell from environment variable
+      final systemShell = Platform.environment['SHELL'];
+      if (systemShell != null && systemShell.isNotEmpty) {
+        return _ShellCommand(systemShell, const []);
+      }
       return const _ShellCommand('bash', []);
     }
     return const _ShellCommand('sh', []);
