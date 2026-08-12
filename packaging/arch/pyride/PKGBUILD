@@ -1,0 +1,128 @@
+# Maintainer: Pyrite Project <https://github.com/pyrite-project>
+
+pkgname=pyride
+pkgver=1.0.2
+pkgrel=2
+pkgdesc='A modern and powerful MicroPython IDE'
+arch=('x86_64')
+url='https://github.com/pyrite-project/pyrite-ide'
+license=('AGPL-3.0-only')
+depends=(
+  'glibc'
+  'gtk3'
+  'libepoxy'
+  'libgcc'
+  'libssh2'
+  'libstdc++'
+  'mpv'
+  'openssl'
+  'xdg-utils'
+  'zlib'
+)
+makedepends=(
+  'cmake'
+  'flutter-bin>=3.44.4'
+  'git'
+  'ninja'
+  'patchelf'
+  'pkgconf'
+  'rust'
+)
+options=('!debug')
+
+_flserial_commit='1a3cdf722043d0ac9e1b717a09bbfda80ea3a6ae'
+_flutter_pty_commit='3254d43186b387ae6c518f52069e32423295b7db'
+_python_runtime_commit='69c9d288cae2443ade74dd1a635c557c90a6165a'
+_super_tree_commit='210708ffc56a8b52c0034556f6ec902922b1d660'
+_xterm_commit='daac82a53e6c73bdbda97c281ae3d33c7cc4c557'
+_python_version='3.14.6'
+_python_build_date='20260712'
+_dart_bridge_version='1.5.1'
+
+source=(
+  "${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz"
+  "flserial-${_flserial_commit}.tar.gz::https://github.com/pyrite-project/flserial/archive/${_flserial_commit}.tar.gz"
+  "flutter_pty-${_flutter_pty_commit}.tar.gz::https://github.com/pyrite-project/flutter_pty/archive/${_flutter_pty_commit}.tar.gz"
+  "python-runtime-${_python_runtime_commit}.tar.gz::https://github.com/pyrite-project/pyrite-ide-python-runtime/archive/${_python_runtime_commit}.tar.gz"
+  "super-tree-${_super_tree_commit}.tar.gz::https://github.com/pyrite-project/super_tree/archive/${_super_tree_commit}.tar.gz"
+  "xterm-${_xterm_commit}.tar.gz::https://github.com/pyrite-project/xterm.dart/archive/${_xterm_commit}.tar.gz"
+  "python-linux-dart-${_python_version}-${CARCH}.tar.gz::https://github.com/flet-dev/python-build/releases/download/${_python_build_date}/python-linux-dart-${_python_version}-${CARCH}.tar.gz"
+  "libdart_bridge-linux-${CARCH}.so::https://github.com/flet-dev/dart-bridge/releases/download/v${_dart_bridge_version}/libdart_bridge-linux-${CARCH}.so"
+  'pyride.desktop'
+)
+noextract=("python-linux-dart-${_python_version}-${CARCH}.tar.gz")
+sha256sums=(
+  'b6d37770497ce60804c94f2da7b74280929efab395e931919cbdcd9195788423'
+  '6db5bf5adc8f62f07221fe738f39d382bc0bfc8c1e17b525ada1c775cd2a7565'
+  '7f62c253f344244e757d324d6a27f5be942dee1c6bce3d10ff1b564de00abaa6'
+  'd5dac43a3751d9f9fa812ea9440ed9073c58c4a1c23e31117134a6b9e065c9ae'
+  'd7eb77f5a6ae8569351942e34f49f181cc00d2c74403a60e4641bb9be5635aae'
+  '03ad366e7d71566df4c7a827977cc481764ac2592a4e0a8223072a803680bfed'
+  '101ab37573059077ead830e9b8ae1a0332965020991858017c2fd4cfe93ad04e'
+  '2b8f377c613251761ab068104673066c588f1194158fca1a77d3efe5fbfcc2e6'
+  'e58f1be19125edaf1d9bd002cc3a9ad414bfbd23d3a0c620367a83273936d915'
+)
+
+prepare() {
+  cd "pyrite-ide-${pkgver}"
+
+  rm -rf flserial flutter_pty python_runtime super_tree xterm.dart
+  cp -a "${srcdir}/flserial-${_flserial_commit}" flserial
+  cp -a "${srcdir}/flutter_pty-${_flutter_pty_commit}" flutter_pty
+  cp -a "${srcdir}/pyrite-ide-python-runtime-${_python_runtime_commit}" python_runtime
+  cp -a "${srcdir}/super_tree-${_super_tree_commit}" super_tree
+  cp -a "${srcdir}/xterm.dart-${_xterm_commit}" xterm.dart
+}
+
+build() {
+  cd "pyrite-ide-${pkgver}"
+
+  export CC=gcc
+  export CXX=g++
+  export DART_SUPPRESS_ANALYTICS=true
+  export FLUTTER_SUPPRESS_ANALYTICS=true
+  export PUB_CACHE="${srcdir}/pub-cache"
+  export FLET_CACHE_DIR="${srcdir}/flet-cache"
+  export SERIOUS_PYTHON_SITE_PACKAGES="${PWD}/assets/python_runtime_boot"
+
+  install -Dm644 \
+    "${srcdir}/python-linux-dart-${_python_version}-${CARCH}.tar.gz" \
+    "${FLET_CACHE_DIR}/python-build/v${_python_version}-${_python_build_date}/python-linux-dart-${_python_version}-${CARCH}.tar.gz"
+  install -Dm755 \
+    "${srcdir}/libdart_bridge-linux-${CARCH}.so" \
+    "${FLET_CACHE_DIR}/dart-bridge/v${_dart_bridge_version}/libdart_bridge-linux-${CARCH}.so"
+
+  flutter pub get
+  dart run serious_python:main package assets/python_runtime_boot \
+    --platform Linux \
+    --asset assets/python_runtime_boot.zip
+  flutter build linux --release --no-pub --build-name="${pkgver}"
+}
+
+package() {
+  cd "pyrite-ide-${pkgver}"
+
+  install -d "${pkgdir}/usr/lib/pyride"
+  cp -dR --no-preserve=ownership \
+    build/linux/x64/release/bundle/. "${pkgdir}/usr/lib/pyride/"
+
+  # These Android/Tk native artifacts are unusable in the Linux bundle.
+  rm -f "${pkgdir}/usr/lib/pyride/lib/libdartjni.so"
+  rm -f "${pkgdir}/usr/lib/pyride/python3.14/lib-dynload/"_tkinter.*.so
+
+  patchelf --set-rpath '$ORIGIN/lib' \
+    "${pkgdir}/usr/lib/pyride/pyrite_ide"
+  local _library
+  for _library in "${pkgdir}/usr/lib/pyride/lib/"*.so*; do
+    patchelf --set-rpath '$ORIGIN' "${_library}"
+  done
+
+  install -d "${pkgdir}/usr/bin"
+  ln -s /usr/lib/pyride/pyrite_ide "${pkgdir}/usr/bin/pyride"
+
+  install -Dm644 "${srcdir}/pyride.desktop" \
+    "${pkgdir}/usr/share/applications/com.can1425.pyride.desktop"
+  install -Dm644 android/app/src/main/res/mipmap-xxxhdpi/launcher_icon.png \
+    "${pkgdir}/usr/share/icons/hicolor/192x192/apps/pyride.png"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=PyriteIDE
+Comment=A modern and powerful MicroPython IDE
+Exec=pyride
+Icon=pyride
+Terminal=false
+Categories=Development;IDE;
+Keywords=MicroPython;Python;IDE;Embedded;Serial;
+StartupNotify=true
+StartupWMClass=pyrite_ide
+

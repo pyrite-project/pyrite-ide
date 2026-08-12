@@ -1,0 +1,63 @@
+# Maintainer: Pyrite Project <https://github.com/pyrite-project>
+
+pkgname=pyride-bin
+pkgver=1.0.2
+pkgrel=1
+pkgdesc='A modern and powerful MicroPython IDE (prebuilt binary)'
+arch=('x86_64')
+url='https://github.com/pyrite-project/pyrite-ide'
+license=('AGPL-3.0-only')
+depends=(
+  'glibc'
+  'gtk3'
+  'libepoxy'
+  'libgcc'
+  'libssh2'
+  'libstdc++'
+  'mpv'
+  'openssl'
+  'xdg-utils'
+  'zlib'
+)
+makedepends=('patchelf')
+options=('!debug')
+provides=("pyride=${pkgver}")
+conflicts=('pyride')
+
+source=(
+  "pyride-${pkgver}-linux-x64.tar.gz::${url}/releases/download/v${pkgver}/pyride-linux-x64.tar.gz"
+  "pyride.png::https://raw.githubusercontent.com/pyrite-project/pyrite-ide/v${pkgver}/android/app/src/main/res/mipmap-xxxhdpi/launcher_icon.png"
+  "LICENSE::https://raw.githubusercontent.com/pyrite-project/pyrite-ide/v${pkgver}/LICENSE"
+  'pyride.desktop'
+)
+sha256sums=(
+  '39e08965ed81edc8460f3b17a05648fe7714d9f8015ec6880da1f7f54499c457'
+  '24b0e25cebec583be1b329f4427d783f912a3362ccad0704f625298db351daba'
+  '8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef'
+  'e58f1be19125edaf1d9bd002cc3a9ad414bfbd23d3a0c620367a83273936d915'
+)
+
+package() {
+  install -d "${pkgdir}/usr/lib/pyride"
+  cp -dR --no-preserve=ownership bundle/. "${pkgdir}/usr/lib/pyride/"
+
+  # These Android/Tk native artifacts are unusable in the Linux bundle.
+  rm -f "${pkgdir}/usr/lib/pyride/lib/libdartjni.so"
+  rm -f "${pkgdir}/usr/lib/pyride/python3.14/lib-dynload/"_tkinter.*.so
+
+  patchelf --set-rpath '$ORIGIN/lib' \
+    "${pkgdir}/usr/lib/pyride/pyrite_ide"
+  local _library
+  for _library in "${pkgdir}/usr/lib/pyride/lib/"*.so*; do
+    patchelf --set-rpath '$ORIGIN' "${_library}"
+  done
+
+  install -d "${pkgdir}/usr/bin"
+  ln -s /usr/lib/pyride/pyrite_ide "${pkgdir}/usr/bin/pyride"
+
+  install -Dm644 pyride.desktop \
+    "${pkgdir}/usr/share/applications/com.can1425.pyride.desktop"
+  install -Dm644 pyride.png \
+    "${pkgdir}/usr/share/icons/hicolor/192x192/apps/pyride.png"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

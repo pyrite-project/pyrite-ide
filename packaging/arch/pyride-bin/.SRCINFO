@@ -1,0 +1,31 @@
+pkgbase = pyride-bin
+	pkgdesc = A modern and powerful MicroPython IDE (prebuilt binary)
+	pkgver = 1.0.2
+	pkgrel = 1
+	url = https://github.com/pyrite-project/pyrite-ide
+	arch = x86_64
+	license = AGPL-3.0-only
+	makedepends = patchelf
+	depends = glibc
+	depends = gtk3
+	depends = libepoxy
+	depends = libgcc
+	depends = libssh2
+	depends = libstdc++
+	depends = mpv
+	depends = openssl
+	depends = xdg-utils
+	depends = zlib
+	provides = pyride=1.0.2
+	conflicts = pyride
+	options = !debug
+	source = pyride-1.0.2-linux-x64.tar.gz::https://github.com/pyrite-project/pyrite-ide/releases/download/v1.0.2/pyride-linux-x64.tar.gz
+	source = pyride.png::https://raw.githubusercontent.com/pyrite-project/pyrite-ide/v1.0.2/android/app/src/main/res/mipmap-xxxhdpi/launcher_icon.png
+	source = LICENSE::https://raw.githubusercontent.com/pyrite-project/pyrite-ide/v1.0.2/LICENSE
+	source = pyride.desktop
+	sha256sums = 39e08965ed81edc8460f3b17a05648fe7714d9f8015ec6880da1f7f54499c457
+	sha256sums = 24b0e25cebec583be1b329f4427d783f912a3362ccad0704f625298db351daba
+	sha256sums = 8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef
+	sha256sums = e58f1be19125edaf1d9bd002cc3a9ad414bfbd23d3a0c620367a83273936d915
+
+pkgname = pyride-bin
