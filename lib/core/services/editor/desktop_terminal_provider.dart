@@ -28,7 +28,7 @@ class DesktopTerminalSession {
   final Terminal terminal;
   final TerminalController controller;
   final Pty pty;
-  final StreamSubscription<List<int>> outputSubscription;
+  final StreamSubscription<String> outputSubscription;
   final ValueNotifier<Color?> backgroundColor;
 }
 
@@ -151,9 +151,9 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     terminal.onResize = (int cols, int rows, int pw, int ph) {
       pty.resize(rows, cols);
     };
-    final subscription = pty.output.listen((data) {
-      terminal.write(utf8.decode(data, allowMalformed: true));
-    });
+    final subscription = decodeTerminalOutput(
+      pty.output,
+    ).listen(terminal.write);
     pty.exitCode.then(
       (code) => _handleProcessExit(
         id: id,
@@ -318,6 +318,12 @@ class _ShellCommand {
 
   final String executable;
   final List<String> arguments;
+}
+
+Stream<String> decodeTerminalOutput(Stream<List<int>> output) {
+  // Use the decoder's bind API so Dart owns the incremental chunked conversion
+  // and the input remains the PTY's Stream<List<int>> type.
+  return const Utf8Decoder(allowMalformed: true).bind(output);
 }
 
 final desktopTerminalProvider =

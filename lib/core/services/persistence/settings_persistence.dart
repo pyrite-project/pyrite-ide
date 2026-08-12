@@ -48,6 +48,7 @@ class SettingsPersistedData {
   final bool terminalMinimumContrast;
   final int terminalCustomForeground;
   final int terminalCustomBackground;
+  final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
@@ -106,6 +107,7 @@ class SettingsPersistedData {
     this.terminalMinimumContrast = false,
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
+    this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',
@@ -165,6 +167,7 @@ class SettingsPersistedData {
     'terminalMinimumContrast': terminalMinimumContrast,
     'terminalCustomForeground': terminalCustomForeground,
     'terminalCustomBackground': terminalCustomBackground,
+    'terminalCustomPalette': terminalCustomPalette,
     'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
     'confirmShortcut': confirmShortcut,
@@ -236,6 +239,12 @@ class SettingsPersistedData {
     terminalCustomBackground:
         json['terminalCustomBackground'] as int? ??
         kDefaultTerminalCustomBackground,
+    terminalCustomPalette:
+        (json['terminalCustomPalette'] as List?)
+            ?.whereType<num>()
+            .map((value) => value.toInt())
+            .toList() ??
+        kDefaultTerminalCustomPalette,
     useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',

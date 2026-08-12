@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
@@ -144,6 +145,14 @@ class SdkDataApi {
     if (name == null || name.isEmpty) {
       _respondError(envelope, respond, '缺少 name');
       return;
+    }
+
+    if (data is Map<String, dynamic>) {
+      final terminalError = PluginThemeData.validateTerminalData(data);
+      if (terminalError != null) {
+        _respondError(envelope, respond, terminalError);
+        return;
+      }
     }
 
     // Keep runtime contributions scoped to the current plugin session.

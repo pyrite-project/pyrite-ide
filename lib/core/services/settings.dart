@@ -128,6 +128,9 @@ StateProvider<int> terminalCustomForeground = StateProvider<int>(
 StateProvider<int> terminalCustomBackground = StateProvider<int>(
   (ref) => kDefaultTerminalCustomBackground,
 );
+StateProvider<List<int>> terminalCustomPalette = StateProvider<List<int>>(
+  (ref) => kDefaultTerminalCustomPalette,
+);
 
 StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(
   (ref) => false,

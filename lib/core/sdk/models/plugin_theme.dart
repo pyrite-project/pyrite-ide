@@ -81,6 +81,11 @@ class PluginThemeData {
   final String? density;
   final bool? useMaterial3;
 
+  // Terminal
+  final Color? terminalForeground;
+  final Color? terminalBackground;
+  final List<Color>? terminalAnsi;
+
   // Sub-themes (FlexSubThemesData)
   final double? defaultRadius;
   final double? inputDecoratorRadius;
@@ -231,6 +236,9 @@ class PluginThemeData {
     this.fontFamilyFallback,
     this.density,
     this.useMaterial3,
+    this.terminalForeground,
+    this.terminalBackground,
+    this.terminalAnsi,
     this.defaultRadius,
     this.inputDecoratorRadius,
     this.cardRadius,
@@ -290,11 +298,42 @@ class PluginThemeData {
 
   static Color? _parseColor(dynamic value) {
     if (value == null) return null;
+    if (value is int) {
+      if (value < 0 || value > 0xFFFFFFFF) return null;
+      return Color(value <= 0xFFFFFF ? 0xFF000000 | value : value);
+    }
     final s = value.toString().replaceFirst('#', '');
+    final parsed = int.tryParse(s, radix: 16);
+    if (parsed == null) return null;
     if (s.length == 6) {
-      return Color(int.parse('FF$s', radix: 16));
+      return Color(0xFF000000 | parsed);
     } else if (s.length == 8) {
-      return Color(int.parse(s, radix: 16));
+      return Color(parsed);
+    }
+    return null;
+  }
+
+  static List<Color>? _parseTerminalAnsi(dynamic value) {
+    if (value == null) return null;
+    if (value is! List || value.length != 16) return null;
+    final colors = <Color>[];
+    for (final item in value) {
+      final color = _parseColor(item);
+      if (color == null) return null;
+      colors.add(color);
+    }
+    return colors;
+  }
+
+  static String? validateTerminalData(Map<String, dynamic> data) {
+    for (final key in const ['terminal.foreground', 'terminal.background']) {
+      if (data.containsKey(key) && _parseColor(data[key]) == null) {
+        return '$key must be an ARGB integer or #RRGGBB/#AARRGGBB color';
+      }
+    }
+    if (data.containsKey('terminal.ansi') &&
+        _parseTerminalAnsi(data['terminal.ansi']) == null) {
+      return 'terminal.ansi must contain exactly 16 valid colors';
     }
     return null;
   }
@@ -445,6 +484,10 @@ class PluginThemeData {
       fontFamilyFallback: _parseStringList(data['global.fontFamilyFallback']),
       density: data['global.density']?.toString(),
       useMaterial3: _parseBool(data['global.useMaterial3']),
+      // Terminal
+      terminalForeground: _parseColor(data['terminal.foreground']),
+      terminalBackground: _parseColor(data['terminal.background']),
+      terminalAnsi: _parseTerminalAnsi(data['terminal.ansi']),
       // Sub-themes
       defaultRadius: _parseDouble(data['sub.defaultRadius']),
       inputDecoratorRadius: _parseDouble(data['sub.inputDecoratorRadius']),

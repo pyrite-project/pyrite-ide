@@ -158,7 +158,9 @@ class PluginRunManagerNotifier
           liveManager = manager;
           _bindManager(manager, dataOnly: true);
         },
-        onStopped: () => _removeRuntimeState(plugin.id),
+        // DataPlugin contributions are persistent data, not runtime state.
+        onStopped: () =>
+            _removeRuntimeState(plugin.id, removeDataContributions: false),
       );
       metricsRegistry.markActivated(plugin.id);
       metricsRegistry.endSession(plugin.id);
@@ -260,7 +262,10 @@ class PluginRunManagerNotifier
     ref.read(contextKeyHostProvider);
   }
 
-  void _removeRuntimeState(String pluginId) {
+  void _removeRuntimeState(
+    String pluginId, {
+    bool removeDataContributions = true,
+  }) {
     final runtimeSession = _runtimeHost.sessions[pluginId];
     final metrics = ref.read(pluginMetricsProvider).forPlugin(pluginId);
     if (runtimeSession?.state == PluginSessionState.failed) {
@@ -269,7 +274,9 @@ class PluginRunManagerNotifier
     } else if (metrics?.state != 'stopped') {
       metrics?.markStopped();
     }
-    ref.read(dataRegistryProvider).removePlugin(pluginId);
+    if (removeDataContributions) {
+      ref.read(dataRegistryProvider).removePlugin(pluginId);
+    }
     ref.read(pluginEventBusProvider).clearPlugin(pluginId);
     ref.read(viewModelStoreProvider).clearPlugin(pluginId);
     ref.read(componentMethodRegistryProvider).clearPlugin(pluginId);

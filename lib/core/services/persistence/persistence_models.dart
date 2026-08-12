@@ -93,6 +93,7 @@ class PersistedData {
   final bool terminalMinimumContrast;
   final int terminalCustomForeground;
   final int terminalCustomBackground;
+  final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
   final String confirmShortcut;
@@ -169,6 +170,7 @@ class PersistedData {
     this.terminalMinimumContrast = false,
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
+    this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
     this.confirmShortcut = 'Ctrl+Enter',

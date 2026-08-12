@@ -181,6 +181,11 @@ void _applyData(PersistedData data) {
       data.terminalCustomForeground;
   container.read(terminalCustomBackground.notifier).state =
       data.terminalCustomBackground;
+  container
+      .read(terminalCustomPalette.notifier)
+      .state = data.terminalCustomPalette.length == 16
+      ? data.terminalCustomPalette
+      : kDefaultTerminalCustomPalette;
   container.read(useMaterialContextMenu.notifier).state =
       data.useMaterialContextMenu;
   container
@@ -243,6 +248,10 @@ void main() async {
   GitDebugLog.startSession();
   GitDebugLog.log('main start');
   PyriteWidgetsBinding.ensureInitialized();
+
+  // Wait for Material Icons font to be fully loaded before first frame.
+  // This prevents the "tofu" (question mark box) issue on desktop platforms.
+  await Future.delayed(const Duration(milliseconds: 50));
   VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
   GitDebugLog.log('WidgetsFlutterBinding initialized');
   await GitDebugLog.timeAsync(

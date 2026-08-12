@@ -26,6 +26,7 @@ import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
@@ -33,6 +34,7 @@ import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
 import 'package:pyrite_ide/core/sdk/command_service.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/menu_resolver.dart';
+import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
@@ -1210,7 +1212,6 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                         session.terminal,
                         terminalTheme,
                         backgroundColor: session.backgroundColor,
-                        
                       ),
                       controller: session.controller,
                       theme: effectiveTheme,
@@ -1347,21 +1348,21 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
   final scheme = Theme.of(context).colorScheme;
   final appearance = ref.watch(terminalAppearance);
   final minimumContrastRatio = ref.watch(terminalMinimumContrast) ? 4.5 : 1.0;
+  late final TerminalTheme baseTheme;
   if (appearance == TerminalAppearance.custom) {
-    return _terminalThemeFromPalette(
+    final palette = ref.watch(terminalCustomPalette);
+    baseTheme = _terminalThemeFromPalette(
       foreground: Color(ref.watch(terminalCustomForeground)),
       background: Color(ref.watch(terminalCustomBackground)),
-      palette: _paletteFromTheme(TerminalThemes.defaultTheme),
+      palette: palette.length == 16
+          ? palette.map(Color.new).toList()
+          : kDefaultTerminalCustomPalette.map(Color.new).toList(),
       minimumContrastRatio: minimumContrastRatio,
     );
-  }
-
-  final useLight =
-      appearance == TerminalAppearance.light ||
+  } else if (appearance == TerminalAppearance.light ||
       appearance == TerminalAppearance.followIde &&
-          Theme.of(context).brightness == Brightness.light;
-  if (useLight) {
-    return _terminalThemeFromPalette(
+          Theme.of(context).brightness == Brightness.light) {
+    baseTheme = _terminalThemeFromPalette(
       foreground: appearance == TerminalAppearance.followIde
           ? scheme.onSurface
           : const Color(0xFF1F2328),
@@ -1371,18 +1372,43 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
       palette: _lightTerminalPalette,
       minimumContrastRatio: minimumContrastRatio,
     );
+  } else {
+    final defaultTheme = TerminalThemes.defaultTheme;
+    baseTheme = _terminalThemeFromPalette(
+      foreground: appearance == TerminalAppearance.followIde
+          ? scheme.onSurface
+          : const Color(0xFFFFFFFF),
+      background: appearance == TerminalAppearance.followIde
+          ? scheme.surface
+          : defaultTheme.background,
+      palette: _paletteFromTheme(defaultTheme),
+      minimumContrastRatio: minimumContrastRatio,
+    );
   }
 
-  final defaultTheme = TerminalThemes.defaultTheme;
+  final activeThemeId = ref.watch(activePluginThemeId);
+  final registry = ref.watch(dataRegistryProvider);
+  final pluginTheme = activeThemeId == null
+      ? null
+      : registry.getThemeById(activeThemeId);
+  return _applyPluginTerminalTheme(baseTheme, pluginTheme);
+}
+
+TerminalTheme _applyPluginTerminalTheme(
+  TerminalTheme base,
+  PluginThemeData? pluginTheme,
+) {
+  if (pluginTheme == null ||
+      pluginTheme.terminalForeground == null &&
+          pluginTheme.terminalBackground == null &&
+          pluginTheme.terminalAnsi == null) {
+    return base;
+  }
   return _terminalThemeFromPalette(
-    foreground: appearance == TerminalAppearance.followIde
-        ? scheme.onSurface
-        : const Color(0xFFFFFFFF),
-    background: appearance == TerminalAppearance.followIde
-        ? scheme.surface
-        : defaultTheme.background,
-    palette: _paletteFromTheme(defaultTheme),
-    minimumContrastRatio: minimumContrastRatio,
+    foreground: pluginTheme.terminalForeground ?? base.foreground,
+    background: pluginTheme.terminalBackground ?? base.background,
+    palette: pluginTheme.terminalAnsi ?? _paletteFromTheme(base),
+    minimumContrastRatio: base.minimumContrastRatio,
   );
 }
 

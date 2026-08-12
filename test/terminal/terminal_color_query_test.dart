@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:xterm/xterm.dart';
 
@@ -52,25 +54,6 @@ void main() {
     expect(background.value, isNull);
   });
 
-  test('background override reports the theme but remembers OSC 11', () {
-    final output = <String>[];
-    final background = ValueNotifier<Color?>(null);
-    addTearDown(background.dispose);
-    final terminal = Terminal(onOutput: output.add);
-    configureTerminalColorQueries(
-      terminal,
-      TerminalThemes.defaultTheme,
-      backgroundColor: background,
-      overrideBackground: true,
-    );
-
-    terminal.write('\x1b]11;#123456\x1b\\');
-    terminal.write('\x1b]11;?\x07');
-
-    expect(background.value, const Color(0xFF123456));
-    expect(output.single, '\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\');
-  });
-
   test(
     'OSC colors accept standard component widths and reject malformed data',
     () {
@@ -117,7 +100,6 @@ void main() {
     expect(container.read(terminalLigatures), isTrue);
     expect(container.read(terminalAppearance), TerminalAppearance.dark);
     expect(container.read(terminalMinimumContrast), isFalse);
-    expect(container.read(terminalOverrideBackground), isFalse);
     expect(theme.foreground, const Color(0xFFFFFFFF));
     expect(theme.minimumContrastRatio, 1.0);
 
@@ -127,5 +109,50 @@ void main() {
 
     expect(container.read(terminalCustomForeground), 0xFFFFFFFF);
     expect(theme.foreground, const Color(0xFFFFFFFF));
+  });
+
+  testWidgets('active UI theme can also provide terminal colors', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final ansi = List<String>.generate(
+      16,
+      (index) => '#${(index + 1).toRadixString(16).padLeft(6, '0')}',
+    );
+    container.read(dataRegistryProvider).registerTheme('fixture', 'shared', {
+      'color.primary': '#112233',
+      'terminal.foreground': '#AABBCC',
+      'terminal.background': '#101820',
+      'terminal.ansi': ansi,
+    });
+    container.read(activePluginThemeId.notifier).state = 'fixture::shared';
+    late TerminalTheme theme;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, _) {
+              theme = buildTerminalTheme(context, ref);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(theme.foreground, const Color(0xFFAABBCC));
+    expect(theme.background, const Color(0xFF101820));
+    expect(theme.red, const Color(0xFF000002));
+    expect(theme.brightWhite, const Color(0xFF000010));
+    expect(
+      container
+          .read(dataRegistryProvider)
+          .getThemeById('fixture::shared')
+          ?.colorPrimary,
+      const Color(0xFF112233),
+    );
   });
 }

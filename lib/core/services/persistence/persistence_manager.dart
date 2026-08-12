@@ -103,6 +103,8 @@ class PersistenceManager {
       terminalCustomBackground:
           settings?.terminalCustomBackground ??
           kDefaultTerminalCustomBackground,
+      terminalCustomPalette:
+          settings?.terminalCustomPalette ?? kDefaultTerminalCustomPalette,
       useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
@@ -185,6 +187,7 @@ class PersistenceManager {
           terminalMinimumContrast: container.read(terminalMinimumContrast),
           terminalCustomForeground: container.read(terminalCustomForeground),
           terminalCustomBackground: container.read(terminalCustomBackground),
+          terminalCustomPalette: container.read(terminalCustomPalette),
           useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
           confirmShortcut: container.read(confirmShortcutProvider),
