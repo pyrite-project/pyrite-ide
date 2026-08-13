@@ -5,9 +5,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
 import 'package:tabbed_view/src/draggable_config.dart';
-import 'package:tabbed_view/src/draggable_data.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 import 'package:tabbed_view/src/tab_status.dart';
 import 'package:tabbed_view/src/theme/side_tabs_layout.dart';
@@ -15,10 +15,9 @@ import 'package:tabbed_view/src/theme/tab_decoration_builder.dart';
 import 'package:tabbed_view/src/theme/tab_theme_data.dart';
 import 'package:tabbed_view/src/theme/tabbed_view_theme_data.dart';
 import 'package:tabbed_view/src/theme/theme_widget.dart';
+import 'package:tabbed_view/src/theme/vertical_alignment.dart';
 import 'package:tabbed_view/src/internal/size_holder.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
-import 'package:tabbed_view/src/internal/tabs_area/drop_tab_widget.dart';
-import 'package:tabbed_view/src/internal/tabs_area/tab_drag_feedback_widget.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_header_widget.dart';
 
 /// Listener for the tabs with the mouse over.
@@ -31,7 +30,7 @@ const double _defaultMaxTabMainSize = 240;
 /// The tab widget. Displays the tab text and its buttons.
 class TabWidget extends ConsumerWidget {
   const TabWidget({
-    required UniqueKey key,
+    required Key key,
     required this.index,
     required this.status,
     required this.provider,
@@ -155,41 +154,14 @@ class TabWidget extends ConsumerWidget {
       if (draggableConfig.canDrag) {
         Widget feedback = draggableConfig.feedback != null
             ? draggableConfig.feedback!
-            : TabDragFeedbackWidget(tab: tab, tabTheme: tabTheme);
+            : _TabDragFeedback(tab: tab, tabTheme: tabTheme);
 
-        widget = Draggable<DraggableData>(
-          feedback: Material(child: feedback),
-          data: DraggableData(provider.controller, tab, provider.dragScope),
-          feedbackOffset: draggableConfig.feedbackOffset,
-          dragAnchorStrategy: draggableConfig.dragAnchorStrategy,
-          onDragStarted: () {
-            provider.onTabDrag(index);
-            if (draggableConfig.onDragStarted != null) {
-              draggableConfig.onDragStarted!();
-            }
-          },
-          onDragUpdate: (details) {
-            if (draggableConfig.onDragUpdate != null) {
-              draggableConfig.onDragUpdate!(details);
-            }
-          },
-          onDraggableCanceled: (velocity, offset) {
-            provider.onTabDrag(null);
-            if (draggableConfig.onDraggableCanceled != null) {
-              draggableConfig.onDraggableCanceled!(velocity, offset);
-            }
-          },
-          onDragEnd: (details) {
-            if (draggableConfig.onDragEnd != null) {
-              draggableConfig.onDragEnd!(details);
-            }
-          },
-          onDragCompleted: () {
-            provider.onTabDrag(null);
-            if (draggableConfig.onDragCompleted != null) {
-              draggableConfig.onDragCompleted!();
-            }
-          },
+        widget = NativeTabDraggable(
+          provider: provider,
+          tab: tab,
+          index: index,
+          config: draggableConfig,
+          feedback: feedback,
           child: widget,
         );
 
@@ -204,10 +176,10 @@ class TabWidget extends ConsumerWidget {
 
     if (provider.tabReorderEnabled &&
         provider.draggingTabIndex != TabDataHelper.indexFrom(tab)) {
-      return DropTabWidget(
+      return NativeTabDropRegion(
         provider: provider,
-        newIndex: TabDataHelper.indexFrom(tab),
-        halfWidthDrop: true,
+        position: theme.tabsArea.position,
+        targetTab: tab,
         child: widget,
       );
     }
@@ -234,6 +206,49 @@ class _TabHeaderProxy extends SingleChildRenderObjectWidget {
     _RenderTabContentProxy renderObject,
   ) {
     renderObject.sizeHolder = sizeHolder;
+  }
+}
+
+class _TabDragFeedback extends StatelessWidget {
+  const _TabDragFeedback({required this.tab, required this.tabTheme});
+
+  final TabData tab;
+  final TabThemeData tabTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> children = [];
+    final Widget? leading = tab.leading?.call(context, TabStatus.normal);
+    if (leading != null) {
+      children.add(leading);
+    }
+
+    Widget text = Text(
+      tab.text,
+      style: tabTheme.textStyle,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (tab.textSize != null && tab.textSize! > 0) {
+      text = SizedBox(width: tab.textSize, child: text);
+    }
+    children.add(text);
+
+    CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.center;
+    if (tabTheme.verticalAlignment == VerticalAlignment.top) {
+      crossAxisAlignment = CrossAxisAlignment.start;
+    } else if (tabTheme.verticalAlignment == VerticalAlignment.bottom) {
+      crossAxisAlignment = CrossAxisAlignment.end;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: tabTheme.draggingDecoration,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: crossAxisAlignment,
+        children: children,
+      ),
+    );
   }
 }
 

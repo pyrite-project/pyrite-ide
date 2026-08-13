@@ -86,6 +86,9 @@ class PluginThemeData {
   final Color? terminalBackground;
   final List<Color>? terminalAnsi;
 
+  final Map<String, TextStyle> _editorLightStyles;
+  final Map<String, TextStyle> _editorDarkStyles;
+
   // Sub-themes (FlexSubThemesData)
   final double? defaultRadius;
   final double? inputDecoratorRadius;
@@ -239,6 +242,8 @@ class PluginThemeData {
     this.terminalForeground,
     this.terminalBackground,
     this.terminalAnsi,
+    Map<String, TextStyle>? editorLightStyles,
+    Map<String, TextStyle>? editorDarkStyles,
     this.defaultRadius,
     this.inputDecoratorRadius,
     this.cardRadius,
@@ -292,7 +297,16 @@ class PluginThemeData {
     this.chipBackgroundColor,
     this.bottomSheetBackgroundColor,
     this.popupMenuBackgroundColor,
-  });
+  }) : _editorLightStyles = editorLightStyles ?? const {},
+       _editorDarkStyles = editorDarkStyles ?? const {};
+
+  Map<String, TextStyle> editorStyles(Brightness brightness) =>
+      brightness == Brightness.dark
+      ? {..._editorLightStyles, ..._editorDarkStyles}
+      : _editorLightStyles;
+
+  bool get hasEditorStyles =>
+      _editorLightStyles.isNotEmpty || _editorDarkStyles.isNotEmpty;
 
   // ── Parsing ──
 
@@ -323,6 +337,21 @@ class PluginThemeData {
       colors.add(color);
     }
     return colors;
+  }
+
+  static Map<String, TextStyle> _parseEditorStyles(
+    Map<String, dynamic> data,
+    String prefix,
+  ) {
+    final styles = <String, TextStyle>{};
+    for (final entry in data.entries) {
+      if (!entry.key.startsWith(prefix)) continue;
+      final token = entry.key.substring(prefix.length);
+      if (token.isEmpty) continue;
+      final color = _parseColor(entry.value);
+      if (color != null) styles[token] = TextStyle(color: color);
+    }
+    return styles;
   }
 
   static String? validateTerminalData(Map<String, dynamic> data) {
@@ -488,6 +517,8 @@ class PluginThemeData {
       terminalForeground: _parseColor(data['terminal.foreground']),
       terminalBackground: _parseColor(data['terminal.background']),
       terminalAnsi: _parseTerminalAnsi(data['terminal.ansi']),
+      editorLightStyles: _parseEditorStyles(data, 'editor.'),
+      editorDarkStyles: _parseEditorStyles(data, 'dark.editor.'),
       // Sub-themes
       defaultRadius: _parseDouble(data['sub.defaultRadius']),
       inputDecoratorRadius: _parseDouble(data['sub.inputDecoratorRadius']),

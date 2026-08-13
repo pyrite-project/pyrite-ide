@@ -71,7 +71,8 @@ dependencies:
   serious_python:
     path: python_runtime/src/serious_python
   web_socket_channel: 3.0.3
-  code_forge: 10.6.0
+  code_forge:
+    path: code_forge
   extension_type_unions: 1.0.10
   video_player: 2.13.0
   video_player_media_kit: 2.0.0

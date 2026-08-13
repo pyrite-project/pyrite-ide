@@ -59,18 +59,21 @@ LspStubsConfig buildLspStubsConfig(Ref ref) {
       existingPythonPath,
   ].join(Platform.isWindows ? ';' : ':');
 
-  final pylspConfiguration = {
+  final languageServerConfiguration = {
     'pylsp': {
       'plugins': {
         'jedi': {'extra_paths': paths, 'prioritize_extra_paths': true},
       },
     },
+    'basedpyright': {
+      'analysis': {'extraPaths': paths},
+    },
   };
 
   return LspStubsConfig(
     paths: paths,
-    initializationOptions: pylspConfiguration,
-    workspaceConfiguration: pylspConfiguration,
+    initializationOptions: languageServerConfiguration,
+    workspaceConfiguration: languageServerConfiguration,
     environment: {
       'PYRITE_MICROPYTHON_STUBS_ENABLED': '1',
       'PYRITE_MICROPYTHON_STUBS_PATHS': paths.join(Platform.pathSeparator),

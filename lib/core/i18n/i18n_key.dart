@@ -700,6 +700,10 @@ enum I18nKey {
     '选择代码高亮配色方案，亮色/暗色随应用主题自动切换。',
   ),
   settingsEditorColorScheme('settings.editor.color_scheme', '配色方案'),
+  settingsEditorThemePluginLocked(
+    'settings.editor.theme.plugin_locked',
+    '当前颜色主题已指定编辑器高亮配色。',
+  ),
   settingsEditorUploadConfirmSection(
     'settings.editor.upload_confirm.title',
     '上传确认',

@@ -164,3 +164,37 @@ Map<String, TextStyle> applySurfaceBackground(
   }
   return result;
 }
+
+Map<String, TextStyle> mergePluginEditorTheme(
+  Map<String, TextStyle> base,
+  Map<String, TextStyle>? override,
+) {
+  if (override == null || override.isEmpty) return base;
+  final result = Map<String, TextStyle>.from(base);
+  for (final entry in override.entries) {
+    result[entry.key] = (base[entry.key] ?? const TextStyle()).copyWith(
+      color: entry.value.color,
+    );
+  }
+  return result;
+}
+
+/// Resolves the complete highlighter theme used by the editor.
+///
+/// Plugin themes contribute token colors rather than complete style maps. When
+/// one is active, use the default theme only to fill missing token styles so a
+/// user's saved editor-theme choice cannot affect the plugin contribution.
+Map<String, TextStyle> resolveActiveEditorTheme(
+  EditorThemeEntry selectedEntry,
+  Brightness brightness, {
+  Map<String, TextStyle>? pluginStyles,
+  bool pluginThemeActive = false,
+}) {
+  final usePluginTheme =
+      pluginThemeActive || (pluginStyles != null && pluginStyles.isNotEmpty);
+  final base = resolveEditorTheme(
+    usePluginTheme ? editorThemes.first : selectedEntry,
+    brightness,
+  );
+  return mergePluginEditorTheme(base, pluginStyles);
+}

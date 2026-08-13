@@ -147,7 +147,9 @@ class TabHeaderWidget extends StatelessWidget {
         child: Container(
           alignment: Alignment.centerLeft,
           padding: padding,
-          child: SizedBox(width: tab.textSize, child: tabText),
+          child: tab.textSize == null || tab.textSize! <= 0
+              ? tabText
+              : SizedBox(width: tab.textSize, child: tabText),
         ),
       ),
     );

@@ -4,7 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:tabbed_view/src/internal/content_area.dart';
+import 'package:pyrite_ide/shared/tabbed_view/content_area.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabs_area.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';

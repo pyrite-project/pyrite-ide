@@ -57,6 +57,19 @@ const _localDragSourceValue = 'local';
 const _boardDragSourceValue = 'board';
 final Map<_FileDragSource, Rect> _dropRegionRects = <_FileDragSource, Rect>{};
 
+TextStyle? fileTreeLabelStyle({
+  required ColorScheme colorScheme,
+  required TextStyle? baseStyle,
+  required bool isHidden,
+  required bool isSelected,
+}) {
+  if (!isHidden) return baseStyle;
+
+  return (baseStyle ?? const TextStyle()).copyWith(
+    color: isSelected ? colorScheme.onSecondaryContainer : colorScheme.outline,
+  );
+}
+
 class _DropRegionBounds extends SingleChildRenderObjectWidget {
   const _DropRegionBounds({required this.source, required super.child});
 
@@ -1588,11 +1601,12 @@ class ProjectFiles extends ConsumerWidget {
                     ).labelStyle;
                     final label = Text(
                       node.data.name,
-                      style: isGitIgnored
-                          ? treeLabelStyle?.copyWith(
-                              color: Theme.of(context).colorScheme.outline,
-                            )
-                          : treeLabelStyle,
+                      style: fileTreeLabelStyle(
+                        colorScheme: Theme.of(context).colorScheme,
+                        baseStyle: treeLabelStyle,
+                        isHidden: isGitIgnored,
+                        isSelected: isSelected,
+                      ),
                     );
                     final row = Row(
                       children: [

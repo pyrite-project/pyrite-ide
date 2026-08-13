@@ -13,3 +13,6 @@
 [submodule "flutter_pty"]
 	path = flutter_pty
 	url = https://github.com/pyrite-project/flutter_pty.git
+[submodule "code_forge"]
+	path = code_forge
+	url = https://github.com/pyrite-project/code_forge.git

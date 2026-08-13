@@ -100,6 +100,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           _buildFileTabLeading(context, isBoardFile: isBoardFile),
       value: value,
       text: file.path.split(pattern).last,
+      keepAlive: true,
       content: EditCore(
         file: file,
         editorController: editorController,
@@ -159,6 +160,21 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   }) async {
     file ??= await local.sysGetFile();
     if (file != null) {
+      for (TabData tab in state.tabs) {
+        final value = tab.value as TabDataValue;
+        final sameLocalFile = value.filePath == file.path;
+        final sameBoardFile =
+            boardFilePath != null && value.boardFilePath == boardFilePath;
+        if (sameLocalFile || sameBoardFile) {
+          TabbedViewController newController = TabbedViewController(
+            List.from(state.tabs),
+          );
+          newController.selectTab(tab);
+          state = newController;
+          return;
+        }
+      }
+
       final TabData? newTab = await _createNewFileTab(
         file,
         await ref
@@ -173,21 +189,6 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
       if (newTab == null) {
         return;
-      }
-
-      for (TabData tab in state.tabs) {
-        final value = tab.value as TabDataValue;
-        final sameLocalFile = value.filePath == file.path;
-        final sameBoardFile =
-            boardFilePath != null && value.boardFilePath == boardFilePath;
-        if (sameLocalFile || sameBoardFile) {
-          TabbedViewController newController = TabbedViewController(
-            List.from(state.tabs),
-          );
-          newController.selectTab(tab);
-          state = newController;
-          return;
-        }
       }
 
       state.addTab(newTab);

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -15,6 +16,11 @@ class EditorSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final activeThemeId = ref.watch(activePluginThemeId);
+    final pluginTheme = activeThemeId == null
+        ? null
+        : ref.watch(dataRegistryProvider).getThemeById(activeThemeId);
+    final editorThemeLocked = pluginTheme?.hasEditorStyles ?? false;
     final body = ListView(
       padding: EdgeInsets.all(12),
       children: [
@@ -44,13 +50,31 @@ class EditorSettings extends ConsumerWidget {
           description: I18nKey.settingsEditorThemeDescription,
           children: [
             ListTile(
+              key: const Key('editor-theme-selector'),
+              enabled: !editorThemeLocked,
               title: const UseText(I18nKey.settingsEditorColorScheme),
-              subtitle: Text(
-                findEditorThemeByKey(ref.watch(editorThemeKey))?.label ??
-                    "Atom One",
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    editorThemeLocked
+                        ? pluginTheme!.name
+                        : findEditorThemeByKey(
+                                ref.watch(editorThemeKey),
+                              )?.label ??
+                              "Atom One",
+                  ),
+                  if (editorThemeLocked)
+                    const UseText(
+                      I18nKey.settingsEditorThemePluginLocked,
+                      maxLines: 2,
+                    ),
+                ],
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => showThemePickerDialog(context, ref),
+              onTap: editorThemeLocked
+                  ? null
+                  : () => showThemePickerDialog(context, ref),
             ),
           ],
         ),

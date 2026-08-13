@@ -10,7 +10,7 @@ import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 const Map<String, String> editorTextFonts = {
   "JetBrains Mono": "JetBrainsMono",
   "JetBrains Maple Mono": "JetBrainsMapleMono",
-  "custom": "",
+  "custom": "custom",
 };
 
 String getFontDisplayName(String name) {
