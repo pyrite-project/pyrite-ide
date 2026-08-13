@@ -14,13 +14,17 @@ void setGitDiffPatch(CodeForgeController controller, String patch) {
   controller
     ..clearGitDiffDecorations()
     ..text = display.text
-    ..readOnly = true
-    ..setGitDiffDecorations(
+    ..readOnly = true;
+
+  // Apply decorations after the text layout is complete to prevent overlap
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    controller.setGitDiffDecorations(
       addedRanges: display.addedRanges,
       removedRanges: display.removedRanges,
       addedColor: _gitDiffAddedColor,
       removedColor: _gitDiffRemovedColor,
     );
+  });
 }
 
 class GitDiffEditor extends ConsumerWidget {

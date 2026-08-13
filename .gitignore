@@ -55,3 +55,8 @@ opencode.json
 docs/
 
 .codex
+
+# Platform build directories
+/windows/
+/macos/
+/linux/
