@@ -35,6 +35,7 @@ class SettingsPersistedData {
   final bool lspInlayHint;
   final bool lspGoToDefinition;
   final bool lspRename;
+  final bool lspAlwaysStart;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
@@ -94,6 +95,7 @@ class SettingsPersistedData {
     this.lspInlayHint = false,
     this.lspGoToDefinition = true,
     this.lspRename = true,
+    this.lspAlwaysStart = false,
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,
@@ -154,6 +156,7 @@ class SettingsPersistedData {
     'lspInlayHint': lspInlayHint,
     'lspGoToDefinition': lspGoToDefinition,
     'lspRename': lspRename,
+    'lspAlwaysStart': lspAlwaysStart,
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
     'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
@@ -219,6 +222,7 @@ class SettingsPersistedData {
     lspInlayHint: json['lspInlayHint'] as bool? ?? false,
     lspGoToDefinition: json['lspGoToDefinition'] as bool? ?? true,
     lspRename: json['lspRename'] as bool? ?? true,
+    lspAlwaysStart: json['lspAlwaysStart'] as bool? ?? false,
     chineseToUnicodeConversion:
         json['chineseToUnicodeConversion'] as bool? ?? true,
     enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,

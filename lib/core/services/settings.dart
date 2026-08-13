@@ -99,6 +99,7 @@ StateProvider<bool> lspCodeFolding = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspInlayHint = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspGoToDefinition = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspRename = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspAlwaysStart = StateProvider<bool>((ref) => false);
 
 StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
   (ref) => true,

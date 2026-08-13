@@ -76,7 +76,7 @@ class LspSettings extends ConsumerWidget {
               ),
             ] else ...[
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: Column(
                   children: [
                     TextFormField(
@@ -257,6 +257,16 @@ class LspSettings extends ConsumerWidget {
             _CapabilitySwitch(
               title: I18nKey.settingsLspRename,
               provider: lspRename,
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: I18nKey.settingsLspScope,
+          description: I18nKey.settingsLspServiceDescription,
+          children: [
+            _CapabilitySwitch(
+              title: I18nKey.settingsLspAlwaysStart,
+              provider: lspAlwaysStart,
             ),
           ],
         ),

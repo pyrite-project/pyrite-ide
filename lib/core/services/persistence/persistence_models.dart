@@ -74,6 +74,7 @@ class PersistedData {
   final bool lspInlayHint;
   final bool lspGoToDefinition;
   final bool lspRename;
+  final bool lspAlwaysStart;
   final int desktopSelectedIndex;
   final int mobileSelectedIndex;
   final int tabletSelectedIndex;
@@ -151,6 +152,7 @@ class PersistedData {
     this.lspInlayHint = false,
     this.lspGoToDefinition = true,
     this.lspRename = true,
+    this.lspAlwaysStart = false,
     this.desktopSelectedIndex = 0,
     this.mobileSelectedIndex = 0,
     this.tabletSelectedIndex = 0,

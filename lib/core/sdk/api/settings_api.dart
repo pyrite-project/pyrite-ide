@@ -352,6 +352,13 @@ class SettingsRegistry {
       setter: (ref, v) => ref.read(lspRename.notifier).state = v == true,
     ),
     _SettingEntry(
+      name: 'lsp.always_start',
+      type: 'bool',
+      provider: lspAlwaysStart,
+      getter: (ref) => ref.read(lspAlwaysStart),
+      setter: (ref, v) => ref.read(lspAlwaysStart.notifier).state = v == true,
+    ),
+    _SettingEntry(
       name: 'editor.chinese_to_unicode',
       type: 'bool',
       provider: chineseToUnicodeConversion,

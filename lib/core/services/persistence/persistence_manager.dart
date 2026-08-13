@@ -75,6 +75,7 @@ class PersistenceManager {
       lspInlayHint: settings?.lspInlayHint ?? false,
       lspGoToDefinition: settings?.lspGoToDefinition ?? true,
       lspRename: settings?.lspRename ?? true,
+      lspAlwaysStart: settings?.lspAlwaysStart ?? false,
       desktopSelectedIndex: functionPage?.desktopSelectedIndex ?? 0,
       mobileSelectedIndex: functionPage?.mobileSelectedIndex ?? 0,
       tabletSelectedIndex: functionPage?.tabletSelectedIndex ?? 0,
@@ -170,6 +171,7 @@ class PersistenceManager {
           lspInlayHint: container.read(lspInlayHint),
           lspGoToDefinition: container.read(lspGoToDefinition),
           lspRename: container.read(lspRename),
+          lspAlwaysStart: container.read(lspAlwaysStart),
           chineseToUnicodeConversion: container.read(
             chineseToUnicodeConversion,
           ),

@@ -862,6 +862,8 @@ enum I18nKey {
   settingsLspInlayHint('settings.lsp.feature.inlay_hint', '内联提示'),
   settingsLspGoToDefinition('settings.lsp.feature.go_to_definition', '跳转定义'),
   settingsLspRename('settings.lsp.feature.rename', '重命名符号'),
+  settingsLspScope('settings.lsp.scope', 'LSP 生效范围'),
+  settingsLspAlwaysStart('settings.lsp.scope.always_start', '对所有文件启用'),
   gitEmptyTitle('git.empty.title', '没有检测到 Git 仓库'),
   gitEmptyNoGitMessage(
     'git.empty.no_git_message',

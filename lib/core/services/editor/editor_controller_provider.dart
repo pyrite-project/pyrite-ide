@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:path/path.dart' as path;
 
 class EditorControllerMapNotifier
     extends StateNotifier<Map<String, CodeForgeController>> {
@@ -29,7 +30,8 @@ class EditorControllerMapNotifier
     final projectPath = file.parent.path;
 
     LspConfig? lspConfig;
-    if (ref.read(useLsp)) {
+    if (ref.read(useLsp) &&
+        (path.extension(file.path) == ".py" || ref.read(lspAlwaysStart))) {
       final type = ref.read(lspType);
       final capabilities = LspClientCapabilities(
         semanticHighlighting: ref.read(lspSemanticHighlighting),

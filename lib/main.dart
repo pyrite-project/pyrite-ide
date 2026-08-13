@@ -146,6 +146,7 @@ void _applyData(PersistedData data) {
   container.read(lspInlayHint.notifier).state = data.lspInlayHint;
   container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
   container.read(lspRename.notifier).state = data.lspRename;
+  container.read(lspAlwaysStart.notifier).state = data.lspAlwaysStart;
   container.read(desktopSelectedIndex.notifier).state =
       data.desktopSelectedIndex;
   container.read(mobileSelectedIndex.notifier).state = data.mobileSelectedIndex;
