@@ -102,32 +102,39 @@ class PyriteIDE extends ConsumerWidget {
         SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
-      baseTheme = FlexColorScheme(
-        colorScheme: scheme,
-        useMaterial3: true,
-        fontFamily: "HarmonyOS Sans SC",
-        visualDensity: tokens.visualDensity,
-        subThemesData: _subThemes(style),
-      ).toTheme.copyWith(
-        scaffoldBackgroundColor: scheme.surface,
-        appBarTheme: AppBarTheme(
-          backgroundColor: scheme.surface,
-          surfaceTintColor: Colors.transparent,
-          foregroundColor: scheme.onSurface,
-        ),
-        navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: scheme.surfaceContainerLowest,
-          indicatorColor: scheme.secondaryContainer,
-          selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
-          selectedLabelTextStyle: TextStyle(color: scheme.onSurface),
-          unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
-          unselectedLabelTextStyle: TextStyle(color: scheme.onSurfaceVariant),
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: scheme.surfaceContainer,
-          indicatorColor: scheme.secondaryContainer,
-        ),
-      );
+      baseTheme =
+          FlexColorScheme(
+            colorScheme: scheme,
+            useMaterial3: true,
+            fontFamily: "HarmonyOS Sans SC",
+            visualDensity: tokens.visualDensity,
+            subThemesData: _subThemes(style),
+          ).toTheme.copyWith(
+            scaffoldBackgroundColor: scheme.surface,
+            appBarTheme: AppBarTheme(
+              backgroundColor: scheme.surface,
+              surfaceTintColor: Colors.transparent,
+              foregroundColor: scheme.onSurface,
+            ),
+            navigationRailTheme: NavigationRailThemeData(
+              backgroundColor: scheme.surfaceContainerLowest,
+              indicatorColor: scheme.secondaryContainer,
+              selectedIconTheme: IconThemeData(
+                color: scheme.onSecondaryContainer,
+              ),
+              selectedLabelTextStyle: TextStyle(color: scheme.onSurface),
+              unselectedIconTheme: IconThemeData(
+                color: scheme.onSurfaceVariant,
+              ),
+              unselectedLabelTextStyle: TextStyle(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            navigationBarTheme: NavigationBarThemeData(
+              backgroundColor: scheme.surfaceContainer,
+              indicatorColor: scheme.secondaryContainer,
+            ),
+          );
     }
 
     return _applyDensityTokens(baseTheme, tokens);
@@ -135,10 +142,7 @@ class PyriteIDE extends ConsumerWidget {
 
   /// Applies the desktop density/typography overlay on top of any base theme
   /// (built-in or plugin-provided) so the selected style tier always wins.
-  ThemeData _applyDensityTokens(
-    ThemeData theme,
-    ThemeDensityTokens tokens,
-  ) {
+  ThemeData _applyDensityTokens(ThemeData theme, ThemeDensityTokens tokens) {
     return theme.copyWith(
       visualDensity: tokens.visualDensity,
       materialTapTargetSize: tokens.materialTapTargetSize,
@@ -297,13 +301,15 @@ class PyriteIDE extends ConsumerWidget {
         final seedColor = ref.watch(themeColor);
         final style = ref.watch(themeStyle);
         final activePluginThemeIdValue = ref.watch(activePluginThemeId);
-        final dataRegistry = ref.watch(dataRegistryProvider);
-
-        // Resolve active plugin theme
-        PluginThemeData? pluginTheme;
-        if (activePluginThemeIdValue != null) {
-          pluginTheme = dataRegistry.getThemeById(activePluginThemeIdValue);
-        }
+        // Registering an unselected plugin theme must not rebuild the app
+        // shell: desktop terminal sessions remain attached to that shell.
+        final pluginTheme = ref.watch(
+          dataRegistryProvider.select(
+            (registry) => activePluginThemeIdValue == null
+                ? null
+                : registry.getThemeById(activePluginThemeIdValue),
+          ),
+        );
 
         // Determine effective theme mode (plugin may force it)
         ThemeMode effectiveThemeMode = ref.watch(themeMode);

@@ -31,10 +31,15 @@ class _RecordingPluginRunManager extends PluginRunManagerNotifier {
 
   final List<Plugin> started;
   final List<Plugin> stopped = [];
+  final Set<String> running = {};
+
+  @override
+  bool isRunning(String pluginId) => running.contains(pluginId);
 
   @override
   Future<void> start(Plugin plugin) async {
     started.add(plugin);
+    running.add(plugin.id);
   }
 
   @override
@@ -45,6 +50,7 @@ class _RecordingPluginRunManager extends PluginRunManagerNotifier {
   @override
   Future<void> stop(Plugin plugin) async {
     stopped.add(plugin);
+    running.remove(plugin.id);
   }
 }
 
@@ -198,8 +204,12 @@ ProviderContainer _createContainer(
 Directory _active(Directory root, String id) =>
     Directory(path.join(root.path, 'plugin', id));
 
-Directory _pending(Directory root, String id) =>
-    Directory(path.join(root.path, 'plugin_updates', 'pending', id));
+Directory _replacement(Directory root, String id) =>
+    Directory(path.join(root.path, 'plugin_updates', 'new', id));
+
+File _pendingDeletion(Directory root, String id) => File(
+  path.join(root.path, 'plugin_updates', 'pending_deletions', '$id.json'),
+);
 
 Directory _activeBackup(Directory root, String id) =>
     Directory(path.join(root.path, 'plugin_updates', 'active_backups', id));
@@ -358,8 +368,8 @@ void main() {
         ),
       ),
     );
-    expect(await _pending(root, 'nested').exists(), isTrue);
-    expect(await _pending(root, 'nested.child').exists(), isFalse);
+    expect(await _replacement(root, 'nested').exists(), isTrue);
+    expect(await _replacement(root, 'nested.child').exists(), isFalse);
   });
 
   test('enabling legacy persisted metadata is explicitly rejected', () async {
@@ -640,20 +650,27 @@ void main() {
       expect(await manager.install(v2.path), isTrue);
       expect(
         first.read(pluginManagerProvider)['example']?.status,
-        PluginStatus.installing,
+        PluginStatus.usable,
       );
       await manager.persist();
       expect(
         (await PluginPersistence().load())?.single.status,
         PluginStatus.usable.name,
       );
-      expect(firstStarts.map((plugin) => plugin.version), ['1.0.0']);
-      expect(runManager.stopped, isEmpty);
+      expect(firstStarts.map((plugin) => plugin.version), ['1.0.0', '2.0.0']);
+      expect(runManager.stopped.map((plugin) => plugin.version), ['1.0.0']);
       expect(
         File(path.join(active.path, '__main__.py')).readAsStringSync(),
         '1.0.0',
       );
-      expect(first.read(pluginManagerProvider)['example']?.version, '1.0.0');
+      expect(first.read(pluginManagerProvider)['example']?.version, '2.0.0');
+      expect(
+        File(
+          path.join(_replacement(root, 'example').path, '__main__.py'),
+        ).readAsStringSync(),
+        '2.0.0',
+      );
+      expect(await _pendingDeletion(root, 'example').exists(), isTrue);
       expect(
         identical(
           first.read(pluginManagerProvider)['example'],
@@ -688,7 +705,7 @@ void main() {
         File(path.join(active.path, 'cache', 'index.db')).readAsStringSync(),
         'keep',
       );
-      expect(await _pending(root, 'example').exists(), isFalse);
+      expect(await _replacement(root, 'example').exists(), isFalse);
       expect(await _activeBackup(root, 'example').exists(), isFalse);
       expect(second.read(pluginManagerProvider)['example']?.version, '2.0.0');
       closeContainer(second);
@@ -749,7 +766,7 @@ void main() {
       );
       expect(
         File(
-          path.join(_pending(root, 'example').path, '__main__.py'),
+          path.join(_replacement(root, 'example').path, '__main__.py'),
         ).readAsStringSync(),
         '2.0.0',
       );
@@ -782,7 +799,7 @@ void main() {
         )).path,
       );
 
-      final pending = _pending(root, 'example');
+      final pending = _replacement(root, 'example');
       expect(
         File(path.join(pending.path, '__main__.py')).readAsStringSync(),
         '3.0.0',
@@ -800,7 +817,7 @@ void main() {
     final manager = container.read(pluginManagerProvider.notifier);
     await manager.install((await _writePackage(root, version: '1.0.0')).path);
     final pendingBlocker = File(
-      path.join(root.path, 'plugin_updates', 'pending', 'example'),
+      path.join(root.path, 'plugin_updates', 'new', 'example'),
     );
     await pendingBlocker.parent.create(recursive: true);
     await pendingBlocker.writeAsString('block pending directory');
@@ -842,11 +859,11 @@ void main() {
       );
       expect(
         File(
-          path.join(_pending(root, 'example').path, '__main__.py'),
+          path.join(_replacement(root, 'example').path, '__main__.py'),
         ).readAsStringSync(),
         '2.0.0',
       );
-      expect(second.read(pluginManagerProvider)['example']?.version, '1.0.0');
+      expect(second.read(pluginManagerProvider)['example']?.version, '2.0.0');
 
       failingPersistence.failNextSave = true;
       await expectLater(
@@ -857,7 +874,7 @@ void main() {
 
       final third = await coldStart();
       expect(third.read(pluginManagerProvider)['example']?.version, '2.0.0');
-      expect(await _pending(root, 'example').exists(), isFalse);
+      expect(await _replacement(root, 'example').exists(), isFalse);
     },
   );
 
@@ -889,7 +906,7 @@ void main() {
     );
     expect(
       File(
-        path.join(_pending(root, 'example').path, '__main__.py'),
+        path.join(_replacement(root, 'example').path, '__main__.py'),
       ).readAsStringSync(),
       '2.0.0',
     );
@@ -902,7 +919,7 @@ void main() {
       third.read(pluginManagerProvider)['example']?.status,
       PluginStatus.disabled,
     );
-    expect(await _pending(root, 'example').exists(), isFalse);
+    expect(await _replacement(root, 'example').exists(), isFalse);
   });
 
   test('first install rolls back when metadata cannot be saved', () async {
@@ -915,7 +932,7 @@ void main() {
 
     expect(container.read(pluginManagerProvider), isEmpty);
     expect(await _active(root, 'example').exists(), isFalse);
-    expect(await _pending(root, 'example').exists(), isFalse);
+    expect(await _replacement(root, 'example').exists(), isFalse);
   });
 
   test('first install activation failure preserves usable metadata', () async {
@@ -940,7 +957,7 @@ void main() {
       (await PluginPersistence().load())?.single.status,
       PluginStatus.usable.name,
     );
-    expect(await _pending(root, 'example').exists(), isTrue);
+    expect(await _replacement(root, 'example').exists(), isTrue);
     closeContainer(first);
 
     await blocker.delete();
@@ -949,7 +966,7 @@ void main() {
       second.read(pluginManagerProvider)['example']?.status,
       PluginStatus.usable,
     );
-    expect(await _pending(root, 'example').exists(), isFalse);
+    expect(await _replacement(root, 'example').exists(), isFalse);
   });
 
   test(
@@ -971,7 +988,7 @@ void main() {
       ).writeAsString('keep');
       await manager.install((await _writePackage(root, version: '2.0.0')).path);
 
-      final pending = _pending(root, 'example');
+      final pending = _replacement(root, 'example');
       final newMetadata = PluginTomlParser.parseFromDirectory(
         pending,
       ).toPlugin();
@@ -1005,7 +1022,7 @@ void main() {
     await manager.install((await _writePackage(root, version: '2.0.0')).path);
 
     final active = _active(root, 'example');
-    final pending = _pending(root, 'example');
+    final pending = _replacement(root, 'example');
     final manifestFile = File(path.join(pending.path, 'plugin.toml'));
     await manifestFile.writeAsString(
       (await manifestFile.readAsString()).replaceFirst(
@@ -1040,7 +1057,7 @@ void main() {
     final backup = _activeBackup(root, 'example');
     await backup.parent.create(recursive: true);
     await active.rename(backup.path);
-    await _pending(root, 'example').rename(active.path);
+    await _replacement(root, 'example').rename(active.path);
 
     await expectLater(
       manager.install((await _writePackage(root, version: '3.0.0')).path),
@@ -1092,9 +1109,9 @@ void main() {
     final manager = first.read(pluginManagerProvider.notifier);
     await manager.install((await _writePackage(root, version: '1.0.0')).path);
     await manager.install((await _writePackage(root, version: '2.0.0')).path);
-    final pending = _pending(root, 'example');
+    final pending = _replacement(root, 'example');
     final backup = Directory(
-      path.join(root.path, 'plugin_updates', 'pending_backups', 'example'),
+      path.join(root.path, 'plugin_updates', 'new_backups', 'example'),
     );
     await backup.parent.create(recursive: true);
     await pending.rename(backup.path);
@@ -1113,39 +1130,42 @@ void main() {
     expect(await backup.exists(), isFalse);
   });
 
-  test('completed pending replacement discards its older backup', () async {
-    final first = createContainer(PluginPersistence());
-    final manager = first.read(pluginManagerProvider.notifier);
-    await manager.install((await _writePackage(root, version: '1.0.0')).path);
-    await manager.install((await _writePackage(root, version: '2.0.0')).path);
+  test(
+    'uncommitted replacement restores the version named by the marker',
+    () async {
+      final first = createContainer(PluginPersistence());
+      final manager = first.read(pluginManagerProvider.notifier);
+      await manager.install((await _writePackage(root, version: '1.0.0')).path);
+      await manager.install((await _writePackage(root, version: '2.0.0')).path);
 
-    final pending = _pending(root, 'example');
-    final backup = Directory(
-      path.join(root.path, 'plugin_updates', 'pending_backups', 'example'),
-    );
-    await backup.parent.create(recursive: true);
-    await pending.rename(backup.path);
-    await pending.create();
-    final manifest = await File(
-      path.join(backup.path, 'plugin.toml'),
-    ).readAsString();
-    await File(
-      path.join(pending.path, 'plugin.toml'),
-    ).writeAsString(manifest.replaceFirst('2.0.0', '3.0.0'));
-    await File(path.join(pending.path, '__main__.py')).writeAsString('3.0.0');
-    closeContainer(first);
+      final pending = _replacement(root, 'example');
+      final backup = Directory(
+        path.join(root.path, 'plugin_updates', 'new_backups', 'example'),
+      );
+      await backup.parent.create(recursive: true);
+      await pending.rename(backup.path);
+      await pending.create();
+      final manifest = await File(
+        path.join(backup.path, 'plugin.toml'),
+      ).readAsString();
+      await File(
+        path.join(pending.path, 'plugin.toml'),
+      ).writeAsString(manifest.replaceFirst('2.0.0', '3.0.0'));
+      await File(path.join(pending.path, '__main__.py')).writeAsString('3.0.0');
+      closeContainer(first);
 
-    final second = await coldStart();
+      final second = await coldStart();
 
-    expect(second.read(pluginManagerProvider)['example']?.version, '3.0.0');
-    expect(
-      File(
-        path.join(_active(root, 'example').path, '__main__.py'),
-      ).readAsStringSync(),
-      '3.0.0',
-    );
-    expect(await backup.exists(), isFalse);
-  });
+      expect(second.read(pluginManagerProvider)['example']?.version, '2.0.0');
+      expect(
+        File(
+          path.join(_active(root, 'example').path, '__main__.py'),
+        ).readAsStringSync(),
+        '2.0.0',
+      );
+      expect(await backup.exists(), isFalse);
+    },
+  );
 
   test('concurrent installs are serialized without losing state', () async {
     final container = createContainer(PluginPersistence());
@@ -1209,7 +1229,7 @@ void main() {
         'ui': ['view'],
       });
       await manager.persist();
-      expect(firstStarts, isEmpty);
+      expect(firstStarts.map((plugin) => plugin.version), ['2.0.0']);
       closeContainer(first);
 
       final secondStarts = <Plugin>[];
@@ -1221,7 +1241,7 @@ void main() {
       expect(updated.status, PluginStatus.disabled);
       expect(updated.permissions, {
         'ui': ['view'],
-        'file': ['read'],
+        'file': <String>[],
       });
       expect(secondStarts, isEmpty);
     },
@@ -1245,7 +1265,7 @@ void main() {
       await manager.install(
         (await _writePackage(root, version: '2.0.0', type: 'data')).path,
       );
-      expect(firstRuns, isEmpty);
+      expect(firstRuns.map((plugin) => plugin.version), ['2.0.0']);
       closeContainer(first);
 
       final secondRuns = <Plugin>[];
@@ -1408,7 +1428,7 @@ void main() {
         first.read(pluginManagerProvider)['example']?.status,
         PluginStatus.uninstalled,
       );
-      expect(await _pending(root, 'example').exists(), isFalse);
+      expect(await _replacement(root, 'example').exists(), isFalse);
       expect(await _removal(root, 'example').exists(), isTrue);
       expect(await _removal(root, 'example').readAsString(), 'remove');
       expect(await _active(root, 'example').exists(), isTrue);
@@ -1540,43 +1560,54 @@ void main() {
     expect(second.read(pluginManagerProvider), isNot(contains('example')));
     expect(starts, isEmpty);
     expect(await _active(root, 'example').exists(), isTrue);
-    expect(await _pending(root, 'example').exists(), isTrue);
+    expect(await _replacement(root, 'example').exists(), isTrue);
     expect(await backup.exists(), isTrue);
     expect(await userData.readAsString(), 'keep');
     expect(await _removal(root, 'example').readAsString(), 'reinstall');
   });
 
-  test('reinstall after uninstall is applied safely on next start', () async {
-    final first = createContainer(PluginPersistence());
-    final manager = first.read(pluginManagerProvider.notifier);
-    await manager.install((await _writePackage(root, version: '1.0.0')).path);
-    await manager.uninstall('example');
+  test(
+    'reinstall after uninstall is visible immediately and applied on next start',
+    () async {
+      final first = createContainer(PluginPersistence());
+      final manager = first.read(pluginManagerProvider.notifier);
+      await manager.install((await _writePackage(root, version: '1.0.0')).path);
+      await manager.uninstall('example');
 
-    expect(
-      await manager.install((await _writePackage(root, version: '2.0.0')).path),
-      isTrue,
-    );
-    expect(
-      first.read(pluginManagerProvider)['example']?.status,
-      PluginStatus.uninstalled,
-    );
-    expect(await _removal(root, 'example').readAsString(), 'reinstall');
-    closeContainer(first);
+      expect(
+        await manager.install(
+          (await _writePackage(root, version: '2.0.0')).path,
+        ),
+        isTrue,
+      );
+      expect(
+        first.read(pluginManagerProvider)['example']?.status,
+        PluginStatus.usable,
+      );
+      expect(
+        first.read(contributionRegistryProvider).pluginIds,
+        contains('example'),
+      );
+      expect(await _removal(root, 'example').readAsString(), 'reinstall');
+      expect(await _replacement(root, 'example').exists(), isTrue);
+      expect(await _pendingDeletion(root, 'example').exists(), isTrue);
+      closeContainer(first);
 
-    final second = await coldStart();
+      final second = await coldStart();
 
-    expect(
-      File(
-        path.join(_active(root, 'example').path, '__main__.py'),
-      ).readAsStringSync(),
-      '2.0.0',
-    );
-    expect(
-      second.read(pluginManagerProvider)['example']?.status,
-      PluginStatus.usable,
-    );
-    expect(await _removal(root, 'example').exists(), isFalse);
-  });
+      expect(
+        File(
+          path.join(_active(root, 'example').path, '__main__.py'),
+        ).readAsStringSync(),
+        '2.0.0',
+      );
+      expect(
+        second.read(pluginManagerProvider)['example']?.status,
+        PluginStatus.usable,
+      );
+      expect(await _removal(root, 'example').exists(), isFalse);
+    },
+  );
 
   test(
     'status and uninstall changes remove host contributions immediately',

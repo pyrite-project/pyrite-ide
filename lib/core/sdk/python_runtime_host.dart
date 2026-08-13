@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/python_bridge_plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
@@ -328,19 +329,11 @@ class PythonRuntimeHost {
       _throwIfCancelled(plugin.id, control);
 
       final support = await _supportDirectory();
-      final pluginRoot = path.normalize(
-        path.absolute(path.join(support.path, 'plugin')),
+      final pluginDirectory = await resolvePluginPackageDirectory(
+        support,
+        plugin.id,
       );
-      final pluginPath = path.normalize(
-        path.absolute(path.join(pluginRoot, plugin.id)),
-      );
-      if (plugin.id.isEmpty ||
-          path.isAbsolute(plugin.id) ||
-          !path.equals(path.dirname(pluginPath), pluginRoot)) {
-        throw FormatException('Invalid plugin ID: ${plugin.id}');
-      }
-
-      final pluginDirectory = Directory(pluginPath);
+      final pluginPath = pluginDirectory.path;
       if (!await pluginDirectory.exists()) {
         throw StateError('Plugin directory does not exist: $pluginPath');
       }

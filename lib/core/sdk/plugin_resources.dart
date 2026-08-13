@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
 
 const pluginResourceScheme = 'plugin-resource';
 
@@ -54,10 +55,11 @@ Future<File?> resolveInstalledPluginAsset(
 ) async {
   if (pluginId.isEmpty || path.basename(pluginId) != pluginId) return null;
   final support = await getApplicationSupportDirectory();
-  return resolvePluginAssetFile(
-    path.join(support.path, 'plugin', pluginId),
-    assetPath,
+  final pluginDirectory = await resolvePluginPackageDirectory(
+    support,
+    pluginId,
   );
+  return resolvePluginAssetFile(pluginDirectory.path, assetPath);
 }
 
 class PluginAssetImage extends StatefulWidget {
@@ -65,6 +67,7 @@ class PluginAssetImage extends StatefulWidget {
     super.key,
     required this.pluginId,
     required this.assetPath,
+    this.revision,
     this.width,
     this.height,
     this.fit = BoxFit.contain,
@@ -75,6 +78,7 @@ class PluginAssetImage extends StatefulWidget {
 
   final String pluginId;
   final String assetPath;
+  final Object? revision;
   final double? width;
   final double? height;
   final BoxFit fit;
@@ -96,7 +100,8 @@ class _PluginAssetImageState extends State<PluginAssetImage> {
   void didUpdateWidget(covariant PluginAssetImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.pluginId != widget.pluginId ||
-        oldWidget.assetPath != widget.assetPath) {
+        oldWidget.assetPath != widget.assetPath ||
+        oldWidget.revision != widget.revision) {
       _file = _resolve();
     }
   }

@@ -475,12 +475,14 @@ class _PluginNavigationItem {
     required this.container,
     required this.viewId,
     this.pluginIcons,
+    this.pluginVersion,
   });
 
   final String pluginId;
   final PluginNavigationContainerContribution container;
   final String? viewId;
   final PluginIconSet? pluginIcons;
+  final String? pluginVersion;
 
   String get route => Uri(
     path: _pluginViewRoute,
@@ -517,6 +519,7 @@ List<_PluginNavigationItem> _pluginNavigationItems(WidgetRef ref) {
             .map((view) => view.value.id)
             .firstOrNull,
         pluginIcons: plugins[entry.pluginId]?.manifest?.icons,
+        pluginVersion: plugins[entry.pluginId]?.version,
       ),
   ];
 }
@@ -571,6 +574,7 @@ Widget _pluginNavigationIconCore(
   return PluginAssetImage(
     pluginId: item.pluginId,
     assetPath: asset,
+    revision: item.pluginVersion,
     width: iconSize,
     height: iconSize,
     monochrome: true,
@@ -1217,9 +1221,10 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                       theme: effectiveTheme,
                       textStyle: buildTerminalStyle(ref),
                       hardwareKeyboardOnly: true,
-                      key: ValueKey(
-                        'terminal_${session.id}_${terminalTheme.background.toARGB32()}_${terminalTheme.minimumContrastRatio}',
-                      ),
+                      // Keep the renderer alive when a theme contribution is
+                      // installed or selected. TerminalView updates its theme
+                      // in place; replacing it would discard focus/scroll UI.
+                      key: ValueKey('terminal_${session.id}'),
                     );
                   },
                 ),

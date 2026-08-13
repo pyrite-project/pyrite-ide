@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
@@ -14,10 +16,11 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 
-const _pluginDirectoryName = 'plugin';
-const _pluginUpdatesDirectoryName = 'plugin_updates';
-const _pendingDirectoryName = 'pending';
-const _pendingBackupsDirectoryName = 'pending_backups';
+const _pluginDirectoryName = pluginDirectoryName;
+const _pluginUpdatesDirectoryName = pluginUpdatesDirectoryName;
+const _newDirectoryName = pluginNewDirectoryName;
+const _newBackupsDirectoryName = 'new_backups';
+const _pendingDeletionsDirectoryName = pluginPendingDeletionsDirectoryName;
 const _activeBackupsDirectoryName = 'active_backups';
 const _removalsDirectoryName = 'removals';
 const _stagingDirectoryName = 'staging';
@@ -235,14 +238,18 @@ PluginStatus _persistablePluginStatus(PluginStatus status) {
   return status == PluginStatus.installing ? PluginStatus.usable : status;
 }
 
-Future<Set<String>> _recoverPendingBackups(Directory updatesRoot) async {
+Future<Set<String>> _recoverNewBackups(
+  Directory root,
+  Directory updatesRoot,
+  Map<String, Plugin> plugins,
+) async {
   final backupsRoot = Directory(
-    path.join(updatesRoot.path, _pendingBackupsDirectoryName),
+    path.join(updatesRoot.path, _newBackupsDirectoryName),
   );
   if (!await backupsRoot.exists()) return {};
 
-  final pendingRoot = await Directory(
-    path.join(updatesRoot.path, _pendingDirectoryName),
+  final newRoot = await Directory(
+    path.join(updatesRoot.path, _newDirectoryName),
   ).create(recursive: true);
   final trashRoot = Directory(path.join(updatesRoot.path, _trashDirectoryName));
   final failed = <String>{};
@@ -250,15 +257,64 @@ Future<Set<String>> _recoverPendingBackups(Directory updatesRoot) async {
     if (backup is! Directory) continue;
     final pluginId = path.basename(backup.path);
     try {
-      final pending = _pluginChild(pendingRoot, pluginId);
-      if (await pending.exists()) {
+      final replacement = _pluginChild(newRoot, pluginId);
+      final marker = pendingPluginDeletionMarker(root, pluginId);
+      final expectedVersion = await marker.exists()
+          ? await _pendingDeletionTargetVersion(marker)
+          : plugins[pluginId]?.version;
+      final replacementVersion = await replacement.exists()
+          ? PluginTomlParser.parseFromDirectory(replacement).version
+          : null;
+      if (replacementVersion == expectedVersion) {
         await _trashDirectory(backup, trashRoot);
       } else {
-        await backup.rename(pending.path);
+        final backupVersion = PluginTomlParser.parseFromDirectory(
+          backup,
+        ).version;
+        if (backupVersion != expectedVersion) {
+          throw StateError('No replacement package matches committed metadata');
+        }
+        await _trashDirectory(replacement, trashRoot);
+        await backup.rename(replacement.path);
       }
     } catch (error) {
       failed.add(pluginId);
-      debugPrint('PluginManager: Failed to recover pending $pluginId: $error');
+      debugPrint(
+        'PluginManager: Failed to recover replacement $pluginId: $error',
+      );
+    }
+  }
+  return failed;
+}
+
+Future<Set<String>> _recoverUnmarkedNewPackages(
+  Directory root,
+  Directory updatesRoot,
+  Map<String, Plugin> plugins,
+) async {
+  final newRoot = Directory(path.join(updatesRoot.path, _newDirectoryName));
+  if (!await newRoot.exists()) return {};
+  final trashRoot = Directory(path.join(updatesRoot.path, _trashDirectoryName));
+  final failed = <String>{};
+  await for (final entity in newRoot.list(followLinks: false)) {
+    if (entity is! Directory) continue;
+    final pluginId = path.basename(entity.path);
+    try {
+      final marker = pendingPluginDeletionMarker(root, pluginId);
+      if (await marker.exists()) continue;
+      final manifest = PluginTomlParser.parseFromDirectory(entity);
+      if (manifest.id == pluginId &&
+          plugins[pluginId]?.version == manifest.version) {
+        await _writePendingDeletionMarker(root, pluginId, manifest.version);
+      } else {
+        await _trashDirectory(entity, trashRoot);
+      }
+    } catch (error) {
+      failed.add(pluginId);
+      debugPrint(
+        'PluginManager: Failed to recover unmarked replacement '
+        '$pluginId: $error',
+      );
     }
   }
   return failed;
@@ -286,8 +342,8 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
   final activeRoot = await Directory(
     path.join(root.path, _pluginDirectoryName),
   ).create(recursive: true);
-  final pendingRoot = await Directory(
-    path.join(updatesRoot.path, _pendingDirectoryName),
+  final newRoot = await Directory(
+    path.join(updatesRoot.path, _newDirectoryName),
   ).create(recursive: true);
   final trashRoot = Directory(path.join(updatesRoot.path, _trashDirectoryName));
   final failed = <String>{};
@@ -298,16 +354,16 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
     final pluginId = path.basename(backup.path);
     try {
       final active = _pluginChild(activeRoot, pluginId);
-      final pending = _pluginChild(pendingRoot, pluginId);
+      final replacement = _pluginChild(newRoot, pluginId);
       late final Directory candidate;
       if (!await active.exists()) {
-        if (!await pending.exists()) {
+        if (!await replacement.exists()) {
           throw StateError(
-            'Plugin transaction has no active or pending package',
+            'Plugin transaction has no active or replacement package',
           );
         }
-        candidate = pending;
-      } else if (await pending.exists()) {
+        candidate = replacement;
+      } else if (await replacement.exists()) {
         throw StateError('Plugin transaction has two candidate packages');
       } else {
         candidate = active;
@@ -336,7 +392,7 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
         );
       }
       PluginManifestValidator().validateNoConflicts(manifest, otherManifests);
-      if (!await active.exists()) await pending.rename(active.path);
+      if (!await active.exists()) await replacement.rename(active.path);
       await _restoreUserDirectories(backup, active, trashRoot);
       await _trashDirectory(backup, trashRoot);
       recoveredManifests.add(manifest);
@@ -355,34 +411,84 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
   return _ActiveRecoveryResult(failed, manifestErrors);
 }
 
-Future<void> _replacePendingPackage(
+Future<void> _replaceNewPackage(
   Directory updatesRoot,
   String pluginId,
   Directory staged,
 ) async {
-  final pendingRoot = await Directory(
-    path.join(updatesRoot.path, _pendingDirectoryName),
+  final newRoot = await Directory(
+    path.join(updatesRoot.path, _newDirectoryName),
   ).create(recursive: true);
   final backupsRoot = await Directory(
-    path.join(updatesRoot.path, _pendingBackupsDirectoryName),
+    path.join(updatesRoot.path, _newBackupsDirectoryName),
   ).create(recursive: true);
   final trashRoot = Directory(path.join(updatesRoot.path, _trashDirectoryName));
-  final pending = _pluginChild(pendingRoot, pluginId);
+  final replacement = _pluginChild(newRoot, pluginId);
   final backup = _pluginChild(backupsRoot, pluginId);
 
-  if (await pending.exists()) await pending.rename(backup.path);
+  if (await backup.exists()) await _trashDirectory(backup, trashRoot);
+  if (await replacement.exists()) await replacement.rename(backup.path);
   try {
-    await staged.rename(pending.path);
+    await staged.rename(replacement.path);
   } catch (_) {
-    if (await backup.exists() && !await pending.exists()) {
-      await backup.rename(pending.path);
+    if (await backup.exists() && !await replacement.exists()) {
+      await backup.rename(replacement.path);
     }
     rethrow;
   }
-  await _trashDirectory(backup, trashRoot);
 }
 
-Future<void> _activatePendingPackage(
+Future<void> _writePendingDeletionMarker(
+  Directory root,
+  String pluginId,
+  String version,
+) async {
+  final marker = pendingPluginDeletionMarker(root, pluginId);
+  await marker.parent.create(recursive: true);
+  final temporary = File('${marker.path}.tmp');
+  final backup = File('${marker.path}.bak');
+  if (await temporary.exists()) await temporary.delete();
+  if (await backup.exists()) await backup.delete();
+  await temporary.writeAsString(
+    jsonEncode({
+      'schemaVersion': 1,
+      'pluginId': pluginId,
+      'targetVersion': version,
+    }),
+    flush: true,
+  );
+  if (await marker.exists()) await marker.rename(backup.path);
+  try {
+    await temporary.rename(marker.path);
+  } catch (_) {
+    if (await backup.exists() && !await marker.exists()) {
+      await backup.rename(marker.path);
+    }
+    rethrow;
+  }
+  if (await backup.exists()) await backup.delete();
+}
+
+String? _pluginIdFromPendingDeletionMarker(File marker) {
+  final name = path.basename(marker.path);
+  if (!name.endsWith('.json')) return null;
+  final pluginId = name.substring(0, name.length - '.json'.length);
+  return isSafePluginId(pluginId) ? pluginId : null;
+}
+
+Future<String?> _pendingDeletionTargetVersion(File marker) async {
+  try {
+    final decoded = jsonDecode(await marker.readAsString());
+    if (decoded is! Map<String, dynamic> || decoded['schemaVersion'] != 1) {
+      return null;
+    }
+    return decoded['targetVersion'] as String?;
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<void> _activateNewPackage(
   Directory root,
   Directory updatesRoot,
   String pluginId,
@@ -390,27 +496,25 @@ Future<void> _activatePendingPackage(
   final activeRoot = await Directory(
     path.join(root.path, _pluginDirectoryName),
   ).create(recursive: true);
-  final pendingRoot = Directory(
-    path.join(updatesRoot.path, _pendingDirectoryName),
-  );
+  final newRoot = Directory(path.join(updatesRoot.path, _newDirectoryName));
   final backupsRoot = await Directory(
     path.join(updatesRoot.path, _activeBackupsDirectoryName),
   ).create(recursive: true);
   final trashRoot = Directory(path.join(updatesRoot.path, _trashDirectoryName));
   final active = _pluginChild(activeRoot, pluginId);
-  final pending = _pluginChild(pendingRoot, pluginId);
+  final replacement = _pluginChild(newRoot, pluginId);
   final backup = _pluginChild(backupsRoot, pluginId);
 
   if (await active.exists()) await active.rename(backup.path);
   try {
-    await pending.rename(active.path);
+    await replacement.rename(active.path);
     if (await backup.exists()) {
       await _restoreUserDirectories(backup, active, trashRoot);
       await _trashDirectory(backup, trashRoot);
     }
   } catch (_) {
-    if (await active.exists() && !await pending.exists()) {
-      await active.rename(pending.path);
+    if (await active.exists() && !await replacement.exists()) {
+      await active.rename(replacement.path);
     }
     if (await backup.exists() && !await active.exists()) {
       await backup.rename(active.path);
@@ -584,7 +688,10 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       path.join(updatesRoot.path, _trashDirectoryName),
     );
     await _deleteDirectory(trashRoot);
-    final pendingBlocked = await _recoverPendingBackups(updatesRoot);
+    final newBlocked = await _recoverNewBackups(root, updatesRoot, state);
+    newBlocked.addAll(
+      await _recoverUnmarkedNewPackages(root, updatesRoot, state),
+    );
     final activeRecovery = await _recoverActiveBackups(
       root,
       updatesRoot,
@@ -592,7 +699,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           .map((plugin) => plugin.manifest)
           .whereType<PluginManifestV2>(),
     );
-    final blocked = {...pendingBlocked, ...activeRecovery.blocked};
+    final blocked = {...newBlocked, ...activeRecovery.blocked};
     if (activeRecovery.blocked.isNotEmpty) {
       state = {
         for (final entry in state.entries)
@@ -626,18 +733,18 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           final reinstall = await marker.readAsString() == 'reinstall';
           if (reinstall && blocked.contains(pluginId)) continue;
           if (!reinstall) {
-            final pending = _pluginChild(
-              Directory(path.join(updatesRoot.path, _pendingDirectoryName)),
+            final replacement = _pluginChild(
+              Directory(path.join(updatesRoot.path, _newDirectoryName)),
               pluginId,
             );
-            final pendingBackup = _pluginChild(
-              Directory(
-                path.join(updatesRoot.path, _pendingBackupsDirectoryName),
-              ),
+            final replacementBackup = _pluginChild(
+              Directory(path.join(updatesRoot.path, _newBackupsDirectoryName)),
               pluginId,
             );
-            await _trashDirectory(pending, trashRoot);
-            await _trashDirectory(pendingBackup, trashRoot);
+            await _trashDirectory(replacement, trashRoot);
+            await _trashDirectory(replacementBackup, trashRoot);
+            final updateMarker = pendingPluginDeletionMarker(root, pluginId);
+            if (await updateMarker.exists()) await updateMarker.delete();
           }
           if (metadataChanged) {
             await _save(next.values);
@@ -662,27 +769,54 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       }
     }
 
-    final pendingRoot = Directory(
-      path.join(updatesRoot.path, _pendingDirectoryName),
+    final pendingDeletionsRoot = Directory(
+      path.join(updatesRoot.path, _pendingDeletionsDirectoryName),
     );
-    if (await pendingRoot.exists()) {
-      final packages = await pendingRoot.list(followLinks: false).toList();
-      for (final pending in packages.whereType<Directory>()) {
-        final pluginId = path.basename(pending.path);
+    if (await pendingDeletionsRoot.exists()) {
+      final markers = await pendingDeletionsRoot
+          .list(followLinks: false)
+          .toList();
+      for (final marker in markers.whereType<File>()) {
+        final pluginId = _pluginIdFromPendingDeletionMarker(marker);
+        if (pluginId == null) continue;
         if (blocked.contains(pluginId)) continue;
+        final replacement = newPluginDirectory(root, pluginId);
+        if (!await replacement.exists()) {
+          try {
+            final activeManifest = PluginTomlParser.parseFromDirectory(
+              installedPluginDirectory(root, pluginId),
+            );
+            final targetVersion = await _pendingDeletionTargetVersion(marker);
+            if (activeManifest.id != pluginId ||
+                targetVersion == null ||
+                activeManifest.version != targetVersion) {
+              throw StateError('Committed replacement does not match marker');
+            }
+            final updated = _mergePluginUpdate(activeManifest, state[pluginId]);
+            final next = {...state, pluginId: updated};
+            await _save(next.values);
+            state = next;
+            await marker.delete();
+          } catch (error) {
+            debugPrint(
+              'PluginManager: Failed to finish replacement $pluginId: $error',
+            );
+          }
+          continue;
+        }
         late final PluginPersistedData manifest;
         try {
-          manifest = PluginTomlParser.parseFromDirectory(pending);
+          manifest = PluginTomlParser.parseFromDirectory(replacement);
         } on PluginManifestException catch (error) {
           debugPrint(
-            'PluginManager: Invalid pending package $pluginId '
+            'PluginManager: Invalid replacement package $pluginId '
             '[${error.code}]: ${error.message}',
           );
           continue;
         }
-        final entryPoint = File(path.join(pending.path, '__main__.py'));
+        final entryPoint = File(path.join(replacement.path, '__main__.py'));
         if (manifest.id != pluginId || !await entryPoint.exists()) {
-          debugPrint('PluginManager: Invalid pending package $pluginId');
+          debugPrint('PluginManager: Invalid replacement package $pluginId');
           continue;
         }
         try {
@@ -695,7 +829,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           );
         } on PluginManifestException catch (error) {
           debugPrint(
-            'PluginManager: Conflicting pending package $pluginId '
+            'PluginManager: Conflicting replacement package $pluginId '
             '[${error.code}]: ${error.message}',
           );
           continue;
@@ -707,7 +841,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         try {
           await _save(next.values);
           metadataSaved = true;
-          await _activatePendingPackage(root, updatesRoot, pluginId);
+          await _activateNewPackage(root, updatesRoot, pluginId);
+          if (await marker.exists()) await marker.delete();
           _intendedStatuses.remove(pluginId);
           state = next;
         } catch (error) {
@@ -854,7 +989,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     }
   }
 
-  /// Returns whether the package was staged for the next IDE start.
+  /// Returns whether an installed plugin was updated.
   Future<bool> install(String packagePath) =>
       _runExclusive(() => _install(packagePath));
 
@@ -864,7 +999,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     final updatesRoot = await Directory(
       path.join(root.path, _pluginUpdatesDirectoryName),
     ).create(recursive: true);
-    final blocked = await _recoverPendingBackups(updatesRoot);
+    final blocked = await _recoverNewBackups(root, updatesRoot, state);
     final stagingRoot = await Directory(
       path.join(updatesRoot.path, _stagingDirectoryName),
     ).create(recursive: true);
@@ -877,20 +1012,20 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     final manifest = await _extractPluginPackage(packagePath, staged);
     try {
       final normalizedManifest = manifest.manifest!;
-      final pendingRoot = await Directory(
-        path.join(updatesRoot.path, _pendingDirectoryName),
+      final newRoot = await Directory(
+        path.join(updatesRoot.path, _newDirectoryName),
       ).create(recursive: true);
-      final pendingManifests = <PluginManifestV2>[];
-      await for (final entity in pendingRoot.list(followLinks: false)) {
+      final newManifests = <PluginManifestV2>[];
+      await for (final entity in newRoot.list(followLinks: false)) {
         if (entity is! Directory) continue;
         try {
-          final pendingManifest = PluginTomlParser.parseFromDirectory(entity);
-          if (pendingManifest.id != manifest.id &&
-              pendingManifest.id == path.basename(entity.path)) {
-            pendingManifests.add(pendingManifest.manifest!);
+          final newManifest = PluginTomlParser.parseFromDirectory(entity);
+          if (newManifest.id != manifest.id &&
+              newManifest.id == path.basename(entity.path)) {
+            newManifests.add(newManifest.manifest!);
           }
         } on PluginManifestException {
-          // Invalid pending transactions are handled during cold-start recovery.
+          // Invalid replacement transactions are handled during recovery.
         }
       }
       PluginManifestValidator().validateNoConflicts(normalizedManifest, [
@@ -898,7 +1033,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
             .where((plugin) => plugin.id != manifest.id)
             .map((plugin) => plugin.manifest)
             .whereType<PluginManifestV2>(),
-        ...pendingManifests,
+        ...newManifests,
       ]);
       final active = _pluginChild(
         Directory(path.join(root.path, _pluginDirectoryName)),
@@ -922,7 +1057,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       }
       for (final directory in [
         Directory(path.join(root.path, _pluginDirectoryName)),
-        pendingRoot,
+        newRoot,
         activeBackupsRoot,
       ]) {
         if (!await directory.exists()) continue;
@@ -937,7 +1072,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           }
         }
       }
-      final pending = _pluginChild(pendingRoot, manifest.id);
+      final replacement = _pluginChild(newRoot, manifest.id);
       final existingPlugin = state[manifest.id];
       final removal = File(
         _pluginChild(
@@ -949,7 +1084,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       final updatePending =
           existingPlugin != null ||
           await active.exists() ||
-          await pending.exists() ||
+          await replacement.exists() ||
           removalPending;
 
       final previousIntendedStatus = _intendedStatuses[manifest.id];
@@ -967,34 +1102,92 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         showingUpdateInstall = true;
       }
 
-      try {
-        await _replacePendingPackage(updatesRoot, manifest.id, staged);
-      } catch (_) {
-        if (showingUpdateInstall) {
-          if (previousIntendedStatus == null) {
-            _intendedStatuses.remove(manifest.id);
-          } else {
-            _intendedStatuses[manifest.id] = previousIntendedStatus;
-          }
-          state = {...state, manifest.id: existingPlugin!};
-        }
-        rethrow;
-      }
-      if (removalPending) {
-        await removal.writeAsString('reinstall', flush: true);
-      }
       if (updatePending) {
-        if (existingPlugin == null) {
-          final next = {
-            ...state,
-            manifest.id: manifest.toPlugin().copyWith(
-              status: PluginStatus.installing,
-            ),
-          };
-          await _save(next.values);
-          state = next;
+        final currentDirectory = await resolvePluginPackageDirectory(
+          root,
+          manifest.id,
+        );
+        if (await currentDirectory.exists()) {
+          await _restoreUserDirectories(
+            currentDirectory,
+            staged,
+            Directory(path.join(updatesRoot.path, _trashDirectoryName)),
+          );
         }
-        return true;
+        final runManager = ref.read(pluginRunManagerProvider.notifier);
+        final wasRunning = runManager.isRunning(manifest.id);
+        final oldPlugin = existingPlugin;
+        if (wasRunning && oldPlugin != null) await runManager.stop(oldPlugin);
+
+        final marker = pendingPluginDeletionMarker(root, manifest.id);
+        final markerExisted = await marker.exists();
+        final previousMarkerContents = markerExisted
+            ? await marker.readAsString()
+            : null;
+        final backup = _pluginChild(
+          Directory(path.join(updatesRoot.path, _newBackupsDirectoryName)),
+          manifest.id,
+        );
+        try {
+          await _replaceNewPackage(updatesRoot, manifest.id, staged);
+          await _writePendingDeletionMarker(
+            root,
+            manifest.id,
+            manifest.version,
+          );
+          if (removalPending) {
+            await removal.writeAsString('reinstall', flush: true);
+          }
+
+          final intendedStatus = removalPending
+              ? PluginStatus.usable
+              : _persistablePluginStatus(
+                  previousIntendedStatus ??
+                      oldPlugin?.status ??
+                      PluginStatus.usable,
+                );
+          final updated = _mergePluginUpdate(
+            manifest,
+            oldPlugin,
+          ).copyWith(status: intendedStatus);
+          final next = {...state, manifest.id: updated};
+          _intendedStatuses.remove(manifest.id);
+          await _save(next.values);
+          _syncHostContributions(next);
+          state = next;
+
+          if (updated.status == PluginStatus.usable) {
+            if (updated.type == PluginType.data) {
+              await runManager.runOnce(updated);
+            } else if (wasRunning) {
+              await runManager.start(updated);
+            }
+          }
+          return true;
+        } catch (_) {
+          await _trashDirectory(
+            replacement,
+            Directory(path.join(updatesRoot.path, _trashDirectoryName)),
+          );
+          if (await backup.exists()) await backup.rename(replacement.path);
+          if (previousMarkerContents != null) {
+            await marker.writeAsString(previousMarkerContents, flush: true);
+          } else if (await marker.exists()) {
+            await marker.delete();
+          }
+          if (showingUpdateInstall && oldPlugin != null) {
+            if (previousIntendedStatus == null) {
+              _intendedStatuses.remove(manifest.id);
+            } else {
+              _intendedStatuses[manifest.id] = previousIntendedStatus;
+            }
+            state = {...state, manifest.id: oldPlugin};
+          }
+          if (wasRunning && oldPlugin != null) {
+            await runManager.start(oldPlugin);
+          }
+          rethrow;
+        }
       }
 
       final previous = state;
@@ -1009,7 +1202,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         final next = {...state, manifest.id: installed};
         await _save(next.values);
         metadataSaved = true;
-        await _activatePendingPackage(root, updatesRoot, manifest.id);
+        await _replaceNewPackage(updatesRoot, manifest.id, staged);
+        await _writePendingDeletionMarker(root, manifest.id, manifest.version);
+        await _activateNewPackage(root, updatesRoot, manifest.id);
+        final marker = pendingPluginDeletionMarker(root, manifest.id);
+        if (await marker.exists()) await marker.delete();
         _syncHostContributions(next);
         state = next;
 
@@ -1023,7 +1220,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         if (!metadataSaved) {
           state = {...state}..remove(manifest.id);
           await _trashDirectory(
-            pending,
+            replacement,
             Directory(path.join(updatesRoot.path, _trashDirectoryName)),
           );
         } else {
@@ -1048,7 +1245,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     final updatesRoot = await Directory(
       path.join(root.path, _pluginUpdatesDirectoryName),
     ).create(recursive: true);
-    final blocked = await _recoverPendingBackups(updatesRoot);
+    final blocked = await _recoverNewBackups(root, updatesRoot, state);
     if (blocked.contains(pluginId)) {
       throw StateError('Plugin update recovery is incomplete');
     }
@@ -1067,19 +1264,26 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     _syncHostContributions(next);
     state = next;
     _removeContributions(pluginId);
-    unawaited(
-      ref.read(activationManagerProvider.notifier).deactivate(next[pluginId]!),
-    );
+    await ref
+        .read(activationManagerProvider.notifier)
+        .deactivate(next[pluginId]!);
 
-    final pending = _pluginChild(
-      Directory(path.join(updatesRoot.path, _pendingDirectoryName)),
+    final replacement = _pluginChild(
+      Directory(path.join(updatesRoot.path, _newDirectoryName)),
       pluginId,
     );
+    final replacementBackup = _pluginChild(
+      Directory(path.join(updatesRoot.path, _newBackupsDirectoryName)),
+      pluginId,
+    );
+    final updateMarker = pendingPluginDeletionMarker(root, pluginId);
     final trashRoot = Directory(
       path.join(updatesRoot.path, _trashDirectoryName),
     );
     try {
-      await _trashDirectory(pending, trashRoot);
+      await _trashDirectory(replacement, trashRoot);
+      await _trashDirectory(replacementBackup, trashRoot);
+      if (await updateMarker.exists()) await updateMarker.delete();
       await _save(next.values);
     } catch (error) {
       debugPrint('PluginManager: Uninstall queued for $pluginId: $error');

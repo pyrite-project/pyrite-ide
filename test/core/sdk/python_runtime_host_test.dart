@@ -276,6 +276,7 @@ void main() {
       await fixture.createPlugins(ids);
       final host = fixture.createHost();
       Directory.current = root.path;
+      final workingDirectory = Directory.current.path;
 
       final sessions = await Future.wait(
         ids.map(
@@ -286,7 +287,7 @@ void main() {
       expect(fixture.bootstrapCalls, 1);
       expect(fixture.programStarts, ids);
       expect(fixture.maxActiveInitializations, 1);
-      expect(Directory.current.path, root.path);
+      expect(Directory.current.path, workingDirectory);
       expect(
         sessions.map((session) => session.state),
         everyElement(PluginSessionState.ready),
@@ -330,6 +331,41 @@ void main() {
       await host.stopAll();
     },
   );
+
+  test('pending replacement is launched with the original plugin ID', () async {
+    const pluginId = 'replacement';
+    final fixture = _RuntimeFixture(root);
+    await fixture.createPlugins([pluginId]);
+    final replacement = await Directory(
+      path.join(root.path, 'plugin_updates', 'new', pluginId),
+    ).create(recursive: true);
+    final entryPoint = File(path.join(replacement.path, '__main__.py'));
+    await entryPoint.writeAsString('# replacement');
+    final marker = File(
+      path.join(
+        root.path,
+        'plugin_updates',
+        'pending_deletions',
+        '$pluginId.json',
+      ),
+    );
+    await marker.parent.create(recursive: true);
+    await marker.writeAsString('{}');
+    final host = fixture.createHost();
+
+    final session = await host.startPlugin(
+      _plugin(pluginId),
+      configureManager: (_) {},
+    );
+
+    expect(session.pluginId, pluginId);
+    expect(session.pluginDirectory.path, replacement.path);
+    expect(
+      fixture.environments.single['PYRITE_IDE_PLUGIN_DIR'],
+      replacement.path,
+    );
+    await host.stopPlugin(pluginId);
+  });
 
   test(
     'duplicate start returns one session and launches Python once',

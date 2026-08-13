@@ -94,12 +94,13 @@ enum I18nKey {
   pluginsActionEnable('plugins.action.enable', '启用'),
   pluginsActionDelete('plugins.action.delete', '删除'),
   pluginsInstalling('plugins.message.installing', '正在安装插件...'),
-  pluginsUpdateAfterRestart(
-    'plugins.message.update_after_restart',
-    '插件更新将在重启 IDE 后生效',
+  pluginsInstallSuccessfully('plugin.message.install_successfully', '插件安装成功'),
+  pluginsUninstallSuccessfully(
+    'plugin.message.uninstall_successfully',
+    '插件卸载成功',
   ),
-  pluginsInstallFailed('plugins.message.install_failed', '安装失败'),
-  pluginsUninstallFailed('plugins.message.uninstall_failed', '卸载失败'),
+  pluginsInstallFailed('plugins.message.install_failed', '插件安装失败'),
+  pluginsUninstallFailed('plugins.message.uninstall_failed', '插件卸载失败'),
   pluginsDetailVersion('plugins.detail.version', '版本'),
   pluginsDetailType('plugins.detail.type', '类型'),
   pluginsDetailAuthor('plugins.detail.author', '作者'),
@@ -589,6 +590,10 @@ enum I18nKey {
   settingsTerminalAppearanceCustom(
     'settings.terminal.appearance.custom',
     '自定义',
+  ),
+  settingsTerminalColorsPluginLocked(
+    'settings.terminal.colors.plugin_locked',
+    '当前颜色主题已指定终端配色。',
   ),
   settingsTerminalMinimumContrast(
     'settings.terminal.minimum_contrast.title',

@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
@@ -32,6 +34,15 @@ class TerminalSettings extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final webReplInfo = ref.watch(webReplProvider);
+    final activeThemeId = ref.watch(activePluginThemeId);
+    final dataRegistry = ref.watch(dataRegistryProvider);
+    final pluginTheme = activeThemeId == null
+        ? null
+        : dataRegistry.getThemeById(activeThemeId);
+    final terminalColorsLocked =
+        pluginTheme?.terminalForeground != null ||
+        pluginTheme?.terminalBackground != null ||
+        pluginTheme?.terminalAnsi != null;
     final webReplHostValue = ref.watch(webReplHost);
     final webReplPortValue = ref.watch(webReplPort);
     final webReplEndpoint = webReplHostValue.isEmpty
@@ -180,7 +191,7 @@ class TerminalSettings extends ConsumerWidget {
                   ref.read(terminalLigatures.notifier).state = value,
             ),
             const SectionDivider(),
-            const _TerminalAppearanceSelector(),
+            _TerminalAppearanceSelector(enabled: !terminalColorsLocked),
             SwitchListTile(
               secondary: const Icon(Icons.visibility_outlined),
               title: const UseText(I18nKey.settingsTerminalMinimumContrast),
@@ -192,7 +203,7 @@ class TerminalSettings extends ConsumerWidget {
                   ref.read(terminalMinimumContrast.notifier).state = value,
             ),
             if (ref.watch(terminalAppearance) == TerminalAppearance.custom)
-              const _TerminalCustomColorsSection(),
+              _TerminalCustomColorsSection(enabled: !terminalColorsLocked),
           ],
         ),
         SettingsSection(
@@ -597,7 +608,9 @@ class TerminalSettings extends ConsumerWidget {
 }
 
 class _TerminalAppearanceSelector extends ConsumerWidget {
-  const _TerminalAppearanceSelector();
+  const _TerminalAppearanceSelector({required this.enabled});
+
+  final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -615,7 +628,19 @@ class _TerminalAppearanceSelector extends ConsumerWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 16),
-              const UseText(I18nKey.settingsTerminalAppearance),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const UseText(I18nKey.settingsTerminalAppearance),
+                    if (!enabled)
+                      const UseText(
+                        I18nKey.settingsTerminalColorsPluginLocked,
+                        maxLines: 2,
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -641,8 +666,10 @@ class _TerminalAppearanceSelector extends ConsumerWidget {
                   ),
               ],
               selected: {selected},
-              onSelectionChanged: (value) =>
-                  ref.read(terminalAppearance.notifier).state = value.first,
+              onSelectionChanged: enabled
+                  ? (value) => ref.read(terminalAppearance.notifier).state =
+                        value.first
+                  : null,
             ),
           ),
         ],
@@ -734,35 +761,47 @@ class _TerminalCustomColors extends ConsumerWidget {
 }
 
 class _TerminalCustomColorsSection extends StatelessWidget {
-  const _TerminalCustomColorsSection();
+  const _TerminalCustomColorsSection({required this.enabled});
+
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: ExpansionTile(
-        key: const Key('terminal-custom-colors-expansion'),
-        initiallyExpanded: false,
-        leading: Icon(Icons.palette_outlined, color: scheme.primary),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        childrenPadding: EdgeInsets.zero,
-        shape: const Border(),
-        collapsedShape: const Border(),
-        title: UseText(
-          I18nKey.settingsTerminalCustomSection,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: scheme.primary,
-            fontWeight: FontWeight.w600,
+    return IgnorePointer(
+      ignoring: !enabled,
+      child: AnimatedOpacity(
+        opacity: enabled ? 1 : 0.5,
+        duration: const Duration(milliseconds: 150),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: ExpansionTile(
+            key: const Key('terminal-custom-colors-expansion'),
+            enabled: enabled,
+            initiallyExpanded: false,
+            leading: Icon(Icons.palette_outlined, color: scheme.primary),
+            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+            childrenPadding: EdgeInsets.zero,
+            shape: const Border(),
+            collapsedShape: const Border(),
+            title: UseText(
+              I18nKey.settingsTerminalCustomSection,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: scheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: UseText(
+              enabled
+                  ? I18nKey.settingsTerminalCustomSectionDescription
+                  : I18nKey.settingsTerminalColorsPluginLocked,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            children: const [_TerminalCustomColors()],
           ),
         ),
-        subtitle: UseText(
-          I18nKey.settingsTerminalCustomSectionDescription,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-        ),
-        children: const [_TerminalCustomColors()],
       ),
     );
   }

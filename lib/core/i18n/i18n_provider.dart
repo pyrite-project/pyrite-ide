@@ -15,8 +15,12 @@ final availableLocalesProvider = Provider<List<String>>((ref) {
 });
 
 String translate(Ref ref, I18nKey key) {
-  final locale = ref.watch(activeLocaleProvider);
-  final registry = ref.watch(dataRegistryProvider);
+  // Service-layer translations are snapshots. Watching here makes any state
+  // provider that translates a label depend on the entire data registry, so a
+  // theme contribution would dispose and recreate unrelated editor/terminal
+  // state. Widgets use translateForWidget below and remain reactive.
+  final locale = ref.read(activeLocaleProvider);
+  final registry = ref.read(dataRegistryProvider);
   return translateFromRegistry(registry, locale, key);
 }
 

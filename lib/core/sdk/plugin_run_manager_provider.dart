@@ -44,6 +44,9 @@ class PluginRunManagerNotifier
     _permissionLog.load();
   }
 
+  bool isRunning(String pluginId) =>
+      state.keys.any((plugin) => plugin.id == pluginId);
+
   Future<void> start(Plugin plugin) async {
     if (!_canRun(plugin)) return;
     if (state.keys.any((candidate) => candidate.id == plugin.id)) return;

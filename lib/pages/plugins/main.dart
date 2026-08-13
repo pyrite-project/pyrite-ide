@@ -44,7 +44,7 @@ class Plugins extends ConsumerWidget {
         title: const UseText(I18nKey.pluginsTitle),
         actions: [
           IconButton(
-            icon: Icon(Icons.add_box_outlined, size: tokens.headerIconSize,),
+            icon: Icon(Icons.add_box_outlined, size: tokens.headerIconSize),
             tooltip: translateForWidget(ref, I18nKey.pluginsInstall),
             onPressed: () => _installPlugin(context, ref),
           ),
@@ -79,6 +79,7 @@ class Plugins extends ConsumerWidget {
                       : PluginAssetImage(
                           pluginId: plugin.id,
                           assetPath: plugin.manifest!.icons!.full,
+                          revision: plugin.version,
                           width: compact ? 28 : 36,
                           height: compact ? 28 : 36,
                           fallback: const Icon(Icons.extension_outlined),
@@ -220,17 +221,17 @@ class Plugins extends ConsumerWidget {
 
       final zipPath = result.files.single.path!;
       if (!context.mounted) return;
-      showIdeSuccess(
+      showIdeMessage(
         context,
         translateForWidget(ref, I18nKey.pluginsInstalling),
       );
-      final updatePending = await ref
+      await ref
           .read(pluginManagerProvider.notifier)
-          .install(zipPath);
-      if (updatePending && context.mounted) {
+          .install(zipPath); // install 会返回一个bool表示是否为更新插件
+      if (context.mounted) {
         showIdeSuccess(
           context,
-          translateForWidget(ref, I18nKey.pluginsUpdateAfterRestart),
+          translateForWidget(ref, I18nKey.pluginsInstallSuccessfully),
         );
       }
     } catch (e) {
@@ -597,6 +598,11 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
 
     final selectedIndex = views.indexWhere((entry) => entry.id == targetView);
     final activeIndex = selectedIndex < 0 ? 0 : selectedIndex;
+    final pluginVersion = ref.watch(
+      pluginManagerProvider.select(
+        (plugins) => plugins[widget.pluginId]?.version,
+      ),
+    );
     final surfaces = [
       for (var index = 0; index < views.length; index++)
         _buildSurface(manager, views[index], visible: index == activeIndex),
@@ -623,7 +629,10 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
                   dividerHeight: 1,
                   labelStyle: Theme.of(context).textTheme.labelMedium,
                   onTap: (index) => _selectView(views[index].id),
-                  tabs: [for (final entry in views) _viewTab(entry)],
+                  tabs: [
+                    for (final entry in views)
+                      _viewTab(entry, revision: pluginVersion),
+                  ],
                 ),
               ),
             ),
@@ -655,7 +664,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     visible: visible,
   );
 
-  Widget _viewTab(PluginViewContribution view) {
+  Widget _viewTab(PluginViewContribution view, {required Object? revision}) {
     final icon = view.icon;
     Widget? iconWidget;
     if (icon?.kind == PluginIconKind.material) {
@@ -664,6 +673,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
       iconWidget = PluginAssetImage(
         pluginId: widget.pluginId,
         assetPath: icon!.value,
+        revision: revision,
         width: 16,
         height: 16,
         monochrome: true,

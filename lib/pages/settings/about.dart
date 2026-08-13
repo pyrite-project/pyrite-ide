@@ -790,7 +790,7 @@ class _CopyableInfoTile extends StatelessWidget {
   });
 
   final IconData icon;
-  final Object title;
+  final I18nKey title;
   final String value;
 
   @override
@@ -805,10 +805,7 @@ class _CopyableInfoTile extends StatelessWidget {
         if (context.mounted) {
           showIdeSuccess(
             context,
-            I18nKey.aboutCopied.fallback.replaceAll(
-              '{title}',
-              title.toString(),
-            ),
+            I18nKey.aboutCopied.fallback.replaceAll('{title}', title.fallback),
           );
         }
       },

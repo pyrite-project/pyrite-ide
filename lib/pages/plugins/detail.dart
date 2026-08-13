@@ -48,6 +48,7 @@ class PluginDetailPage extends ConsumerWidget {
               PluginAssetImage(
                 pluginId: plugin.id,
                 assetPath: icons.full,
+                revision: plugin.version,
                 width: 28,
                 height: 28,
                 fallback: const Icon(Icons.extension_outlined, size: 24),
