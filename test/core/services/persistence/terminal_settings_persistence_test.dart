@@ -35,4 +35,52 @@ void main() {
       List<int>.generate(16, (index) => index),
     );
   });
+
+  test('LSP virtual environment round-trips with a compatible default', () {
+    expect(SettingsPersistedData.fromJson(const {}).lspVirtualEnvironment, '');
+
+    final data = SettingsPersistedData.fromJson({
+      'lspVirtualEnvironment': '/workspace/.venv',
+    });
+
+    expect(data.lspVirtualEnvironment, '/workspace/.venv');
+    expect(data.toJson()['lspVirtualEnvironment'], '/workspace/.venv');
+    expect(data.toJson().containsKey('lspPythonInterpreter'), isFalse);
+  });
+
+  test('migrates an old LSP Python interpreter path to its environment', () {
+    final data = SettingsPersistedData.fromJson({
+      'lspPythonInterpreter': '/workspace/.venv/bin/python',
+    });
+
+    expect(data.lspVirtualEnvironment, '/workspace/.venv');
+  });
+
+  test(
+    'BasedPyright type checking mode round-trips with a compatible default',
+    () {
+      expect(
+        SettingsPersistedData.fromJson(
+          const {},
+        ).lspBasedPyrightTypeCheckingMode,
+        'standard',
+      );
+
+      final data = SettingsPersistedData.fromJson({
+        'lspBasedPyrightTypeCheckingMode': 'strict',
+      });
+
+      expect(data.lspBasedPyrightTypeCheckingMode, 'strict');
+      expect(data.toJson()['lspBasedPyrightTypeCheckingMode'], 'strict');
+    },
+  );
+
+  test('inlay hint display setting round-trips with a compatible default', () {
+    expect(SettingsPersistedData.fromJson(const {}).lspShowInlayHints, isFalse);
+
+    final data = SettingsPersistedData.fromJson({'lspShowInlayHints': true});
+
+    expect(data.lspShowInlayHints, isTrue);
+    expect(data.toJson()['lspShowInlayHints'], isTrue);
+  });
 }

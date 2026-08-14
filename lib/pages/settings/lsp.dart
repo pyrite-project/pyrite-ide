@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -127,6 +128,39 @@ class LspSettings extends ConsumerWidget {
                 ),
               ),
             ],
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const UseText(I18nKey.settingsLspVirtualEnvironment),
+              subtitle: Text(
+                ref.watch(lspVirtualEnvironment).isEmpty
+                    ? I18nKey.settingsLspVirtualEnvironmentSubtitle.fallback
+                    : ref.watch(lspVirtualEnvironment),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showVirtualEnvironmentDialog(context, ref),
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: I18nKey.settingsLspBasedPyrightSection,
+          description: I18nKey.settingsLspBasedPyrightDescription,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.rule_outlined),
+              title: const UseText(
+                I18nKey.settingsLspBasedPyrightTypeCheckingMode,
+              ),
+              subtitle: UseText(
+                _basedPyrightTypeCheckingModeLabel(
+                  ref.watch(lspBasedPyrightTypeCheckingMode),
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  _showBasedPyrightTypeCheckingModeDialog(context, ref),
+            ),
           ],
         ),
         SettingsSection(
@@ -245,8 +279,8 @@ class LspSettings extends ConsumerWidget {
             ),
 
             _CapabilitySwitch(
-              title: I18nKey.settingsLspInlayHint,
-              provider: lspInlayHint,
+              title: I18nKey.settingsLspShowInlayHints,
+              provider: lspShowInlayHints,
             ),
 
             _CapabilitySwitch(
@@ -382,7 +416,7 @@ class LspSettings extends ConsumerWidget {
                 onPressed: () {
                   ref.read(microPythonStubsLayers.notifier).state =
                       List.unmodifiable(layers);
-                  refreshOpenLspStubsConfiguration(ref);
+                  refreshOpenLspStubsConfiguration(ref.read);
                   context.pop();
                   showIdeSuccess(
                     context,
@@ -578,6 +612,106 @@ class LspSettings extends ConsumerWidget {
       ),
     );
   }
+
+  void showVirtualEnvironmentDialog(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(
+      text: ref.read(lspVirtualEnvironment),
+    );
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const UseText(I18nKey.settingsLspVirtualEnvironment),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            label: const UseText(I18nKey.settingsLspVirtualEnvironment),
+            helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
+            suffixIcon: IconButton(
+              tooltip: '选择虚拟环境目录',
+              icon: const Icon(Icons.folder_open_outlined),
+              onPressed: () async {
+                final directoryPath = await getDirectoryPath();
+                if (directoryPath != null) controller.text = directoryPath;
+              },
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(lspVirtualEnvironment.notifier).state = '';
+              refreshOpenLspConfiguration(ref.read);
+              context.pop();
+            },
+            child: const Text('清空'),
+          ),
+          FilledButton(
+            onPressed: () {
+              ref.read(lspVirtualEnvironment.notifier).state = controller.text
+                  .trim();
+              refreshOpenLspConfiguration(ref.read);
+              context.pop();
+              showIdeSuccess(
+                context,
+                translateForWidget(
+                  ref,
+                  I18nKey.settingsLspVirtualEnvironmentUpdated,
+                ),
+              );
+            },
+            child: const UseText(I18nKey.commonSave),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+  }
+
+  void _showBasedPyrightTypeCheckingModeDialog(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    final current = ref.read(lspBasedPyrightTypeCheckingMode);
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const UseText(I18nKey.settingsLspBasedPyrightTypeCheckingMode),
+        children: BasedPyrightTypeCheckingMode.values.map((mode) {
+          return SimpleDialogOption(
+            child: ListTile(
+              title: UseText(_basedPyrightTypeCheckingModeLabel(mode)),
+              trailing: mode == current ? const Icon(Icons.check) : null,
+              minTileHeight: 0,
+              onTap: () {
+                ref.read(lspBasedPyrightTypeCheckingMode.notifier).state = mode;
+                refreshOpenLspConfiguration(ref.read);
+                Navigator.pop(context);
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  I18nKey _basedPyrightTypeCheckingModeLabel(
+    BasedPyrightTypeCheckingMode mode,
+  ) => switch (mode) {
+    BasedPyrightTypeCheckingMode.off =>
+      I18nKey.settingsLspBasedPyrightTypeCheckingModeOff,
+    BasedPyrightTypeCheckingMode.basic =>
+      I18nKey.settingsLspBasedPyrightTypeCheckingModeBasic,
+    BasedPyrightTypeCheckingMode.standard =>
+      I18nKey.settingsLspBasedPyrightTypeCheckingModeStandard,
+    BasedPyrightTypeCheckingMode.strict =>
+      I18nKey.settingsLspBasedPyrightTypeCheckingModeStrict,
+    BasedPyrightTypeCheckingMode.all =>
+      I18nKey.settingsLspBasedPyrightTypeCheckingModeAll,
+  };
 }
 
 class _CapabilitySwitch extends ConsumerWidget {

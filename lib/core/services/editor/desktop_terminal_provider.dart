@@ -76,6 +76,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
   Future<void> createSession({
     void Function(Terminal, ValueNotifier<Color?>)? configureTerminal,
+    Directory? defaultDir,
   }) async {
     if (!isSupported) {
       state = state.copyWith(
@@ -101,6 +102,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
+        defaultDir: defaultDir?.path,
         backgroundColor: backgroundColor,
       );
       state = state.copyWith(
@@ -136,11 +138,12 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     required TerminalController controller,
     required _ShellCommand shell,
     required ValueNotifier<Color?> backgroundColor,
+    String? defaultDir,
   }) {
     final pty = Pty.start(
       shell.executable,
       arguments: shell.arguments,
-      workingDirectory: Directory.current.path,
+      workingDirectory: defaultDir ?? Directory.current.path,
       environment: _terminalEnvironment(),
       rows: 25,
       columns: 80,

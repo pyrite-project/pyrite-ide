@@ -84,6 +84,13 @@ StateProvider<String> lspWebSocketPath = StateProvider<String>(
 );
 StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
 StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
+StateProvider<String> lspVirtualEnvironment = StateProvider<String>(
+  (ref) => "",
+);
+StateProvider<BasedPyrightTypeCheckingMode> lspBasedPyrightTypeCheckingMode =
+    StateProvider<BasedPyrightTypeCheckingMode>(
+      (ref) => BasedPyrightTypeCheckingMode.standard,
+    );
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>(
@@ -96,7 +103,7 @@ StateProvider<bool> lspSignatureHelp = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspDocumentColor = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspDocumentHighlight = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspCodeFolding = StateProvider<bool>((ref) => false);
-StateProvider<bool> lspInlayHint = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspShowInlayHints = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspGoToDefinition = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspRename = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspAlwaysStart = StateProvider<bool>((ref) => false);

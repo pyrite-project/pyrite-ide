@@ -419,7 +419,7 @@ class SdkDataApi {
         '[$pluginId] registered stubs provider $providerId: '
         '${profiles.map((profile) => '${profile.id}=${profile.path}').join(', ')}',
       );
-      refreshOpenLspStubsConfiguration(ref);
+      refreshOpenLspStubsConfiguration(ref.read);
     } catch (error) {
       _respondError(envelope, respond, error.toString());
       return;
@@ -471,7 +471,7 @@ class SdkDataApi {
             item.contributionId == providerId))
           item,
     ];
-    refreshOpenLspStubsConfiguration(ref);
+    refreshOpenLspStubsConfiguration(ref.read);
     _respondOk(envelope, respond, data: true);
   }
 

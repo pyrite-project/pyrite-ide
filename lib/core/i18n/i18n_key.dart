@@ -806,6 +806,51 @@ enum I18nKey {
     '可执行文件路径已更新',
   ),
   settingsLspArgsUpdated('settings.lsp.stdio.args_updated', '启动参数已更新'),
+  settingsLspVirtualEnvironment('settings.lsp.virtual_environment', '虚拟环境'),
+  settingsLspVirtualEnvironmentSubtitle(
+    'settings.lsp.virtual_environment.subtitle',
+    '选择虚拟环境目录；留空自动使用工作区 .venv',
+  ),
+  settingsLspVirtualEnvironmentHint(
+    'settings.lsp.virtual_environment.hint',
+    '例如 .venv 或 /path/to/venv',
+  ),
+  settingsLspVirtualEnvironmentUpdated(
+    'settings.lsp.virtual_environment.updated',
+    '虚拟环境已更新',
+  ),
+  settingsLspBasedPyrightSection(
+    'settings.lsp.basedpyright.title',
+    'BasedPyright',
+  ),
+  settingsLspBasedPyrightDescription(
+    'settings.lsp.basedpyright.description',
+    '配置 BasedPyright 的类型检查严格程度。',
+  ),
+  settingsLspBasedPyrightTypeCheckingMode(
+    'settings.lsp.basedpyright.type_checking_mode',
+    '类型检查严格程度',
+  ),
+  settingsLspBasedPyrightTypeCheckingModeOff(
+    'settings.lsp.basedpyright.type_checking_mode.off',
+    '关闭',
+  ),
+  settingsLspBasedPyrightTypeCheckingModeBasic(
+    'settings.lsp.basedpyright.type_checking_mode.basic',
+    '基础',
+  ),
+  settingsLspBasedPyrightTypeCheckingModeStandard(
+    'settings.lsp.basedpyright.type_checking_mode.standard',
+    '标准',
+  ),
+  settingsLspBasedPyrightTypeCheckingModeStrict(
+    'settings.lsp.basedpyright.type_checking_mode.strict',
+    '严格',
+  ),
+  settingsLspBasedPyrightTypeCheckingModeAll(
+    'settings.lsp.basedpyright.type_checking_mode.all',
+    '全部',
+  ),
   settingsLspDiagnosticsSection('settings.lsp.diagnostics.title', '诊断显示'),
   settingsLspDiagnosticsDescription(
     'settings.lsp.diagnostics.description',
@@ -857,13 +902,13 @@ enum I18nKey {
   settingsLspHoverInfo('settings.lsp.feature.hover_info', '悬浮提示'),
   settingsLspCodeAction('settings.lsp.feature.code_action', '代码操作'),
   settingsLspSignatureHelp('settings.lsp.feature.signature_help', '签名帮助'),
-  settingsLspDocumentColor('settings.lsp.feature.document_color', '文档颜色'),
+  settingsLspDocumentColor('settings.lsp.feature.document_color', '颜色选择器支持'),
   settingsLspDocumentHighlight(
     'settings.lsp.feature.document_highlight',
     '文档高亮',
   ),
   settingsLspCodeFolding('settings.lsp.feature.code_folding', '代码折叠'),
-  settingsLspInlayHint('settings.lsp.feature.inlay_hint', '内联提示'),
+  settingsLspShowInlayHints('settings.lsp.feature.show_inlay_hints', '显示内联提示'),
   settingsLspGoToDefinition('settings.lsp.feature.go_to_definition', '跳转定义'),
   settingsLspRename('settings.lsp.feature.rename', '重命名符号'),
   settingsLspScope('settings.lsp.scope', 'LSP 生效范围'),

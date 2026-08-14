@@ -22,6 +22,8 @@ class SettingsPersistedData {
   final String lspWebSocketPath;
   final String lspStdioExecutable;
   final String lspStdioArgs;
+  final String lspVirtualEnvironment;
+  final String lspBasedPyrightTypeCheckingMode;
   final bool disableWarning;
   final bool disableError;
   final bool lspSemanticHighlighting;
@@ -32,7 +34,7 @@ class SettingsPersistedData {
   final bool lspDocumentColor;
   final bool lspDocumentHighlight;
   final bool lspCodeFolding;
-  final bool lspInlayHint;
+  final bool lspShowInlayHints;
   final bool lspGoToDefinition;
   final bool lspRename;
   final bool lspAlwaysStart;
@@ -82,6 +84,8 @@ class SettingsPersistedData {
     required this.lspWebSocketPath,
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '--stdio',
+    this.lspVirtualEnvironment = '',
+    this.lspBasedPyrightTypeCheckingMode = 'standard',
     required this.disableWarning,
     required this.disableError,
     this.lspSemanticHighlighting = false,
@@ -92,7 +96,7 @@ class SettingsPersistedData {
     this.lspDocumentColor = false,
     this.lspDocumentHighlight = true,
     this.lspCodeFolding = false,
-    this.lspInlayHint = false,
+    this.lspShowInlayHints = false,
     this.lspGoToDefinition = true,
     this.lspRename = true,
     this.lspAlwaysStart = false,
@@ -143,6 +147,8 @@ class SettingsPersistedData {
     'lspWebSocketPath': lspWebSocketPath,
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
+    'lspVirtualEnvironment': lspVirtualEnvironment,
+    'lspBasedPyrightTypeCheckingMode': lspBasedPyrightTypeCheckingMode,
     'disableWarning': disableWarning,
     'disableError': disableError,
     'lspSemanticHighlighting': lspSemanticHighlighting,
@@ -153,7 +159,7 @@ class SettingsPersistedData {
     'lspDocumentColor': lspDocumentColor,
     'lspDocumentHighlight': lspDocumentHighlight,
     'lspCodeFolding': lspCodeFolding,
-    'lspInlayHint': lspInlayHint,
+    'lspShowInlayHints': lspShowInlayHints,
     'lspGoToDefinition': lspGoToDefinition,
     'lspRename': lspRename,
     'lspAlwaysStart': lspAlwaysStart,
@@ -209,6 +215,13 @@ class SettingsPersistedData {
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
     lspStdioArgs: json['lspStdioArgs'] as String? ?? '--stdio',
+    lspVirtualEnvironment:
+        json['lspVirtualEnvironment'] as String? ??
+        _legacyInterpreterVirtualEnvironment(
+          json['lspPythonInterpreter'] as String? ?? '',
+        ),
+    lspBasedPyrightTypeCheckingMode:
+        json['lspBasedPyrightTypeCheckingMode'] as String? ?? 'standard',
     disableWarning: json['disableWarning'] as bool? ?? false,
     disableError: json['disableError'] as bool? ?? false,
     lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? false,
@@ -219,7 +232,7 @@ class SettingsPersistedData {
     lspDocumentColor: json['lspDocumentColor'] as bool? ?? false,
     lspDocumentHighlight: json['lspDocumentHighlight'] as bool? ?? true,
     lspCodeFolding: json['lspCodeFolding'] as bool? ?? false,
-    lspInlayHint: json['lspInlayHint'] as bool? ?? false,
+    lspShowInlayHints: json['lspShowInlayHints'] as bool? ?? false,
     lspGoToDefinition: json['lspGoToDefinition'] as bool? ?? true,
     lspRename: json['lspRename'] as bool? ?? true,
     lspAlwaysStart: json['lspAlwaysStart'] as bool? ?? false,
@@ -275,6 +288,14 @@ class SettingsPersistedData {
     hardwareResetStrategy:
         json['hardwareResetStrategy'] as String? ?? 'disabled',
   );
+
+  static String _legacyInterpreterVirtualEnvironment(String interpreter) {
+    final match = RegExp(
+      r'^(.*)[/\\](?:bin|Scripts)[/\\]python(?:3|\.exe)?$',
+      caseSensitive: false,
+    ).firstMatch(interpreter.trim());
+    return match?.group(1) ?? '';
+  }
 }
 
 class SettingsPersistence {

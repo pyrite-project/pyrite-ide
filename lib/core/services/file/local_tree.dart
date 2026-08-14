@@ -23,6 +23,7 @@ class LocalFileItemsNotifier
       await ref.read(fileProvider.notifier).getFileList(),
     );
     state = items;
+    await ref.read(localFileTreeViewControllerProvider).replaceRoots(items);
     return items;
   }
 
@@ -44,9 +45,9 @@ localFileItemsProvider = StateNotifierProvider(
 // Local tree controller
 // ---------------------------------------------------------------------------
 
-final localFileTreeViewControllerProvider = StateProvider(
-  (ref) => TreeController(
-    roots: ref.watch(localFileItemsProvider),
+final Provider<TreeController<FileSystemItem>>
+localFileTreeViewControllerProvider = Provider(
+  (ref) => TreeController<FileSystemItem>(
     onNodeDeleted: (node) {
       if (node.data is FolderItem) {
         local.deleteDir(node.id);

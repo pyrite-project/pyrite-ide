@@ -257,6 +257,34 @@ class SettingsRegistry {
       setter: (ref, v) => ref.read(lspStdioArgs.notifier).state = v.toString(),
     ),
     _SettingEntry(
+      name: 'lsp.virtual_environment',
+      type: 'string',
+      provider: lspVirtualEnvironment,
+      getter: (ref) => ref.read(lspVirtualEnvironment),
+      setter: (ref, v) {
+        ref.read(lspVirtualEnvironment.notifier).state = v.toString().trim();
+        refreshOpenLspConfiguration(ref.read);
+      },
+    ),
+    _SettingEntry(
+      name: 'lsp.basedpyright.type_checking_mode',
+      type: 'string',
+      provider: lspBasedPyrightTypeCheckingMode,
+      getter: (ref) => ref.read(lspBasedPyrightTypeCheckingMode).jsonName,
+      setter: (ref, v) {
+        final parsed = BasedPyrightTypeCheckingMode.fromJsonName(v?.toString());
+        if (parsed == null) {
+          throw ArgumentError.value(
+            v,
+            'value',
+            'Expected off, basic, standard, strict, or all',
+          );
+        }
+        ref.read(lspBasedPyrightTypeCheckingMode.notifier).state = parsed;
+        refreshOpenLspConfiguration(ref.read);
+      },
+    ),
+    _SettingEntry(
       name: 'lsp.disable_warning',
       type: 'bool',
       provider: disableWarning,
@@ -330,11 +358,12 @@ class SettingsRegistry {
       setter: (ref, v) => ref.read(lspCodeFolding.notifier).state = v == true,
     ),
     _SettingEntry(
-      name: 'lsp.inlay_hint',
+      name: 'lsp.show_inlay_hints',
       type: 'bool',
-      provider: lspInlayHint,
-      getter: (ref) => ref.read(lspInlayHint),
-      setter: (ref, v) => ref.read(lspInlayHint.notifier).state = v == true,
+      provider: lspShowInlayHints,
+      getter: (ref) => ref.read(lspShowInlayHints),
+      setter: (ref, v) =>
+          ref.read(lspShowInlayHints.notifier).state = v == true,
     ),
     _SettingEntry(
       name: 'lsp.go_to_definition',
@@ -614,7 +643,7 @@ class SettingsRegistry {
               (layer) => layer.provider.isNotEmpty && layer.profile.isNotEmpty,
             )
             .toList();
-        refreshOpenLspStubsConfiguration(ref);
+        refreshOpenLspStubsConfiguration(ref.read);
       },
     ),
     _SettingEntry(

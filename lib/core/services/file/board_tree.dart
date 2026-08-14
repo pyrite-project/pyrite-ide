@@ -31,6 +31,7 @@ class BoardFileItemsNotifier
       final entries = await ref.read(boardProvider).ops.getFileList();
       final items = await buildBoardFileListItems(entries);
       state = items;
+      await ref.read(boardFileTreeViewControllerProvider).replaceRoots(items);
       return items;
     } on DeviceNotReadyException catch (error) {
       debugPrint('[board-tree] refresh skipped: $error');
@@ -48,6 +49,9 @@ class BoardFileItemsNotifier
 
   void clear() {
     state = const [];
+    unawaited(
+      ref.read(boardFileTreeViewControllerProvider).replaceRoots(state),
+    );
   }
 }
 
@@ -63,9 +67,9 @@ boardFileItemsProvider = StateNotifierProvider(
 // Board tree controller
 // ---------------------------------------------------------------------------
 
-final boardFileTreeViewControllerProvider = StateProvider(
-  (ref) => TreeController(
-    roots: ref.watch(boardFileItemsProvider),
+final Provider<TreeController<FileSystemItem>>
+boardFileTreeViewControllerProvider = Provider(
+  (ref) => TreeController<FileSystemItem>(
     onNodeDeleted: (node) async {
       try {
         if (node.data is FolderItem) {

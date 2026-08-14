@@ -62,6 +62,9 @@ class PersistenceManager {
       lspWebSocketPath: settings?.lspWebSocketPath ?? '127.0.0.1:2026',
       lspStdioExecutable: settings?.lspStdioExecutable ?? '',
       lspStdioArgs: settings?.lspStdioArgs ?? '--stdio',
+      lspVirtualEnvironment: settings?.lspVirtualEnvironment ?? '',
+      lspBasedPyrightTypeCheckingMode:
+          settings?.lspBasedPyrightTypeCheckingMode ?? 'standard',
       disableWarning: settings?.disableWarning ?? false,
       disableError: settings?.disableError ?? false,
       lspSemanticHighlighting: settings?.lspSemanticHighlighting ?? false,
@@ -72,7 +75,7 @@ class PersistenceManager {
       lspDocumentColor: settings?.lspDocumentColor ?? false,
       lspDocumentHighlight: settings?.lspDocumentHighlight ?? true,
       lspCodeFolding: settings?.lspCodeFolding ?? false,
-      lspInlayHint: settings?.lspInlayHint ?? false,
+      lspShowInlayHints: settings?.lspShowInlayHints ?? false,
       lspGoToDefinition: settings?.lspGoToDefinition ?? true,
       lspRename: settings?.lspRename ?? true,
       lspAlwaysStart: settings?.lspAlwaysStart ?? false,
@@ -158,6 +161,10 @@ class PersistenceManager {
           lspWebSocketPath: container.read(lspWebSocketPath),
           lspStdioExecutable: container.read(lspStdioExecutable),
           lspStdioArgs: container.read(lspStdioArgs),
+          lspVirtualEnvironment: container.read(lspVirtualEnvironment),
+          lspBasedPyrightTypeCheckingMode: container
+              .read(lspBasedPyrightTypeCheckingMode)
+              .jsonName,
           disableWarning: container.read(disableWarning),
           disableError: container.read(disableError),
           lspSemanticHighlighting: container.read(lspSemanticHighlighting),
@@ -168,7 +175,7 @@ class PersistenceManager {
           lspDocumentColor: container.read(lspDocumentColor),
           lspDocumentHighlight: container.read(lspDocumentHighlight),
           lspCodeFolding: container.read(lspCodeFolding),
-          lspInlayHint: container.read(lspInlayHint),
+          lspShowInlayHints: container.read(lspShowInlayHints),
           lspGoToDefinition: container.read(lspGoToDefinition),
           lspRename: container.read(lspRename),
           lspAlwaysStart: container.read(lspAlwaysStart),

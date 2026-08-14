@@ -15,6 +15,27 @@ enum LspType {
   };
 }
 
+enum BasedPyrightTypeCheckingMode {
+  off,
+  basic,
+  standard,
+  strict,
+  all;
+
+  String get jsonName => name;
+
+  static BasedPyrightTypeCheckingMode? fromJsonName(String? value) {
+    return switch (value) {
+      'off' => BasedPyrightTypeCheckingMode.off,
+      'basic' => BasedPyrightTypeCheckingMode.basic,
+      'standard' => BasedPyrightTypeCheckingMode.standard,
+      'strict' => BasedPyrightTypeCheckingMode.strict,
+      'all' => BasedPyrightTypeCheckingMode.all,
+      _ => null,
+    };
+  }
+}
+
 class MicroPythonStubsLayer {
   const MicroPythonStubsLayer({required this.provider, required this.profile});
 

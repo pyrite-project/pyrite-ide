@@ -131,6 +131,13 @@ void _applyData(PersistedData data) {
   container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
+  container.read(lspVirtualEnvironment.notifier).state =
+      data.lspVirtualEnvironment;
+  container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
+      BasedPyrightTypeCheckingMode.fromJsonName(
+        data.lspBasedPyrightTypeCheckingMode,
+      ) ??
+      BasedPyrightTypeCheckingMode.standard;
   container.read(disableWarning.notifier).state = data.disableWarning;
   container.read(disableError.notifier).state = data.disableError;
   container.read(lspSemanticHighlighting.notifier).state =
@@ -143,7 +150,7 @@ void _applyData(PersistedData data) {
   container.read(lspDocumentHighlight.notifier).state =
       data.lspDocumentHighlight;
   container.read(lspCodeFolding.notifier).state = data.lspCodeFolding;
-  container.read(lspInlayHint.notifier).state = data.lspInlayHint;
+  container.read(lspShowInlayHints.notifier).state = data.lspShowInlayHints;
   container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
   container.read(lspRename.notifier).state = data.lspRename;
   container.read(lspAlwaysStart.notifier).state = data.lspAlwaysStart;

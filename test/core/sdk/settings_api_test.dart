@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class _SettingsTransport implements PluginTransport {
@@ -323,6 +324,96 @@ void main() {
       'value': true,
     });
   });
+
+  test('inlay hint display setting can be set, read, and listed', () async {
+    final harness = await _SettingsHarness.start();
+    addTearDown(harness.close);
+
+    final listResponse = await harness.list();
+    final settings = listResponse['payload']['data'] as List<dynamic>;
+    expect(
+      settings.whereType<Map>().any(
+        (item) =>
+            item['name'] == 'lsp.show_inlay_hints' && item['type'] == 'bool',
+      ),
+      isTrue,
+    );
+    expect(
+      settings.whereType<Map>().any((item) => item['name'] == 'lsp.inlay_hint'),
+      isFalse,
+    );
+
+    _expectOk(await harness.set('lsp.show_inlay_hints', true), true);
+    expect(harness.container.read(lspShowInlayHints), isTrue);
+    _expectOk(await harness.get('lsp.show_inlay_hints'), {
+      'name': 'lsp.show_inlay_hints',
+      'value': true,
+    });
+  });
+
+  test('virtual environment setting can be set, read, and listed', () async {
+    final harness = await _SettingsHarness.start();
+    addTearDown(harness.close);
+
+    final listResponse = await harness.list();
+    final settings = listResponse['payload']['data'] as List<dynamic>;
+    expect(
+      settings.whereType<Map>().any(
+        (item) =>
+            item['name'] == 'lsp.virtual_environment' &&
+            item['type'] == 'string',
+      ),
+      isTrue,
+    );
+    expect(
+      settings.whereType<Map>().any(
+        (item) => item['name'] == 'lsp.python_interpreter',
+      ),
+      isFalse,
+    );
+
+    _expectOk(
+      await harness.set('lsp.virtual_environment', '/workspace/.venv'),
+      true,
+    );
+    expect(harness.container.read(lspVirtualEnvironment), '/workspace/.venv');
+    _expectOk(await harness.get('lsp.virtual_environment'), {
+      'name': 'lsp.virtual_environment',
+      'value': '/workspace/.venv',
+    });
+  });
+
+  test(
+    'BasedPyright type checking mode can be set, read, and listed',
+    () async {
+      final harness = await _SettingsHarness.start();
+      addTearDown(harness.close);
+
+      final listResponse = await harness.list();
+      final settings = listResponse['payload']['data'] as List<dynamic>;
+      expect(
+        settings.whereType<Map>().any(
+          (item) =>
+              item['name'] == 'lsp.basedpyright.type_checking_mode' &&
+              item['type'] == 'string',
+        ),
+        isTrue,
+      );
+
+      _expectOk(
+        await harness.set('lsp.basedpyright.type_checking_mode', 'strict'),
+        true,
+      );
+      expect(
+        harness.container.read(lspBasedPyrightTypeCheckingMode),
+        BasedPyrightTypeCheckingMode.strict,
+      );
+      _expectOk(await harness.get('lsp.basedpyright.type_checking_mode'), {
+        'name': 'lsp.basedpyright.type_checking_mode',
+        'value': 'strict',
+      });
+    },
+  );
 
   test('invalid theme values return errors without changing state', () async {
     final harness = await _SettingsHarness.start();

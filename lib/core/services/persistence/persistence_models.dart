@@ -61,6 +61,8 @@ class PersistedData {
   final String lspWebSocketPath;
   final String lspStdioExecutable;
   final String lspStdioArgs;
+  final String lspVirtualEnvironment;
+  final String lspBasedPyrightTypeCheckingMode;
   final bool disableWarning;
   final bool disableError;
   final bool lspSemanticHighlighting;
@@ -71,7 +73,7 @@ class PersistedData {
   final bool lspDocumentColor;
   final bool lspDocumentHighlight;
   final bool lspCodeFolding;
-  final bool lspInlayHint;
+  final bool lspShowInlayHints;
   final bool lspGoToDefinition;
   final bool lspRename;
   final bool lspAlwaysStart;
@@ -139,6 +141,8 @@ class PersistedData {
     this.lspWebSocketPath = '127.0.0.1:2026',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '--stdio',
+    this.lspVirtualEnvironment = '',
+    this.lspBasedPyrightTypeCheckingMode = 'standard',
     this.disableWarning = false,
     this.disableError = false,
     this.lspSemanticHighlighting = false,
@@ -149,7 +153,7 @@ class PersistedData {
     this.lspDocumentColor = false,
     this.lspDocumentHighlight = true,
     this.lspCodeFolding = false,
-    this.lspInlayHint = false,
+    this.lspShowInlayHints = false,
     this.lspGoToDefinition = true,
     this.lspRename = true,
     this.lspAlwaysStart = false,

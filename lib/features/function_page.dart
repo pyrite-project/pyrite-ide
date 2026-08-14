@@ -1161,6 +1161,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                   );
                 }
               },
+              defaultDir: ref.read(fileProvider),
             );
       }
     });
@@ -1197,6 +1198,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                                 terminalTheme,
                                 backgroundColor: backgroundColor,
                               ),
+                          defaultDir: ref.read(fileProvider),
                         ),
                     icon: const Icon(Icons.add),
                     label: const UseText(I18nKey.bottomPanelNewTerminal),
@@ -1259,6 +1261,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                                   terminalTheme,
                                   backgroundColor: backgroundColor,
                                 ),
+                            defaultDir: ref.read(fileProvider),
                           ),
                       icon: const Icon(Icons.add, size: 18),
                     ),

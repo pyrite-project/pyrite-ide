@@ -5,8 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
-import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:path/path.dart' as path;
@@ -14,7 +15,14 @@ import 'package:path/path.dart' as path;
 class EditorControllerMapNotifier
     extends StateNotifier<Map<String, CodeForgeController>> {
   final Ref ref;
-  EditorControllerMapNotifier(this.ref) : super({});
+  EditorControllerMapNotifier(this.ref) : super({}) {
+    ref.listen<bool>(lspDocumentColor, (_, enabled) {
+      _updateDocumentColorPicker(enabled);
+    });
+    ref.listen<bool>(lspShowInlayHints, (_, visible) {
+      _updateInlayHintsVisibility(visible);
+    });
+  }
 
   Future<CodeForgeController?> createNewEditorController(
     File file, {
@@ -28,7 +36,7 @@ class EditorControllerMapNotifier
         return null;
       }
     }
-    final projectPath = file.parent.path;
+    final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
 
     LspConfig? lspConfig;
     if (ref.read(useLsp) &&
@@ -43,17 +51,28 @@ class EditorControllerMapNotifier
         documentColor: ref.read(lspDocumentColor),
         documentHighlight: ref.read(lspDocumentHighlight),
         codeFolding: ref.read(lspCodeFolding),
-        inlayHint: ref.read(lspInlayHint),
+        inlayHint: ref.read(lspShowInlayHints),
         goToDefinition: ref.read(lspGoToDefinition),
         rename: ref.read(lspRename),
       );
-      final stubsConfig = buildLspStubsConfig(ref);
+      final stubsConfig = buildLspStubsConfig(
+        ref.read,
+        workspacePath: projectPath,
+      );
       if (stubsConfig.paths.isNotEmpty) {
         ref
             .read(ideOutputLogProvider.notifier)
             .add(
               IdeOutputSource.ide,
               'LSP stubs paths: ${stubsConfig.paths.join(Platform.pathSeparator)}',
+            );
+      }
+      if (stubsConfig.virtualEnvironment.isNotEmpty) {
+        ref
+            .read(ideOutputLogProvider.notifier)
+            .add(
+              IdeOutputSource.ide,
+              'LSP virtual environment: ${stubsConfig.virtualEnvironment}',
             );
       }
       if (type == LspType.webSocket) {
@@ -99,7 +118,39 @@ class EditorControllerMapNotifier
     // controller.openedFile = file.path;
     controller.text = text;
     state = {...state, file.path: controller};
+    controller.setDocumentColorsEnabled(ref.read(lspDocumentColor));
+    if (ref.read(lspShowInlayHints)) {
+      unawaited(_showInlayHintsWhenReady(controller));
+    }
     return controller;
+  }
+
+  void _updateInlayHintsVisibility(bool visible) {
+    for (final controller in state.values) {
+      if (visible) {
+        unawaited(_showInlayHintsWhenReady(controller));
+      } else {
+        controller.hideInlayHints();
+      }
+    }
+  }
+
+  void _updateDocumentColorPicker(bool enabled) {
+    for (final controller in state.values) {
+      controller.setDocumentColorsEnabled(enabled, force: enabled);
+    }
+  }
+
+  Future<void> _showInlayHintsWhenReady(CodeForgeController controller) async {
+    for (var attempt = 0; attempt < 30; attempt++) {
+      if (!ref.read(lspShowInlayHints)) return;
+      final lspConfig = controller.lspConfig;
+      if (lspConfig?.isInitialized == true && controller.openedFile != null) {
+        await controller.showInlayHints(readOnly: false);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
   }
 
   Future<void> _sendWorkspaceConfiguration(LspConfig lspConfig) async {
