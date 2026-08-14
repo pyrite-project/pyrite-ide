@@ -244,6 +244,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       editorForeground.withAlpha(18),
       editorBackground,
     ).withAlpha(255);
+    resolvedTheme["comment"] = TextStyle(color: Color(0xff888888));
     return CodeForge(
       key: ValueKey(
         '${pluginEditorThemeActive ? '' : themeKey}_${activeThemeId ?? ''}_${editorStyles}_${brightness.name}_${surface.toARGB32()}',
