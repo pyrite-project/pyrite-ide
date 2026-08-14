@@ -4,9 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
+import 'package:super_context_menu/super_context_menu.dart';
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 import 'package:tabbed_view/src/tab_status.dart';
@@ -174,6 +179,16 @@ class TabWidget extends ConsumerWidget {
       }
     }
 
+    // Keep the context menu outside the drag source. This matches the file
+    // tree interaction: a long press opens the menu, while moving after the
+    // long-press threshold lets the native drag recognizer take over.
+    if (tab.closable) {
+      widget = PyriteContextMenuWidget(
+        menuProvider: (_) => _buildContextMenu(context, index),
+        child: widget,
+      );
+    }
+
     if (provider.tabReorderEnabled &&
         provider.draggingTabIndex != TabDataHelper.indexFrom(tab)) {
       return NativeTabDropRegion(
@@ -184,6 +199,48 @@ class TabWidget extends ConsumerWidget {
       );
     }
     return widget;
+  }
+
+  Menu _buildContextMenu(BuildContext context, int index) {
+    final container = ProviderScope.containerOf(context);
+    final registry = container.read(dataRegistryProvider);
+    final locale = container.read(activeLocaleProvider);
+    final title = translateFromRegistry(
+      registry,
+      locale,
+      I18nKey.tabContextMenuClose,
+    );
+    return Menu(
+      children: [
+        MenuAction(
+          title: title,
+          callback: () => _closeTab(context, index),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _closeTab(BuildContext context, int index) async {
+    final tabData = provider.controller.getTabByIndex(index);
+    if (provider.tabRemoveInterceptor != null &&
+        !await provider.tabRemoveInterceptor!(context, index, tabData)) {
+      return;
+    }
+
+    onClose();
+    if (!context.mounted) return;
+    final currentIndex = provider.controller.tabs.indexOf(tabData);
+    if (currentIndex == -1) return;
+    provider.controller.removeTab(currentIndex);
+    final container = ProviderScope.containerOf(context);
+    if (identical(
+      provider.controller,
+      container.read(tabbedViewControllerProvider),
+    )) {
+      container
+          .read(tabbedViewControllerProvider.notifier)
+          .afterTabClose(currentIndex, tabData);
+    }
   }
 }
 

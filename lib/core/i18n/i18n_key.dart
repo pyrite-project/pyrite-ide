@@ -1511,6 +1511,7 @@ enum I18nKey {
   tabUnsavedDialogSave('tab.unsaved_dialog.save', '保存'),
   tabUnsavedDialogCancel('tab.unsaved_dialog.cancel', '取消'),
   tabSavedCurrentFile('tab.message.saved_current_file', '已保存当前文件'),
+  tabContextMenuClose('tab.context_menu.close', '关闭标签页'),
   pluginsPermUi('plugins.permission.ui', '界面'),
   pluginsPermFile('plugins.permission.file', '文件'),
   pluginsPermBoard('plugins.permission.board', '开发板'),
