@@ -142,8 +142,10 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
         final data = event.data as Uint8List;
         handleData(data);
       case SerialEventType.lineStatusChanged:
-      case SerialEventType.error:
         break;
+      case SerialEventType.error:
+        debugPrint('[serial] transport error: ${event.data}');
+        _autoDisconnect();
     }
   }
 
