@@ -37,9 +37,11 @@ class EditorControllerMapNotifier
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
+    final languageId = ref.read(lspLanguageId).trim();
 
     LspConfig? lspConfig;
     if (ref.read(useLsp) &&
+        languageId.isNotEmpty &&
         (path.extension(file.path) == ".py" || ref.read(lspAlwaysStart))) {
       final type = ref.read(lspType);
       final capabilities = LspClientCapabilities(
@@ -78,7 +80,7 @@ class EditorControllerMapNotifier
       if (type == LspType.webSocket) {
         lspConfig = LspSocketConfig(
           workspacePath: projectPath,
-          languageId: "python",
+          languageId: languageId,
           serverUrl: "ws://${ref.read(lspWebSocketPath)}",
           capabilities: capabilities,
           initializationOptions: stubsConfig.initializationOptions,
@@ -96,7 +98,7 @@ class EditorControllerMapNotifier
               executable: executable,
               args: args,
               workspacePath: projectPath,
-              languageId: "python",
+              languageId: languageId,
               capabilities: capabilities,
               initializationOptions: stubsConfig.initializationOptions,
               workspaceConfiguration: stubsConfig.workspaceConfiguration,

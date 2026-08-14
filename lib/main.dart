@@ -129,6 +129,7 @@ void _applyData(PersistedData data) {
   container.read(lspType.notifier).state =
       LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
   container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
+  container.read(lspLanguageId.notifier).state = data.lspLanguageId;
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(lspVirtualEnvironment.notifier).state =

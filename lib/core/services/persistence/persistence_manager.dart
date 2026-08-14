@@ -60,8 +60,9 @@ class PersistenceManager {
       useLsp: settings?.useLsp ?? true,
       lspType: settings?.lspType ?? 'web_socket',
       lspWebSocketPath: settings?.lspWebSocketPath ?? '127.0.0.1:2026',
+      lspLanguageId: settings?.lspLanguageId ?? 'python',
       lspStdioExecutable: settings?.lspStdioExecutable ?? '',
-      lspStdioArgs: settings?.lspStdioArgs ?? '--stdio',
+      lspStdioArgs: settings?.lspStdioArgs ?? '',
       lspVirtualEnvironment: settings?.lspVirtualEnvironment ?? '',
       lspBasedPyrightTypeCheckingMode:
           settings?.lspBasedPyrightTypeCheckingMode ?? 'standard',
@@ -159,6 +160,7 @@ class PersistenceManager {
           useLsp: container.read(useLsp),
           lspType: container.read(lspType).jsonName,
           lspWebSocketPath: container.read(lspWebSocketPath),
+          lspLanguageId: container.read(lspLanguageId),
           lspStdioExecutable: container.read(lspStdioExecutable),
           lspStdioArgs: container.read(lspStdioArgs),
           lspVirtualEnvironment: container.read(lspVirtualEnvironment),

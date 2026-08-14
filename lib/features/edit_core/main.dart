@@ -508,10 +508,116 @@ class _EditCoreState extends ConsumerState<EditCore> {
       newName.trim(),
     );
     if (edit.isNotEmpty) {
-      await controller.applyWorkspaceEdit(
-        edit.containsKey('changes') ? {'edit': edit} : edit,
+      await _applyRenameEdit(ref, controller, edit);
+    }
+  }
+
+  Future<void> _applyRenameEdit(
+    WidgetRef ref,
+    CodeForgeController currentController,
+    Map<String, dynamic> edit,
+  ) async {
+    final changes = <String, List<dynamic>>{};
+    final rawChanges = edit['changes'];
+    if (rawChanges is Map) {
+      for (final entry in rawChanges.entries) {
+        if (entry.key is String && entry.value is List) {
+          changes
+              .putIfAbsent(entry.key as String, () => [])
+              .addAll(entry.value as List);
+        }
+      }
+    }
+    final documentChanges = edit['documentChanges'];
+    if (documentChanges is List) {
+      for (final change in documentChanges.whereType<Map>()) {
+        final document = change['textDocument'];
+        final uri = document is Map ? document['uri'] : null;
+        final edits = change['edits'];
+        if (uri is String && edits is List) {
+          changes.putIfAbsent(uri, () => []).addAll(edits);
+        }
+      }
+    }
+
+    final controllers = ref.read(editorControllerMapProvider);
+    for (final entry in changes.entries) {
+      final uri = Uri.tryParse(entry.key);
+      if (uri == null || uri.scheme != 'file') continue;
+      final filePath = uri.toFilePath();
+      final targetUri = Uri.file(filePath).toString();
+      final controller = currentController.openedFile == filePath
+          ? currentController
+          : controllers[filePath];
+      late final String updatedContent;
+      if (controller != null) {
+        await controller.applyWorkspaceEdit({
+          'edit': {
+            'changes': {targetUri: entry.value},
+          },
+        });
+        updatedContent = controller.text;
+      } else {
+        final file = File(filePath);
+        if (!await file.exists()) continue;
+        final original = await file.readAsString();
+        updatedContent = _applyTextEdits(original, entry.value);
+        if (updatedContent != original) {
+          await file.writeAsString(updatedContent);
+        }
+      }
+      if (filePath != currentController.openedFile) {
+        await currentController.lspConfig?.syncDocument(
+          filePath,
+          updatedContent,
+        );
+      }
+    }
+  }
+
+  String _applyTextEdits(String text, List<dynamic> edits) {
+    final replacements = <({int start, int end, String text})>[];
+    for (final edit in edits.whereType<Map>()) {
+      final range = edit['range'];
+      if (range is! Map) continue;
+      final start = _lspPositionOffset(text, range['start']);
+      final end = _lspPositionOffset(text, range['end']);
+      if (start == null || end == null || start > end) continue;
+      replacements.add((
+        start: start,
+        end: end,
+        text: edit['newText'] is String ? edit['newText'] as String : '',
+      ));
+    }
+    replacements.sort((a, b) => b.start.compareTo(a.start));
+    for (final replacement in replacements) {
+      text = text.replaceRange(
+        replacement.start,
+        replacement.end,
+        replacement.text,
       );
     }
+    return text;
+  }
+
+  int? _lspPositionOffset(String text, dynamic position) {
+    if (position is! Map) return null;
+    final line = (position['line'] as num?)?.toInt();
+    final character = (position['character'] as num?)?.toInt();
+    if (line == null || character == null || line < 0 || character < 0) {
+      return null;
+    }
+    var lineStart = 0;
+    for (var currentLine = 0; currentLine < line; currentLine++) {
+      final lineEnd = text.indexOf('\n', lineStart);
+      if (lineEnd < 0) return null;
+      lineStart = lineEnd + 1;
+    }
+    var lineEnd = text.indexOf('\n', lineStart);
+    if (lineEnd < 0) lineEnd = text.length;
+    if (lineEnd > lineStart && text.codeUnitAt(lineEnd - 1) == 13) lineEnd--;
+    if (character > lineEnd - lineStart) return null;
+    return lineStart + character;
   }
 
   void _handleConfirm(BuildContext context, WidgetRef ref) {

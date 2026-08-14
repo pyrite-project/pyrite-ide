@@ -794,6 +794,12 @@ enum I18nKey {
   ),
   settingsLspStdioSubtitle('settings.lsp.stdio.subtitle', '启动本地语言服务器进程'),
   settingsLspWebSocketAddress('settings.lsp.websocket.address', 'WebSocket 地址'),
+  settingsLspLanguageId('settings.lsp.language_id', '语言 ID'),
+  settingsLspLanguageIdHint(
+    'settings.lsp.language_id_hint',
+    '传给语言服务器的文档语言标识，例如 python',
+  ),
+  settingsLspLanguageIdUpdated('settings.lsp.language_id_updated', '语言 ID 已更新'),
   settingsLspExecutablePath('settings.lsp.stdio.executable', '可执行文件路径'),
   settingsLspExecutablePathHint(
     'settings.lsp.stdio.executable_hint',

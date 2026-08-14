@@ -20,6 +20,7 @@ class SettingsPersistedData {
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
+  final String lspLanguageId;
   final String lspStdioExecutable;
   final String lspStdioArgs;
   final String lspVirtualEnvironment;
@@ -82,8 +83,9 @@ class SettingsPersistedData {
     required this.useLsp,
     this.lspType = 'web_socket',
     required this.lspWebSocketPath,
+    this.lspLanguageId = 'python',
     this.lspStdioExecutable = '',
-    this.lspStdioArgs = '--stdio',
+    this.lspStdioArgs = '',
     this.lspVirtualEnvironment = '',
     this.lspBasedPyrightTypeCheckingMode = 'standard',
     required this.disableWarning,
@@ -145,6 +147,7 @@ class SettingsPersistedData {
     'useLsp': useLsp,
     'lspType': lspType,
     'lspWebSocketPath': lspWebSocketPath,
+    'lspLanguageId': lspLanguageId,
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
     'lspVirtualEnvironment': lspVirtualEnvironment,
@@ -213,8 +216,9 @@ class SettingsPersistedData {
     useLsp: json['useLsp'] as bool? ?? true,
     lspType: json['lspType'] as String? ?? 'web_socket',
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
+    lspLanguageId: json['lspLanguageId'] as String? ?? 'python',
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
-    lspStdioArgs: json['lspStdioArgs'] as String? ?? '--stdio',
+    lspStdioArgs: json['lspStdioArgs'] as String? ?? '',
     lspVirtualEnvironment:
         json['lspVirtualEnvironment'] as String? ??
         _legacyInterpreterVirtualEnvironment(

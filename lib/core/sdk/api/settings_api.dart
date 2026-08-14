@@ -242,6 +242,14 @@ class SettingsRegistry {
           ref.read(lspWebSocketPath.notifier).state = v.toString(),
     ),
     _SettingEntry(
+      name: 'lsp.language_id',
+      type: 'string',
+      provider: lspLanguageId,
+      getter: (ref) => ref.read(lspLanguageId),
+      setter: (ref, v) =>
+          ref.read(lspLanguageId.notifier).state = v.toString().trim(),
+    ),
+    _SettingEntry(
       name: 'lsp.stdio_executable',
       type: 'string',
       provider: lspStdioExecutable,

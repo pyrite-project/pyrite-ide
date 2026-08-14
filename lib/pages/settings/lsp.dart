@@ -68,6 +68,30 @@ class LspSettings extends ConsumerWidget {
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: TextFormField(
+                initialValue: ref.read(lspLanguageId),
+                decoration: const InputDecoration(
+                  label: UseText(I18nKey.settingsLspLanguageId),
+                  helper: UseText(I18nKey.settingsLspLanguageIdHint),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) {
+                  ref.read(lspLanguageId.notifier).state = value;
+                },
+                onFieldSubmitted: (value) {
+                  ref.read(lspLanguageId.notifier).state = value.trim();
+                  showIdeSuccess(
+                    context,
+                    translateForWidget(
+                      ref,
+                      I18nKey.settingsLspLanguageIdUpdated,
+                    ),
+                  );
+                },
+              ),
+            ),
             if (ref.watch(lspType) == LspType.webSocket) ...[
               ListTile(
                 title: const UseText(I18nKey.settingsLspWebSocketAddress),
