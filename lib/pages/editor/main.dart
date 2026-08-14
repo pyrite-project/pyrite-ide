@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -122,17 +123,17 @@ class Editor extends ConsumerWidget {
                     ? () async {
                         final accepted = await hardwareResetDevice(ref.read);
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              translateForWidget(
-                                ref,
-                                accepted
-                                    ? I18nKey.editorToolbarHardwareResetStarted
-                                    : I18nKey.editorToolbarHardwareResetFailed,
-                              ),
-                            ),
+                        showIdeMessage(
+                          context,
+                          translateForWidget(
+                            ref,
+                            accepted
+                                ? I18nKey.editorToolbarHardwareResetStarted
+                                : I18nKey.editorToolbarHardwareResetFailed,
                           ),
+                          type: accepted
+                              ? IdeMessageType.success
+                              : IdeMessageType.error,
                         );
                       }
                     : null,
