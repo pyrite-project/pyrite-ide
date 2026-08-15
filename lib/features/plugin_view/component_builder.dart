@@ -298,14 +298,14 @@ class ComponentBuilder {
               ? (props['elevation'] as num).toDouble()
               : null,
           // color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          shape: RoundedRectangleBorder(
-            borderRadius: props['borderRadius'] is num
-                ? BorderRadius.circular(
+          shape: props['borderRadius'] is num
+              ? RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
                     (props['borderRadius'] as num).toDouble(),
-                  )
-                : BorderRadius.zero,
-            // side: BorderSide(color: Theme.of(context).dividerColor, width: 0.5),
-          ),
+                  ),
+                  // side: BorderSide(color: Theme.of(context).dividerColor, width: 0.5),
+                )
+              : null,
           child: Padding(
             padding: EdgeInsets.all(
               (props['padding'] as num?)?.toDouble() ?? 8,
