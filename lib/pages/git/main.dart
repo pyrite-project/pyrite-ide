@@ -150,7 +150,7 @@ class _GitPageState extends ConsumerState<GitPage> {
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 dividerHeight: 0,
-                labelPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                // labelPadding: EdgeInsets.symmetric(horizontal: 10),
                 tabs: [
                   Tab(child: UseText(I18nKey.gitTabChanges)),
                   Tab(child: UseText(I18nKey.gitTabBranches)),
@@ -1158,6 +1158,7 @@ class _GitHeader extends ConsumerWidget {
       subtitle:
           '${snapshot.branchLabel} · ${snapshot.stateLabel} · ${snapshot.rootPath}',
       leadingIcon: Icons.account_tree_outlined,
+      compact: true,
       actions: [
         if (snapshot.ahead > 0 || snapshot.behind > 0)
           PillBadge(label: '↑${snapshot.ahead} ↓${snapshot.behind}'),
