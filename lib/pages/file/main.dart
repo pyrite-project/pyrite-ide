@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_manager.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
@@ -56,6 +57,14 @@ const _dragPathsKey = 'paths';
 const _localDragSourceValue = 'local';
 const _boardDragSourceValue = 'board';
 final Map<_FileDragSource, Rect> _dropRegionRects = <_FileDragSource, Rect>{};
+
+DragItem createLocalFileDragItem(List<String> paths) {
+  final item = DragItem(
+    localData: {_dragSourceKey: _localDragSourceValue, _dragPathsKey: paths},
+  );
+  item.add(Formats.fileUri(Uri.file(paths.first)));
+  return item;
+}
 
 TextStyle? fileTreeLabelStyle({
   required ColorScheme colorScheme,
@@ -886,11 +895,13 @@ class ProjectFiles extends ConsumerWidget {
             ? _localDragPaths(ref, node)
             : _boardDragPaths(ref, node);
         if (paths.isEmpty) return null;
+        if (source == _FileDragSource.local) {
+          return createLocalFileDragItem(paths);
+        }
+
         final item = DragItem(
           localData: {
-            _dragSourceKey: source == _FileDragSource.local
-                ? _localDragSourceValue
-                : _boardDragSourceValue,
+            _dragSourceKey: _boardDragSourceValue,
             _dragPathsKey: paths,
           },
         );
@@ -922,6 +933,30 @@ class ProjectFiles extends ConsumerWidget {
         .getSelectedNodes()
         .map((node) => node.id)
         .toList(growable: false);
+  }
+
+  Future<void> _openLocalItemInFileManager(
+    BuildContext context,
+    WidgetRef ref,
+    TreeNode<FileSystemItem> node,
+  ) async {
+    try {
+      await systemFileManager.open(
+        node.id,
+        isDirectory: node.data is FolderItem,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          Platform.isMacOS
+              ? I18nKey.fileMessageOpenInFinderFailed
+              : I18nKey.fileMessageOpenInFileManagerFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
   }
 
   Menu _buildLocalNodeMenu(
@@ -961,6 +996,15 @@ class ProjectFiles extends ConsumerWidget {
           callback: () => ref
               .read(localFileTreeViewControllerProvider)
               .setRenamingNodeId(node.id),
+          attributes: MenuActionAttributes(disabled: selectedCount != 1),
+        ),
+        MenuAction(
+          title: tr(
+            Platform.isMacOS
+                ? I18nKey.fileActionOpenInFinder
+                : I18nKey.fileActionOpenInFileManager,
+          ),
+          callback: () => _openLocalItemInFileManager(context, ref, node),
           attributes: MenuActionAttributes(disabled: selectedCount != 1),
         ),
         MenuAction(
@@ -1048,7 +1092,9 @@ class ProjectFiles extends ConsumerWidget {
         MenuSeparator(),
         MenuAction(
           title: tr(I18nKey.fileActionCreateFileInFolder, {
-            'folder': localFolderTarget?.id ?? localWorkspace.path,
+            'folder': path.basename(
+              localFolderTarget?.id ?? localWorkspace.path,
+            ),
           }),
           callback: () async {
             final parentDir = localFolderTarget?.id ?? localWorkspace.path;
@@ -1060,7 +1106,9 @@ class ProjectFiles extends ConsumerWidget {
         ),
         MenuAction(
           title: tr(I18nKey.fileActionCreateFolderInFolder, {
-            'folder': localFolderTarget?.id ?? localWorkspace.path,
+            'folder': path.basename(
+              localFolderTarget?.id ?? localWorkspace.path,
+            ),
           }),
           callback: () async {
             final parentDir = localFolderTarget?.id ?? localWorkspace.path;

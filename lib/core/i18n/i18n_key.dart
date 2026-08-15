@@ -175,6 +175,11 @@ enum I18nKey {
     'file.action.overwrite_local_file',
     '覆盖本地文件 {path}',
   ),
+  fileActionOpenInFileManager(
+    'file.action.open_in_file_manager',
+    '在文件资源管理器中打开',
+  ),
+  fileActionOpenInFinder('file.action.open_in_finder', '在访达中打开'),
   fileActionCreateFileInFolder(
     'file.action.create_file_in_folder',
     '在 {folder} 新建文件',
@@ -224,6 +229,14 @@ enum I18nKey {
     '目标名称已存在：{path}',
   ),
   fileMessageRenameFailed('file.message.rename_failed', '重命名失败：{error}'),
+  fileMessageOpenInFileManagerFailed(
+    'file.message.open_in_file_manager_failed',
+    '无法在文件资源管理器中打开：{error}',
+  ),
+  fileMessageOpenInFinderFailed(
+    'file.message.open_in_file_manager_failed',
+    '无法在访达中打开：{error}',
+  ),
   fileMessageMoveFailed('file.message.move_failed', '移动失败：{error}'),
   fileMessageDownloadFailed('file.message.download_failed', '下载失败：{error}'),
   fileMessageUploadFailed('file.message.upload_failed', '上传失败：{error}'),
