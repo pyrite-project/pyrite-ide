@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/controller.dart';
@@ -1006,6 +1007,71 @@ class _EditorContextMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isTouch = details.isMobile;
+    final screenSize = MediaQuery.sizeOf(context);
+    final maxWidth = isTouch
+        ? min(320.0, max(0.0, screenSize.width - 16))
+        : 280.0;
+    final menu = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (details.hasSelection && !details.readOnly)
+          _menuItem(
+            icon: Icons.cut,
+            label: '剪切',
+            shortcut: 'Ctrl+X',
+            onTap: () {
+              details.controller.cut();
+              details.close();
+            },
+          ),
+
+        if (details.hasSelection)
+          _menuItem(
+            icon: Icons.copy,
+            label: '复制',
+            shortcut: 'Ctrl+C',
+            onTap: () {
+              details.controller.copy();
+              details.close();
+            },
+          ),
+
+        if (!details.readOnly)
+          _menuItem(
+            icon: Icons.paste,
+            label: '粘贴',
+            shortcut: 'Ctrl+V',
+            onTap: () async {
+              await details.controller.paste();
+              details.close();
+            },
+          ),
+
+        _menuItem(
+          icon: Icons.select_all,
+          label: '全选',
+          shortcut: 'Ctrl+A',
+          onTap: () {
+            details.controller.selectAll();
+            details.close();
+          },
+        ),
+
+        if (details.items.isNotEmpty) const Divider(height: 1),
+
+        for (final item in details.items)
+          _menuItem(
+            icon: item.icon,
+            label: item.label,
+            shortcut: item.description,
+            onTap: () {
+              details.onItemPressed(item);
+            },
+          ),
+      ],
+    );
 
     return Material(
       elevation: 8,
@@ -1013,69 +1079,16 @@ class _EditorContextMenu extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 200, maxWidth: 280),
-        child: IntrinsicWidth(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (details.hasSelection && !details.readOnly)
-                _menuItem(
-                  icon: Icons.cut,
-                  label: '剪切',
-                  shortcut: 'Ctrl+X',
-                  onTap: () {
-                    details.controller.cut();
-                    details.close();
-                  },
-                ),
-
-              if (details.hasSelection)
-                _menuItem(
-                  icon: Icons.copy,
-                  label: '复制',
-                  shortcut: 'Ctrl+C',
-                  onTap: () {
-                    details.controller.copy();
-                    details.close();
-                  },
-                ),
-
-              if (!details.readOnly)
-                _menuItem(
-                  icon: Icons.paste,
-                  label: '粘贴',
-                  shortcut: 'Ctrl+V',
-                  onTap: () async {
-                    await details.controller.paste();
-                    details.close();
-                  },
-                ),
-
-              _menuItem(
-                icon: Icons.select_all,
-                label: '全选',
-                shortcut: 'Ctrl+A',
-                onTap: () {
-                  details.controller.selectAll();
-                  details.close();
-                },
-              ),
-
-              if (details.items.isNotEmpty) const Divider(height: 1),
-
-              for (final item in details.items)
-                _menuItem(
-                  icon: item.icon,
-                  label: item.label,
-                  shortcut: item.description,
-                  onTap: () {
-                    details.onItemPressed(item);
-                  },
-                ),
-            ],
-          ),
+        constraints: BoxConstraints(
+          minWidth: isTouch ? min(200.0, maxWidth) : 200,
+          maxWidth: maxWidth,
+          maxHeight: isTouch
+              ? min(420.0, max(180.0, screenSize.height * 0.6))
+              : double.infinity,
         ),
+        child: isTouch
+            ? SingleChildScrollView(child: menu)
+            : IntrinsicWidth(child: menu),
       ),
     );
   }
@@ -1089,18 +1102,23 @@ class _EditorContextMenu extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        padding: EdgeInsets.symmetric(
+          horizontal: details.isMobile ? 16 : 12,
+          vertical: details.isMobile ? 12 : 9,
+        ),
         child: Row(
           children: [
             SizedBox(
               width: 20,
-              child: icon == null ? null : Icon(icon, size: 16),
+              child: icon == null
+                  ? null
+                  : Icon(icon, size: details.isMobile ? 20 : 16),
             ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            if (shortcut.isNotEmpty) ...[
+            if (!details.isMobile && shortcut.isNotEmpty) ...[
               const SizedBox(width: 24),
               Text(shortcut, style: const TextStyle(fontSize: 11)),
             ],
