@@ -215,7 +215,7 @@ class Plugins extends ConsumerWidget {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['zip'],
+        allowedExtensions: ['pyrix'],
       );
       if (result == null || result.files.isEmpty) return;
 

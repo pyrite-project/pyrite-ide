@@ -137,7 +137,7 @@ enum I18nKey {
     '确定要删除插件「{name}」吗？',
   ),
   pluginsEmptyTitle('plugins.empty.title', '尚未安装插件'),
-  pluginsEmptyMessage('plugins.empty.message', '从本地 ZIP 包注册插件后，它们会显示在这里。'),
+  pluginsEmptyMessage('plugins.empty.message', '从本地 PYRIX 包注册插件后，它们会显示在这里。'),
   fileLocalProjectTitle('file.local.title', '本地项目'),
   fileBoardTitle('file.board.title', '设备文件'),
   fileSelectedCount('file.selected_count', '已选择 {count} 项'),

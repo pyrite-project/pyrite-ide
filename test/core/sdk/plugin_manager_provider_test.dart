@@ -108,7 +108,7 @@ $contributions
     archive.addFile(ArchiveFile.string(entry.key, entry.value));
   }
 
-  final zip = File(path.join(root.path, '$id-$version.zip'));
+  final zip = File(path.join(root.path, '$id-$version.pyrix'));
   await zip.writeAsBytes(ZipEncoder().encodeBytes(archive));
   return zip;
 }
@@ -123,7 +123,7 @@ Future<File> _writeManifestFixturePackage(
   final archive = Archive()
     ..addFile(ArchiveFile.string('plugin.toml', manifest))
     ..addFile(ArchiveFile.string('__main__.py', 'print("fixture")'));
-  final zip = File(path.join(root.path, '$fixture.zip'));
+  final zip = File(path.join(root.path, '$fixture.pyrix'));
   await zip.writeAsBytes(ZipEncoder().encodeBytes(archive));
   return zip;
 }

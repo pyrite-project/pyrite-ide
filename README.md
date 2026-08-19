@@ -34,7 +34,7 @@ PyriteIDE 将本地项目、MicroPython 开发板与日常开发工具整合进�
 1. **编辑器与语言服务** — 多标签编辑、会话恢复、可配置 LSP，以及面向不同开发板组合的 MicroPython Stubs Layers。
 2. **完整的设备工作流** — 通过 USB 串口连接 REPL，在编辑器中运行或中断脚本，并在本地与开发板之间上传、下载文件；覆盖冲突会在执行前确认。
 3. **内置 Git 工作区** — 查看状态与差异、暂存更改、创建提交、管理分支和历史记录，并完成 Pull / Push 等常用操作。
-4. **可控的插件系统** — 使用内置 Python Runtime 运行 UI、Service 与 Data 插件，支持 ZIP 安装、权限声明与监控，以及主题、语言包和 Stubs 等数据贡献。
+4. **可控的插件系统** — 使用内置 Python Runtime 运行 UI、Service 与 Data 插件，支持 PYRIX 安装、权限声明与监控，以及主题、语言包和 Stubs 等数据贡献。
 5. **响应式跨平台体验** — 桌面端提供本地终端与串口能力，Android 侧针对 USB 串口和开发板文件操作优化布局。
 
 ## 支持平台
@@ -106,7 +106,7 @@ flutter build linux --release --verbose
 
 ## 插件开发
 
-PyriteIDE 插件以 ZIP 分发，并通过 `plugin.toml` 声明类型、平台与权限：
+PyriteIDE 插件以 PYRIX 分发，并通过 `plugin.toml` 声明类型、平台与权限：
 
 | 类型 | 适用场景 |
 | --- | --- |
