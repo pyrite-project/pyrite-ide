@@ -561,6 +561,25 @@ void main() {
     expect(fixture.transports['exited']!.closed, isTrue);
   });
 
+  test('Python diagnostics are forwarded to plugin output', () async {
+    final fixture = _RuntimeFixture(root);
+    await fixture.createPlugins(['diagnostic']);
+    final host = fixture.createHost();
+    final output = <String>[];
+    await host.startPlugin(
+      _plugin('diagnostic'),
+      configureManager: (_) {},
+      onOutput: output.add,
+    );
+
+    const traceback =
+        'Traceback (most recent call last):\n  File "__main__.py", line 1, in <module>\nValueError: boom';
+    fixture.completions['diagnostic']!.complete(traceback);
+    await _pumpUntil(() => host.sessions.isEmpty);
+
+    expect(output, contains('[diagnostic] Python exited: $traceback'));
+  });
+
   test('run-once waits for completion and removes the session', () async {
     final fixture = _RuntimeFixture(root);
     await fixture.createPlugins(['data']);

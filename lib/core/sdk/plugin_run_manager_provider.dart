@@ -58,11 +58,11 @@ class PluginRunManagerNotifier
     final metricsRegistry = ref.read(pluginMetricsProvider);
     final backoff = metricsRegistry.restartBackoffRemaining(plugin.id);
     if (backoff != null) {
-      outputLog.add(
-        IdeOutputSource.plugin,
-        '[${plugin.id}] restart delayed for ${backoff.inMilliseconds} ms',
-        pluginId: plugin.id,
-      );
+      // outputLog.add(
+      //   IdeOutputSource.plugin,
+      //   '[${plugin.id}] restart delayed for ${backoff.inMilliseconds} ms',
+      //   pluginId: plugin.id,
+      // );
       return;
     }
     PluginRunManager? liveManager;
