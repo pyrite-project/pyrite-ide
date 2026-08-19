@@ -115,10 +115,28 @@ class ComponentBuilder {
     switch (type) {
       // -- Layout ------------------------------------------------------------
       case 'Row':
-        return Row(
-          mainAxisAlignment: _mainAxis(props['justify']),
-          crossAxisAlignment: _crossAxis(props['align']),
-          children: _spaced(context, children, props['gap'], Axis.horizontal),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final requestedCrossAxis = _crossAxis(props['align']);
+            // A stretch row cannot pass an infinite height to its children.
+            // This occurs naturally when the row is inside a shrink-wrapped
+            // Column or a vertical scroll view, so use intrinsic height there.
+            final crossAxis =
+                requestedCrossAxis == CrossAxisAlignment.stretch &&
+                    !constraints.hasBoundedHeight
+                ? CrossAxisAlignment.start
+                : requestedCrossAxis;
+            return Row(
+              mainAxisAlignment: _mainAxis(props['justify']),
+              crossAxisAlignment: crossAxis,
+              children: _spaced(
+                context,
+                children,
+                props['gap'],
+                Axis.horizontal,
+              ),
+            );
+          },
         );
       case 'Column':
         return Column(
@@ -126,6 +144,251 @@ class ComponentBuilder {
           crossAxisAlignment: _crossAxis(props['align']),
           mainAxisSize: MainAxisSize.min,
           children: _spaced(context, children, props['gap'], Axis.vertical),
+        );
+      case 'Padding':
+        final allPadding = props['allPadding'] as num?;
+        return Padding(
+          padding: allPadding != null
+              ? EdgeInsets.all(allPadding.toDouble())
+              : EdgeInsets.only(
+                  left: (props['leftPadding'] as num?)?.toDouble() ?? 0,
+                  right: (props['rightPadding'] as num?)?.toDouble() ?? 0,
+                  top: (props['topPadding'] as num?)?.toDouble() ?? 0,
+                  bottom: (props['bottomPadding'] as num?)?.toDouble() ?? 0,
+                ),
+          child: children.isEmpty
+              ? const SizedBox.shrink()
+              : _build(context, children.first),
+        );
+      case 'Expanded':
+        return Expanded(
+          flex: (props['flex'] as num?)?.toInt() ?? 1,
+          child: children.isEmpty
+              ? const SizedBox.shrink()
+              : _build(context, children.first),
+        );
+      case 'SizedBox':
+        return SizedBox(
+          width: (props['width'] as num?)?.toDouble(),
+          height: (props['height'] as num?)?.toDouble(),
+          child: children.isEmpty
+              ? const SizedBox.shrink()
+              : _build(context, children.first),
+        );
+      case 'Spacer':
+        return Spacer(flex: (props['flex'] as num?)?.toInt() ?? 1);
+      case 'Align':
+        return Align(
+          alignment: _boxAlignment(props['alignment']),
+          widthFactor: (props['widthFactor'] as num?)?.toDouble(),
+          heightFactor: (props['heightFactor'] as num?)?.toDouble(),
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'Container':
+        final containerStyle = _styleMap(props['style']);
+        final borderRadius =
+            (props['borderRadius'] as num?)?.toDouble() ??
+            (containerStyle['borderRadius'] as num?)?.toDouble();
+        final color = _color(
+          props['color'] ?? containerStyle['color'],
+          Theme.of(context).colorScheme,
+        );
+        final borderColor = _color(
+          props['borderColor'] ?? containerStyle['borderColor'],
+          Theme.of(context).colorScheme,
+        );
+        final borderWidth =
+            (props['borderWidth'] as num?)?.toDouble() ??
+            (containerStyle['borderWidth'] as num?)?.toDouble() ??
+            0;
+        return Container(
+          width: (props['width'] as num?)?.toDouble(),
+          height: (props['height'] as num?)?.toDouble(),
+          padding: props['padding'] is num || containerStyle['padding'] is num
+              ? EdgeInsets.all(
+                  ((props['padding'] ?? containerStyle['padding']) as num)
+                      .toDouble(),
+                )
+              : null,
+          margin: props['margin'] is num
+              ? EdgeInsets.all((props['margin'] as num).toDouble())
+              : null,
+          alignment: props['alignment'] == null
+              ? null
+              : _boxAlignment(props['alignment']),
+          decoration:
+              color != null ||
+                  borderRadius != null ||
+                  borderColor != null ||
+                  borderWidth > 0
+              ? BoxDecoration(
+                  color: color,
+                  borderRadius: borderRadius == null
+                      ? null
+                      : BorderRadius.circular(borderRadius),
+                  border: borderColor != null || borderWidth > 0
+                      ? Border.all(
+                          color: borderColor ?? Theme.of(context).dividerColor,
+                          width: borderWidth > 0 ? borderWidth : 1,
+                        )
+                      : null,
+                )
+              : null,
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'Stack':
+        return Stack(
+          alignment: _boxAlignment(
+            props['alignment'],
+            fallback: Alignment.topLeft,
+          ),
+          children: [for (final child in children) _build(context, child)],
+        );
+      case 'AspectRatio':
+        final aspectRatio = (props['aspectRatio'] as num?)?.toDouble() ?? 1;
+        final aspectChild = children.isEmpty
+            ? null
+            : _build(context, children.first);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final aspect = AspectRatio(
+              aspectRatio: aspectRatio,
+              child: aspectChild,
+            );
+            if (constraints.hasBoundedWidth || constraints.hasBoundedHeight) {
+              return aspect;
+            }
+            // AspectRatio has no intrinsic size when both axes are unbounded,
+            // which is common for a non-flex child in a shrink-wrapped Row.
+            // Give it a finite control-sized height so it can resolve its ratio.
+            const fallbackHeight = kMinInteractiveDimension;
+            return SizedBox(
+              width: fallbackHeight * aspectRatio,
+              height: fallbackHeight,
+              child: aspect,
+            );
+          },
+        );
+      case 'FittedBox':
+        return FittedBox(
+          fit: switch (props['fit']) {
+            'contain' => BoxFit.contain,
+            'cover' => BoxFit.cover,
+            'fill' => BoxFit.fill,
+            'fitWidth' => BoxFit.fitWidth,
+            'fitHeight' => BoxFit.fitHeight,
+            'none' => BoxFit.none,
+            'scaleDown' => BoxFit.scaleDown,
+            _ => BoxFit.contain,
+          },
+          alignment: _boxAlignment(props['alignment']),
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'PageView':
+        return PageView(
+          controller: PageController(
+            initialPage: (props['initialPage'] as num?)?.toInt() ?? 0,
+          ),
+          scrollDirection: props['scrollDirection'] == 'vertical'
+              ? Axis.vertical
+              : Axis.horizontal,
+          onPageChanged: _hasEvent(node, 'pageChanged')
+              ? (index) => onEvent(_id(props), 'pageChanged', {'index': index})
+              : null,
+          children: [for (final child in children) _build(context, child)],
+        );
+      case 'Center':
+        return Center(
+          widthFactor: (props['widthFactor'] as num?)?.toDouble(),
+          heightFactor: (props['heightFactor'] as num?)?.toDouble(),
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'SafeArea':
+        return SafeArea(
+          left: props['left'] != false,
+          top: props['top'] != false,
+          right: props['right'] != false,
+          bottom: props['bottom'] != false,
+          minimum: EdgeInsets.all((props['minimum'] as num?)?.toDouble() ?? 0),
+          child: children.isEmpty
+              ? const SizedBox.shrink()
+              : _build(context, children.first),
+        );
+      case 'ConstrainedBox':
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: (props['minWidth'] as num?)?.toDouble() ?? 0,
+            maxWidth:
+                (props['maxWidth'] as num?)?.toDouble() ?? double.infinity,
+            minHeight: (props['minHeight'] as num?)?.toDouble() ?? 0,
+            maxHeight:
+                (props['maxHeight'] as num?)?.toDouble() ?? double.infinity,
+          ),
+          child: children.isEmpty
+              ? const SizedBox.shrink()
+              : _build(context, children.first),
+        );
+      case 'FractionallySizedBox':
+        return FractionallySizedBox(
+          widthFactor: (props['widthFactor'] as num?)?.toDouble(),
+          heightFactor: (props['heightFactor'] as num?)?.toDouble(),
+          alignment: _boxAlignment(props['alignment']),
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'LimitedBox':
+        return LimitedBox(
+          maxWidth: (props['maxWidth'] as num?)?.toDouble() ?? double.infinity,
+          maxHeight:
+              (props['maxHeight'] as num?)?.toDouble() ?? double.infinity,
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'SingleChildScrollView':
+        return SingleChildScrollView(
+          scrollDirection: props['scrollDirection'] == 'horizontal'
+              ? Axis.horizontal
+              : Axis.vertical,
+          reverse: props['reverse'] == true,
+          primary: props['primary'] as bool?,
+          padding: props['padding'] is num
+              ? EdgeInsets.all((props['padding'] as num).toDouble())
+              : null,
+          child: children.isEmpty ? null : _build(context, children.first),
+        );
+      case 'ListView':
+        return ListView.builder(
+          scrollDirection: props['scrollDirection'] == 'horizontal'
+              ? Axis.horizontal
+              : Axis.vertical,
+          reverse: props['reverse'] == true,
+          shrinkWrap: props['shrinkWrap'] == true,
+          padding: props['padding'] is num
+              ? EdgeInsets.all((props['padding'] as num).toDouble())
+              : null,
+          itemExtent: (props['itemExtent'] as num?)?.toDouble(),
+          itemCount: children.length,
+          itemBuilder: (context, index) => _build(context, children[index]),
+        );
+      case 'GridView':
+        return GridView.count(
+          crossAxisCount: (props['crossAxisCount'] as num?)?.toInt() ?? 1,
+          mainAxisSpacing: (props['mainAxisSpacing'] as num?)?.toDouble() ?? 0,
+          crossAxisSpacing:
+              (props['crossAxisSpacing'] as num?)?.toDouble() ?? 0,
+          shrinkWrap: props['shrinkWrap'] == true,
+          padding: props['padding'] is num
+              ? EdgeInsets.all((props['padding'] as num).toDouble())
+              : null,
+          children: [for (final child in children) _build(context, child)],
+        );
+      case 'Visibility':
+        return Visibility(
+          visible: props['visible'] != false,
+          maintainState: props['maintainState'] == true,
+          maintainAnimation: props['maintainAnimation'] == true,
+          maintainSize: props['maintainSize'] == true,
+          child: children.isEmpty
+              ? const SizedBox.shrink()
+              : _build(context, children.first),
         );
       case 'Flex':
         // Flex distributes space, so children are expanded along the axis.
@@ -293,22 +556,36 @@ class ComponentBuilder {
 
       // -- Content -----------------------------------------------------------
       case 'Card':
+        final cardStyle = _styleMap(props['style']);
         return Card(
-          elevation: props['elevation'] is num
-              ? (props['elevation'] as num).toDouble()
+          color: _color(
+            props['color'] ?? cardStyle['color'],
+            Theme.of(context).colorScheme,
+          ),
+          margin: props['margin'] is num
+              ? EdgeInsets.all((props['margin'] as num).toDouble())
+              : null,
+          elevation: props['elevation'] is num || cardStyle['elevation'] is num
+              ? ((props['elevation'] ?? cardStyle['elevation']) as num)
+                    .toDouble()
               : null,
           // color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          shape: props['borderRadius'] is num
+          shape:
+              props['borderRadius'] is num || cardStyle['borderRadius'] is num
               ? RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(
-                    (props['borderRadius'] as num).toDouble(),
+                    ((props['borderRadius'] ?? cardStyle['borderRadius'])
+                            as num)
+                        .toDouble(),
                   ),
                   // side: BorderSide(color: Theme.of(context).dividerColor, width: 0.5),
                 )
               : null,
           child: Padding(
             padding: EdgeInsets.all(
-              (props['padding'] as num?)?.toDouble() ?? 8,
+              ((props['padding'] ?? cardStyle['padding']) as num?)
+                      ?.toDouble() ??
+                  8,
             ),
             child: _build(context, children.isEmpty ? {} : children.first),
           ),
@@ -317,6 +594,9 @@ class ComponentBuilder {
         return Text(
           props['value']?.toString() ?? '',
           style: _textStyle(context, props),
+          textAlign: _textAlign(
+            props['textAlign'] ?? _styleMap(props['style'])['textAlign'],
+          ),
           maxLines: (props['maxLines'] as num?)?.toInt(),
           overflow: props['maxLines'] == null ? null : TextOverflow.ellipsis,
         );
@@ -324,7 +604,10 @@ class ComponentBuilder {
         return Icon(
           _icon(props['name']?.toString()),
           size: (props['size'] as num?)?.toDouble() ?? 16,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          color:
+              _color(props['color'], Theme.of(context).colorScheme) ??
+              Theme.of(context).colorScheme.onSurfaceVariant,
+          semanticLabel: props['semanticLabel']?.toString(),
         );
       case 'Image':
         final source = props['src']?.toString() ?? '';
@@ -420,6 +703,171 @@ class ComponentBuilder {
         );
       case 'Badge':
         return _buildBadge(context, props);
+      case 'Divider':
+        return Divider(
+          height: (props['height'] as num?)?.toDouble(),
+          thickness: (props['thickness'] as num?)?.toDouble(),
+          indent: (props['indent'] as num?)?.toDouble(),
+          endIndent: (props['endIndent'] as num?)?.toDouble(),
+          color: _color(props['color'], Theme.of(context).colorScheme),
+        );
+      case 'VerticalDivider':
+        return VerticalDivider(
+          width: (props['width'] as num?)?.toDouble(),
+          thickness: (props['thickness'] as num?)?.toDouble(),
+          indent: (props['indent'] as num?)?.toDouble(),
+          endIndent: (props['endIndent'] as num?)?.toDouble(),
+          color: _color(props['color'], Theme.of(context).colorScheme),
+        );
+      case 'SelectableText':
+        return GestureDetector(
+          onTap: _hasEvent(node, 'tap')
+              ? () => onEvent(_id(props), 'tap', const {})
+              : null,
+          child: SelectableText(
+            props['value']?.toString() ?? '',
+            style: _textStyle(context, props),
+            textAlign: _textAlign(_styleMap(props['style'])['textAlign']),
+            maxLines: (props['maxLines'] as num?)?.toInt(),
+          ),
+        );
+      case 'ListTile':
+        return ListTile(
+          dense: props['dense'] == true,
+          enabled: _enabled(props),
+          selected: props['selected'] == true,
+          leading: props['leadingIcon'] == null
+              ? null
+              : Icon(_icon(props['leadingIcon'].toString())),
+          trailing: props['trailingIcon'] == null
+              ? null
+              : Icon(_icon(props['trailingIcon'].toString())),
+          title: Text(
+            props['title']?.toString() ?? '',
+            style: _textStyle(context, props),
+          ),
+          subtitle: props['subtitle'] == null
+              ? null
+              : Text(props['subtitle'].toString()),
+          onTap: _hasEvent(node, 'tap')
+              ? () => onEvent(_id(props), 'tap', const {})
+              : null,
+          onLongPress: _hasEvent(node, 'longPress')
+              ? () => onEvent(_id(props), 'longPress', const {})
+              : null,
+        );
+      case 'CheckboxListTile':
+        return CheckboxListTile(
+          value: hostState.displayValue(_id(props), props['value']) == true,
+          title: Text(props['title']?.toString() ?? ''),
+          subtitle: props['subtitle'] == null
+              ? null
+              : Text(props['subtitle'].toString()),
+          enabled: _enabled(props),
+          selected: props['selected'] == true,
+          onChanged: (value) {
+            if (_enabled(props)) {
+              onEvent(_id(props), 'change', {'value': value});
+            }
+          },
+        );
+      case 'SwitchListTile':
+        return SwitchListTile(
+          value: hostState.displayValue(_id(props), props['value']) == true,
+          title: Text(props['title']?.toString() ?? ''),
+          subtitle: props['subtitle'] == null
+              ? null
+              : Text(props['subtitle'].toString()),
+          selected: props['selected'] == true,
+          onChanged: _enabled(props)
+              ? (value) => onEvent(_id(props), 'change', {'value': value})
+              : null,
+        );
+      case 'RadioListTile':
+        return RadioGroup<Object?>(
+          groupValue: hostState.displayValue(_id(props), props['groupValue']),
+          onChanged: (value) {
+            if (_enabled(props)) {
+              onEvent(_id(props), 'change', {'value': value});
+            }
+          },
+          child: RadioListTile<Object?>(
+            value: props['value'],
+            enabled: _enabled(props),
+            title: Text(props['title']?.toString() ?? ''),
+            subtitle: props['subtitle'] == null
+                ? null
+                : Text(props['subtitle'].toString()),
+          ),
+        );
+      case 'ExpansionTile':
+        return ExpansionTile(
+          initiallyExpanded: props['initiallyExpanded'] == true,
+          enabled: _enabled(props),
+          title: Text(props['title']?.toString() ?? ''),
+          subtitle: props['subtitle'] == null
+              ? null
+              : Text(props['subtitle'].toString()),
+          onExpansionChanged: _hasEvent(node, 'expansionChanged')
+              ? (value) =>
+                    onEvent(_id(props), 'expansionChanged', {'value': value})
+              : null,
+          children: [for (final child in children) _build(context, child)],
+        );
+      case 'CircleAvatar':
+        return CircleAvatar(
+          radius: (props['radius'] as num?)?.toDouble(),
+          backgroundColor: _color(
+            props['backgroundColor'],
+            Theme.of(context).colorScheme,
+          ),
+          foregroundColor: _color(
+            props['foregroundColor'],
+            Theme.of(context).colorScheme,
+          ),
+          child: children.isNotEmpty
+              ? _build(context, children.first)
+              : (props['text'] == null ? null : Text(props['text'].toString())),
+        );
+      case 'Chip':
+        return InputChip(
+          label: Text(props['label']?.toString() ?? ''),
+          avatar: props['avatarIcon'] == null
+              ? null
+              : Icon(_icon(props['avatarIcon'].toString()), size: 16),
+          deleteIcon: props['deleteIcon'] == null
+              ? null
+              : Icon(_icon(props['deleteIcon'].toString()), size: 16),
+          selected: props['selected'] == true,
+          isEnabled: _enabled(props),
+          onDeleted: _hasEvent(node, 'deleted')
+              ? () => onEvent(_id(props), 'deleted', const {})
+              : null,
+          onSelected: _hasEvent(node, 'selected')
+              ? (value) => onEvent(_id(props), 'selected', {'value': value})
+              : null,
+        );
+      case 'CircularProgressIndicator':
+        final raw = props['value'] as num?;
+        return CircularProgressIndicator(
+          value: raw?.toDouble(),
+          strokeWidth: (props['strokeWidth'] as num?)?.toDouble() ?? 4,
+          color: _color(props['color'], Theme.of(context).colorScheme),
+          backgroundColor: _color(
+            props['backgroundColor'],
+            Theme.of(context).colorScheme,
+          ),
+        );
+      case 'LinearProgressIndicator':
+        return LinearProgressIndicator(
+          value: (props['value'] as num?)?.toDouble(),
+          minHeight: (props['minHeight'] as num?)?.toDouble(),
+          color: _color(props['color'], Theme.of(context).colorScheme),
+          backgroundColor: _color(
+            props['backgroundColor'],
+            Theme.of(context).colorScheme,
+          ),
+        );
 
       // -- Input -------------------------------------------------------------
       case 'TextField':
@@ -434,12 +882,122 @@ class ComponentBuilder {
         return _buildSwitch(context, props);
       case 'Slider':
         return _buildSlider(context, props);
+      case 'Radio':
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioGroup<Object?>(
+              groupValue: hostState.displayValue(
+                _id(props),
+                props['groupValue'],
+              ),
+              onChanged: (value) {
+                if (_enabled(props)) {
+                  onEvent(_id(props), 'change', {'value': value});
+                }
+              },
+              child: Radio<Object?>(value: props['value']),
+            ),
+            if (props['label'] != null) Text(props['label'].toString()),
+          ],
+        );
+      case 'RangeSlider':
+        final min = (props['min'] as num?)?.toDouble() ?? 0;
+        final max = (props['max'] as num?)?.toDouble() ?? 100;
+        final start = ((props['start'] as num?)?.toDouble() ?? min).clamp(
+          min,
+          max,
+        );
+        final end = ((props['end'] as num?)?.toDouble() ?? max).clamp(
+          start,
+          max,
+        );
+        return RangeSlider(
+          values: RangeValues(start, end),
+          min: min,
+          max: max,
+          divisions: props['step'] is num && (props['step'] as num) > 0
+              ? ((max - min) / (props['step'] as num)).round().clamp(1, 1000)
+              : null,
+          onChanged: _enabled(props)
+              ? (range) => onEvent(_id(props), 'change', {
+                  'start': range.start,
+                  'end': range.end,
+                })
+              : null,
+        );
+      case 'SegmentedButton':
+        final selected = {
+          for (final value in (props['selected'] as List? ?? const []))
+            value.toString(),
+        };
+        final segments = _entryList(props['segments']);
+        return SegmentedButton<String>(
+          segments: [
+            for (final segment in segments)
+              ButtonSegment<String>(
+                value: segment['id']?.toString() ?? '',
+                label: Text(segment['label']?.toString() ?? ''),
+                icon: segment['icon'] == null
+                    ? null
+                    : Icon(_icon(segment['icon'].toString())),
+                enabled: segment['enabled'] != false,
+              ),
+          ],
+          selected: selected,
+          multiSelectionEnabled: props['multiSelectionEnabled'] == true,
+          emptySelectionAllowed: props['emptySelectionAllowed'] == true,
+          onSelectionChanged: _enabled(props)
+              ? (values) =>
+                    onEvent(_id(props), 'change', {'values': values.toList()})
+              : null,
+        );
 
       // -- Actions -----------------------------------------------------------
       case 'Button':
         return _buildButton(context, props);
       case 'IconButton':
         return _buildIconButton(context, props);
+      case 'FloatingActionButton':
+        return _buildFloatingActionButton(context, props);
+      case 'NavigationBar':
+        return _buildNavigationBar(context, props);
+      case 'NavigationRail':
+        return _buildNavigationRail(context, props);
+      case 'BottomNavigationBar':
+        final items = _entryList(props['items']);
+        return BottomNavigationBar(
+          currentIndex: (props['currentIndex'] as num?)?.toInt() ?? 0,
+          type: props['type'] == 'shifting'
+              ? BottomNavigationBarType.shifting
+              : BottomNavigationBarType.fixed,
+          items: [
+            for (final item in items)
+              BottomNavigationBarItem(
+                icon: Icon(_icon(item['icon']?.toString())),
+                activeIcon: item['activeIcon'] == null
+                    ? null
+                    : Icon(_icon(item['activeIcon'].toString())),
+                label: item['label']?.toString() ?? '',
+              ),
+          ],
+          onTap: _hasEvent(node, 'tap')
+              ? (index) => onEvent(_id(props), 'tap', {'index': index})
+              : null,
+        );
+      case 'Drawer':
+        return Drawer(
+          width: (props['width'] as num?)?.toDouble(),
+          elevation: (props['elevation'] as num?)?.toDouble(),
+          backgroundColor: _color(
+            props['backgroundColor'],
+            Theme.of(context).colorScheme,
+          ),
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [for (final child in children) _build(context, child)],
+          ),
+        );
       case 'Dropdown':
         return _buildDropdown(context, props);
       case 'Menu':
@@ -480,6 +1038,7 @@ class ComponentBuilder {
                 onSelected: (payload) => onEvent(_id(props), 'select', payload),
               );
       case 'Dialog':
+      case 'AlertDialog':
         return PluginDialogHost(
           key: hostState.stateKey<PluginDialogHostState>(_id(props)),
           open: props['open'] == true,
@@ -490,6 +1049,20 @@ class ComponentBuilder {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [for (final child in children) _build(context, child)],
+          ),
+        );
+      case 'SnackBar':
+        return Card(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(child: Text(props['message']?.toString() ?? '')),
+              if (props['actionLabel'] != null && _hasEvent(node, 'action'))
+                TextButton(
+                  onPressed: () => onEvent(_id(props), 'action', const {}),
+                  child: Text(props['actionLabel'].toString()),
+                ),
+            ],
           ),
         );
       case 'Tooltip':
@@ -893,6 +1466,7 @@ class ComponentBuilder {
           return true;
         }
       case 'Dialog':
+      case 'AlertDialog':
         final state = hostState
             .stateKey<PluginDialogHostState>(id)
             .currentState;
@@ -1020,21 +1594,133 @@ class ComponentBuilder {
     _ => CrossAxisAlignment.start,
   };
 
+  Alignment _boxAlignment(
+    Object? value, {
+    Alignment fallback = Alignment.center,
+  }) => switch (value) {
+    'topLeft' => Alignment.topLeft,
+    'topCenter' => Alignment.topCenter,
+    'topRight' => Alignment.topRight,
+    'centerLeft' => Alignment.centerLeft,
+    'centerRight' => Alignment.centerRight,
+    'bottomLeft' => Alignment.bottomLeft,
+    'bottomCenter' => Alignment.bottomCenter,
+    'bottomRight' => Alignment.bottomRight,
+    'center' => Alignment.center,
+    _ => fallback,
+  };
+
+  Color? _color(Object? value, ColorScheme scheme) {
+    final token = value?.toString();
+    if (token == null || token.isEmpty) return null;
+    if (token.startsWith('#')) {
+      final hex = token.substring(1);
+      final color = int.tryParse(hex, radix: 16);
+      if (color == null) return null;
+      if (hex.length == 6) return Color(0xFF000000 | color);
+      if (hex.length == 8) return Color(color);
+      return null;
+    }
+    if (!token.startsWith('theme:')) return null;
+    return switch (token.substring(6)) {
+      'primary' => scheme.primary,
+      'onPrimary' => scheme.onPrimary,
+      'secondary' => scheme.secondary,
+      'onSecondary' => scheme.onSecondary,
+      'surface' => scheme.surface,
+      'onSurface' => scheme.onSurface,
+      'onSurfaceVariant' => scheme.onSurfaceVariant,
+      'surfaceContainerHighest' => scheme.surfaceContainerHighest,
+      'outline' => scheme.outline,
+      'error' => scheme.error,
+      'onError' => scheme.onError,
+      _ => null,
+    };
+  }
+
+  Map<String, dynamic> _styleMap(Object? value) => value is Map
+      ? value.map((key, value) => MapEntry(key.toString(), value))
+      : const <String, dynamic>{};
+
+  FontWeight? _fontWeight(Object? value) => switch (value?.toString()) {
+    'thin' => FontWeight.w100,
+    'extraLight' => FontWeight.w200,
+    'light' => FontWeight.w300,
+    'medium' => FontWeight.w500,
+    'semiBold' => FontWeight.w600,
+    'bold' => FontWeight.w700,
+    'extraBold' => FontWeight.w800,
+    'black' => FontWeight.w900,
+    _ => null,
+  };
+
+  TextAlign? _textAlign(Object? value) => switch (value?.toString()) {
+    'left' => TextAlign.left,
+    'center' => TextAlign.center,
+    'right' => TextAlign.right,
+    'justify' => TextAlign.justify,
+    'start' => TextAlign.start,
+    'end' => TextAlign.end,
+    _ => null,
+  };
+
   TextStyle? _textStyle(BuildContext context, Map<String, dynamic> props) {
     final theme = Theme.of(context).textTheme;
-    final base = switch (props['style']) {
+    final style = _styleMap(props['style']);
+    final preset = props['style'] is String ? props['style'] : null;
+    final base = switch (preset) {
       'caption' => theme.bodySmall,
       'title' => theme.titleSmall,
       'heading' => theme.titleMedium,
       'code' => theme.bodySmall?.copyWith(fontFamily: 'monospace'),
       _ => theme.bodyMedium,
     };
-    if (props['muted'] == true) {
-      return base?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      );
-    }
-    return base;
+    final color = _color(
+      props['color'] ?? style['color'],
+      Theme.of(context).colorScheme,
+    );
+    return base?.copyWith(
+      color: props['muted'] == true
+          ? Theme.of(context).colorScheme.onSurfaceVariant
+          : color,
+      fontSize:
+          (props['fontSize'] as num?)?.toDouble() ??
+          (style['fontSize'] as num?)?.toDouble(),
+      fontWeight: _fontWeight(props['fontWeight'] ?? style['fontWeight']),
+      fontStyle: (style['fontStyle']?.toString() == 'italic')
+          ? FontStyle.italic
+          : null,
+      decoration: style['decoration']?.toString() == 'underline'
+          ? TextDecoration.underline
+          : null,
+    );
+  }
+
+  ButtonStyle _buttonStyle(BuildContext context, Map<String, dynamic> props) {
+    final style = _styleMap(props['style']);
+    final scheme = Theme.of(context).colorScheme;
+    final background = _color(style['backgroundColor'], scheme);
+    final foreground = _color(style['foregroundColor'], scheme);
+    final padding = style['padding'] is num
+        ? EdgeInsets.all((style['padding'] as num).toDouble())
+        : null;
+    final radius = (style['borderRadius'] as num?)?.toDouble();
+    return ButtonStyle(
+      backgroundColor: background == null
+          ? null
+          : WidgetStatePropertyAll(background),
+      foregroundColor: foreground == null
+          ? null
+          : WidgetStatePropertyAll(foreground),
+      padding: padding == null ? null : WidgetStatePropertyAll(padding),
+      shape: radius == null
+          ? null
+          : WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(radius),
+              ),
+            ),
+    );
   }
 
   /// Maps a stable icon token to a Material icon, so plugins never reference
@@ -1153,6 +1839,7 @@ class ComponentBuilder {
 
   Widget _buildBadge(BuildContext context, Map<String, dynamic> props) {
     final scheme = Theme.of(context).colorScheme;
+    final style = _styleMap(props['style']);
     final (background, foreground) = switch (props['tone']) {
       'info' => (scheme.primaryContainer, scheme.onPrimaryContainer),
       'success' => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
@@ -1161,16 +1848,20 @@ class ComponentBuilder {
       _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: style['padding'] is num
+          ? EdgeInsets.all((style['padding'] as num).toDouble())
+          : const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(10),
+        color: _color(style['backgroundColor'], scheme) ?? background,
+        borderRadius: BorderRadius.circular(
+          (style['borderRadius'] as num?)?.toDouble() ?? 10,
+        ),
       ),
       child: Text(
         props['label']?.toString() ?? '',
-        style: Theme.of(
-          context,
-        ).textTheme.labelSmall?.copyWith(color: foreground),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: _color(style['foregroundColor'], scheme) ?? foreground,
+        ),
       ),
     );
   }
@@ -1179,6 +1870,7 @@ class ComponentBuilder {
 
   Widget _buildTextField(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
+    final style = _styleMap(props['style']);
     final pluginValue = props['value']?.toString() ?? '';
     // The controller is host-owned: keystrokes render immediately and only the
     // debounced change event crosses to Python.
@@ -1187,12 +1879,30 @@ class ComponentBuilder {
       controller: controller,
       focusNode: hostState.focusNode(id),
       enabled: _enabled(props),
-      maxLines: props['multiline'] == true ? null : 1,
-      style: Theme.of(context).textTheme.bodyMedium,
+      obscureText: props['obscureText'] == true,
+      maxLines: props['maxLines'] is num
+          ? (props['maxLines'] as num).toInt()
+          : props['multiline'] == true
+          ? null
+          : 1,
+      minLines: (props['minLines'] as num?)?.toInt(),
+      keyboardType: switch (props['keyboardType']) {
+        'email' => TextInputType.emailAddress,
+        'number' => TextInputType.number,
+        'phone' => TextInputType.phone,
+        'url' => TextInputType.url,
+        _ => TextInputType.text,
+      },
+      style: _textStyle(context, props),
       decoration: InputDecoration(
         isDense: true,
         labelText: props['label']?.toString(),
         hintText: props['placeholder']?.toString(),
+        filled: props['filled'] == true || style['filled'] == true,
+        fillColor: _color(
+          props['fillColor'] ?? style['fillColor'],
+          Theme.of(context).colorScheme,
+        ),
         border: const OutlineInputBorder(),
       ),
       onChanged: (value) => hostState.recordEdit(
@@ -1210,6 +1920,7 @@ class ComponentBuilder {
 
   Widget _buildNumberField(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
+    final style = _styleMap(props['style']);
     final pluginValue = (props['value'] as num?)?.toString() ?? '';
     final controller = hostState.textController(id, pluginValue);
     return TextField(
@@ -1217,10 +1928,12 @@ class ComponentBuilder {
       focusNode: hostState.focusNode(id),
       enabled: _enabled(props),
       keyboardType: TextInputType.number,
-      style: Theme.of(context).textTheme.bodyMedium,
+      style: _textStyle(context, props),
       decoration: InputDecoration(
         isDense: true,
         labelText: props['label']?.toString(),
+        filled: style['filled'] == true,
+        fillColor: _color(style['fillColor'], Theme.of(context).colorScheme),
         border: const OutlineInputBorder(),
       ),
       onChanged: (value) => hostState.recordEdit(
@@ -1264,11 +1977,20 @@ class ComponentBuilder {
   Widget _buildCheckbox(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
     final value = hostState.displayValue(id, props['value']) == true;
+    final style = _styleMap(props['style']);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Checkbox(
           value: value,
+          activeColor: _color(
+            style['activeColor'],
+            Theme.of(context).colorScheme,
+          ),
+          checkColor: _color(
+            style['checkColor'],
+            Theme.of(context).colorScheme,
+          ),
           onChanged: _enabled(props)
               ? (next) => hostState.flush(
                   id,
@@ -1289,11 +2011,20 @@ class ComponentBuilder {
   Widget _buildSwitch(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
     final value = hostState.displayValue(id, props['value']) == true;
+    final style = _styleMap(props['style']);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Switch(
           value: value,
+          activeThumbColor: _color(
+            style['activeColor'],
+            Theme.of(context).colorScheme,
+          ),
+          activeTrackColor: _color(
+            style['activeTrackColor'],
+            Theme.of(context).colorScheme,
+          ),
           onChanged: _enabled(props)
               ? (next) => hostState.flush(
                   id,
@@ -1317,10 +2048,16 @@ class ComponentBuilder {
     final max = (props['max'] as num?)?.toDouble() ?? 100;
     final raw = hostState.displayValue(id, props['value']);
     final value = ((raw as num?)?.toDouble() ?? min).clamp(min, max);
+    final style = _styleMap(props['style']);
     return Slider(
       value: value,
       min: min,
       max: max,
+      activeColor: _color(style['activeColor'], Theme.of(context).colorScheme),
+      inactiveColor: _color(
+        style['inactiveColor'],
+        Theme.of(context).colorScheme,
+      ),
       divisions: props['step'] is num && (props['step'] as num) > 0
           ? ((max - min) / (props['step'] as num)).round().clamp(1, 1000)
           : null,
@@ -1345,41 +2082,177 @@ class ComponentBuilder {
     final onPressed = _enabled(props)
         ? () => onEvent(id, 'press', const {})
         : null;
-    return switch (props['variant']) {
+    final button = switch (props['variant']) {
       'secondary' =>
         icon == null
-            ? OutlinedButton(onPressed: onPressed, child: label)
+            ? OutlinedButton(
+                onPressed: onPressed,
+                style: _buttonStyle(context, props),
+                child: label,
+              )
             : OutlinedButton.icon(
                 onPressed: onPressed,
                 icon: icon,
                 label: label,
+                style: _buttonStyle(context, props),
               ),
       'ghost' =>
         icon == null
-            ? TextButton(onPressed: onPressed, child: label)
-            : TextButton.icon(onPressed: onPressed, icon: icon, label: label),
+            ? TextButton(
+                onPressed: onPressed,
+                style: _buttonStyle(context, props),
+                child: label,
+              )
+            : TextButton.icon(
+                onPressed: onPressed,
+                icon: icon,
+                label: label,
+                style: _buttonStyle(context, props),
+              ),
       'danger' => FilledButton(
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: Theme.of(context).colorScheme.error,
-          foregroundColor: Theme.of(context).colorScheme.onError,
+        style: _buttonStyle(context, props).merge(
+          FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
         ),
         child: label,
       ),
       _ =>
         icon == null
-            ? FilledButton(onPressed: onPressed, child: label)
-            : FilledButton.icon(onPressed: onPressed, icon: icon, label: label),
+            ? FilledButton(
+                onPressed: onPressed,
+                style: _buttonStyle(context, props),
+                child: label,
+              )
+            : FilledButton.icon(
+                onPressed: onPressed,
+                icon: icon,
+                label: label,
+                style: _buttonStyle(context, props),
+              ),
     };
+    final sized = SizedBox(
+      width: (props['width'] as num?)?.toDouble(),
+      height: (props['height'] as num?)?.toDouble(),
+      child: button,
+    );
+    return props['tooltip'] == null
+        ? sized
+        : Tooltip(message: props['tooltip'].toString(), child: sized);
   }
 
   Widget _buildIconButton(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
     return IconButton(
-      icon: Icon(_icon(props['icon']?.toString()), size: 16),
+      icon: Icon(
+        _icon(props['icon']?.toString()),
+        size: (props['size'] as num?)?.toDouble() ?? 16,
+      ),
       tooltip: props['tooltip']?.toString(),
       visualDensity: VisualDensity.compact,
+      style: _buttonStyle(context, props),
       onPressed: _enabled(props) ? () => onEvent(id, 'press', const {}) : null,
+    );
+  }
+
+  Widget _buildFloatingActionButton(
+    BuildContext context,
+    Map<String, dynamic> props,
+  ) {
+    final id = _id(props);
+    final style = _styleMap(props['style']);
+    final scheme = Theme.of(context).colorScheme;
+    final backgroundColor = _color(style['backgroundColor'], scheme);
+    final foregroundColor = _color(style['foregroundColor'], scheme);
+    final icon = props['icon'] == null
+        ? null
+        : Icon(_icon(props['icon'].toString()));
+    final onPressed = _enabled(props)
+        ? () => onEvent(id, 'press', const {})
+        : null;
+    if (props['extended'] == true || props['label'] != null) {
+      return FloatingActionButton.extended(
+        onPressed: onPressed,
+        icon: icon,
+        label: Text(props['label']?.toString() ?? ''),
+        tooltip: props['tooltip']?.toString(),
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+      );
+    }
+    if (props['small'] == true) {
+      return FloatingActionButton.small(
+        onPressed: onPressed,
+        tooltip: props['tooltip']?.toString(),
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        child: icon,
+      );
+    }
+    return FloatingActionButton(
+      onPressed: onPressed,
+      mini: props['mini'] == true,
+      tooltip: props['tooltip']?.toString(),
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
+      child: icon,
+    );
+  }
+
+  Widget _buildNavigationBar(BuildContext context, Map<String, dynamic> props) {
+    final destinations = _entryList(props['destinations']);
+    return NavigationBar(
+      selectedIndex: (props['selectedIndex'] as num?)?.toInt() ?? 0,
+      labelBehavior: switch (props['labelBehavior']) {
+        'alwaysShow' => NavigationDestinationLabelBehavior.alwaysShow,
+        'onlyShowSelected' =>
+          NavigationDestinationLabelBehavior.onlyShowSelected,
+        _ => NavigationDestinationLabelBehavior.alwaysShow,
+      },
+      destinations: [
+        for (final item in destinations)
+          NavigationDestination(
+            icon: Icon(_icon(item['icon']?.toString())),
+            selectedIcon: item['selectedIcon'] == null
+                ? null
+                : Icon(_icon(item['selectedIcon'].toString())),
+            label: item['label']?.toString() ?? '',
+          ),
+      ],
+      onDestinationSelected: _enabled(props)
+          ? (index) => onEvent(_id(props), 'change', {'index': index})
+          : null,
+    );
+  }
+
+  Widget _buildNavigationRail(
+    BuildContext context,
+    Map<String, dynamic> props,
+  ) {
+    final destinations = _entryList(props['destinations']);
+    return NavigationRail(
+      selectedIndex: (props['selectedIndex'] as num?)?.toInt() ?? 0,
+      extended: props['extended'] == true,
+      labelType: switch (props['labelType']) {
+        'none' => NavigationRailLabelType.none,
+        'selected' => NavigationRailLabelType.selected,
+        _ => NavigationRailLabelType.all,
+      },
+      destinations: [
+        for (final item in destinations)
+          NavigationRailDestination(
+            icon: Icon(_icon(item['icon']?.toString())),
+            selectedIcon: item['selectedIcon'] == null
+                ? null
+                : Icon(_icon(item['selectedIcon'].toString())),
+            label: Text(item['label']?.toString() ?? ''),
+          ),
+      ],
+      onDestinationSelected: _enabled(props)
+          ? (index) => onEvent(_id(props), 'change', {'index': index})
+          : null,
     );
   }
 

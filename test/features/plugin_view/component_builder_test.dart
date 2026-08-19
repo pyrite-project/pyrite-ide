@@ -112,6 +112,334 @@ void main() {
     });
   });
 
+  testWidgets('Row stretch avoids infinite height in shrink-wrapped columns', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Column',
+            'children': [
+              {
+                'type': 'Row',
+                'props': {'align': 'stretch'},
+                'children': [
+                  {
+                    'type': 'SizedBox',
+                    'props': {'width': 20, 'height': 20},
+                  },
+                  {
+                    'type': 'Text',
+                    'props': {'value': 'content'},
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    final row = tester.widget<Row>(find.byType(Row).first);
+    expect(row.crossAxisAlignment, CrossAxisAlignment.start);
+  });
+
+  testWidgets('AspectRatio gets a finite size in an unconstrained Row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Column',
+            'children': [
+              {
+                'type': 'Row',
+                'props': {'align': 'stretch'},
+                'children': [
+                  {
+                    'type': 'Expanded',
+                    'children': [
+                      {
+                        'type': 'TextField',
+                        'props': {'id': 'target', 'label': 'Target'},
+                      },
+                    ],
+                  },
+                  {
+                    'type': 'AspectRatio',
+                    'props': {'aspectRatio': 1},
+                    'children': [
+                      {
+                        'type': 'IconButton',
+                        'props': {'id': 'open', 'icon': 'material:folder_open'},
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byType(AspectRatio).first), const Size(48, 48));
+  });
+
+  testWidgets('Padding uses all padding before per-edge values', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Padding',
+            'props': {'allPadding': 12, 'leftPadding': 1},
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    final padding = tester.widget<Padding>(find.byType(Padding).first);
+    expect(padding.padding, const EdgeInsets.all(12));
+    expect(find.text('content'), findsOneWidget);
+  });
+
+  testWidgets('Padding uses per-edge values when all padding is absent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Padding',
+            'props': {
+              'leftPadding': 1,
+              'rightPadding': 2,
+              'topPadding': 3,
+              'bottomPadding': 4,
+            },
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    final padding = tester.widget<Padding>(find.byType(Padding).first);
+    expect(
+      padding.padding,
+      const EdgeInsets.only(left: 1, right: 2, top: 3, bottom: 4),
+    );
+  });
+
+  testWidgets('Expanded wraps its child with the requested flex', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Row',
+            'children': [
+              {
+                'type': 'Expanded',
+                'props': {'flex': 2},
+                'children': [
+                  {
+                    'type': 'Text',
+                    'props': {'value': 'content'},
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    final expanded = tester.widget<Expanded>(find.byType(Expanded).first);
+    expect(expanded.flex, 2);
+    expect(find.text('content'), findsOneWidget);
+  });
+
+  testWidgets('SizedBox applies its requested dimensions', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'SizedBox',
+            'props': {'width': 48, 'height': 24},
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    final sizedBox = tester.widget<SizedBox>(find.byType(SizedBox).first);
+    expect(sizedBox.width, 48);
+    expect(sizedBox.height, 24);
+  });
+
+  testWidgets('Spacer uses its requested flex', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Row',
+            'children': [
+              {
+                'type': 'Spacer',
+                'props': {'flex': 2},
+              },
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    expect(tester.widget<Spacer>(find.byType(Spacer).first).flex, 2);
+  });
+
+  testWidgets('Align maps its alignment and size factors', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Align',
+            'props': {
+              'alignment': 'bottomRight',
+              'widthFactor': 2,
+              'heightFactor': 3,
+            },
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    final align = tester.widget<Align>(find.byType(Align).first);
+    expect(align.alignment, Alignment.bottomRight);
+    expect(align.widthFactor, 2);
+    expect(align.heightFactor, 3);
+  });
+
+  testWidgets('Container maps its layout and decoration props', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Container',
+            'props': {
+              'width': 48,
+              'height': 24,
+              'padding': 4,
+              'margin': 2,
+              'color': '#112233',
+              'borderRadius': 6,
+              'alignment': 'center',
+            },
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    final container = tester.widget<Container>(find.byType(Container).first);
+    expect(container.constraints?.maxWidth, 48);
+    expect(container.constraints?.maxHeight, 24);
+    expect(container.padding, const EdgeInsets.all(4));
+    expect(container.margin, const EdgeInsets.all(2));
+    expect(container.alignment, Alignment.center);
+    expect(
+      (container.decoration! as BoxDecoration).color,
+      const Color(0xFF112233),
+    );
+  });
+
+  testWidgets('Stack maps its alignment and children', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Stack',
+            'props': {'alignment': 'topLeft'},
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Stack>(find.byType(Stack).first).alignment,
+      Alignment.topLeft,
+    );
+    expect(find.text('content'), findsOneWidget);
+  });
+
+  testWidgets('AspectRatio applies its requested ratio', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'AspectRatio',
+            'props': {'aspectRatio': 1.5},
+            'children': [
+              {
+                'type': 'Text',
+                'props': {'value': 'content'},
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<AspectRatio>(find.byType(AspectRatio).first).aspectRatio,
+      1.5,
+    );
+    expect(find.text('content'), findsOneWidget);
+  });
+
   group('component events', () {
     testWidgets('pressing a Button emits press', (tester) async {
       await tester.pumpWidget(

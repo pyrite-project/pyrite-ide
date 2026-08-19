@@ -4,6 +4,18 @@
 /// against an older host can be told to upgrade rather than failing obscurely.
 const int componentSchemaVersion = 1;
 
+const Set<String> _boxAlignments = {
+  'topLeft',
+  'topCenter',
+  'topRight',
+  'centerLeft',
+  'center',
+  'centerRight',
+  'bottomLeft',
+  'bottomCenter',
+  'bottomRight',
+};
+
 /// Limits guarding against pathological component trees from a plugin.
 class ComponentLimits {
   const ComponentLimits({this.maxDepth = 32, this.maxNodes = 5000});
@@ -13,7 +25,7 @@ class ComponentLimits {
 }
 
 /// Value type of a component property.
-enum PropType { string, number, boolean, stringList, map, any }
+enum PropType { string, number, boolean, stringList, map, stringOrMap, any }
 
 /// Declaration of one component property.
 class PropSpec {
@@ -44,6 +56,8 @@ class PropSpec {
             ? null
             : 'expected list of strings',
       PropType.map => value is Map ? null : 'expected map',
+      PropType.stringOrMap =>
+        value is String || value is Map ? null : 'expected string or map',
       PropType.any => null,
     };
     if (typeError != null) return typeError;
@@ -318,6 +332,183 @@ class ComponentRegistry {
       children: ChildPolicy.many,
     ),
     const ComponentSpec(
+      name: 'Padding',
+      props: {
+        'allPadding': PropSpec(PropType.number),
+        'leftPadding': PropSpec(PropType.number),
+        'rightPadding': PropSpec(PropType.number),
+        'topPadding': PropSpec(PropType.number),
+        'bottomPadding': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'Expanded',
+      props: {'flex': PropSpec(PropType.number)},
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'SizedBox',
+      props: {
+        'width': PropSpec(PropType.number),
+        'height': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'Spacer',
+      props: {'flex': PropSpec(PropType.number)},
+    ),
+    const ComponentSpec(
+      name: 'Align',
+      props: {
+        'alignment': PropSpec(PropType.string, allowed: _boxAlignments),
+        'widthFactor': PropSpec(PropType.number),
+        'heightFactor': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'Container',
+      props: {
+        'width': PropSpec(PropType.number),
+        'height': PropSpec(PropType.number),
+        'padding': PropSpec(PropType.number),
+        'margin': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+        'borderRadius': PropSpec(PropType.number),
+        'alignment': PropSpec(PropType.string, allowed: _boxAlignments),
+        'borderColor': PropSpec(PropType.string),
+        'borderWidth': PropSpec(PropType.number),
+        'style': PropSpec(PropType.map),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'Stack',
+      props: {'alignment': PropSpec(PropType.string, allowed: _boxAlignments)},
+      children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'AspectRatio',
+      props: {'aspectRatio': PropSpec(PropType.number, required: true)},
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'FittedBox',
+      props: {
+        'fit': PropSpec(PropType.string),
+        'alignment': PropSpec(PropType.string, allowed: _boxAlignments),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'PageView',
+      props: {
+        'initialPage': PropSpec(PropType.number),
+        'scrollDirection': PropSpec(
+          PropType.string,
+          allowed: {'horizontal', 'vertical'},
+        ),
+      },
+      events: {'pageChanged': 'the visible page changed'},
+      children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'Center',
+      props: {
+        'widthFactor': PropSpec(PropType.number),
+        'heightFactor': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'SafeArea',
+      props: {
+        'left': PropSpec(PropType.boolean),
+        'top': PropSpec(PropType.boolean),
+        'right': PropSpec(PropType.boolean),
+        'bottom': PropSpec(PropType.boolean),
+        'minimum': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'ConstrainedBox',
+      props: {
+        'minWidth': PropSpec(PropType.number),
+        'maxWidth': PropSpec(PropType.number),
+        'minHeight': PropSpec(PropType.number),
+        'maxHeight': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'FractionallySizedBox',
+      props: {
+        'widthFactor': PropSpec(PropType.number),
+        'heightFactor': PropSpec(PropType.number),
+        'alignment': PropSpec(PropType.string, allowed: _boxAlignments),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'LimitedBox',
+      props: {
+        'maxWidth': PropSpec(PropType.number),
+        'maxHeight': PropSpec(PropType.number),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'SingleChildScrollView',
+      props: {
+        'scrollDirection': PropSpec(
+          PropType.string,
+          allowed: {'horizontal', 'vertical'},
+        ),
+        'reverse': PropSpec(PropType.boolean),
+        'padding': PropSpec(PropType.number),
+        'primary': PropSpec(PropType.boolean),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'ListView',
+      props: {
+        'scrollDirection': PropSpec(
+          PropType.string,
+          allowed: {'horizontal', 'vertical'},
+        ),
+        'reverse': PropSpec(PropType.boolean),
+        'padding': PropSpec(PropType.number),
+        'itemExtent': PropSpec(PropType.number),
+        'shrinkWrap': PropSpec(PropType.boolean),
+      },
+      children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'GridView',
+      props: {
+        'crossAxisCount': PropSpec(PropType.number, required: true),
+        'mainAxisSpacing': PropSpec(PropType.number),
+        'crossAxisSpacing': PropSpec(PropType.number),
+        'padding': PropSpec(PropType.number),
+        'shrinkWrap': PropSpec(PropType.boolean),
+      },
+      children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'Visibility',
+      props: {
+        'visible': PropSpec(PropType.boolean),
+        'maintainState': PropSpec(PropType.boolean),
+        'maintainAnimation': PropSpec(PropType.boolean),
+        'maintainSize': PropSpec(PropType.boolean),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
       name: 'Flex',
       props: {
         'direction': PropSpec(
@@ -396,11 +587,14 @@ class ComponentRegistry {
     // -- Content -------------------------------------------------------------
     const ComponentSpec(
       name: 'Card',
-      // props: {
-      //   'elevation': PropSpec(PropType.number),
-      //   'borderRadius': PropSpec(PropType.number),
-      //   'padding': PropSpec(PropType.number),
-      // },
+      props: {
+        'elevation': PropSpec(PropType.number),
+        'borderRadius': PropSpec(PropType.number),
+        'padding': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+        'margin': PropSpec(PropType.number),
+        'style': PropSpec(PropType.map),
+      },
       children: ChildPolicy.single,
     ),
     const ComponentSpec(
@@ -408,11 +602,15 @@ class ComponentRegistry {
       props: {
         'value': PropSpec(PropType.string, required: true),
         'style': PropSpec(
-          PropType.string,
+          PropType.stringOrMap,
           allowed: {'body', 'caption', 'title', 'heading', 'code'},
         ),
         'muted': PropSpec(PropType.boolean),
         'maxLines': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+        'fontSize': PropSpec(PropType.number),
+        'fontWeight': PropSpec(PropType.string),
+        'textAlign': PropSpec(PropType.string),
       },
     ),
     const ComponentSpec(
@@ -420,6 +618,8 @@ class ComponentRegistry {
       props: {
         'name': PropSpec(PropType.string, required: true),
         'size': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+        'semanticLabel': PropSpec(PropType.string),
       },
     ),
     const ComponentSpec(
@@ -476,6 +676,144 @@ class ComponentRegistry {
           PropType.string,
           allowed: {'neutral', 'info', 'success', 'warning', 'danger'},
         ),
+        'style': PropSpec(PropType.map),
+      },
+    ),
+    const ComponentSpec(
+      name: 'Divider',
+      props: {
+        'height': PropSpec(PropType.number),
+        'thickness': PropSpec(PropType.number),
+        'indent': PropSpec(PropType.number),
+        'endIndent': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+      },
+    ),
+    const ComponentSpec(
+      name: 'VerticalDivider',
+      props: {
+        'width': PropSpec(PropType.number),
+        'thickness': PropSpec(PropType.number),
+        'indent': PropSpec(PropType.number),
+        'endIndent': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+      },
+    ),
+    const ComponentSpec(
+      name: 'SelectableText',
+      props: {
+        'value': PropSpec(PropType.string, required: true),
+        'style': PropSpec(PropType.stringOrMap),
+        'maxLines': PropSpec(PropType.number),
+      },
+      events: {'tap': 'the selectable text was tapped'},
+    ),
+    const ComponentSpec(
+      name: 'ListTile',
+      props: {
+        'title': PropSpec(PropType.string, required: true),
+        'subtitle': PropSpec(PropType.string),
+        'leadingIcon': PropSpec(PropType.string),
+        'trailingIcon': PropSpec(PropType.string),
+        'dense': PropSpec(PropType.boolean),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'selected': PropSpec(PropType.boolean),
+        'style': PropSpec(PropType.map),
+      },
+      events: {
+        'tap': 'the list tile was tapped',
+        'longPress': 'the list tile was long-pressed',
+      },
+    ),
+    const ComponentSpec(
+      name: 'CheckboxListTile',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'value': PropSpec(PropType.boolean),
+        'title': PropSpec(PropType.string, required: true),
+        'subtitle': PropSpec(PropType.string),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'selected': PropSpec(PropType.boolean),
+      },
+      events: {'change': 'the checkbox list tile changed'},
+    ),
+    const ComponentSpec(
+      name: 'SwitchListTile',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'value': PropSpec(PropType.boolean),
+        'title': PropSpec(PropType.string, required: true),
+        'subtitle': PropSpec(PropType.string),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'selected': PropSpec(PropType.boolean),
+      },
+      events: {'change': 'the switch list tile changed'},
+    ),
+    const ComponentSpec(
+      name: 'RadioListTile',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'value': PropSpec(PropType.any, required: true),
+        'groupValue': PropSpec(PropType.any),
+        'title': PropSpec(PropType.string, required: true),
+        'subtitle': PropSpec(PropType.string),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+      },
+      events: {'change': 'the radio list tile changed'},
+    ),
+    const ComponentSpec(
+      name: 'ExpansionTile',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'title': PropSpec(PropType.string, required: true),
+        'subtitle': PropSpec(PropType.string),
+        'initiallyExpanded': PropSpec(PropType.boolean),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+      },
+      events: {'expansionChanged': 'the expansion state changed'},
+      children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'CircleAvatar',
+      props: {
+        'radius': PropSpec(PropType.number),
+        'backgroundColor': PropSpec(PropType.string),
+        'foregroundColor': PropSpec(PropType.string),
+        'text': PropSpec(PropType.string),
+      },
+      children: ChildPolicy.single,
+    ),
+    const ComponentSpec(
+      name: 'Chip',
+      props: {
+        'label': PropSpec(PropType.string, required: true),
+        'avatarIcon': PropSpec(PropType.string),
+        'deleteIcon': PropSpec(PropType.string),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'selected': PropSpec(PropType.boolean),
+        'style': PropSpec(PropType.map),
+      },
+      events: {
+        'deleted': 'the chip delete action was tapped',
+        'selected': 'the chip selection changed',
+      },
+    ),
+    const ComponentSpec(
+      name: 'CircularProgressIndicator',
+      props: {
+        'value': PropSpec(PropType.number),
+        'strokeWidth': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+        'backgroundColor': PropSpec(PropType.string),
+      },
+    ),
+    const ComponentSpec(
+      name: 'LinearProgressIndicator',
+      props: {
+        'value': PropSpec(PropType.number),
+        'minHeight': PropSpec(PropType.number),
+        'color': PropSpec(PropType.string),
+        'backgroundColor': PropSpec(PropType.string),
       },
     ),
 
@@ -489,6 +827,13 @@ class ComponentRegistry {
         'label': PropSpec(PropType.string),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
         'multiline': PropSpec(PropType.boolean),
+        'obscureText': PropSpec(PropType.boolean),
+        'maxLines': PropSpec(PropType.number),
+        'minLines': PropSpec(PropType.number),
+        'keyboardType': PropSpec(PropType.string),
+        'style': PropSpec(PropType.map),
+        'filled': PropSpec(PropType.boolean),
+        'fillColor': PropSpec(PropType.string),
       },
       events: {
         'change': 'the text changed (debounced by the host)',
@@ -505,6 +850,7 @@ class ComponentRegistry {
         'step': PropSpec(PropType.number),
         'label': PropSpec(PropType.string),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
       },
       events: {'change': 'the number changed', 'submit': 'value confirmed'},
     ),
@@ -516,6 +862,7 @@ class ComponentRegistry {
         'options': PropSpec(PropType.any, required: true),
         'label': PropSpec(PropType.string),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
       },
       events: {'change': 'the selection changed'},
     ),
@@ -526,6 +873,7 @@ class ComponentRegistry {
         'value': PropSpec(PropType.boolean),
         'label': PropSpec(PropType.string),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
       },
       events: {'change': 'the checked state changed'},
     ),
@@ -536,6 +884,7 @@ class ComponentRegistry {
         'value': PropSpec(PropType.boolean),
         'label': PropSpec(PropType.string),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
       },
       events: {'change': 'the switch was toggled'},
     ),
@@ -548,8 +897,48 @@ class ComponentRegistry {
         'max': PropSpec(PropType.number),
         'step': PropSpec(PropType.number),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
       },
       events: {'change': 'the value changed'},
+    ),
+    const ComponentSpec(
+      name: 'Radio',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'value': PropSpec(PropType.any, required: true),
+        'groupValue': PropSpec(PropType.any),
+        'label': PropSpec(PropType.string),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
+      },
+      events: {'change': 'the radio selection changed'},
+    ),
+    const ComponentSpec(
+      name: 'RangeSlider',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'start': PropSpec(PropType.number),
+        'end': PropSpec(PropType.number),
+        'min': PropSpec(PropType.number),
+        'max': PropSpec(PropType.number),
+        'step': PropSpec(PropType.number),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
+      },
+      events: {'change': 'the range changed'},
+    ),
+    const ComponentSpec(
+      name: 'SegmentedButton',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'segments': PropSpec(PropType.any, required: true),
+        'selected': PropSpec(PropType.stringList),
+        'multiSelectionEnabled': PropSpec(PropType.boolean),
+        'emptySelectionAllowed': PropSpec(PropType.boolean),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
+      },
+      events: {'change': 'the segmented button selection changed'},
     ),
 
     // -- Actions -------------------------------------------------------------
@@ -564,6 +953,10 @@ class ComponentRegistry {
           allowed: {'primary', 'secondary', 'ghost', 'danger'},
         ),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
+        'width': PropSpec(PropType.number),
+        'height': PropSpec(PropType.number),
+        'tooltip': PropSpec(PropType.string),
       },
       events: {'press': 'the button was pressed'},
     ),
@@ -574,8 +967,25 @@ class ComponentRegistry {
         'icon': PropSpec(PropType.string, required: true),
         'tooltip': PropSpec(PropType.string),
         'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
+        'size': PropSpec(PropType.number),
       },
       events: {'press': 'the button was pressed'},
+    ),
+    const ComponentSpec(
+      name: 'FloatingActionButton',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'label': PropSpec(PropType.string),
+        'icon': PropSpec(PropType.string),
+        'tooltip': PropSpec(PropType.string),
+        'extended': PropSpec(PropType.boolean),
+        'small': PropSpec(PropType.boolean),
+        'mini': PropSpec(PropType.boolean),
+        'enabled': PropSpec(PropType.boolean, defaultValue: true),
+        'style': PropSpec(PropType.map),
+      },
+      events: {'press': 'the floating action button was pressed'},
     ),
     const ComponentSpec(
       name: 'Menu',
@@ -634,6 +1044,25 @@ class ComponentRegistry {
       },
       events: {'close': 'the dialog was dismissed'},
       children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'AlertDialog',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'title': PropSpec(PropType.string),
+        'open': PropSpec(PropType.boolean),
+      },
+      events: {'close': 'the alert dialog was dismissed'},
+      children: ChildPolicy.many,
+    ),
+    const ComponentSpec(
+      name: 'SnackBar',
+      props: {
+        'message': PropSpec(PropType.string, required: true),
+        'actionLabel': PropSpec(PropType.string),
+        'durationMs': PropSpec(PropType.number),
+      },
+      events: {'action': 'the snackbar action was tapped'},
     ),
     const ComponentSpec(
       name: 'Tooltip',
@@ -729,6 +1158,48 @@ class ComponentRegistry {
     ),
 
     // -- Page scaffolding ----------------------------------------------------
+    const ComponentSpec(
+      name: 'NavigationBar',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'destinations': PropSpec(PropType.any, required: true),
+        'selectedIndex': PropSpec(PropType.number),
+        'labelBehavior': PropSpec(PropType.string),
+        'style': PropSpec(PropType.map),
+      },
+      events: {'change': 'the navigation destination changed'},
+    ),
+    const ComponentSpec(
+      name: 'NavigationRail',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'destinations': PropSpec(PropType.any, required: true),
+        'selectedIndex': PropSpec(PropType.number),
+        'extended': PropSpec(PropType.boolean),
+        'labelType': PropSpec(PropType.string),
+        'style': PropSpec(PropType.map),
+      },
+      events: {'change': 'the navigation destination changed'},
+    ),
+    const ComponentSpec(
+      name: 'BottomNavigationBar',
+      props: {
+        'id': PropSpec(PropType.string, required: true),
+        'items': PropSpec(PropType.any, required: true),
+        'currentIndex': PropSpec(PropType.number),
+        'type': PropSpec(PropType.string),
+      },
+      events: {'tap': 'a bottom navigation destination was tapped'},
+    ),
+    const ComponentSpec(
+      name: 'Drawer',
+      props: {
+        'width': PropSpec(PropType.number),
+        'elevation': PropSpec(PropType.number),
+        'backgroundColor': PropSpec(PropType.string),
+      },
+      children: ChildPolicy.many,
+    ),
     // A title bar for a free component tree. Actions are expressed as children
     // (restricted to IconButton/Menu/Dropdown), reusing the same restricted
     // parent pattern as Tabs->Tab so validation, events, and invoke work with
