@@ -14,6 +14,7 @@ abstract class Permissions {
     'sdk.view.snapshot',
     'sdk.view.patch',
     'sdk.view.close',
+    'sdk.view.focus',
     // Route stacks are per view instance and private to the plugin's own view,
     // so navigating one needs no more trust than drawing it.
     'sdk.view.route.push',
@@ -79,8 +80,6 @@ abstract class Permissions {
     'sdk.editor.get_selection': 'editor:read',
     'sdk.editor.can_undo': 'editor:read',
     'sdk.editor.can_redo': 'editor:read',
-    'sdk.editor.get_current_tab': 'editor:read',
-    'sdk.editor.list_tabs': 'editor:read',
     'sdk.editor.find': 'editor:read',
     'sdk.editor.find_regex': 'editor:read',
     'sdk.editor.clear_search': 'editor:read',
@@ -96,7 +95,6 @@ abstract class Permissions {
     'sdk.editor.undo': 'editor:write',
     'sdk.editor.redo': 'editor:write',
     'sdk.editor.open_file': 'editor:write',
-    'sdk.editor.close_tab': 'editor:write',
     'sdk.editor.set_ghost_text': 'editor:write',
     'sdk.editor.clear_ghost_text': 'editor:write',
     'sdk.editor.scroll_to_line': 'editor:write',
@@ -127,11 +125,10 @@ abstract class Permissions {
     'sdk.persistence.clear': 'persistence:write',
 
     // tab
-    'sdk.tab.create_file': 'tab:create',
     'sdk.tab.create_view': 'tab:create',
     'sdk.tab.close': 'tab:manage',
     'sdk.tab.list': 'tab:manage',
-    'sdk.tab.switch': 'tab:manage',
+    'sdk.tab.activate': 'tab:manage',
 
     // settings
     'sdk.settings.get': 'settings:read',

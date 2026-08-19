@@ -213,11 +213,8 @@ _harness({
 }
 
 void main() {
-  test('sdk.tab.create_view requires the same permission as its siblings', () {
-    expect(
-      Permissions.getRequirement(SdkTabCommands.createView),
-      Permissions.getRequirement(SdkTabCommands.createFile),
-    );
+  test('sdk.tab.create_view requires the tab:create permission', () {
+    expect(Permissions.getRequirement(SdkTabCommands.createView), 'tab:create');
     expect(Permissions.isPublic(SdkTabCommands.createView), isFalse);
   });
 

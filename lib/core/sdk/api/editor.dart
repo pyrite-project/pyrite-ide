@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
@@ -45,9 +44,6 @@ abstract class SdkEditorCommands {
 
   // Tab Management
   static const String openFile = 'sdk.editor.open_file';
-  static const String closeTab = 'sdk.editor.close_tab';
-  static const String getCurrentTab = 'sdk.editor.get_current_tab';
-  static const String listTabs = 'sdk.editor.list_tabs';
 
   // Decorations
   static const String setGhostText = 'sdk.editor.set_ghost_text';
@@ -123,12 +119,6 @@ class SdkEditor {
 
     // Tab Management
     runManager.registerHandler(SdkEditorCommands.openFile, _handleOpenFile);
-    runManager.registerHandler(SdkEditorCommands.closeTab, _handleCloseTab);
-    runManager.registerHandler(
-      SdkEditorCommands.getCurrentTab,
-      _handleGetCurrentTab,
-    );
-    runManager.registerHandler(SdkEditorCommands.listTabs, _handleListTabs);
 
     // Decorations
     runManager.registerHandler(
@@ -568,68 +558,6 @@ class SdkEditor {
           .openFile(context, file: file);
     }
     _respondOk(envelope, respond);
-  }
-
-  void _handleCloseTab(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-  ) {
-    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
-    final filePath = payload['path']?.toString();
-    if (filePath == null) {
-      _respondError(envelope, respond, '缺少 path 参数');
-      return;
-    }
-    final tabs = ref.read(tabbedViewControllerProvider).tabs;
-    for (int i = 0; i < tabs.length; i++) {
-      final value = tabs[i].value;
-      if (value is TabDataValue && value.filePath == filePath) {
-        ref
-            .read(tabbedViewControllerProvider.notifier)
-            .afterTabClose(i, tabs[i]);
-        break;
-      }
-    }
-    _respondOk(envelope, respond);
-  }
-
-  void _handleGetCurrentTab(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-  ) {
-    final tabs = ref.read(tabbedViewControllerProvider);
-    final selected = tabs.selectedTab;
-    if (selected == null || selected.value is! TabDataValue) {
-      _respondOk(envelope, respond, data: null);
-      return;
-    }
-    final value = selected.value as TabDataValue;
-    _respondOk(
-      envelope,
-      respond,
-      data: {
-        'path': value.filePath,
-        'name': value.file?.path.split(RegExp(r'[/\\]')).last,
-      },
-    );
-  }
-
-  void _handleListTabs(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-  ) {
-    final tabs = ref.read(tabbedViewControllerProvider).tabs;
-    final result = <Map<String, String?>>[];
-    for (final tab in tabs) {
-      if (tab.value is TabDataValue) {
-        final value = tab.value as TabDataValue;
-        result.add({
-          'path': value.filePath,
-          'name': value.file?.path.split(RegExp(r'[/\\]')).last,
-        });
-      }
-    }
-    _respondOk(envelope, respond, data: result);
   }
 
   // ── Decorations ──

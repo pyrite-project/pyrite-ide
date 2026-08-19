@@ -5,6 +5,7 @@ class TabDataValue {
   TabDataValue({
     required this.type,
     required this.filePath,
+    String? tabId,
     this.file,
     this.editorController,
     this.undoRedoController,
@@ -15,13 +16,16 @@ class TabDataValue {
     this.viewId,
     this.viewInstanceId,
     this.renderer,
-  });
+  }) : tabId = tabId ?? filePath;
   final String type;
 
-  /// Identifies the tab. For plugin views this is a synthetic
-  /// `plugin://<pluginId>/<viewId>#<instanceId>` URI so the many places that
-  /// look tabs up by path keep working without a special case.
+  /// Resource associated with the tab. For plugin views this is a synthetic
+  /// URI kept for internal rendering and persistence; SDK callers use [tabId]
+  /// instead.
   final String filePath;
+
+  /// Stable host identity used by editor-tab SDK operations.
+  final String tabId;
   final File? file;
   final CodeForgeController? editorController;
   final UndoRedoController? undoRedoController;

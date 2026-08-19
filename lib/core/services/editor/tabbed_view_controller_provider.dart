@@ -327,6 +327,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     tab.value = TabDataValue(
       type: value.type,
       filePath: newFilePath,
+      tabId: value.tabId,
       file: newFile,
       editorController: value.editorController,
       undoRedoController: value.undoRedoController,
@@ -521,6 +522,31 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     state = newController;
   }
 
+  void closePluginView(TabDataValue value) {
+    if (!value.isPluginView) return;
+    final pluginId = value.pluginId;
+    final viewId = value.viewId;
+    final instanceId = value.viewInstanceId;
+    if (pluginId == null || viewId == null || instanceId == null) return;
+    final manager = ref
+        .read(pluginRunManagerProvider)
+        .entries
+        .where((entry) => entry.key.id == pluginId)
+        .map((entry) => entry.value)
+        .firstOrNull;
+    if (manager == null) return;
+    ref
+        .read(viewModelStoreProvider)
+        .close(
+          ViewInstanceId(
+            pluginId: pluginId,
+            sessionId: manager.sessionId,
+            viewId: viewId,
+            instanceId: instanceId,
+          ),
+        );
+  }
+
   void afterTabClose(int index, TabData tabData) async {
     final value = tabData.value;
     refreshFileTabTitles(state.tabs);
@@ -540,27 +566,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     // Closing the host must close the instance, otherwise the plugin keeps
     // patching a model nothing renders.
     if (value.isPluginView) {
-      final pluginId = value.pluginId;
-      final viewId = value.viewId;
-      final instanceId = value.viewInstanceId;
-      if (pluginId == null || viewId == null || instanceId == null) return;
-      final manager = ref
-          .read(pluginRunManagerProvider)
-          .entries
-          .where((entry) => entry.key.id == pluginId)
-          .map((entry) => entry.value)
-          .firstOrNull;
-      if (manager == null) return;
-      ref
-          .read(viewModelStoreProvider)
-          .close(
-            ViewInstanceId(
-              pluginId: pluginId,
-              sessionId: manager.sessionId,
-              viewId: viewId,
-              instanceId: instanceId,
-            ),
-          );
+      closePluginView(value);
       return;
     }
 

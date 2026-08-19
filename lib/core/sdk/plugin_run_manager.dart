@@ -50,6 +50,7 @@ abstract class SdkCommands {
   static const String viewSnapshot = 'sdk.view.snapshot';
   static const String viewPatch = 'sdk.view.patch';
   static const String viewClose = 'sdk.view.close';
+  static const String viewFocus = 'sdk.view.focus';
   static const String viewRoutePush = 'sdk.view.route.push';
   static const String viewRoutePop = 'sdk.view.route.pop';
   static const String viewRouteReplace = 'sdk.view.route.replace';

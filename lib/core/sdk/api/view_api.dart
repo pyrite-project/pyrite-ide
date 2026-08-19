@@ -41,6 +41,10 @@ class SdkView {
       (envelope, respond) => _handleClose(manager, envelope, respond),
     );
     manager.registerHandler(
+      SdkCommands.viewFocus,
+      (envelope, respond) => _handleFocus(manager, envelope, respond),
+    );
+    manager.registerHandler(
       SdkCommands.viewRoutePush,
       (envelope, respond) => _handleRoute(manager, envelope, respond, _push),
     );
@@ -483,6 +487,23 @@ class SdkView {
     // History dies with the instance; a reopened view starts at its root rather
     // than resuming a flow the user can no longer see.
     _routes.clear(instance);
+    _ok(envelope, respond, {'instance': instance.toJson()});
+  }
+
+  void _handleFocus(
+    PluginRunManager manager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final instance = _instanceId(manager, payload);
+    if (instance == null) {
+      _error(envelope, respond, 'invalid_request', 'Missing viewId/instanceId');
+      return;
+    }
+    // Sidebar focus is owned by the navigation host. The request is still
+    // acknowledged so a plugin can use one lifecycle operation for every
+    // placement; editor placements use sdk.tab.activate directly.
     _ok(envelope, respond, {'instance': instance.toJson()});
   }
 
