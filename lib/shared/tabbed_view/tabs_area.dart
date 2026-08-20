@@ -1,10 +1,11 @@
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
-import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_status.dart';
@@ -29,20 +30,63 @@ class TabsArea extends StatefulWidget {
 }
 
 /// The [TabsArea] state.
-class _TabsAreaState extends State<TabsArea> {
+const double _autoScrollEdgeExtent = 56;
+const double _autoScrollMaxVelocity = 480;
+
+@visibleForTesting
+double nativeTabAutoScrollVelocity({
+  required double coordinate,
+  required double viewportExtent,
+}) {
+  if (viewportExtent <= 0) return 0;
+
+  final edgeExtent = math.min(_autoScrollEdgeExtent, viewportExtent / 3);
+  final double direction;
+  final double depth;
+  if (coordinate < edgeExtent) {
+    direction = -1;
+    depth = ((edgeExtent - coordinate) / edgeExtent).clamp(0.0, 1.0);
+  } else if (coordinate > viewportExtent - edgeExtent) {
+    direction = 1;
+    depth = ((coordinate - (viewportExtent - edgeExtent)) / edgeExtent).clamp(
+      0.0,
+      1.0,
+    );
+  } else {
+    return 0;
+  }
+
+  final easedDepth = depth * depth * (3 - 2 * depth);
+  return direction * _autoScrollMaxVelocity * easedDepth;
+}
+
+class _TabsAreaState extends State<TabsArea>
+    with SingleTickerProviderStateMixin {
   int? _hoveredIndex;
   int? _lastSelectedTabIndex;
+  bool _tabDragWasActive = false;
 
   final ScrollController _scrollController = ScrollController();
   final Map<Key, BuildContext> _tabContexts = {};
-  Timer? _autoScrollTimer;
-  int _autoScrollDirection = 0;
+  late final Ticker _autoScrollTicker;
+  Duration? _lastAutoScrollTick;
+  double _autoScrollVelocity = 0;
+  NativeTabDragRegistration? _trackedDragRegistration;
+  Offset? _trackedDragGlobalPosition;
+  TabBarPosition? _trackedDragTabBarPosition;
 
   final HiddenTabs _hiddenTabs = HiddenTabs();
 
   @override
+  void initState() {
+    super.initState();
+    _autoScrollTicker = createTicker(_handleAutoScrollTick);
+  }
+
+  @override
   void dispose() {
     _stopAutoScroll();
+    _autoScrollTicker.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -197,18 +241,57 @@ class _TabsAreaState extends State<TabsArea> {
       );
     }
 
-    final scrollView = SingleChildScrollView(
+    Widget scrollView = SingleChildScrollView(
       controller: _scrollController,
       scrollDirection: scrollDirection,
       child: tabList,
     );
+    if (widget.provider.tabReorderEnabled) {
+      scrollView = NativeTabStripDropRegion(
+        provider: widget.provider,
+        position: tabsAreaTheme.position,
+        resolveTarget: (globalPosition, source, trendDirection) =>
+            _resolveStripDropTarget(
+              globalPosition,
+              tabsAreaTheme.position,
+              source,
+              trendDirection,
+            ),
+        child: scrollView,
+      );
+    }
     return DropMonitor(
       formats: const [],
       hitTestBehavior: HitTestBehavior.opaque,
-      onDropOver: (event) => _updateAutoScroll(event, scrollDirection),
-      onDropLeave: (_) => _stopAutoScroll(),
-      onDropEnded: (_) => _stopAutoScroll(),
+      onDropOver: (event) =>
+          _updateAutoScroll(event, scrollDirection, tabsAreaTheme.position),
+      onDropLeave: (_) => _clearTrackedDrag(),
+      onDropEnded: (_) => _clearTrackedDrag(),
       child: scrollView,
+    );
+  }
+
+  NativeTabStripDropTarget? _resolveStripDropTarget(
+    Offset globalPosition,
+    TabBarPosition position,
+    NativeTabDragSource source,
+    int trendDirection,
+  ) {
+    final controller = widget.provider.controller;
+    final rects = <Rect>[];
+    for (final tab in controller.tabs) {
+      final tabContext = _tabContexts[tab.uniqueKey];
+      final renderObject = tabContext?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.attached) return null;
+      rects.add(renderObject.localToGlobal(Offset.zero) & renderObject.size);
+    }
+    return resolveNativeTabStripTrendDropTarget(
+      tabRects: rects,
+      globalPosition: globalPosition,
+      axis: position.isHorizontal ? Axis.horizontal : Axis.vertical,
+      source: source,
+      targetController: controller,
+      trendDirection: trendDirection,
     );
   }
 
@@ -269,10 +352,25 @@ class _TabsAreaState extends State<TabsArea> {
     _scrollController.jumpTo(target);
   }
 
-  void _updateAutoScroll(MonitorDropOverEvent event, Axis axis) {
-    if (!event.isInside ||
-        NativeTabDragRegistry.sourceForSession(event.session) == null ||
-        !_scrollController.hasClients) {
+  void _updateAutoScroll(
+    MonitorDropOverEvent event,
+    Axis axis,
+    TabBarPosition tabBarPosition,
+  ) {
+    final registration = NativeTabDragRegistry.registrationForSession(
+      event.session,
+    );
+    if (registration == null) {
+      _clearTrackedDrag();
+      return;
+    }
+
+    _trackedDragRegistration = registration;
+    _trackedDragGlobalPosition = event.position.global;
+    _trackedDragTabBarPosition = tabBarPosition;
+    _updateTrackedDragIntent();
+
+    if (!_scrollController.hasClients) {
       _stopAutoScroll();
       return;
     }
@@ -281,47 +379,88 @@ class _TabsAreaState extends State<TabsArea> {
     final double coordinate = axis == Axis.horizontal
         ? event.position.local.dx
         : event.position.local.dy;
-    final double edgeExtent = viewportExtent < 108 ? viewportExtent / 3 : 36;
-
-    int direction = 0;
-    if (coordinate < edgeExtent) {
-      direction = -1;
-    } else if (coordinate > viewportExtent - edgeExtent) {
-      direction = 1;
-    }
-    _setAutoScrollDirection(direction);
-  }
-
-  void _setAutoScrollDirection(int direction) {
-    if (_autoScrollDirection == direction) return;
-    _stopAutoScroll();
-    if (direction == 0) return;
-    _autoScrollDirection = direction;
-    _scrollByAutoScrollStep();
-    _autoScrollTimer = Timer.periodic(
-      const Duration(milliseconds: 16),
-      (_) => _scrollByAutoScrollStep(),
+    _setAutoScrollVelocity(
+      nativeTabAutoScrollVelocity(
+        coordinate: coordinate,
+        viewportExtent: viewportExtent,
+      ),
     );
   }
 
-  void _scrollByAutoScrollStep() {
+  void _setAutoScrollVelocity(double velocity) {
+    if (velocity == 0) {
+      _stopAutoScroll();
+      return;
+    }
+
+    _autoScrollVelocity = velocity;
+    if (!_autoScrollTicker.isActive) {
+      _lastAutoScrollTick = null;
+      _autoScrollTicker.start();
+    }
+  }
+
+  void _handleAutoScrollTick(Duration elapsed) {
     if (!mounted || !_scrollController.hasClients) {
       _stopAutoScroll();
       return;
     }
+
+    final previousTick = _lastAutoScrollTick;
+    _lastAutoScrollTick = elapsed;
+    if (previousTick == null) return;
+
+    final elapsedSeconds = ((elapsed - previousTick).inMicroseconds / 1000000)
+        .clamp(0.0, 0.05);
     final position = _scrollController.position;
-    final target = (position.pixels + _autoScrollDirection * 8).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
-    if (target == position.pixels) return;
+    final target = (position.pixels + _autoScrollVelocity * elapsedSeconds)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (target == position.pixels) {
+      _stopAutoScroll();
+      return;
+    }
     _scrollController.jumpTo(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateTrackedDragIntent();
+    });
+  }
+
+  void _updateTrackedDragIntent() {
+    final registration = _trackedDragRegistration;
+    final globalPosition = _trackedDragGlobalPosition;
+    final tabBarPosition = _trackedDragTabBarPosition;
+    if (registration == null ||
+        registration.isDisposed ||
+        registration.dropHandled ||
+        globalPosition == null ||
+        tabBarPosition == null) {
+      return;
+    }
+
+    final axis = tabBarPosition.isHorizontal ? Axis.horizontal : Axis.vertical;
+    registration.updateTrend(globalPosition, axis);
+    final target = _resolveStripDropTarget(
+      globalPosition,
+      tabBarPosition,
+      registration.source,
+      registration.trendDirection,
+    );
+    if (target != null) {
+      registration.intendedInsertionIndex = target.insertionIndex;
+    }
+  }
+
+  void _clearTrackedDrag() {
+    _stopAutoScroll();
+    _trackedDragRegistration = null;
+    _trackedDragGlobalPosition = null;
+    _trackedDragTabBarPosition = null;
   }
 
   void _stopAutoScroll() {
-    _autoScrollTimer?.cancel();
-    _autoScrollTimer = null;
-    _autoScrollDirection = 0;
+    _autoScrollTicker.stop();
+    _lastAutoScrollTick = null;
+    _autoScrollVelocity = 0;
   }
 
   void _scheduleSelectedTabReveal(
@@ -329,6 +468,17 @@ class _TabsAreaState extends State<TabsArea> {
     TabBarPosition tabBarPosition,
   ) {
     final int? selectedIndex = controller.selectedIndex;
+    final bool tabDragActive = widget.provider.draggingTabIndex != null;
+    if (tabDragActive) {
+      _tabDragWasActive = true;
+      _lastSelectedTabIndex = selectedIndex;
+      return;
+    }
+    if (_tabDragWasActive) {
+      _tabDragWasActive = false;
+      _lastSelectedTabIndex = selectedIndex;
+      return;
+    }
     if (selectedIndex == null ||
         selectedIndex < 0 ||
         selectedIndex >= controller.tabs.length ||

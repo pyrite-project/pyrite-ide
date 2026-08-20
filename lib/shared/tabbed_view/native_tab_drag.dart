@@ -18,6 +18,7 @@ const String _nativeTabDragKindKey = 'kind';
 const String _nativeTabDragTokenKey = 'token';
 const String _nativeTabDragKind = 'pyrite.tab';
 const double _dropIndicatorExtent = 8;
+const double _trendActivationDistance = 24;
 
 @immutable
 class NativeTabDragSource {
@@ -25,13 +26,161 @@ class NativeTabDragSource {
     required this.controller,
     required this.tab,
     required this.dragScope,
+    this.dragStartGlobalPosition,
+    this.sourceGlobalRect,
   });
 
   final TabbedViewController controller;
   final TabData tab;
   final String? dragScope;
+  final Offset? dragStartGlobalPosition;
+  final Rect? sourceGlobalRect;
 
   DraggableData get draggableData => DraggableData(controller, tab, dragScope);
+
+  double mainAxisDragDelta(Offset globalPosition, Axis axis) {
+    final start = dragStartGlobalPosition;
+    if (start == null) return 0;
+    return axis == Axis.horizontal
+        ? globalPosition.dx - start.dx
+        : globalPosition.dy - start.dy;
+  }
+
+  Offset projectDropPosition(Offset globalPosition, Axis axis) {
+    final start = dragStartGlobalPosition;
+    final rect = sourceGlobalRect;
+    if (start == null || rect == null) return globalPosition;
+
+    final startCoordinate = axis == Axis.horizontal ? start.dx : start.dy;
+    final currentCoordinate = axis == Axis.horizontal
+        ? globalPosition.dx
+        : globalPosition.dy;
+    final leading = axis == Axis.horizontal ? rect.left : rect.top;
+    final trailing = axis == Axis.horizontal ? rect.right : rect.bottom;
+    final center = axis == Axis.horizontal ? rect.center.dx : rect.center.dy;
+
+    final projectedCoordinate = switch (currentCoordinate.compareTo(
+      startCoordinate,
+    )) {
+      < 0 => currentCoordinate + leading - startCoordinate,
+      > 0 => currentCoordinate + trailing - startCoordinate,
+      _ => center,
+    };
+    return axis == Axis.horizontal
+        ? Offset(projectedCoordinate, globalPosition.dy)
+        : Offset(globalPosition.dx, projectedCoordinate);
+  }
+}
+
+@immutable
+class NativeTabStripDropTarget {
+  const NativeTabStripDropTarget({
+    required this.insertionIndex,
+    required this.indicatorGlobalPosition,
+  });
+
+  final int insertionIndex;
+  final Offset indicatorGlobalPosition;
+}
+
+typedef NativeTabStripDropTargetResolver =
+    NativeTabStripDropTarget? Function(
+      Offset globalPosition,
+      NativeTabDragSource source,
+      int trendDirection,
+    );
+
+NativeTabStripDropTarget? resolveNativeTabStripDropTarget({
+  required List<Rect> tabRects,
+  required Offset globalPosition,
+  required Axis axis,
+}) {
+  if (tabRects.isEmpty) return null;
+
+  final coordinate = axis == Axis.horizontal
+      ? globalPosition.dx
+      : globalPosition.dy;
+  for (var index = 0; index < tabRects.length; index++) {
+    final rect = tabRects[index];
+    final midpoint = axis == Axis.horizontal ? rect.center.dx : rect.center.dy;
+    if (coordinate < midpoint) {
+      return NativeTabStripDropTarget(
+        insertionIndex: index,
+        indicatorGlobalPosition: axis == Axis.horizontal
+            ? rect.centerLeft
+            : rect.topCenter,
+      );
+    }
+  }
+
+  final lastRect = tabRects.last;
+  return NativeTabStripDropTarget(
+    insertionIndex: tabRects.length,
+    indicatorGlobalPosition: axis == Axis.horizontal
+        ? lastRect.centerRight
+        : lastRect.bottomCenter,
+  );
+}
+
+NativeTabStripDropTarget? resolveNativeTabStripTrendDropTarget({
+  required List<Rect> tabRects,
+  required Offset globalPosition,
+  required Axis axis,
+  required NativeTabDragSource source,
+  required TabbedViewController targetController,
+  required int trendDirection,
+}) {
+  final rawTarget = resolveNativeTabStripDropTarget(
+    tabRects: tabRects,
+    globalPosition: source.projectDropPosition(globalPosition, axis),
+    axis: axis,
+  );
+  if (rawTarget == null ||
+      trendDirection == 0 ||
+      !identical(source.controller, targetController)) {
+    return rawTarget;
+  }
+
+  final sourceIndex = targetController.tabs.indexOf(source.tab);
+  if (sourceIndex < 0) return rawTarget;
+
+  var insertionIndex = rawTarget.insertionIndex;
+  if (trendDirection > 0 && sourceIndex < targetController.length - 1) {
+    insertionIndex = insertionIndex < sourceIndex + 2
+        ? sourceIndex + 2
+        : insertionIndex;
+  } else if (trendDirection < 0 && sourceIndex > 0) {
+    insertionIndex = insertionIndex > sourceIndex - 1
+        ? sourceIndex - 1
+        : insertionIndex;
+  }
+  return _nativeTabStripTargetAtInsertion(
+    tabRects: tabRects,
+    insertionIndex: insertionIndex,
+    axis: axis,
+  );
+}
+
+NativeTabStripDropTarget _nativeTabStripTargetAtInsertion({
+  required List<Rect> tabRects,
+  required int insertionIndex,
+  required Axis axis,
+}) {
+  final index = insertionIndex.clamp(0, tabRects.length);
+  final indicatorRect = index == tabRects.length
+      ? tabRects.last
+      : tabRects[index];
+  final indicatorPosition = axis == Axis.horizontal
+      ? (index == tabRects.length
+            ? indicatorRect.centerRight
+            : indicatorRect.centerLeft)
+      : (index == tabRects.length
+            ? indicatorRect.bottomCenter
+            : indicatorRect.topCenter);
+  return NativeTabStripDropTarget(
+    insertionIndex: index,
+    indicatorGlobalPosition: indicatorPosition,
+  );
 }
 
 class NativeTabDragRegistration {
@@ -40,6 +189,20 @@ class NativeTabDragRegistration {
   final String token;
   final NativeTabDragSource source;
   bool _disposed = false;
+  bool dropHandled = false;
+  int trendDirection = 0;
+  int? intendedInsertionIndex;
+
+  bool get isDisposed => _disposed;
+
+  void updateTrend(Offset globalPosition, Axis axis) {
+    final delta = source.mainAxisDragDelta(globalPosition, axis);
+    if (delta > _trendActivationDistance) {
+      trendDirection = 1;
+    } else if (delta < -_trendActivationDistance) {
+      trendDirection = -1;
+    }
+  }
 
   Map<String, Object> get localData => <String, Object>{
     _nativeTabDragKindKey: _nativeTabDragKind,
@@ -63,6 +226,8 @@ class NativeTabDragRegistry {
     required TabbedViewController controller,
     required TabData tab,
     required String? dragScope,
+    Offset? dragStartGlobalPosition,
+    Rect? sourceGlobalRect,
   }) {
     final registration = NativeTabDragRegistration._(
       token: '${_nextToken++}',
@@ -70,6 +235,8 @@ class NativeTabDragRegistry {
         controller: controller,
         tab: tab,
         dragScope: dragScope,
+        dragStartGlobalPosition: dragStartGlobalPosition,
+        sourceGlobalRect: sourceGlobalRect,
       ),
     );
     _registrations[registration.token] = registration;
@@ -77,22 +244,34 @@ class NativeTabDragRegistry {
   }
 
   static NativeTabDragSource? sourceForSession(DropSession session) {
+    return registrationForSession(session)?.source;
+  }
+
+  static NativeTabDragRegistration? registrationForSession(
+    DropSession session,
+  ) {
     for (final item in session.items) {
-      final source = sourceForLocalData(item.localData);
-      if (source != null) return source;
+      final registration = _registrationForLocalData(item.localData);
+      if (registration != null) return registration;
     }
     return null;
   }
 
   @visibleForTesting
   static NativeTabDragSource? sourceForLocalData(Object? localData) {
+    return _registrationForLocalData(localData)?.source;
+  }
+
+  static NativeTabDragRegistration? _registrationForLocalData(
+    Object? localData,
+  ) {
     if (localData is! Map ||
         localData[_nativeTabDragKindKey] != _nativeTabDragKind) {
       return null;
     }
     final token = localData[_nativeTabDragTokenKey];
     if (token is! String) return null;
-    return _registrations[token]?.source;
+    return _registrations[token];
   }
 
   static void _unregister(NativeTabDragRegistration registration) {
@@ -100,6 +279,18 @@ class NativeTabDragRegistry {
       _registrations.remove(registration.token);
     }
   }
+}
+
+@visibleForTesting
+DragItem createNativeTabDragItem(
+  NativeTabDragRegistration registration,
+  String label,
+) {
+  final item = DragItem(localData: registration.localData);
+  // Android requires a native representation before it will start a drag
+  // session. The in-memory token remains the source of truth for tab moves.
+  item.add(Formats.plainText(label));
+  return item;
 }
 
 typedef NativeTabDragEnded =
@@ -112,7 +303,8 @@ class NativeTabDragSessionBinding {
     required this.onStarted,
     required this.onUpdated,
     required this.onEnded,
-  }) {
+  }) : _lastLocation =
+           registration.source.dragStartGlobalPosition ?? Offset.zero {
     session.dragging.addListener(_handleDragging);
     session.lastScreenLocation.addListener(_handleLocation);
     session.dragCompleted.addListener(_handleCompleted);
@@ -127,7 +319,7 @@ class NativeTabDragSessionBinding {
 
   bool _started = false;
   bool _disposed = false;
-  Offset _lastLocation = Offset.zero;
+  Offset _lastLocation;
 
   void _handleDragging() {
     if (!_started && session.dragging.value) {
@@ -166,6 +358,95 @@ bool nativeTabDragWasAccepted(DropOperation operation) {
       operation == DropOperation.link;
 }
 
+bool _nativeTabCanDrop(
+  TabbedViewProvider provider,
+  NativeTabDragSource source,
+) {
+  final targetScope = provider.dragScope;
+  if (targetScope != null &&
+      source.dragScope != null &&
+      targetScope != source.dragScope) {
+    return false;
+  }
+  return provider.canDrop?.call(source.draggableData, provider.controller) ??
+      true;
+}
+
+bool _performNativeTabDrop({
+  required TabbedViewProvider provider,
+  required NativeTabDragSource source,
+  required int insertionIndex,
+}) {
+  final newIndex = insertionIndex.clamp(0, provider.controller.length);
+  if (provider.onBeforeDropAccept?.call(
+        source.draggableData,
+        provider.controller,
+        newIndex,
+      ) ==
+      false) {
+    return false;
+  }
+
+  final oldIndex = source.controller.tabs.indexOf(source.tab);
+  if (oldIndex < 0) return false;
+
+  if (identical(source.controller, provider.controller)) {
+    return source.controller.reorderTab(oldIndex, newIndex);
+  } else {
+    source.controller.removeTab(oldIndex);
+    final targetIndex = newIndex.clamp(0, provider.controller.length);
+    provider.controller.insertTab(targetIndex, source.tab);
+  }
+  return true;
+}
+
+bool performNativeTabTrendFallback({
+  required TabbedViewProvider provider,
+  required NativeTabDragRegistration registration,
+  required Axis axis,
+  required Offset globalPosition,
+}) {
+  if (registration.dropHandled) return false;
+  final source = registration.source;
+  if (!identical(source.controller, provider.controller) ||
+      !_nativeTabCanDrop(provider, source)) {
+    return false;
+  }
+
+  final delta = source.mainAxisDragDelta(globalPosition, axis);
+  if (delta.abs() <= _trendActivationDistance) return false;
+
+  final oldIndex = source.controller.tabs.indexOf(source.tab);
+  if (oldIndex < 0 || source.controller.length < 2) return false;
+  final intendedInsertionIndex = registration.intendedInsertionIndex;
+  final int insertionIndex;
+  final int destinationIndex;
+  if (intendedInsertionIndex != null) {
+    insertionIndex = intendedInsertionIndex.clamp(0, source.controller.length);
+    destinationIndex = insertionIndex > oldIndex
+        ? insertionIndex - 1
+        : insertionIndex;
+  } else {
+    final direction = delta > 0 ? 1 : -1;
+    destinationIndex = (oldIndex + direction).clamp(
+      0,
+      source.controller.length - 1,
+    );
+    insertionIndex = destinationIndex > oldIndex
+        ? destinationIndex + 1
+        : destinationIndex;
+  }
+  if (destinationIndex == oldIndex) return false;
+
+  registration.dropHandled = true;
+  final reordered = _performNativeTabDrop(
+    provider: provider,
+    source: source,
+    insertionIndex: insertionIndex,
+  );
+  return reordered;
+}
+
 class NativeTabDraggable extends StatelessWidget {
   const NativeTabDraggable({
     super.key,
@@ -186,13 +467,24 @@ class NativeTabDraggable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tabBarPosition = TabbedViewTheme.of(context).tabsArea.position;
+    final dragAxis = tabBarPosition.isHorizontal
+        ? Axis.horizontal
+        : Axis.vertical;
     return DragItemWidget(
       allowedOperations: () => const [DropOperation.move, DropOperation.copy],
       dragItemProvider: (request) {
+        final renderObject = context.findRenderObject();
+        final sourceGlobalRect =
+            renderObject is RenderBox && renderObject.attached
+            ? renderObject.localToGlobal(Offset.zero) & renderObject.size
+            : null;
         final registration = NativeTabDragRegistry.register(
           controller: provider.controller,
           tab: tab,
           dragScope: provider.dragScope,
+          dragStartGlobalPosition: request.location,
+          sourceGlobalRect: sourceGlobalRect,
         );
         NativeTabDragSessionBinding(
           session: request.session,
@@ -208,7 +500,17 @@ class NativeTabDraggable extends StatelessWidget {
             );
           },
           onEnded: (operation, location) {
-            final accepted = nativeTabDragWasAccepted(operation);
+            final reorderedByTrend =
+                operation != DropOperation.userCancelled &&
+                operation != DropOperation.forbidden &&
+                performNativeTabTrendFallback(
+                  provider: provider,
+                  registration: registration,
+                  axis: dragAxis,
+                  globalPosition: location,
+                );
+            final accepted =
+                nativeTabDragWasAccepted(operation) || reorderedByTrend;
             provider.onTabDrag(null);
             config.onDragEnd?.call(
               DraggableDetails(
@@ -224,7 +526,7 @@ class NativeTabDraggable extends StatelessWidget {
             }
           },
         );
-        return DragItem(localData: registration.localData);
+        return createNativeTabDragItem(registration, tab.text);
       },
       liftBuilder: (_, _) => Material(child: feedback),
       dragBuilder: (_, _) => Material(child: feedback),
@@ -369,7 +671,10 @@ class _NativeTabDropRegionState extends State<NativeTabDropRegion> {
   }
 
   Future<void> _onPerformDrop(PerformDropEvent event) async {
-    final source = NativeTabDragRegistry.sourceForSession(event.session);
+    final registration = NativeTabDragRegistry.registrationForSession(
+      event.session,
+    );
+    final source = registration?.source;
     final targetIndex = _targetIndex();
     if (source == null ||
         targetIndex == null ||
@@ -379,49 +684,17 @@ class _NativeTabDropRegionState extends State<NativeTabDropRegion> {
       return;
     }
 
-    final newIndex = targetIndex + (_dropAfter ? 1 : 0);
-    final draggableData = source.draggableData;
-    if (widget.provider.onBeforeDropAccept?.call(
-          draggableData,
-          widget.provider.controller,
-          newIndex,
-        ) ==
-        false) {
-      _clearIndicator();
-      return;
-    }
-
-    final oldIndex = source.controller.tabs.indexOf(source.tab);
-    if (oldIndex < 0) {
-      _clearIndicator();
-      return;
-    }
-
-    if (identical(source.controller, widget.provider.controller)) {
-      source.controller.reorderTab(oldIndex, newIndex);
-    } else {
-      source.controller.removeTab(oldIndex);
-      final insertionIndex = newIndex.clamp(
-        0,
-        widget.provider.controller.length,
-      );
-      widget.provider.controller.insertTab(insertionIndex, source.tab);
-    }
+    registration!.dropHandled = true;
+    _performNativeTabDrop(
+      provider: widget.provider,
+      source: source,
+      insertionIndex: targetIndex + (_dropAfter ? 1 : 0),
+    );
     _clearIndicator();
   }
 
   bool _canAccept(NativeTabDragSource source) {
-    final targetScope = widget.provider.dragScope;
-    if (targetScope != null &&
-        source.dragScope != null &&
-        targetScope != source.dragScope) {
-      return false;
-    }
-    return widget.provider.canDrop?.call(
-          source.draggableData,
-          widget.provider.controller,
-        ) ??
-        true;
+    return _nativeTabCanDrop(widget.provider, source);
   }
 
   int? _targetIndex() {
@@ -484,6 +757,151 @@ class _NativeTabDropRegionState extends State<NativeTabDropRegion> {
   }
 }
 
+class NativeTabStripDropRegion extends StatefulWidget {
+  const NativeTabStripDropRegion({
+    super.key,
+    required this.provider,
+    required this.position,
+    required this.resolveTarget,
+    required this.child,
+  });
+
+  final TabbedViewProvider provider;
+  final TabBarPosition position;
+  final NativeTabStripDropTargetResolver resolveTarget;
+  final Widget child;
+
+  @override
+  State<NativeTabStripDropRegion> createState() =>
+      _NativeTabStripDropRegionState();
+}
+
+class _NativeTabStripDropRegionState extends State<NativeTabStripDropRegion> {
+  NativeTabStripDropTarget? _target;
+  double? _indicatorMainAxisOffset;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropRegion(
+      formats: const [],
+      hitTestBehavior: HitTestBehavior.opaque,
+      onDropOver: _onDropOver,
+      onDropLeave: (_) => _clearTarget(),
+      onDropEnded: (_) => _finishDrag(),
+      onPerformDrop: _onPerformDrop,
+      child: _target == null || _indicatorMainAxisOffset == null
+          ? widget.child
+          : CustomPaint(
+              foregroundPainter: _NativeTabStripDropIndicatorPainter(
+                position: widget.position,
+                mainAxisOffset: _indicatorMainAxisOffset!,
+                color: TabbedViewTheme.of(context).tabsArea.dropColor,
+              ),
+              child: widget.child,
+            ),
+    );
+  }
+
+  DropOperation _onDropOver(DropOverEvent event) {
+    final registration = NativeTabDragRegistry.registrationForSession(
+      event.session,
+    );
+    final source = registration?.source;
+    final target = registration == null
+        ? null
+        : _resolveTarget(registration, event.position.global);
+    if (source == null ||
+        target == null ||
+        !_nativeTabCanDrop(widget.provider, source)) {
+      _clearTarget();
+      return DropOperation.none;
+    }
+
+    final operation = _acceptedOperation(event.session);
+    if (operation == DropOperation.none) {
+      _clearTarget();
+      return operation;
+    }
+
+    _setTarget(target);
+    return operation;
+  }
+
+  Future<void> _onPerformDrop(PerformDropEvent event) async {
+    final registration = NativeTabDragRegistry.registrationForSession(
+      event.session,
+    );
+    final source = registration?.source;
+    final target = registration == null
+        ? null
+        : _resolveTarget(registration, event.position.global);
+    if (source != null &&
+        target != null &&
+        _nativeTabCanDrop(widget.provider, source)) {
+      registration!.dropHandled = true;
+      _performNativeTabDrop(
+        provider: widget.provider,
+        source: source,
+        insertionIndex: target.insertionIndex,
+      );
+    }
+    _finishDrag();
+  }
+
+  NativeTabStripDropTarget? _resolveTarget(
+    NativeTabDragRegistration registration,
+    Offset globalPosition,
+  ) {
+    final axis = widget.position.isHorizontal ? Axis.horizontal : Axis.vertical;
+    registration.updateTrend(globalPosition, axis);
+    final target = widget.resolveTarget(
+      globalPosition,
+      registration.source,
+      registration.trendDirection,
+    );
+    registration.intendedInsertionIndex = target?.insertionIndex;
+    return target;
+  }
+
+  void _finishDrag() {
+    _clearTarget();
+  }
+
+  DropOperation _acceptedOperation(DropSession session) {
+    if (session.allowedOperations.contains(DropOperation.move)) {
+      return DropOperation.move;
+    }
+    if (session.allowedOperations.contains(DropOperation.copy)) {
+      return DropOperation.copy;
+    }
+    return DropOperation.none;
+  }
+
+  void _setTarget(NativeTabStripDropTarget target) {
+    final renderBox = context.findRenderObject();
+    if (renderBox is! RenderBox) return;
+    final local = renderBox.globalToLocal(target.indicatorGlobalPosition);
+    final mainAxisOffset = widget.position.isHorizontal ? local.dx : local.dy;
+    if (_target?.insertionIndex == target.insertionIndex &&
+        _indicatorMainAxisOffset == mainAxisOffset) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _target = target;
+      _indicatorMainAxisOffset = mainAxisOffset;
+    });
+  }
+
+  void _clearTarget() {
+    if (_target == null || !mounted) return;
+    setState(() {
+      _target = null;
+      _indicatorMainAxisOffset = null;
+    });
+  }
+}
+
 class _NativeTabDropIndicatorPainter extends CustomPainter {
   const _NativeTabDropIndicatorPainter({
     required this.position,
@@ -519,6 +937,53 @@ class _NativeTabDropIndicatorPainter extends CustomPainter {
   bool shouldRepaint(covariant _NativeTabDropIndicatorPainter oldDelegate) {
     return position != oldDelegate.position ||
         dropAfter != oldDelegate.dropAfter ||
+        color != oldDelegate.color;
+  }
+}
+
+class _NativeTabStripDropIndicatorPainter extends CustomPainter {
+  const _NativeTabStripDropIndicatorPainter({
+    required this.position,
+    required this.mainAxisOffset,
+    required this.color,
+  });
+
+  final TabBarPosition position;
+  final double mainAxisOffset;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    if (position.isHorizontal) {
+      final x = (mainAxisOffset - _dropIndicatorExtent / 2).clamp(
+        0.0,
+        (size.width - _dropIndicatorExtent).clamp(0.0, size.width),
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(x, 0, _dropIndicatorExtent, size.height),
+        paint,
+      );
+    } else {
+      final y = (mainAxisOffset - _dropIndicatorExtent / 2).clamp(
+        0.0,
+        (size.height - _dropIndicatorExtent).clamp(0.0, size.height),
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(0, y, size.width, _dropIndicatorExtent),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _NativeTabStripDropIndicatorPainter oldDelegate,
+  ) {
+    return position != oldDelegate.position ||
+        mainAxisOffset != oldDelegate.mainAxisOffset ||
         color != oldDelegate.color;
   }
 }

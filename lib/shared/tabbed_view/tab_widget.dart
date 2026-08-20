@@ -146,6 +146,15 @@ class TabWidget extends ConsumerWidget {
           : interactiveTab,
     );
 
+    // super_context_menu combines the menu and native drag configuration into
+    // one long-press session only when the menu is inside DraggableWidget.
+    if (tab.closable) {
+      widget = PyriteContextMenuWidget(
+        menuProvider: (_) => _buildContextMenu(context, index),
+        child: widget,
+      );
+    }
+
     if (tab.draggable) {
       DraggableConfig draggableConfig = DraggableConfig.defaultConfig;
       if (provider.onDraggableBuild != null) {
@@ -157,10 +166,9 @@ class TabWidget extends ConsumerWidget {
       }
 
       if (draggableConfig.canDrag) {
-        Widget feedback = draggableConfig.feedback != null
-            ? draggableConfig.feedback!
-            : _TabDragFeedback(tab: tab, tabTheme: tabTheme);
-
+        final feedback =
+            draggableConfig.feedback ??
+            _TabDragFeedback(tab: tab, tabTheme: tabTheme);
         widget = NativeTabDraggable(
           provider: provider,
           tab: tab,
@@ -179,25 +187,9 @@ class TabWidget extends ConsumerWidget {
       }
     }
 
-    // Keep the context menu outside the drag source. This matches the file
-    // tree interaction: a long press opens the menu, while moving after the
-    // long-press threshold lets the native drag recognizer take over.
-    if (tab.closable) {
-      widget = PyriteContextMenuWidget(
-        menuProvider: (_) => _buildContextMenu(context, index),
-        child: widget,
-      );
-    }
-
-    if (provider.tabReorderEnabled &&
-        provider.draggingTabIndex != TabDataHelper.indexFrom(tab)) {
-      return NativeTabDropRegion(
-        provider: provider,
-        position: theme.tabsArea.position,
-        targetTab: tab,
-        child: widget,
-      );
-    }
+    // The tabs area owns one continuous drop region. Keeping individual tabs
+    // out of the drop hit-test makes gaps, blank space, and tab bodies resolve
+    // through the same insertion-position algorithm.
     return widget;
   }
 
@@ -212,10 +204,7 @@ class TabWidget extends ConsumerWidget {
     );
     return Menu(
       children: [
-        MenuAction(
-          title: title,
-          callback: () => _closeTab(context, index),
-        ),
+        MenuAction(title: title, callback: () => _closeTab(context, index)),
       ],
     );
   }
@@ -274,11 +263,9 @@ class _TabDragFeedback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> children = [];
-    final Widget? leading = tab.leading?.call(context, TabStatus.normal);
-    if (leading != null) {
-      children.add(leading);
-    }
+    final children = <Widget>[];
+    final leading = tab.leading?.call(context, TabStatus.normal);
+    if (leading != null) children.add(leading);
 
     Widget text = Text(
       tab.text,
@@ -290,12 +277,11 @@ class _TabDragFeedback extends StatelessWidget {
     }
     children.add(text);
 
-    CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.center;
-    if (tabTheme.verticalAlignment == VerticalAlignment.top) {
-      crossAxisAlignment = CrossAxisAlignment.start;
-    } else if (tabTheme.verticalAlignment == VerticalAlignment.bottom) {
-      crossAxisAlignment = CrossAxisAlignment.end;
-    }
+    final crossAxisAlignment = switch (tabTheme.verticalAlignment) {
+      VerticalAlignment.top => CrossAxisAlignment.start,
+      VerticalAlignment.bottom => CrossAxisAlignment.end,
+      _ => CrossAxisAlignment.center,
+    };
 
     return Container(
       padding: const EdgeInsets.all(4),

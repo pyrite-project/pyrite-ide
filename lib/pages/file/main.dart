@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,11 +59,21 @@ const _localDragSourceValue = 'local';
 const _boardDragSourceValue = 'board';
 final Map<_FileDragSource, Rect> _dropRegionRects = <_FileDragSource, Rect>{};
 
-DragItem createLocalFileDragItem(List<String> paths) {
+DragItem createLocalFileDragItem(
+  List<String> paths, {
+  TargetPlatform? platform,
+}) {
   final item = DragItem(
     localData: {_dragSourceKey: _localDragSourceValue, _dragPathsKey: paths},
   );
-  item.add(Formats.fileUri(Uri.file(paths.first)));
+  if ((platform ?? defaultTargetPlatform) == TargetPlatform.android) {
+    // Android rejects file:// URIs passed to View.startDragAndDrop with a
+    // FileUriExposedException. Internal moves use localData; plain text keeps
+    // the native drag session valid without exposing an unsafe URI.
+    item.add(Formats.plainText(paths.join('\n')));
+  } else {
+    item.add(Formats.fileUri(Uri.file(paths.first)));
+  }
   return item;
 }
 
