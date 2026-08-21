@@ -300,27 +300,98 @@ class _BottomPanelTab extends ConsumerWidget {
   }
 }
 
-List<shadcn.ResizablePane> buildConsoleView(
-  WidgetRef ref,
-  Widget child, {
-  bool allowConsole = true,
-}) {
-  final List<shadcn.ResizablePane> children = [];
-  children.add(
-    shadcn.ResizablePane.flex(initialFlex: 3, minSize: 240, child: child),
-  );
+class ConsoleWorkspace extends ConsumerStatefulWidget {
+  const ConsoleWorkspace({
+    super.key,
+    required this.primary,
+    this.allowConsole = true,
+    this.collapsedPrimarySize = 0,
+    this.console,
+  });
 
-  if (allowConsole && ref.watch(consolePageShow)) {
-    children.add(
-      shadcn.ResizablePane.flex(
-        initialFlex: 1,
-        minSize: 160,
-        child: consolePage(),
-      ),
-    );
+  static const primaryPaneKey = ValueKey<String>('workspace-primary-pane');
+  static const consolePaneKey = ValueKey<String>('workspace-console-pane');
+  static const draggerKey = ValueKey<String>('workspace-console-dragger');
+
+  final Widget primary;
+  final bool allowConsole;
+  final double collapsedPrimarySize;
+  final Widget? console;
+
+  @override
+  ConsumerState<ConsoleWorkspace> createState() => _ConsoleWorkspaceState();
+}
+
+class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
+  static const _primaryFlex = 3.0;
+  static const _consoleFlex = 1.0;
+
+  late final shadcn.FlexibleResizablePaneController _primaryController;
+  late final shadcn.FlexibleResizablePaneController _consoleController;
+
+  @override
+  void initState() {
+    super.initState();
+    _primaryController = shadcn.FlexibleResizablePaneController(_primaryFlex);
+    _consoleController = shadcn.FlexibleResizablePaneController(_consoleFlex);
+    ref.listenManual<bool>(consolePageShow, (_, _) => _resetPaneSizes());
   }
 
-  return children;
+  @override
+  void didUpdateWidget(covariant ConsoleWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.allowConsole != oldWidget.allowConsole) {
+      _resetPaneSizes();
+    }
+  }
+
+  void _resetPaneSizes() {
+    _primaryController
+      ..flex = _primaryFlex
+      ..expand();
+    _consoleController
+      ..flex = _consoleFlex
+      ..expand();
+  }
+
+  @override
+  void dispose() {
+    _primaryController.dispose();
+    _consoleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showConsole = widget.allowConsole && ref.watch(consolePageShow);
+    return shadcn.ResizablePanel.vertical(
+      optionalDivider: false,
+      draggerBuilder: (context) {
+        return Semantics(
+          label: translateForWidget(ref, I18nKey.bottomPanelResize),
+          child: const shadcn.HorizontalResizableDragger(
+            key: ConsoleWorkspace.draggerKey,
+          ),
+        );
+      },
+      children: [
+        shadcn.ResizablePane.controlled(
+          key: ConsoleWorkspace.primaryPaneKey,
+          controller: _primaryController,
+          minSize: 240,
+          collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
+          child: widget.primary,
+        ),
+        if (showConsole)
+          shadcn.ResizablePane.controlled(
+            key: ConsoleWorkspace.consolePaneKey,
+            controller: _consoleController,
+            minSize: 160,
+            child: widget.console ?? consolePage(),
+          ),
+      ],
+    );
+  }
 }
 
 Widget buildShadcnLayer(BuildContext context, Widget child) {
@@ -339,15 +410,14 @@ Widget buildVerticalWorkspace(
   WidgetRef ref,
   Widget child, {
   bool allowConsole = true,
+  double collapsedPrimarySize = 0,
 }) {
   return buildShadcnLayer(
     context,
-    shadcn.ResizablePanel.vertical(
-      optionalDivider: false,
-      draggerBuilder: (context) {
-        return shadcn.HorizontalResizableDragger();
-      },
-      children: buildConsoleView(ref, child, allowConsole: allowConsole),
+    ConsoleWorkspace(
+      primary: child,
+      allowConsole: allowConsole,
+      collapsedPrimarySize: collapsedPrimarySize,
     ),
   );
 }
@@ -862,7 +932,19 @@ class TabletView extends ConsumerWidget {
               child: Row(
                 children: [
                   railNavigationBar(context, ref),
-                  Expanded(child: buildVerticalWorkspace(context, ref, child)),
+                  Expanded(
+                    child: buildVerticalWorkspace(
+                      context,
+                      ref,
+                      child,
+                      collapsedPrimarySize:
+                          state.matchedLocation.startsWith('/editor')
+                          ? ThemeDensityTokens.forStyle(
+                              ref.watch(themeStyle),
+                            ).toolbarHeight
+                          : 0,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1044,12 +1126,11 @@ class DesktopView extends ConsumerWidget {
       shadcn.ResizablePane.flex(
         initialFlex: 4,
         minSize: 300,
-        child: shadcn.ResizablePanel.vertical(
-          optionalDivider: false,
-          draggerBuilder: (context) {
-            return shadcn.HorizontalResizableDragger();
-          },
-          children: buildConsoleView(ref, const Editor()),
+        child: ConsoleWorkspace(
+          primary: const Editor(),
+          collapsedPrimarySize: ThemeDensityTokens.forStyle(
+            ref.watch(themeStyle),
+          ).toolbarHeight,
         ),
       ),
     );
