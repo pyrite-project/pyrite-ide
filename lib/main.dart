@@ -252,6 +252,38 @@ void _startAutoSave() {
   });
 }
 
+Future<void> _startRuntimeAndPlugins() async {
+  final runtimeHost = container.read(pythonRuntimeHostProvider);
+  try {
+    await runtimeHost.start();
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'pyrite_ide',
+        context: ErrorDescription('while bootstrapping the Python runtime'),
+      ),
+    );
+    // The editor remains usable when the optional Python runtime is not
+    // available. Plugin activation is intentionally skipped for this launch.
+    return;
+  }
+
+  try {
+    await container.read(pluginManagerProvider.notifier).autoStart();
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'pyrite_ide',
+        context: ErrorDescription('while activating startup plugins'),
+      ),
+    );
+  }
+}
+
 // PyriteIDE: Hello World.
 void main() async {
   GitDebugLog.startSession();
@@ -324,24 +356,6 @@ void main() async {
   appWindow.bind(container);
   appWindow.init();
 
-  try {
-    await container.read(pythonRuntimeHostProvider).start();
-  } catch (error, stackTrace) {
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'pyrite_ide',
-        context: ErrorDescription('while bootstrapping the Python runtime'),
-      ),
-    );
-  }
-
-  // Activate only plugins declaring onStartup after the Python runtime snapshot
-  // has been captured. Other plugins remain dormant until their trigger fires.
-  unawaited(container.read(pluginManagerProvider.notifier).autoStart());
-  // container.read(lspClientProvider);
-
   GitDebugLog.log('runApp start');
   runApp(
     UncontrolledProviderScope(
@@ -351,4 +365,8 @@ void main() async {
   );
 
   _startAutoSave();
+
+  // Let Flutter paint the first frame before native CPython initialization.
+  // Startup plugins still wait for the runtime snapshot inside the helper.
+  unawaited(_startRuntimeAndPlugins());
 }
