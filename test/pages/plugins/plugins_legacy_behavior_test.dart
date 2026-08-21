@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -319,6 +320,73 @@ void main() {
           .viewId,
       'debug-enhanced.device-variables',
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('plugin view tab strip scrolls with the mouse wheel', (
+    tester,
+  ) async {
+    final manager = _legacyManager(_multiViewPlugin);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(240, 600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pluginManagerProvider.overrideWith((ref) {
+            final notifier = PluginManagerNotifier(ref);
+            notifier.loadPersisted([
+              PluginPersistedData.fromPlugin(_multiViewPlugin),
+            ]);
+            return notifier;
+          }),
+          pluginRunManagerProvider.overrideWith(
+            (ref) => _FixtureRunManagers(ref, _multiViewPlugin, manager),
+          ),
+          contributionRegistryProvider.overrideWith((ref) {
+            final registry = ContributionRegistry(
+              ref.read(contextKeyServiceProvider),
+            );
+            registry.registerPlugin(_multiViewPlugin.manifest!);
+            return registry;
+          }),
+          activationManagerProvider.overrideWith(
+            (ref) => _ActiveActivationManager(_multiViewPlugin),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: PluginViewHost(
+              pluginId: 'debug-enhanced',
+              containerId: 'debug-enhanced',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    ScrollableState scrollableState() => tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byType(TabBar),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(scrollableState().position.maxScrollExtent, greaterThan(0));
+
+    final wheel = TestPointer(7, PointerDeviceKind.mouse);
+    wheel.hover(tester.getCenter(find.byType(TabBar)));
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, 120)));
+    await tester.pump();
+    expect(scrollableState().position.pixels, greaterThan(0));
+
+    // Scrolling the other way returns to the first tab.
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+    await tester.pump();
+    expect(scrollableState().position.pixels, 0);
     expect(tester.takeException(), isNull);
   });
 

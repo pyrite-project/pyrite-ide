@@ -326,6 +326,10 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
   static const _primaryFlex = 3.0;
   static const _consoleFlex = 1.0;
 
+  /// Lowered from 240 so the terminal can grow taller before it gets snapped
+  /// to fullscreen; the built-in collapse dead-drag also shrinks with it.
+  static const double _primaryMinSize = 120;
+
   late final shadcn.FlexibleResizablePaneController _primaryController;
   late final shadcn.FlexibleResizablePaneController _consoleController;
 
@@ -378,7 +382,7 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
         shadcn.ResizablePane.controlled(
           key: ConsoleWorkspace.primaryPaneKey,
           controller: _primaryController,
-          minSize: 240,
+          minSize: _primaryMinSize,
           collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
           child: widget.primary,
         ),

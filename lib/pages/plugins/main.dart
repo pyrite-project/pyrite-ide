@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -397,6 +398,8 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
   late final PluginEventBus _eventBus;
   String? _selectedViewId;
   String? _activeViewId;
+  final TabBarScrollController _tabBarScrollController =
+      TabBarScrollController();
 
   Map<String, dynamic> _viewPayload(String viewId) => {
     'pluginId': widget.pluginId,
@@ -438,6 +441,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     if (activeViewId != null) {
       _eventBus.emit('view.closed', _viewPayload(activeViewId));
     }
+    _tabBarScrollController.dispose();
     super.dispose();
   }
 
@@ -623,16 +627,20 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
               color: Theme.of(context).colorScheme.surface,
               child: SizedBox(
                 height: 38,
-                child: TabBar(
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  dividerHeight: 1,
-                  labelStyle: Theme.of(context).textTheme.labelMedium,
-                  onTap: (index) => _selectView(views[index].id),
-                  tabs: [
-                    for (final entry in views)
-                      _viewTab(entry, revision: pluginVersion),
-                  ],
+                child: Listener(
+                  onPointerSignal: _resolveTabStripPointerSignal,
+                  child: TabBar(
+                    isScrollable: true,
+                    scrollController: _tabBarScrollController,
+                    tabAlignment: TabAlignment.start,
+                    dividerHeight: 1,
+                    labelStyle: Theme.of(context).textTheme.labelMedium,
+                    onTap: (index) => _selectView(views[index].id),
+                    tabs: [
+                      for (final entry in views)
+                        _viewTab(entry, revision: pluginVersion),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -643,6 +651,44 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
         ),
       ),
     );
+  }
+
+  // The view strip lives in a narrow sidebar, so tabs overflow quickly.
+  // Material's TabBar only reacts to horizontal wheel deltas; forward the
+  // vertical wheel delta onto its scroll controller so a plain mouse wheel can
+  // reach the clipped tabs (same behavior as the editor tab strip).
+  void _resolveTabStripPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_tabBarScrollController.hasClients) {
+      return;
+    }
+    GestureBinding.instance.pointerSignalResolver.register(
+      event,
+      _scrollTabStrip,
+    );
+  }
+
+  void _scrollTabStrip(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_tabBarScrollController.hasClients) {
+      return;
+    }
+
+    final double delta = event.scrollDelta.dx != 0
+        ? event.scrollDelta.dx
+        : event.scrollDelta.dy;
+    if (delta == 0) {
+      return;
+    }
+
+    final ScrollPosition position = _tabBarScrollController.position;
+    final double target = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target == position.pixels) {
+      return;
+    }
+
+    _tabBarScrollController.jumpTo(target);
   }
 
   PluginViewSurface _buildSurface(
