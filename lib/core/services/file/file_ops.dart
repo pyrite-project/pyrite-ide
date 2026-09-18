@@ -298,6 +298,30 @@ class PendingDownload {
 Map<String, StateProvider<PendingUpload?>> pendingUploadProviderMap = {};
 Map<String, StateProvider<PendingDownload?>> pendingDownloadProviderMap = {};
 
+/// Guarantees the per-file pending upload/download providers exist.
+///
+/// Called when a file tab is created so widgets can watch them directly
+/// instead of lazily creating providers during build.
+void ensurePendingFileProviders(String filePath) {
+  pendingUploadProviderMap.putIfAbsent(
+    filePath,
+    () => StateProvider<PendingUpload?>((ref) => null),
+  );
+  pendingDownloadProviderMap.putIfAbsent(
+    filePath,
+    () => StateProvider<PendingDownload?>((ref) => null),
+  );
+}
+
+/// Clears a file's pending state and drops its providers from the maps.
+///
+/// Called when the file tab closes so entries do not accumulate for every
+/// file ever opened in a session.
+void releasePendingFileProviders(String filePath) {
+  pendingUploadProviderMap.remove(filePath);
+  pendingDownloadProviderMap.remove(filePath);
+}
+
 // ---------------------------------------------------------------------------
 // File transfer progress
 // ---------------------------------------------------------------------------

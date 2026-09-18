@@ -1,5 +1,45 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
+/// Whether the platform's primary editor modifier is Command (Apple platforms)
+/// instead of Control.
+bool get usesCommandShortcut => Platform.isMacOS || Platform.isIOS;
+
+/// Activators that open the editor find bar on this platform.
+///
+/// Uses Cmd on Apple platforms and Ctrl elsewhere so the same physical
+/// shortcut position works consistently.
+List<SingleActivator> findActivators() => [
+  if (usesCommandShortcut)
+    const SingleActivator(LogicalKeyboardKey.keyF, meta: true)
+  else
+    const SingleActivator(LogicalKeyboardKey.keyF, control: true),
+];
+
+/// Activators that open the editor find-and-replace bar.
+///
+/// On Apple platforms Alt is added so Cmd+H keeps the conventional
+/// "hide window" system shortcut.
+List<SingleActivator> replaceActivators() => [
+  if (usesCommandShortcut)
+    const SingleActivator(LogicalKeyboardKey.keyH, meta: true, alt: true)
+  else
+    const SingleActivator(LogicalKeyboardKey.keyH, control: true),
+];
+
+/// Activators that toggle the line comment.
+List<SingleActivator> toggleCommentActivators() => [
+  const SingleActivator(LogicalKeyboardKey.slash, control: true),
+  const SingleActivator(LogicalKeyboardKey.slash, meta: true),
+];
+
+String findShortcutLabel() => usesCommandShortcut ? 'Cmd+F' : 'Ctrl+F';
+
+String replaceShortcutLabel() => usesCommandShortcut ? 'Cmd+Alt+H' : 'Ctrl+H';
+
+String toggleCommentShortcutLabel() => usesCommandShortcut ? 'Cmd+/' : 'Ctrl+/';
 
 String activatorToString(SingleActivator activator) {
   final parts = <String>[];

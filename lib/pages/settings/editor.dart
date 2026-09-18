@@ -221,6 +221,16 @@ class EditorSettings extends ConsumerWidget {
                     ref.read(editorTabSize.notifier).state = value,
               ),
             ),
+
+            SwitchListTile(
+              title: const UseText(I18nKey.settingsEditorFormatOnSave),
+              subtitle: const UseText(
+                I18nKey.settingsEditorFormatOnSaveSubtitle,
+              ),
+              value: ref.watch(editorFormatOnSave),
+              onChanged: (value) =>
+                  ref.read(editorFormatOnSave.notifier).state = value,
+            ),
           ],
         ),
       ],

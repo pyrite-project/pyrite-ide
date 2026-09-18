@@ -237,9 +237,11 @@ class TabHeaderWidget extends StatelessWidget {
                     ),
                     TextButton(
                       onPressed: () async {
+                        // Save the tab being closed, not whichever tab is
+                        // currently selected.
                         await container
                             .read(fileProvider.notifier)
-                            .saveCurrentFile();
+                            .saveTab(tabData);
 
                         container
                             .read(ideMessageProvider.notifier)

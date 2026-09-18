@@ -17,6 +17,7 @@ class SettingsPersistedData {
   final bool editorUseSpaceAsTab;
   final int editorTabSize;
   final bool editorGutterDivider;
+  final bool editorFormatOnSave;
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
@@ -80,6 +81,7 @@ class SettingsPersistedData {
     this.editorUseSpaceAsTab = true,
     this.editorTabSize = 4,
     this.editorGutterDivider = false,
+    this.editorFormatOnSave = false,
     required this.useLsp,
     this.lspType = 'web_socket',
     required this.lspWebSocketPath,
@@ -144,6 +146,7 @@ class SettingsPersistedData {
     'editorUseSpaceAsTab': editorUseSpaceAsTab,
     'editorTabSize': editorTabSize,
     'editorGutterDivider': editorGutterDivider,
+    'editorFormatOnSave': editorFormatOnSave,
     'useLsp': useLsp,
     'lspType': lspType,
     'lspWebSocketPath': lspWebSocketPath,
@@ -213,6 +216,7 @@ class SettingsPersistedData {
     editorUseSpaceAsTab: json['editorUseSpaceAsTab'] as bool? ?? true,
     editorTabSize: json['editorTabSize'] as int? ?? 4,
     editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
+    editorFormatOnSave: json['editorFormatOnSave'] as bool? ?? false,
     useLsp: json['useLsp'] as bool? ?? true,
     lspType: json['lspType'] as String? ?? 'web_socket',
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',

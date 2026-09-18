@@ -15,11 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
 import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
-import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -33,7 +30,9 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
-import 'package:re_highlight/languages/python.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
+import 'package:pyrite_ide/features/edit_core/line_comment.dart';
+import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -56,6 +55,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
   @override
   void initState() {
     super.initState();
+    // Providers must exist before build watches them; creating them here
+    // keeps build free of side effects.
+    ensurePendingFileProviders(widget.file.path);
     _findController = FindController(widget.editorController);
   }
 
@@ -76,14 +78,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
 
   @override
   Widget build(BuildContext context) {
-    if (pendingUploadProviderMap[widget.file.path] == null) {
-      pendingUploadProviderMap[widget.file.path] = StateProvider((ref) => null);
-    }
-    if (pendingDownloadProviderMap[widget.file.path] == null) {
-      pendingDownloadProviderMap[widget.file.path] = StateProvider(
-        (ref) => null,
-      );
-    }
     final pending = ref.watch(pendingUploadProviderMap[widget.file.path]!);
     final pendingDownload = ref.watch(
       pendingDownloadProviderMap[widget.file.path]!,
@@ -134,12 +128,24 @@ class _EditCoreState extends ConsumerState<EditCore> {
       SingleActivator(LogicalKeyboardKey.f2): () {
         _renameSymbol(context, ref);
       },
-      SingleActivator(LogicalKeyboardKey.keyF, meta: true): () {
-        _openFind();
+      SingleActivator(LogicalKeyboardKey.f3): () {
+        _findController.next();
       },
-      SingleActivator(LogicalKeyboardKey.keyH, meta: true): () {
-        _openFind(replace: true);
+      SingleActivator(LogicalKeyboardKey.f3, shift: true): () {
+        _findController.previous();
       },
+      for (final activator in findActivators())
+        activator: () {
+          _openFind();
+        },
+      for (final activator in replaceActivators())
+        activator: () {
+          _openFind(replace: true);
+        },
+      for (final activator in toggleCommentActivators())
+        activator: () {
+          _toggleLineComment();
+        },
     };
 
     if (pending != null || pendingDownload != null) {
@@ -168,7 +174,10 @@ class _EditCoreState extends ConsumerState<EditCore> {
                         icon: Icons.close,
                         label: translateForWidget(ref, I18nKey.commonCancel),
                         onPressed: () => _handleCancel(context, ref),
-                        semanticLabel: '',
+                        semanticLabel: translateForWidget(
+                          ref,
+                          I18nKey.commonCancel,
+                        ),
                       ),
                       M3FloatingToolbarAction(
                         icon: Icons.cloud_upload,
@@ -177,7 +186,10 @@ class _EditCoreState extends ConsumerState<EditCore> {
                           I18nKey.editorConfirmUpload,
                         ),
                         onPressed: () => _confirmUpload(ref, pending, context),
-                        semanticLabel: '',
+                        semanticLabel: translateForWidget(
+                          ref,
+                          I18nKey.editorConfirmUpload,
+                        ),
                       ),
                     ],
                   ),
@@ -195,7 +207,10 @@ class _EditCoreState extends ConsumerState<EditCore> {
                         icon: Icons.close,
                         label: translateForWidget(ref, I18nKey.commonCancel),
                         onPressed: () => _handleCancel(context, ref),
-                        semanticLabel: '',
+                        semanticLabel: translateForWidget(
+                          ref,
+                          I18nKey.commonCancel,
+                        ),
                       ),
                       M3FloatingToolbarAction(
                         icon: Icons.cloud_download,
@@ -205,7 +220,10 @@ class _EditCoreState extends ConsumerState<EditCore> {
                         ),
                         onPressed: () =>
                             _confirmDownload(ref, pendingDownload, context),
-                        semanticLabel: '',
+                        semanticLabel: translateForWidget(
+                          ref,
+                          I18nKey.editorConfirmDownload,
+                        ),
                       ),
                     ],
                   ),
@@ -218,88 +236,26 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 
   Widget body(BuildContext context, WidgetRef ref) {
-    final themeKey = ref.watch(editorThemeKey);
-    final entry = findEditorThemeByKey(themeKey) ?? editorThemes.first;
-    final brightness = Theme.of(context).brightness;
-    final surface = Theme.of(context).scaffoldBackgroundColor;
-    final activeThemeId = ref.watch(activePluginThemeId);
-    final registry = ref.watch(dataRegistryProvider);
-    final pluginTheme = activeThemeId == null
-        ? null
-        : registry.getThemeById(activeThemeId);
-    final editorStyles = pluginTheme?.editorStyles(brightness);
-    final pluginEditorThemeActive = pluginTheme?.hasEditorStyles ?? false;
-    final resolvedTheme = applySurfaceBackground(
-      resolveActiveEditorTheme(
-        entry,
-        brightness,
-        pluginStyles: editorStyles,
-        pluginThemeActive: pluginEditorThemeActive,
-      ),
-      surface,
-    );
-    final editorForeground =
-        resolvedTheme['root']?.color ?? Theme.of(context).colorScheme.onSurface;
-    final editorBackground = resolvedTheme['root']?.backgroundColor ?? surface;
-    final hoverBackground = Color.alphaBlend(
-      editorForeground.withAlpha(18),
-      editorBackground,
-    ).withAlpha(255);
-    resolvedTheme["comment"] = TextStyle(color: Color(0xff888888));
-    return CodeForge(
-      key: ValueKey(
-        '${pluginEditorThemeActive ? '' : themeKey}_${activeThemeId ?? ''}_${editorStyles}_${brightness.name}_${surface.toARGB32()}',
-      ),
+    return buildThemedCodeForge(
+      context,
+      ref,
+      controller: widget.editorController,
       filePath: widget.file.path,
-      editorTheme: resolvedTheme,
+      rebuildKey: activeEditorRebuildKey(context, ref),
+      undoController: widget.undoController,
       findController: _findController,
       customContextMenuItems: _editorContextMenuItems(ref),
       onModifierTap: (offset) =>
           unawaited(_goToDefinition(context, ref, textOffset: offset)),
-      finderBuilder: (_, controller) => _EditorFindBar(
-        controller: controller,
-        foreground: editorForeground,
-        background: editorBackground,
-      ),
-      hoverDetailsStyle: HoverDetailsStyle(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: editorForeground.withAlpha(80)),
-        ),
-        backgroundColor: hoverBackground,
-        focusColor: Theme.of(context).colorScheme.primary.withAlpha(50),
-        hoverColor: Theme.of(context).colorScheme.primary.withAlpha(25),
-        splashColor: Theme.of(context).colorScheme.primary.withAlpha(50),
-        textStyle: TextStyle(
-          color: editorForeground,
-          fontSize: ref.watch(editorFontSize),
-          fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-        ),
-      ),
-      language: langPython,
-      controller: widget.editorController,
-      undoController: widget.undoController,
-      matchHighlightStyle: const MatchHighlightStyle(
-        currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
-        otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
-      ),
-      textStyle: TextStyle(
-        fontSize: ref.watch(editorFontSize),
-        fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-      ),
-      lineWrap: ref.watch(editorWordWrap),
-      enableFolding: ref.watch(editorCodeFolding),
-      enableGuideLines: ref.watch(editorGuideLines),
-      enableLocalSuggestions: ref.watch(editorLocalSuggestions),
-      enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
-      enableGutter: ref.watch(editorLineNumber),
-      enableGutterDivider: ref.watch(editorGutterDivider),
-      useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
-      tabSize: ref.watch(editorTabSize),
-      gutterBuilder: GutterBuilder(
-        builder: (lineNumber, lineText) => '$lineNumber',
-        includeReplacedIndex: false,
-      ),
+      finderBuilder: (context, controller) {
+        final theme = resolveActiveThemeForSurface(context, ref);
+        final colors = editorSurfaceColors(context, theme);
+        return _EditorFindBar(
+          controller: controller,
+          foreground: colors.foreground,
+          background: colors.background,
+        );
+      },
       contextMenuBuilder: (context, details) {
         return _EditorContextMenu(details: details);
       },
@@ -307,9 +263,78 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 
   void _openFind({bool replace = false}) {
+    // Carry the current selection into the query, VSCode-style.
+    final selection = widget.editorController.selection;
+    if (!selection.isCollapsed &&
+        selection.start >= 0 &&
+        selection.end <= widget.editorController.text.length) {
+      final selected = widget.editorController.text.substring(
+        selection.start,
+        selection.end,
+      );
+      if (selected.isNotEmpty && !selected.contains('\n')) {
+        _findController.findInputController.text = selected;
+      }
+    }
     _findController
       ..isActive = true
       ..isReplaceMode = replace;
+  }
+
+  /// Toggles `#` comments over the selected lines, or the caret line when
+  /// the selection is collapsed.
+  void _toggleLineComment() {
+    final controller = widget.editorController;
+    if (controller.readOnly || controller.lineCount == 0) return;
+
+    final selection = controller.selection;
+    var startLine = controller.getLineAtOffset(selection.start);
+    var endLine = controller.getLineAtOffset(selection.end);
+    // A selection ending exactly at a line start does not include that line.
+    if (!selection.isCollapsed &&
+        endLine > startLine &&
+        selection.end == controller.getLineStartOffset(endLine)) {
+      endLine--;
+    }
+
+    final blockStart = controller.getLineStartOffset(startLine);
+    final oldLines = [
+      for (var line = startLine; line <= endLine; line++)
+        controller.getLineText(line),
+    ];
+    final result = toggleLineComments(oldLines);
+    if (result == null) return;
+
+    int mapOffset(int offset) {
+      var remaining = offset - blockStart;
+      var index = 0;
+      while (index < oldLines.length - 1 &&
+          remaining > oldLines[index].length) {
+        remaining -= oldLines[index].length + 1;
+        index++;
+      }
+      var shift = 0;
+      for (var i = 0; i < index; i++) {
+        shift += result.deltas[i];
+      }
+      final newLength = oldLines[index].length + result.deltas[index];
+      var local = remaining + result.deltas[index];
+      if (local < 0) local = 0;
+      if (local > newLength) local = newLength;
+      return blockStart + shift + local;
+    }
+
+    var blockEnd = blockStart - 1;
+    for (final line in oldLines) {
+      blockEnd += line.length + 1;
+    }
+    controller.replaceRange(blockStart, blockEnd, result.lines.join('\n'));
+    controller.setSelectionSilently(
+      TextSelection(
+        baseOffset: mapOffset(selection.baseOffset),
+        extentOffset: mapOffset(selection.extentOffset),
+      ),
+    );
   }
 
   List<CustomContextMenu> _editorContextMenuItems(WidgetRef ref) {
@@ -317,17 +342,29 @@ class _EditCoreState extends ConsumerState<EditCore> {
     final config = controller.lspConfig;
     final items = <CustomContextMenu>[
       CustomContextMenu(
-        label: '搜索',
-        description: 'Ctrl+F',
+        label: translateForWidget(ref, I18nKey.editorMenuSearch),
+        description: findShortcutLabel(),
         icon: Icons.search,
         onPress: _openFind,
+      ),
+      CustomContextMenu(
+        label: translateForWidget(ref, I18nKey.editorMenuToggleComment),
+        description: toggleCommentShortcutLabel(),
+        icon: Icons.comment_outlined,
+        onPress: _toggleLineComment,
+      ),
+      CustomContextMenu(
+        label: translateForWidget(ref, I18nKey.editorMenuFormatDocument),
+        description: 'LSP',
+        icon: Icons.format_align_left,
+        onPress: () => unawaited(_formatDocument(context, ref)),
       ),
     ];
     if (config == null) return items;
     if (config.capabilities.goToDefinition) {
       items.add(
         CustomContextMenu(
-          label: '跳转到实现',
+          label: translateForWidget(ref, I18nKey.editorMenuGoToImplementation),
           description: 'LSP',
           icon: Icons.arrow_forward,
           visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
@@ -362,6 +399,17 @@ class _EditCoreState extends ConsumerState<EditCore> {
         ),
       );
     }
+    items.add(
+      CustomContextMenu(
+        label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
+        description: 'LSP',
+        icon: Icons.manage_search,
+        visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
+        onPressAt: (offset) =>
+            unawaited(_findReferences(context, ref, textOffset: offset)),
+        onPress: () => unawaited(_findReferences(context, ref)),
+      ),
+    );
     return items;
   }
 
@@ -434,7 +482,33 @@ class _EditCoreState extends ConsumerState<EditCore> {
     if (uri == null || range is! Map || !context.mounted) return;
     final targetUri = Uri.tryParse(uri);
     if (targetUri == null || targetUri.scheme != 'file') return;
-    final targetPath = targetUri.toFilePath();
+    final start = range['start'];
+    if (start is! Map) return;
+    await revealLspLocation(
+      context,
+      ref,
+      targetUri.toFilePath(),
+      (start['line'] as num?)?.toInt(),
+      (start['character'] as num?)?.toInt(),
+    );
+  }
+
+  bool _hasLocation(dynamic location) {
+    if (location is List) location = location.firstOrNull;
+    return location is Map &&
+        (location['uri'] != null || location['targetUri'] != null);
+  }
+
+  /// Opens [targetPath] in an editor tab, places the caret at
+  /// ([targetLine], [targetCharacter]) and scrolls the line into view.
+  Future<void> revealLspLocation(
+    BuildContext context,
+    WidgetRef ref,
+    String targetPath,
+    int? targetLine,
+    int? targetCharacter,
+  ) async {
+    if (targetLine == null || targetCharacter == null) return;
     await ref
         .read(tabbedViewControllerProvider.notifier)
         .openFile(context, file: File(targetPath));
@@ -446,11 +520,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
                 ?.value
                 .editorController
             as CodeForgeController?;
-    final start = range['start'];
-    if (targetController == null || start is! Map) return;
-    final targetLine = (start['line'] as num?)?.toInt();
-    final targetCharacter = (start['character'] as num?)?.toInt();
-    if (targetLine == null || targetCharacter == null) return;
+    if (targetController == null) return;
     targetController.selection = TextSelection.collapsed(
       offset: targetController.getLineStartOffset(targetLine) + targetCharacter,
     );
@@ -463,10 +533,79 @@ class _EditCoreState extends ConsumerState<EditCore> {
     });
   }
 
-  bool _hasLocation(dynamic location) {
-    if (location is List) location = location.firstOrNull;
-    return location is Map &&
-        (location['uri'] != null || location['targetUri'] != null);
+  /// Formats the current document via `textDocument/formatting`.
+  ///
+  /// When [quiet] is set (format-on-save), success feedback and
+  /// "no formatter" notices are suppressed; only hard failures surface.
+  Future<bool> _formatDocument(
+    BuildContext context,
+    WidgetRef ref, {
+    bool quiet = false,
+  }) async {
+    return formatEditorDocument(
+      context,
+      ref,
+      widget.editorController,
+      quiet: quiet,
+    );
+  }
+
+  /// Finds all references to the symbol at the caret (or [textOffset]) and
+  /// shows them in a navigable list dialog.
+  Future<void> _findReferences(
+    BuildContext context,
+    WidgetRef ref, {
+    int? textOffset,
+  }) async {
+    final controller = widget.editorController;
+    final config = controller.lspConfig;
+    final filePath = controller.openedFile;
+    if (config == null || filePath == null) return;
+    final offset = _lspOffset(controller, textOffset);
+    final line = controller.getLineAtOffset(offset);
+    final character = offset - controller.getLineStartOffset(line);
+
+    List<dynamic> locations;
+    try {
+      locations = await config.getReferences(filePath, line, character);
+    } catch (error) {
+      if (!context.mounted) return;
+      ref
+          .read(ideMessageProvider.notifier)
+          .error(
+            translateForWidget(
+              ref,
+              I18nKey.editorFormatFailed,
+            ).replaceAll('{error}', error.toString()),
+          );
+      return;
+    }
+    if (!context.mounted) return;
+    if (locations.isEmpty) {
+      ref
+          .read(ideMessageProvider.notifier)
+          .show(translateForWidget(ref, I18nKey.editorReferencesEmpty));
+      return;
+    }
+    final symbol = symbolAtOffset(controller.text, offset);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => _ReferencesDialog(
+        symbol: symbol,
+        locations: locations.whereType<Map>().toList(),
+        onOpen: (path, rangeStart) async {
+          Navigator.of(dialogContext).pop();
+          final start = rangeStart is Map ? rangeStart : null;
+          await revealLspLocation(
+            context,
+            ref,
+            path,
+            start == null ? null : (start['line'] as num?)?.toInt(),
+            start == null ? null : (start['character'] as num?)?.toInt(),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _renameSymbol(
@@ -563,7 +702,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
         final file = File(filePath);
         if (!await file.exists()) continue;
         final original = await file.readAsString();
-        updatedContent = _applyTextEdits(original, entry.value);
+        updatedContent = applyLspTextEdits(original, entry.value);
         if (updatedContent != original) {
           await file.writeAsString(updatedContent);
         }
@@ -575,51 +714,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
         );
       }
     }
-  }
-
-  String _applyTextEdits(String text, List<dynamic> edits) {
-    final replacements = <({int start, int end, String text})>[];
-    for (final edit in edits.whereType<Map>()) {
-      final range = edit['range'];
-      if (range is! Map) continue;
-      final start = _lspPositionOffset(text, range['start']);
-      final end = _lspPositionOffset(text, range['end']);
-      if (start == null || end == null || start > end) continue;
-      replacements.add((
-        start: start,
-        end: end,
-        text: edit['newText'] is String ? edit['newText'] as String : '',
-      ));
-    }
-    replacements.sort((a, b) => b.start.compareTo(a.start));
-    for (final replacement in replacements) {
-      text = text.replaceRange(
-        replacement.start,
-        replacement.end,
-        replacement.text,
-      );
-    }
-    return text;
-  }
-
-  int? _lspPositionOffset(String text, dynamic position) {
-    if (position is! Map) return null;
-    final line = (position['line'] as num?)?.toInt();
-    final character = (position['character'] as num?)?.toInt();
-    if (line == null || character == null || line < 0 || character < 0) {
-      return null;
-    }
-    var lineStart = 0;
-    for (var currentLine = 0; currentLine < line; currentLine++) {
-      final lineEnd = text.indexOf('\n', lineStart);
-      if (lineEnd < 0) return null;
-      lineStart = lineEnd + 1;
-    }
-    var lineEnd = text.indexOf('\n', lineStart);
-    if (lineEnd < 0) lineEnd = text.length;
-    if (lineEnd > lineStart && text.codeUnitAt(lineEnd - 1) == 13) lineEnd--;
-    if (character > lineEnd - lineStart) return null;
-    return lineStart + character;
   }
 
   void _handleConfirm(BuildContext context, WidgetRef ref) {
@@ -680,10 +774,15 @@ class _EditCoreState extends ConsumerState<EditCore> {
               I18nKey.editorUploadedToDevice,
             ).replaceAll('{path}', pending.targetPath),
           );
-    } catch (_) {
+    } catch (error) {
       ref
           .read(ideMessageProvider.notifier)
-          .error(translateForWidget(ref, I18nKey.editorUploadFailed));
+          .error(
+            translateForWidget(
+              ref,
+              I18nKey.editorUploadFailed,
+            ).replaceAll('{error}', error.toString()),
+          );
     } finally {
       ref.read(pendingUploadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -719,10 +818,15 @@ class _EditCoreState extends ConsumerState<EditCore> {
               I18nKey.editorDownloadedToLocal,
             ).replaceAll('{path}', pending.localPath),
           );
-    } catch (_) {
+    } catch (error) {
       ref
           .read(ideMessageProvider.notifier)
-          .error(translateForWidget(ref, I18nKey.editorDownloadFailed));
+          .error(
+            translateForWidget(
+              ref,
+              I18nKey.editorDownloadFailed,
+            ).replaceAll('{error}', error.toString()),
+          );
     } finally {
       ref.read(pendingDownloadProviderMap[widget.file.path]!.notifier).state =
           null;
@@ -731,7 +835,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 }
 
-class _EditorFindBar extends StatelessWidget implements PreferredSizeWidget {
+/// VSCode-style floating find widget: a compact rounded panel that hovers over
+/// the top-right corner of the editor viewport instead of pushing content down.
+class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   const _EditorFindBar({
     required this.controller,
     required this.foreground,
@@ -742,151 +848,563 @@ class _EditorFindBar extends StatelessWidget implements PreferredSizeWidget {
   final Color foreground;
   final Color background;
 
-  @override
-  Size get preferredSize => Size.fromHeight(controller.isReplaceMode ? 76 : 40);
+  static const double _rowHeight = 32;
+  static const double _buttonSize = 28;
+  static const double _radius = 8;
 
   @override
-  Widget build(BuildContext context) {
-    final border = foreground.withAlpha(70);
-    return Material(
-      color: background,
-      child: SizedBox(
-        height: preferredSize.height,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _FindBarRow(
-              children: [
-                _button(
-                  controller.isReplaceMode
-                      ? Icons.expand_more
-                      : Icons.chevron_right,
-                  controller.isReplaceMode ? '隐藏替换' : '显示替换',
-                  controller.toggleReplaceMode,
-                  enabled: true,
-                ),
-                Icon(Icons.search, size: 18, color: foreground),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _textField(
-                    controller: controller.findInputController,
-                    focusNode: controller.findInputFocusNode,
-                    border: border,
-                    onSubmitted: (_) => controller.next(),
-                  ),
-                ),
-                _matchCounter(),
-                _button(Icons.keyboard_arrow_up, '上一个', controller.previous),
-                _button(Icons.keyboard_arrow_down, '下一个', controller.next),
-                _button(
-                  Icons.close,
-                  '关闭',
-                  () => controller.isActive = false,
-                  enabled: true,
-                ),
-              ],
-            ),
-            if (controller.isReplaceMode)
-              _FindBarRow(
-                children: [
-                  const SizedBox(width: 32),
-                  Icon(Icons.find_replace, size: 18, color: foreground),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _textField(
-                      controller: controller.replaceInputController,
-                      focusNode: controller.replaceInputFocusNode,
-                      border: border,
-                      onSubmitted: (_) => controller.replace(),
+  Size get preferredSize => Size.fromHeight(controller.isReplaceMode ? 80 : 44);
+
+  Color get _elevatedBackground =>
+      Color.alphaBlend(foreground.withAlpha(14), background).withAlpha(255);
+
+  Color get _fieldBackground => Color.alphaBlend(
+    foreground.withAlpha(12),
+    _elevatedBackground,
+  ).withAlpha(255);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    String tr(I18nKey key) => translateForWidget(ref, key);
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        // F3 cycles matches while the find bar has keyboard focus.
+        if (event.logicalKey == LogicalKeyboardKey.f3) {
+          HardwareKeyboard.instance.isShiftPressed
+              ? controller.previous()
+              : controller.next();
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.escape) {
+          controller.isActive = false;
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Material(
+        color: _elevatedBackground,
+        elevation: 8,
+        shadowColor: Colors.black.withAlpha(90),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_radius),
+          side: BorderSide(color: foreground.withAlpha(38)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: _rowHeight,
+                child: Row(
+                  children: [
+                    _iconButton(
+                      icon: controller.isReplaceMode
+                          ? Icons.expand_more
+                          : Icons.chevron_right,
+                      tooltip: tr(
+                        controller.isReplaceMode
+                            ? I18nKey.editorFindHideReplace
+                            : I18nKey.editorFindShowReplace,
+                      ),
+                      onPressed: controller.toggleReplaceMode,
                     ),
-                  ),
-                  const SizedBox(width: 52),
-                  _button(Icons.find_replace, '替换', controller.replace),
-                  _button(Icons.done_all, '全部替换', controller.replaceAll),
-                  const SizedBox(width: 32),
-                ],
+                    const SizedBox(width: 4),
+                    Icon(Icons.search, size: 16, color: foreground),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _textField(
+                        controller: controller.findInputController,
+                        focusNode: controller.findInputFocusNode,
+                        hintText: tr(I18nKey.editorFindHint),
+                        onSubmitted: (_) => _shiftHeld
+                            ? controller.previous()
+                            : controller.next(),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _matchCounter(tr),
+                    _toggle(
+                      label: 'Aa',
+                      tooltip: tr(I18nKey.editorFindCaseSensitive),
+                      active: controller.caseSensitive,
+                      onPressed: controller.toggleCaseSensitive,
+                    ),
+                    _toggle(
+                      label: 'ab',
+                      tooltip: tr(I18nKey.editorFindWholeWord),
+                      active: controller.matchWholeWord,
+                      onPressed: controller.toggleMatchWholeWord,
+                    ),
+                    _toggle(
+                      label: '.*',
+                      tooltip: tr(I18nKey.editorFindRegex),
+                      active: controller.isRegex,
+                      onPressed: controller.toggleRegex,
+                    ),
+                    _navButton(
+                      icon: Icons.keyboard_arrow_up,
+                      tooltip: tr(I18nKey.editorFindPrevious),
+                      onPressed: controller.previous,
+                    ),
+                    _navButton(
+                      icon: Icons.keyboard_arrow_down,
+                      tooltip: tr(I18nKey.editorFindNext),
+                      onPressed: controller.next,
+                    ),
+                    _navButton(
+                      icon: Icons.close,
+                      tooltip: tr(I18nKey.editorFindClose),
+                      onPressed: () => controller.isActive = false,
+                    ),
+                  ],
+                ),
               ),
-          ],
+              if (controller.isReplaceMode)
+                SizedBox(
+                  height: _rowHeight,
+                  child: Row(
+                    children: [
+                      Icon(Icons.find_replace, size: 16, color: foreground),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _textField(
+                          controller: controller.replaceInputController,
+                          focusNode: controller.replaceInputFocusNode,
+                          hintText: tr(I18nKey.editorReplaceHint),
+                          onSubmitted: (_) => controller.replace(),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      _iconButton(
+                        icon: Icons.check,
+                        tooltip: tr(I18nKey.editorReplaceApply),
+                        onPressed: controller.matchCount > 0
+                            ? controller.replace
+                            : null,
+                      ),
+                      _iconButton(
+                        icon: Icons.done_all,
+                        tooltip: tr(I18nKey.editorReplaceAll),
+                        onPressed: controller.matchCount > 0
+                            ? controller.replaceAll
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  static bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
+
   Widget _textField({
     required TextEditingController controller,
     required FocusNode focusNode,
-    required Color border,
+    required String hintText,
     required ValueChanged<String> onSubmitted,
   }) {
+    final borderColor = foreground.withAlpha(46);
     return TextField(
       controller: controller,
       focusNode: focusNode,
       maxLines: 1,
       style: TextStyle(color: foreground, fontSize: 13),
+      cursorColor: foreground,
       onSubmitted: onSubmitted,
       decoration: InputDecoration(
         isDense: true,
+        filled: true,
+        fillColor: _fieldBackground,
+        hintText: hintText,
+        hintStyle: TextStyle(color: foreground.withAlpha(110), fontSize: 13),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: BorderSide(color: border),
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: BorderSide(color: foreground.withAlpha(150)),
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: foreground.withAlpha(160)),
         ),
       ),
     );
   }
 
-  Widget _matchCounter() {
-    return SizedBox(
-      width: 52,
+  Widget _matchCounter(String Function(I18nKey) tr) {
+    final hasQuery = controller.findInputController.text.isNotEmpty;
+    final noResults = hasQuery && controller.matchCount == 0;
+    final text = !hasQuery
+        ? ''
+        : noResults
+        ? tr(I18nKey.editorFindNoResults)
+        : '${controller.currentMatchIndex + 1}/${controller.matchCount}';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 44),
+      alignment: Alignment.center,
       child: Text(
-        controller.matchCount == 0
-            ? '0/0'
-            : '${controller.currentMatchIndex + 1}/${controller.matchCount}',
+        text,
         textAlign: TextAlign.center,
-        style: TextStyle(color: foreground, fontSize: 12),
+        style: TextStyle(
+          color: noResults
+              ? Colors.redAccent.withAlpha(220)
+              : foreground.withAlpha(200),
+          fontSize: 11,
+        ),
       ),
     );
   }
 
-  Widget _button(
-    IconData icon,
-    String tooltip,
-    VoidCallback onPressed, {
-    bool? enabled,
+  /// Small square toggle (Aa / ab / .*) styled like VSCode option buttons.
+  Widget _toggle({
+    required String label,
+    required String tooltip,
+    required bool active,
+    required VoidCallback onPressed,
   }) {
-    final isEnabled = enabled ?? controller.matchCount > 0;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(5),
+        child: Container(
+          width: _buttonSize - 2,
+          height: _buttonSize - 2,
+          margin: const EdgeInsets.only(left: 2),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            color: active ? foreground.withAlpha(36) : Colors.transparent,
+            border: Border.all(
+              color: active ? foreground.withAlpha(130) : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: foreground.withAlpha(active ? 255 : 150),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              height: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return _iconButton(icon: icon, tooltip: tooltip, onPressed: onPressed);
+  }
+
+  Widget _iconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
     return IconButton(
       tooltip: tooltip,
-      onPressed: isEnabled ? onPressed : null,
-      icon: Icon(icon, size: 18),
-      color: foreground,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 17),
+      color: foreground.withAlpha(215),
       disabledColor: foreground.withAlpha(70),
+      hoverColor: foreground.withAlpha(26),
+      focusColor: Colors.transparent,
+      highlightColor: foreground.withAlpha(40),
+      splashRadius: _buttonSize / 2,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      constraints: const BoxConstraints.tightFor(
+        width: _buttonSize,
+        height: _buttonSize,
+      ),
     );
   }
 }
 
-class _FindBarRow extends StatelessWidget {
-  const _FindBarRow({required this.children});
+/// A parsed `textDocument/references` entry for [_ReferencesDialog].
+class _ReferenceLocation {
+  const _ReferenceLocation({
+    required this.path,
+    required this.rangeStart,
+    this.line,
+    this.character,
+  });
 
-  final List<Widget> children;
+  final String path;
+
+  /// Raw LSP `range.start` map, forwarded verbatim when jumping.
+  final dynamic rangeStart;
+  final int? line;
+  final int? character;
+}
+
+_ReferenceLocation? _parseReferenceLocation(Map<dynamic, dynamic> location) {
+  final uri = (location['uri'] ?? location['targetUri'])?.toString();
+  final parsed = uri == null ? null : Uri.tryParse(uri);
+  if (parsed == null || parsed.scheme != 'file') return null;
+  final range = location['range'] ?? location['targetSelectionRange'];
+  final start = range is Map ? range['start'] : null;
+  return _ReferenceLocation(
+    path: parsed.toFilePath(),
+    rangeStart: start,
+    line: start is Map ? (start['line'] as num?)?.toInt() : null,
+    character: start is Map ? (start['character'] as num?)?.toInt() : null,
+  );
+}
+
+/// Find-all-references results: a read-only editor preview (the exact same
+/// themed [CodeForge] as the main editor) on the left and the reference list
+/// on the right.
+///
+/// Single click previews the reference line's context; double click jumps to
+/// it in the real editor. The first reference is previewed by default.
+class _ReferencesDialog extends ConsumerStatefulWidget {
+  const _ReferencesDialog({
+    required this.symbol,
+    required this.locations,
+    required this.onOpen,
+  });
+
+  final String symbol;
+  final List<Map<dynamic, dynamic>> locations;
+  final Future<void> Function(String path, dynamic rangeStart) onOpen;
+
+  @override
+  ConsumerState<_ReferencesDialog> createState() => _ReferencesDialogState();
+}
+
+class _ReferencesDialogState extends ConsumerState<_ReferencesDialog> {
+  late final CodeForgeController _previewController;
+  final Map<String, String?> _contentCache = {};
+  late final List<_ReferenceLocation> _items;
+  var _selectedIndex = 0;
+  var _loadingContent = false;
+  String? _failedPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewController = CodeForgeController();
+    _items = [
+      for (final location in widget.locations)
+        ?_parseReferenceLocation(location),
+    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _items.isNotEmpty) unawaited(_select(0));
+    });
+  }
+
+  @override
+  void dispose() {
+    _previewController.dispose();
+    super.dispose();
+  }
+
+  /// Returns the referenced file's content, preferring the live buffer of an
+  /// open tab (so unsaved edits preview correctly) and caching disk reads.
+  Future<String?> _loadContent(String path) async {
+    if (_contentCache.containsKey(path)) return _contentCache[path];
+    final liveBuffer = ref.read(editorControllerMapProvider)[path];
+    if (liveBuffer != null) {
+      return _contentCache[path] = liveBuffer.text;
+    }
+    try {
+      final file = File(path);
+      if (!await file.exists()) return _contentCache[path] = null;
+      return _contentCache[path] = await file.readAsString();
+    } catch (_) {
+      return _contentCache[path] = null;
+    }
+  }
+
+  Future<void> _select(int index) async {
+    if (index < 0 || index >= _items.length) return;
+    final item = _items[index];
+    setState(() {
+      _selectedIndex = index;
+      _loadingContent = true;
+    });
+    final content = await _loadContent(item.path);
+    if (!mounted) return;
+    if (content == null) {
+      setState(() {
+        _loadingContent = false;
+        _failedPath = item.path;
+      });
+      return;
+    }
+    if (_previewController.text != content) {
+      _previewController.text = content;
+    }
+    // Highlight the referenced line and place the caret there.
+    _previewController.clearLineDecorations();
+    final targetLine = item.line ?? 0;
+    try {
+      _previewController.addLineDecoration(
+        LineDecoration(
+          id: 'references-highlight',
+          startLine: targetLine,
+          endLine: targetLine,
+          type: LineDecorationType.background,
+          color: Theme.of(context).colorScheme.primary.withAlpha(45),
+        ),
+      );
+    } catch (_) {}
+    var offset = _previewController.getLineStartOffset(targetLine);
+    offset = (offset + (item.character ?? 0))
+        .clamp(0, _previewController.text.length)
+        .toInt();
+    _previewController.selection = TextSelection.collapsed(offset: offset);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        _previewController.scrollToLine(targetLine);
+      } on StateError {
+        // Preview not mounted yet.
+      }
+    });
+    setState(() {
+      _loadingContent = false;
+      _failedPath = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: Row(
-        children: [
-          const SizedBox(width: 4),
-          ...children,
-          const SizedBox(width: 4),
-        ],
+    final screenSize = MediaQuery.sizeOf(context);
+    // Portrait stacks preview above the list; landscape puts them side by side.
+    final isPortrait = screenSize.height > screenSize.width;
+    return AlertDialog(
+      title: Text(
+        translateForWidget(ref, I18nKey.editorReferencesResultTitle)
+            .replaceAll('{symbol}', widget.symbol.isEmpty ? '?' : widget.symbol)
+            .replaceAll('{count}', widget.locations.length.toString()),
       ),
+      content: SizedBox(
+        width: min(920.0, screenSize.width * 0.92),
+        height: min(isPortrait ? 620.0 : 540.0, screenSize.height * 0.8),
+        child: _items.isEmpty
+            ? Center(
+                child: Text(
+                  translateForWidget(ref, I18nKey.editorReferencesEmpty),
+                ),
+              )
+            : isPortrait
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _buildPreview(context)),
+                  const Divider(height: 24),
+                  SizedBox(height: 220, child: _buildReferenceList(context)),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _buildPreview(context)),
+                  const VerticalDivider(width: 20),
+                  SizedBox(width: 300, child: _buildReferenceList(context)),
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => context.pop(),
+          child: Text(translateForWidget(ref, I18nKey.commonCancel)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPreview(BuildContext context) {
+    final item = _items[_selectedIndex.clamp(0, _items.length - 1)];
+    final failedToLoad = _failedPath == item.path;
+    return Container(
+      // Clip the editor to the rounded shape; the border is drawn via
+      // foregroundDecoration so it paints ON TOP of the opaque editor
+      // background. A `decoration` border would be painted first and then
+      // covered by the child on straight edges, leaving only the corner
+      // arcs visible — which looked like a notched corner.
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: failedToLoad
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  translateForWidget(
+                    ref,
+                    I18nKey.editorReferencesPreviewUnavailable,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : Stack(
+              children: [
+                buildThemedCodeForge(
+                  context,
+                  ref,
+                  controller: _previewController,
+                  filePath: item.path,
+                  rebuildKey: 'references-preview:${item.path}',
+                  readOnly: true,
+                ),
+                if (_loadingContent)
+                  const Center(child: CircularProgressIndicator()),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildReferenceList(BuildContext context) {
+    return ListView.builder(
+      itemCount: _items.length,
+      itemBuilder: (context, index) {
+        final item = _items[index];
+        final lineLabel = item.line == null ? '?' : '${item.line! + 1}';
+        final charLabel = item.character == null ? '?' : '${item.character}';
+        return GestureDetector(
+          onTap: () => unawaited(_select(index)),
+          // Double click closes the dialog and reveals the reference in the
+          // real editor ([widget.onOpen] pops the dialog first).
+          onDoubleTap: () =>
+              unawaited(widget.onOpen(item.path, item.rangeStart)),
+          child: ListTile(
+            dense: true,
+            selected: index == _selectedIndex,
+            selectedTileColor: Theme.of(
+              context,
+            ).colorScheme.primary.withAlpha(30),
+            leading: const Icon(Icons.description_outlined, size: 18),
+            title: Text(
+              item.path.split(RegExp(r'[\\/]')).last,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              'line $lineLabel:$charLabel',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -989,6 +1507,17 @@ Future<void> saveFile(
   WidgetRef ref, {
   quiet = false,
 }) async {
+  // Optional format-on-save; failures surface as messages but never block
+  // saving the file.
+  if (ref.read(editorFormatOnSave)) {
+    final controller = ref
+        .read(editorControllerMapProvider.notifier)
+        .getSelectedController();
+    if (controller != null) {
+      await formatEditorDocument(context, ref, controller, quiet: true);
+    }
+  }
+
   await ref.read(fileProvider.notifier).saveCurrentFile();
 
   if (!quiet) {
@@ -998,17 +1527,80 @@ Future<void> saveFile(
   }
 }
 
-class _EditorContextMenu extends StatelessWidget {
+/// Formats [controller]'s document through its LSP server.
+///
+/// Returns true when formatting was applied. With [quiet] (format-on-save)
+/// success feedback and "no formatter available" notices are suppressed so
+/// saving stays silent; only hard failures surface as error messages.
+Future<bool> formatEditorDocument(
+  BuildContext context,
+  WidgetRef ref,
+  CodeForgeController controller, {
+  bool quiet = false,
+}) async {
+  final config = controller.lspConfig;
+  final filePath = controller.openedFile;
+  if (config == null || filePath == null) {
+    if (!quiet && context.mounted) {
+      ref
+          .read(ideMessageProvider.notifier)
+          .info(translateForWidget(ref, I18nKey.editorFormatUnavailable));
+    }
+    return false;
+  }
+  try {
+    final edits = await config.formatDocument(filePath);
+    if (edits.isEmpty) {
+      if (!quiet && context.mounted) {
+        ref
+            .read(ideMessageProvider.notifier)
+            .info(translateForWidget(ref, I18nKey.editorFormatUnavailable));
+      }
+      return false;
+    }
+    await controller.applyWorkspaceEdit({
+      'edit': {
+        'changes': {Uri.file(filePath).toString(): edits},
+      },
+    });
+    if (!quiet && context.mounted) {
+      ref
+          .read(ideMessageProvider.notifier)
+          .success(
+            translateForWidget(
+              ref,
+              I18nKey.editorFormattedDocument,
+            ).replaceAll('{path}', filePath),
+          );
+    }
+    return true;
+  } catch (error) {
+    if (context.mounted) {
+      ref
+          .read(ideMessageProvider.notifier)
+          .error(
+            translateForWidget(
+              ref,
+              I18nKey.editorFormatFailed,
+            ).replaceAll('{error}', error.toString()),
+          );
+    }
+    return false;
+  }
+}
+
+class _EditorContextMenu extends ConsumerWidget {
   const _EditorContextMenu({required this.details});
 
   final CodeForgeContextMenuDetails details;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isTouch = details.isMobile;
     final screenSize = MediaQuery.sizeOf(context);
+    final modifier = usesCommandShortcut ? 'Cmd' : 'Ctrl';
     final maxWidth = isTouch
         ? min(320.0, max(0.0, screenSize.width - 16))
         : 280.0;
@@ -1019,8 +1611,8 @@ class _EditorContextMenu extends StatelessWidget {
         if (details.hasSelection && !details.readOnly)
           _menuItem(
             icon: Icons.cut,
-            label: '剪切',
-            shortcut: 'Ctrl+X',
+            label: translateForWidget(ref, I18nKey.menuCut),
+            shortcut: '$modifier+X',
             onTap: () {
               details.controller.cut();
               details.close();
@@ -1030,8 +1622,8 @@ class _EditorContextMenu extends StatelessWidget {
         if (details.hasSelection)
           _menuItem(
             icon: Icons.copy,
-            label: '复制',
-            shortcut: 'Ctrl+C',
+            label: translateForWidget(ref, I18nKey.menuCopy),
+            shortcut: '$modifier+C',
             onTap: () {
               details.controller.copy();
               details.close();
@@ -1041,8 +1633,8 @@ class _EditorContextMenu extends StatelessWidget {
         if (!details.readOnly)
           _menuItem(
             icon: Icons.paste,
-            label: '粘贴',
-            shortcut: 'Ctrl+V',
+            label: translateForWidget(ref, I18nKey.menuPaste),
+            shortcut: '$modifier+V',
             onTap: () async {
               await details.controller.paste();
               details.close();
@@ -1051,8 +1643,8 @@ class _EditorContextMenu extends StatelessWidget {
 
         _menuItem(
           icon: Icons.select_all,
-          label: '全选',
-          shortcut: 'Ctrl+A',
+          label: translateForWidget(ref, I18nKey.menuSelectAll),
+          shortcut: '$modifier+A',
           onTap: () {
             details.controller.selectAll();
             details.close();

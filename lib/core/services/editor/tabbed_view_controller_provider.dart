@@ -35,6 +35,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// instance can never collide with the sidebar's `container:<id>` instances.
   int _pluginViewTabCounter = 0;
 
+  /// Per-path unsaved-change listeners added to editor controllers, kept so
+  /// they can be removed when the tab closes.
+  final Map<String, VoidCallback> _unsavedListeners = {};
+
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
 
@@ -74,13 +78,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       return null;
     }
 
-    String pattern = "\\";
-
-    if (Platform.isWindows) {
-      pattern = "\\";
-    } else {
-      pattern = "/";
-    }
+    ensurePendingFileProviders(file.path);
 
     editorController.setUndoController(undoRedoCntroller);
 
@@ -99,7 +97,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       leading: (context, status) =>
           _buildFileTabLeading(context, isBoardFile: isBoardFile),
       value: value,
-      text: file.path.split(pattern).last,
+      text: path.basename(file.path),
       keepAlive: true,
       content: EditCore(
         file: file,
@@ -108,8 +106,15 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       ),
     );
 
+    // A previous tab for this path may still hold a listener (e.g. after a
+    // rename re-key); never stack duplicates on the same controller.
+    final staleListener = _unsavedListeners.remove(file.path);
+    if (staleListener != null) {
+      editorController.removeListener(staleListener);
+    }
+
     String savedText = editorController.text;
-    editorController.addListener(() {
+    void unsavedListener() {
       if (tab.value is TabDataValue) {
         final val = tab.value as TabDataValue;
         final currentText = editorController.text;
@@ -120,7 +125,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           onUnsavedChange?.call();
         }
       }
-    });
+    }
+
+    _unsavedListeners[file.path] = unsavedListener;
+    editorController.addListener(unsavedListener);
 
     return tab;
   }
@@ -193,9 +201,6 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
       state.addTab(newTab);
       refreshFileTabTitles(state.tabs);
-
-      pendingUploadProviderMap[file.path] = StateProvider((ref) => null);
-      pendingDownloadProviderMap[file.path] = StateProvider((ref) => null);
 
       TabbedViewController newController = TabbedViewController(
         List.from(state.tabs),
@@ -351,12 +356,16 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void _movePendingFileProviders(String oldPath, String newPath) {
     if (oldPath == newPath) return;
+    final upload = pendingUploadProviderMap.remove(oldPath);
+    final download = pendingDownloadProviderMap.remove(oldPath);
     pendingUploadProviderMap[newPath] =
-        pendingUploadProviderMap.remove(oldPath) ??
-        StateProvider<PendingUpload?>((ref) => null);
+        upload ?? StateProvider<PendingUpload?>((ref) => null);
     pendingDownloadProviderMap[newPath] =
-        pendingDownloadProviderMap.remove(oldPath) ??
-        StateProvider<PendingDownload?>((ref) => null);
+        download ?? StateProvider<PendingDownload?>((ref) => null);
+    final listener = _unsavedListeners.remove(oldPath);
+    if (listener != null) {
+      _unsavedListeners[newPath] = listener;
+    }
   }
 
   void _publishRenamedTabs() {
@@ -578,6 +587,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     if (pendingDownloadProviderMap[filePath] != null) {
       ref.read(pendingDownloadProviderMap[filePath]!.notifier).state = null;
     }
+    releasePendingFileProviders(filePath);
 
     if (value.isBoardFile == true) {
       final file = File(filePath);
@@ -585,6 +595,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         await file.delete();
       }
     }
+
+    // Release the editor resources for the closed tab: drop its unsaved
+    // listener, remove it from the controller map, and dispose the editor
+    // (which also closes its LSP connection/subprocess) and undo stack.
+    _unsavedListeners.remove(filePath);
+    ref.read(editorControllerMapProvider.notifier).removePath(filePath);
+    value.editorController?.dispose();
+    value.undoRedoController?.dispose();
   }
 
   void afterFileSave(TabData tab) {

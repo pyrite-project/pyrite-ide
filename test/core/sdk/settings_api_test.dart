@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class _SettingsTransport implements PluginTransport {
@@ -302,7 +303,7 @@ void main() {
     });
   });
 
-  test('terminal background override can be set, read, and listed', () async {
+  test('terminal appearance can be set, read, and listed', () async {
     final harness = await _SettingsHarness.start();
     addTearDown(harness.close);
 
@@ -311,17 +312,20 @@ void main() {
     expect(
       settings.whereType<Map>().any(
         (item) =>
-            item['name'] == 'terminal.override_background' &&
-            item['type'] == 'bool',
+            item['name'] == 'terminal.appearance' &&
+            item['type'] == 'string',
       ),
       isTrue,
     );
 
-    _expectOk(await harness.set('terminal.override_background', true), true);
-    expect(harness.container.read(terminalOverrideBackground), isTrue);
-    _expectOk(await harness.get('terminal.override_background'), {
-      'name': 'terminal.override_background',
-      'value': true,
+    _expectOk(await harness.set('terminal.appearance', 'custom'), true);
+    expect(
+      harness.container.read(terminalAppearance),
+      TerminalAppearance.custom,
+    );
+    _expectOk(await harness.get('terminal.appearance'), {
+      'name': 'terminal.appearance',
+      'value': 'custom',
     });
   });
 
@@ -352,6 +356,9 @@ void main() {
   });
 
   test('virtual environment setting can be set, read, and listed', () async {
+    // The LSP settings setters log through the IDE output terminal, which
+    // requires the test binding to be initialized.
+    TestWidgetsFlutterBinding.ensureInitialized();
     final harness = await _SettingsHarness.start();
     addTearDown(harness.close);
 
@@ -386,6 +393,9 @@ void main() {
   test(
     'BasedPyright type checking mode can be set, read, and listed',
     () async {
+      // The LSP settings setters log through the IDE output terminal, which
+      // requires the test binding to be initialized.
+      TestWidgetsFlutterBinding.ensureInitialized();
       final harness = await _SettingsHarness.start();
       addTearDown(harness.close);
 

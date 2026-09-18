@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
@@ -108,6 +110,15 @@ class EditorControllerMapNotifier
             );
           } catch (e) {
             debugPrint('LSP stdio start failed: $e');
+            ref
+                .read(ideOutputLogProvider.notifier)
+                .add(
+                  IdeOutputSource.ide,
+                  translate(
+                    ref,
+                    I18nKey.lspStartFailedOutput,
+                  ).replaceAll('{error}', e.toString()),
+                );
           }
         }
       }
@@ -190,6 +201,15 @@ class EditorControllerMapNotifier
       ..remove(oldPath)
       ..[newPath] = controller;
     state = next;
+  }
+
+  /// Drops the controller registered for [filePath] from the map.
+  ///
+  /// Disposing the controller itself is left to the caller so tab teardown
+  /// stays in one place.
+  void removePath(String filePath) {
+    if (!state.containsKey(filePath)) return;
+    state = Map<String, CodeForgeController>.from(state)..remove(filePath);
   }
 
   void redo() {

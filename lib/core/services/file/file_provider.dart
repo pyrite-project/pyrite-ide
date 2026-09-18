@@ -81,7 +81,15 @@ class FileNotifier extends StateNotifier<Directory?> {
 
   Future<void> saveCurrentFile() async {
     final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
-    final value = nowTab?.value;
+    await saveTab(nowTab);
+  }
+
+  /// Persists the given tab's editor content to its backing store.
+  ///
+  /// Unlike [saveCurrentFile] this does not depend on which tab is currently
+  /// selected, so closing a background dirty tab can save exactly that tab.
+  Future<void> saveTab(TabData? tab) async {
+    final value = tab?.value;
     if (value is TabDataValue && value.type == "file") {
       if (value.isBoardFile == true && value.boardFilePath != null) {
         await ref
@@ -92,7 +100,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       } else {
         await value.file!.writeAsString(value.editorController!.text);
       }
-      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
+      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!);
     }
   }
 

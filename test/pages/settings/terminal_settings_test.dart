@@ -58,7 +58,7 @@ void main() {
     expect(container.read(terminalLigatures), isFalse);
   });
 
-  testWidgets('terminal background override is disabled by default', (
+  testWidgets('appearance selector updates terminalAppearance provider', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(800, 2400);
@@ -75,10 +75,13 @@ void main() {
       ),
     );
 
-    expect(container.read(terminalOverrideBackground), isFalse);
-    await tester.tap(find.widgetWithText(SwitchListTile, '覆盖终端背景颜色'));
+    expect(
+      container.read(terminalAppearance),
+      isNot(TerminalAppearance.followIde),
+    );
+    await tester.tap(find.text('跟随 IDE'));
     await tester.pump();
-    expect(container.read(terminalOverrideBackground), isTrue);
+    expect(container.read(terminalAppearance), TerminalAppearance.followIde);
   });
 
   testWidgets('custom appearance exposes foreground and background only', (
