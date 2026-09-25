@@ -125,7 +125,9 @@ class EditorControllerMapNotifier
       }
     }
 
-    CodeForgeController controller = PyriteCodeForgeController(lspConfig: lspConfig);
+    CodeForgeController controller = PyriteCodeForgeController(
+      lspConfig: lspConfig,
+    );
     if (lspConfig != null) {
       unawaited(_sendWorkspaceConfiguration(lspConfig));
     }

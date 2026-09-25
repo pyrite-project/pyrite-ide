@@ -100,6 +100,10 @@ Widget buildThemedCodeForge(
   UndoRedoController? undoController,
   FindController? findController,
   bool readOnly = false,
+
+  /// Radius for the inner fenced Markdown code blocks shown in LSP popups.
+  /// Leave null to use [CodeForge.defaultMarkdownCodeBlockBorderRadius].
+  BorderRadius? markdownCodeBlockBorderRadius,
   List<CustomContextMenu>? customContextMenuItems,
   ValueChanged<int>? onModifierTap,
   PreferredSizeWidget Function(BuildContext context, FindController)?
@@ -139,6 +143,7 @@ Widget buildThemedCodeForge(
     controller: controller,
     undoController: undoController,
     readOnly: readOnly,
+    markdownCodeBlockBorderRadius: markdownCodeBlockBorderRadius,
     matchHighlightStyle: const MatchHighlightStyle(
       currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
       otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
