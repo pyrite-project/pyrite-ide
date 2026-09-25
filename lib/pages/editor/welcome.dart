@@ -100,21 +100,9 @@ class EditorWelcome extends ConsumerWidget {
                       label: const UseText(I18nKey.editorWelcomeConnectDevice),
                     ),
                     OutlinedButton.icon(
-                      onPressed: (ref.watch(fileProvider) != null) ? () async {
-                        final parentPath = ref.read(fileProvider)?.path ?? '';
-                        final uniquePath = await local.getUniqueFilePath(
-                          path.join(parentPath, "new_file"),
-                        );
-                        ref.read(fileProvider.notifier).createFile(uniquePath);
-                        context.go("/file");
-                        showIdeSuccess(
-                          context,
-                          tr(
-                            ref,
-                            I18nKey.fileMessageCreatedLocalFile,
-                          ).replaceAll('{path}', uniquePath),
-                        );
-                      } : null,
+                      onPressed: (ref.watch(fileProvider) != null)
+                          ? () => _createNewFile(context, ref)
+                          : null,
                       icon: const Icon(Icons.add),
                       label: const UseText(I18nKey.menuNewFile),
                     ),
@@ -160,6 +148,30 @@ class EditorWelcome extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _createNewFile(BuildContext context, WidgetRef ref) async {
+    final parentPath = ref.read(fileProvider)?.path ?? '';
+    final uniquePath = await local.getUniqueFilePath(
+      path.join(parentPath, "new_file"),
+    );
+    try {
+      await ref
+          .read(fileProvider.notifier)
+          .createFileAndStartRename(uniquePath);
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        tr(
+          ref,
+          I18nKey.fileMessageCreateLocalFileFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    context.go("/file");
   }
 }
 

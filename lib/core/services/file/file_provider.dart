@@ -142,6 +142,16 @@ class FileNotifier extends StateNotifier<Directory?> {
     return filePath;
   }
 
+  /// Creates [filePath] and starts an inline rename so the user can name the
+  /// new file right away instead of renaming it from the context menu later.
+  Future<String> createFileAndStartRename(String filePath) async {
+    final createdPath = await createFile(filePath);
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    controller.setSelectedNodeId(createdPath);
+    controller.setRenamingNodeId(createdPath);
+    return createdPath;
+  }
+
   Future<String> createFolder(String folderPath) async {
     final dir = Directory(folderPath);
     await dir.create();
