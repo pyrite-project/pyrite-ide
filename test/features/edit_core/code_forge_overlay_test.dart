@@ -1,6 +1,8 @@
+import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/root_overlay_portal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 
 void main() {
   testWidgets('root overlay popup stays anchored above later siblings', (
@@ -77,5 +79,34 @@ void main() {
 
     await tester.tapAt(const Offset(650, 400));
     expect(coveringPanelTaps, 1);
+  });
+
+  test('themed editor uses and can override outer hover radius', () {
+    const customOuterRadius = BorderRadius.all(Radius.circular(32));
+    final defaultStyle = buildThemedCodeForgeHoverDetailsStyle(
+      foreground: Colors.white,
+      background: Colors.black,
+      primary: Colors.blue,
+      fontSize: 15,
+    );
+    final customStyle = buildThemedCodeForgeHoverDetailsStyle(
+      foreground: Colors.white,
+      background: Colors.black,
+      primary: Colors.blue,
+      fontSize: 15,
+      borderRadius: customOuterRadius,
+    );
+    final defaultShape = defaultStyle.shape as RoundedRectangleBorder;
+    final customShape = customStyle.shape as RoundedRectangleBorder;
+
+    expect(
+      CodeForge().markdownCodeBlockBorderRadius,
+      CodeForge.defaultMarkdownCodeBlockBorderRadius,
+    );
+    expect(
+      defaultShape.borderRadius,
+      CodeForge.defaultHoverDetailsBorderRadius,
+    );
+    expect(customShape.borderRadius, customOuterRadius);
   });
 }

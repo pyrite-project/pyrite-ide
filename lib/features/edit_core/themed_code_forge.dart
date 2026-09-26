@@ -63,6 +63,36 @@ Map<String, TextStyle> resolveActiveThemeForSurface(
   );
 }
 
+/// Builds the hover popup style shared by every themed [CodeForge] instance.
+HoverDetailsStyle buildThemedCodeForgeHoverDetailsStyle({
+  required Color foreground,
+  required Color background,
+  required Color primary,
+  required double fontSize,
+  String? fontFamily,
+  BorderRadius? borderRadius,
+}) {
+  final hoverBackground = Color.alphaBlend(
+    foreground.withAlpha(18),
+    background,
+  ).withAlpha(255);
+  return HoverDetailsStyle(
+    shape: RoundedRectangleBorder(
+      borderRadius: borderRadius ?? CodeForge.defaultHoverDetailsBorderRadius,
+      side: BorderSide(color: foreground.withAlpha(80)),
+    ),
+    backgroundColor: hoverBackground,
+    focusColor: primary.withAlpha(50),
+    hoverColor: primary.withAlpha(25),
+    splashColor: primary.withAlpha(50),
+    textStyle: TextStyle(
+      color: foreground,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+    ),
+  );
+}
+
 /// Composite key describing every input that requires rebuilding the
 /// [CodeForge] element when it changes: built-in theme, active plugin theme,
 /// resolved plugin styles identity, brightness, and surface color.
@@ -104,6 +134,11 @@ Widget buildThemedCodeForge(
   /// Radius for the inner fenced Markdown code blocks shown in LSP popups.
   /// Leave null to use [CodeForge.defaultMarkdownCodeBlockBorderRadius].
   BorderRadius? markdownCodeBlockBorderRadius,
+
+  /// Outer radius for LSP hover and documentation popups.
+  ///
+  /// Leave null to use [CodeForge.defaultHoverDetailsBorderRadius].
+  BorderRadius? hoverDetailsBorderRadius,
   List<CustomContextMenu>? customContextMenuItems,
   ValueChanged<int>? onModifierTap,
   PreferredSizeWidget Function(BuildContext context, FindController)?
@@ -112,10 +147,9 @@ Widget buildThemedCodeForge(
 }) {
   final resolvedTheme = resolveActiveThemeForSurface(context, ref);
   final colors = editorSurfaceColors(context, resolvedTheme);
-  final hoverBackground = Color.alphaBlend(
-    colors.foreground.withAlpha(18),
-    colors.background,
-  ).withAlpha(255);
+  final fontSize = ref.watch(editorFontSize);
+  final fontFamily = editorTextFonts[ref.watch(editorTextFontProvider)];
+  final primary = Theme.of(context).colorScheme.primary;
   return CodeForge(
     key: ValueKey(rebuildKey ?? filePath ?? ''),
     filePath: filePath,
@@ -124,34 +158,26 @@ Widget buildThemedCodeForge(
     customContextMenuItems: customContextMenuItems,
     onModifierTap: onModifierTap,
     finderBuilder: finderBuilder,
-    hoverDetailsStyle: HoverDetailsStyle(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: colors.foreground.withAlpha(80)),
-      ),
-      backgroundColor: hoverBackground,
-      focusColor: Theme.of(context).colorScheme.primary.withAlpha(50),
-      hoverColor: Theme.of(context).colorScheme.primary.withAlpha(25),
-      splashColor: Theme.of(context).colorScheme.primary.withAlpha(50),
-      textStyle: TextStyle(
-        color: colors.foreground,
-        fontSize: ref.watch(editorFontSize),
-        fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-      ),
+    hoverDetailsStyle: buildThemedCodeForgeHoverDetailsStyle(
+      foreground: colors.foreground,
+      background: colors.background,
+      primary: primary,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      borderRadius: hoverDetailsBorderRadius,
     ),
     language: langPython,
     controller: controller,
     undoController: undoController,
     readOnly: readOnly,
-    markdownCodeBlockBorderRadius: markdownCodeBlockBorderRadius,
+    markdownCodeBlockBorderRadius:
+        markdownCodeBlockBorderRadius ??
+        CodeForge.defaultMarkdownCodeBlockBorderRadius,
     matchHighlightStyle: const MatchHighlightStyle(
       currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
       otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
     ),
-    textStyle: TextStyle(
-      fontSize: ref.watch(editorFontSize),
-      fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-    ),
+    textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
     lineWrap: ref.watch(editorWordWrap),
     enableFolding: ref.watch(editorCodeFolding),
     enableGuideLines: ref.watch(editorGuideLines),

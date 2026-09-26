@@ -107,6 +107,11 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   build_runner: 2.5.4
+  win_plugin_link_repair: ^0.1.1
+
+dependency_overrides:
+  # Keep Dart bindings aligned with code_forge's generated code and Rust crate.
+  flutter_rust_bridge: 2.12.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
