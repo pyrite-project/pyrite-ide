@@ -41,9 +41,9 @@ class PaneHeader extends ConsumerWidget {
     final comfortable = !isCompact && tier == ThemeStyle.comfortable;
     final tokens = ThemeDensityTokens.forStyle(tier);
     final titleStyle = tier == ThemeStyle.compact
-        ? Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: scheme.onSurface,
-        )
+        ? Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: scheme.onSurface)
         : null;
     return Container(
       constraints: BoxConstraints(
@@ -59,7 +59,11 @@ class PaneHeader extends ConsumerWidget {
       child: Row(
         children: [
           if (leadingIcon != null) ...[
-            Icon(leadingIcon, size: tokens.headerIconSize, color: scheme.onSurfaceVariant),
+            Icon(
+              leadingIcon,
+              size: tokens.headerIconSize,
+              color: scheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -67,7 +71,12 @@ class PaneHeader extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                UseText(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                UseText(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle,
+                ),
                 if (subtitle != null && !isCompact)
                   UseText(
                     subtitle!,
@@ -235,10 +244,7 @@ class StatusBarButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(99),
                 border: Border.all(color: scheme.surfaceContainer, width: 1.5),
               ),
-              child: SizedBox(
-                width: compact ? 6 : 8,
-                height: compact ? 6 : 8,
-              ),
+              child: SizedBox(width: compact ? 6 : 8, height: compact ? 6 : 8),
             ),
           ),
       ],
@@ -265,10 +271,7 @@ class StatusBarButton extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: compact
-                      ? TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        )
+                      ? TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)
                       : null,
                 ),
               )

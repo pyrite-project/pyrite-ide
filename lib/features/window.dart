@@ -26,7 +26,9 @@ class UseWindow with WindowListener {
       WidgetsFlutterBinding.ensureInitialized();
       await windowManager.ensureInitialized();
       await windowManager.setPreventClose(true);
-      await windowManager.setAlwaysOnTop(_container?.read(alwaysOnTopProvider) ?? false);
+      await windowManager.setAlwaysOnTop(
+        _container?.read(alwaysOnTopProvider) ?? false,
+      );
       windowManager.addListener(this);
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
@@ -88,7 +90,7 @@ class UseTitleBar extends ConsumerWidget {
     final double leftPadding = Platform.isMacOS
         ? 80
         : ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth / 2 -
-            appIconSize / 2;
+              appIconSize / 2;
     return GestureDetector(
       onPanStart: (details) => windowManager.startDragging(),
       child: Container(
@@ -312,9 +314,13 @@ class WindowActionBar extends ConsumerWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         IconButton(
-          icon: (ref.watch(alwaysOnTopProvider)) ? Icon(Icons.push_pin, size: 18) : Icon(Icons.push_pin_outlined, size: 18),
+          icon: (ref.watch(alwaysOnTopProvider))
+              ? Icon(Icons.push_pin, size: 18)
+              : Icon(Icons.push_pin_outlined, size: 18),
           onPressed: () async {
-            ref.read(alwaysOnTopProvider.notifier).state = !ref.read(alwaysOnTopProvider);
+            ref.read(alwaysOnTopProvider.notifier).state = !ref.read(
+              alwaysOnTopProvider,
+            );
             await windowManager.setAlwaysOnTop(ref.read(alwaysOnTopProvider));
           },
         ),

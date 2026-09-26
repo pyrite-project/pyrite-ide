@@ -351,7 +351,11 @@ void main() async {
   if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
-        .restoreTabs(data.tabs, data.selectedTabIndex);
+        .restoreTabs(
+          data.tabs,
+          data.selectedTabIndex,
+          selectedTabPath: data.selectedTabPath,
+        );
   }
 
   appWindow.bind(container);

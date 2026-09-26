@@ -1,0 +1,5 @@
+1. 闪退问题已不再出现
+2. setState问题已解决
+3. 你必须修复[ERROR:flutter/shell/platform/common/accessibility_bridge.cc(114)] Failed to update ui::AXTree, error: 11 will not be in the tree and is not the new root
+4. 解决没有修改但是指示为橙色圆圈（已修改）的问题
+5. 为什么那个灯泡图标我看到过一次再代码中

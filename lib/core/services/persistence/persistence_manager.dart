@@ -90,6 +90,7 @@ class PersistenceManager {
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
+      selectedTabPath: tabsData?.selectedTabPath,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       ensureBoardFilesystemOnConnect:
@@ -249,6 +250,7 @@ class PersistenceManager {
   Future<void> _saveTabs(ProviderContainer container) async {
     final tabController = container.read(tabbedViewControllerProvider);
     final List<PersistedTab> tabs = [];
+    String? selectedTabPath;
     for (final tab in tabController.tabs) {
       final value = tab.value;
       if (value is TabDataValue && value.type == "file") {
@@ -261,14 +263,24 @@ class PersistenceManager {
             unsavedContent: (!value.isSaved && value.editorController != null)
                 ? value.editorController!.text
                 : null,
+            cursorOffset: value.editorController?.selection.extentOffset,
           ),
         );
       }
     }
+    final selectedIndex = tabController.selectedIndex;
+    if (selectedIndex != null &&
+        selectedIndex >= 0 &&
+        selectedIndex < tabController.tabs.length) {
+      final selectedValue = tabController.tabs[selectedIndex].value;
+      if (selectedValue is TabDataValue)
+        selectedTabPath = selectedValue.filePath;
+    }
     await tabsPersistence.save(
       TabsPersistedData(
         tabs: tabs,
-        selectedTabIndex: tabController.selectedIndex ?? 0,
+        selectedTabIndex: selectedIndex ?? 0,
+        selectedTabPath: selectedTabPath,
       ),
     );
   }

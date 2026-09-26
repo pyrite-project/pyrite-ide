@@ -113,10 +113,6 @@ dependency_overrides:
   # Keep Dart bindings aligned with code_forge's generated code and Rust crate.
   flutter_rust_bridge: 2.12.0
 
-dependency_overrides:
-  # Keep the generated bindings aligned with code_forge's Rust crate.
-  flutter_rust_bridge: 2.12.0
-
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

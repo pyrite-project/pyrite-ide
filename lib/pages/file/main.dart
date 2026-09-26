@@ -1138,7 +1138,19 @@ class ProjectFiles extends ConsumerWidget {
             final uniquePath = await local.getUniqueFolderPath(
               path.join(parentDir, "new_folder"),
             );
-            ref.read(fileProvider.notifier).createFolder(uniquePath);
+            try {
+              await ref
+                  .read(fileProvider.notifier)
+                  .createFolderAndStartRename(uniquePath);
+            } catch (error) {
+              if (!context.mounted) return;
+              showIdeError(
+                context,
+                tr(I18nKey.fileMessageCreateLocalFolderFailed, {
+                  'error': error.toString(),
+                }),
+              );
+            }
           },
         ),
       ],
@@ -1410,14 +1422,20 @@ class ProjectFiles extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFolderPath(
                         path.join(parentPath, "new_folder"),
                       );
-                      ref.read(fileProvider.notifier).createFolder(uniquePath);
-                      showIdeSuccess(
-                        context,
-                        tr(
-                          ref,
-                          I18nKey.fileMessageCreatedLocalFolder,
-                        ).replaceAll('{path}', uniquePath),
-                      );
+                      try {
+                        await ref
+                            .read(fileProvider.notifier)
+                            .createFolderAndStartRename(uniquePath);
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        showIdeError(
+                          context,
+                          tr(
+                            ref,
+                            I18nKey.fileMessageCreateLocalFolderFailed,
+                          ).replaceAll('{error}', error.toString()),
+                        );
+                      }
                     },
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),

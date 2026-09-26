@@ -81,6 +81,77 @@ void main() {
     expect(coveringPanelTaps, 1);
   });
 
+  testWidgets('a popup anchored to the target bottom ignores the overlay size', (
+    tester,
+  ) async {
+    // Regression: the overlay child used to be laid out in a box sized like the
+    // whole root overlay instead of the target. `Positioned(top:)` measures from
+    // the top of that box so it looked fine, but `Positioned(bottom:)` measures
+    // from its bottom - which put every bottom-anchored popup (the LSP hover
+    // when it flips above the cursor) hundreds of pixels below the word.
+    const targetOrigin = Offset(200, 100);
+    const targetSize = Size(300, 200);
+    const bottomGap = 10.0;
+    const anchorY = 150.0;
+    const popupHeight = 60.0;
+
+    late Offset popupTopLeft;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Stack(
+          children: [
+            Positioned(
+              left: targetOrigin.dx,
+              top: targetOrigin.dy,
+              width: targetSize.width,
+              height: targetSize.height,
+              child: Stack(
+                children: [
+                  CodeForgeRootOverlayPortal(
+                    targetSize: targetSize,
+                    overlayChild: Builder(
+                      builder: (context) {
+                        return Positioned(
+                          bottom: targetSize.height - anchorY + bottomGap,
+                          left: 0,
+                          width: 200,
+                          height: popupHeight,
+                          child: Builder(
+                            builder: (innerContext) {
+                              popupTopLeft =
+                                  innerContext.findRenderObject()!
+                                      as RenderBox
+                                      .localToGlobal(Offset.zero);
+                              return const ColoredBox(color: Colors.white);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // The popup's bottom edge must sit `bottomGap` above the anchor, measured
+    // inside the 200px-tall target - not inside the 600px-tall test window.
+    expect(popupTopLeft.dy, targetOrigin.dy + (anchorY - bottomGap - popupHeight));
+  });
+
+  test('the hover popup keeps a tight gap to the hovered line', () {
+    // The hover popup is anchored to the line it documents, so a wide gap reads
+    // as a detached popup. Guard against it silently creeping back up to the
+    // generic popup gap.
+    expect(kHoverAnchorGap, greaterThan(0));
+    expect(kHoverAnchorGap, lessThan(8));
+  });
+
   test('themed editor uses and can override outer hover radius', () {
     const customOuterRadius = BorderRadius.all(Radius.circular(32));
     final defaultStyle = buildThemedCodeForgeHoverDetailsStyle(

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:code_forge/code_forge.dart' show CodeForgeController;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1790,6 +1791,7 @@ class EditorToolsBar extends ConsumerWidget {
                 entry.builder(context),
                 const SizedBox(width: 4),
               ],
+              buildEditorState(context, ref),
             ],
           ),
         ),
@@ -1998,6 +2000,36 @@ class EditorToolsBar extends ConsumerWidget {
     );
   }
 
+  /// Caret position, selection size and the LSP error/warning counts for the
+  /// selected file tab.
+  ///
+  /// Renders nothing when the active tab has no editor (welcome page, git diff
+  /// tab, plugin view) so the status bar does not show a stale position from
+  /// whatever file was open before.
+  ///
+  /// Subscribes to [CodeForgeController.displayChanges] only. That signal is
+  /// frame-safe by construction, which matters here because this widget sits
+  /// outside the editor's subtree while the editor notifies from inside its own
+  /// `initState` and build. Subscribing to the controller itself, or to its
+  /// `diagnosticsNotifier`, delivers callbacks during the build phase.
+  Widget buildEditorState(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
+    if (value is! TabDataValue || value.type != "file") {
+      return const SizedBox.shrink();
+    }
+    final controller = value.editorController;
+    if (controller == null) return const SizedBox.shrink();
+    return _EditorStateLabel(
+      // Stable key: the children list around this one has no keys and its
+      // length changes with transfer progress, running operations and registry
+      // items, so an unkeyed widget here can be re-matched to a different
+      // sibling.
+      key: const ValueKey('status-editor-state'),
+      controller: controller,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
+    );
+  }
+
   Widget buildConsoleState(BuildContext context, WidgetRef ref) {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final visible = ref.watch(consolePageShow);
@@ -2111,5 +2143,135 @@ class MobileNavigationDrawerButton extends ConsumerWidget {
       onPressed: () => Scaffold.of(context).openDrawer(),
       icon: const Icon(Icons.menu, size: 20),
     );
+  }
+}
+
+/// Non-interactive trailing status bar segment: caret position, selection size
+/// and the current file's LSP error/warning counts.
+///
+/// Listens to [CodeForgeController.displayChanges], the controller's
+/// frame-safe signal, and to nothing else. It must not subscribe to the
+/// controller directly: the editor notifies from inside its own `initState` and
+/// build, and this widget lives outside the editor's subtree, so a direct
+/// subscription would call back during the build phase.
+///
+/// Plain [Text], like the other status bar items, rather than a [Semantics]
+/// wrapper. This app has no accessibility infrastructure today, and introducing
+/// its first explicit semantics node reshapes the engine's accessibility tree
+/// for the whole window. That is a separate piece of work, not something to
+/// smuggle in with a status bar readout.
+class _EditorStateLabel extends ConsumerWidget {
+  const _EditorStateLabel({
+    super.key,
+    required this.controller,
+    required this.compact,
+  });
+
+  final CodeForgeController controller;
+  final bool compact;
+
+  /// LSP `DiagnosticSeverity` values that matter here. Information and Hint
+  /// are intentionally not counted: for a board script they are noise, and
+  /// counting them would make the number look alarming for correct code.
+  static const int _severityError = 1;
+  static const int _severityWarning = 2;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListenableBuilder(
+      listenable: controller.displayChanges,
+      builder: (context, _) {
+        final scheme = Theme.of(context).colorScheme;
+        final textStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+          fontSize: compact ? 12 : null,
+        );
+
+        var errors = 0;
+        var warnings = 0;
+        for (final diagnostic in controller.diagnostics) {
+          if (diagnostic.severity == _severityError) {
+            errors++;
+          } else if (diagnostic.severity == _severityWarning) {
+            warnings++;
+          }
+        }
+
+        final position = _positionText(ref, controller);
+        final problems = errors > 0 ? _problemText(ref, errors, warnings) : null;
+
+        return Padding(
+          padding: const EdgeInsetsDirectional.only(start: 4, end: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (position.isNotEmpty) Text(position, style: textStyle),
+              if (problems != null) ...[
+                const SizedBox(width: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: compact ? 14 : 16,
+                      color: scheme.error,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      problems,
+                      style:
+                          textStyle?.copyWith(color: scheme.error) ??
+                          textStyle,
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Caret line/column, plus the selection size when there is a selection.
+  ///
+  /// A WidgetRef cannot use `translateWithReplacements` (it takes a `Ref`), so
+  /// the placeholders are substituted directly.
+  String _positionText(WidgetRef ref, CodeForgeController controller) {
+    final offset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    final line = controller.lineCount == 0
+        ? 0
+        : controller.getLineAtOffset(offset);
+    // Columns are 1-based and counted in characters, matching the LSP and
+    // matching what a board traceback points at.
+    final column = controller.lineCount == 0
+        ? offset + 1
+        : offset - controller.getLineStartOffset(line) + 1;
+    final caret = translateForWidget(
+      ref,
+      I18nKey.statusCursorPosition,
+    ).replaceAll('{line}', '${line + 1}').replaceAll('{column}', '$column');
+    final selection = controller.selection;
+    if (selection.isCollapsed) return caret;
+    final selected = translateForWidget(
+      ref,
+      I18nKey.statusSelectionCount,
+    ).replaceAll('{count}', '${selection.end - selection.start}');
+    return '$caret · $selected';
+  }
+
+  String _problemText(WidgetRef ref, int errors, int warnings) {
+    final I18nKey key = switch ((errors, warnings)) {
+      (final e, 0) => I18nKey.statusProblemsErrorsOnly,
+      (0, final w) => I18nKey.statusProblemsWarningsOnly,
+      _ => I18nKey.statusProblems,
+    };
+    return translateForWidget(
+      ref,
+      key,
+    ).replaceAll('{errors}', '$errors').replaceAll('{warnings}', '$warnings');
   }
 }

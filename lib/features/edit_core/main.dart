@@ -149,10 +149,17 @@ class _EditCoreState extends ConsumerState<EditCore> {
     };
 
     if (pending != null || pendingDownload != null) {
-      bindings[stringToActivator(confirmAct)] = () =>
-          _handleConfirm(context, ref);
-      bindings[stringToActivator(cancelAct)] = () =>
-          _handleCancel(context, ref);
+      // A recording that cannot be parsed is dropped rather than bound to a
+      // wrong key, so the confirm action stays unreachable instead of firing
+      // on Enter.
+      final confirmActivator = stringToActivator(confirmAct);
+      if (confirmActivator != null) {
+        bindings[confirmActivator] = () => _handleConfirm(context, ref);
+      }
+      final cancelActivator = stringToActivator(cancelAct);
+      if (cancelActivator != null) {
+        bindings[cancelActivator] = () => _handleCancel(context, ref);
+      }
     }
 
     return Focus(
@@ -355,17 +362,41 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ),
       CustomContextMenu(
         label: translateForWidget(ref, I18nKey.editorMenuFormatDocument),
-        description: 'LSP',
+        description: '',
         icon: Icons.format_align_left,
         onPress: () => unawaited(_formatDocument(context, ref)),
+      ),
+      // Secondary cursors are otherwise only reachable through Alt+Click and
+      // Alt+Shift+Down, which is undiscoverable in practice. This is the
+      // discoverable entry point into the editor's multi-cursor support.
+      CustomContextMenu(
+        label: translateForWidget(ref, I18nKey.statusEditorAddCursor),
+        description: '',
+        icon: Icons.add_comment_outlined,
+        // Only visibleAt: the widget prefers it over `visible` when both are
+        // present, and _addCursorAtOffset re-checks readOnly before acting.
+        visibleAt: (_) => !controller.readOnly,
+        onPress: () => _addCursorAtSelection(controller),
+        onPressAt: (offset) => _addCursorAtOffset(controller, offset),
       ),
     ];
     if (config == null) return items;
     if (config.capabilities.goToDefinition) {
       items.add(
         CustomContextMenu(
+          label: translateForWidget(ref, I18nKey.editorMenuGoToDefinition),
+          description: goToDefinitionShortcutLabel(),
+          icon: Icons.arrow_outward,
+          visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
+          onPressAt: (offset) =>
+              unawaited(_goToDefinition(context, ref, textOffset: offset)),
+          onPress: () => unawaited(_goToDefinition(context, ref)),
+        ),
+      );
+      items.add(
+        CustomContextMenu(
           label: translateForWidget(ref, I18nKey.editorMenuGoToImplementation),
-          description: 'LSP',
+          description: '',
           icon: Icons.arrow_forward,
           visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
           onPressAt: (offset) => unawaited(
@@ -390,7 +421,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       items.add(
         CustomContextMenu(
           label: translateForWidget(ref, I18nKey.fileActionRename),
-          description: 'F2',
+          description: renameShortcutLabel(),
           icon: Icons.drive_file_rename_outline,
           visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
           onPressAt: (offset) =>
@@ -402,7 +433,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
     items.add(
       CustomContextMenu(
         label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
-        description: 'LSP',
+        description: '',
         icon: Icons.manage_search,
         visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
         onPressAt: (offset) =>
@@ -411,6 +442,28 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ),
     );
     return items;
+  }
+
+  /// Adds a secondary cursor at the caret, or at the start of the selection
+  /// when one is active.
+  void _addCursorAtSelection(CodeForgeController controller) {
+    final selection = controller.selection;
+    final anchor = selection.isCollapsed
+        ? selection.extentOffset
+        : selection.start;
+    _addCursorAtOffset(controller, anchor);
+  }
+
+  void _addCursorAtOffset(CodeForgeController controller, int offset) {
+    if (controller.readOnly) return;
+    final safeOffset = offset.clamp(0, controller.length).toInt();
+    final line = controller.lineCount == 0
+        ? 0
+        : controller.getLineAtOffset(safeOffset);
+    final column = controller.lineCount == 0
+        ? 0
+        : safeOffset - controller.getLineStartOffset(line);
+    controller.addMultiCursor(line, column);
   }
 
   bool _isSymbolAtOffset(CodeForgeController controller, int offset) {

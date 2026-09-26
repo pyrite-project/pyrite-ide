@@ -71,18 +71,52 @@ void main() {
         shift: true,
       );
       final restored = stringToActivator(activatorToString(original));
-      expect(restored.trigger, original.trigger);
+      expect(restored, isNotNull);
+      expect(restored!.trigger, original.trigger);
       expect(restored.control, original.control);
       expect(restored.shift, original.shift);
     });
 
     test('parses named keys and modifiers', () {
       final activator = stringToActivator('Ctrl+Enter');
-      expect(activator.trigger, LogicalKeyboardKey.enter);
+      expect(activator, isNotNull);
+      expect(activator!.trigger, LogicalKeyboardKey.enter);
       expect(activator.control, isTrue);
       final cmd = stringToActivator('Command+F3');
-      expect(cmd.trigger, LogicalKeyboardKey.f3);
+      expect(cmd, isNotNull);
+      expect(cmd!.trigger, LogicalKeyboardKey.f3);
       expect(cmd.meta, isTrue);
+    });
+
+    test('roundtrips navigation keys recorded by the recorder', () {
+      for (final key in <LogicalKeyboardKey>[
+        LogicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowDown,
+        LogicalKeyboardKey.arrowLeft,
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.home,
+        LogicalKeyboardKey.end,
+        LogicalKeyboardKey.pageUp,
+        LogicalKeyboardKey.pageDown,
+        LogicalKeyboardKey.insert,
+        LogicalKeyboardKey.enter,
+        LogicalKeyboardKey.escape,
+        LogicalKeyboardKey.tab,
+        LogicalKeyboardKey.space,
+        LogicalKeyboardKey.backspace,
+        LogicalKeyboardKey.delete,
+      ]) {
+        const original = SingleActivator(key, control: true);
+        final restored = stringToActivator(activatorToString(original));
+        expect(restored, isNotNull, reason: 'failed for $key');
+        expect(restored!.trigger, original.trigger, reason: 'failed for $key');
+      }
+    });
+
+    test('returns null for an unknown key instead of Enter', () {
+      expect(stringToActivator('Ctrl+F13'), isNull);
+      expect(stringToActivator('Ctrl+MediaPlayPause'), isNull);
+      expect(stringToActivator('Ctrl+'), isNull);
     });
   });
 }

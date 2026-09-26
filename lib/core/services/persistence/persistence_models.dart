@@ -8,12 +8,18 @@ class PersistedTab {
   final bool isSaved;
   final String? unsavedContent;
 
+  /// Caret offset captured at save time so a reopened tab resumes where the
+  /// user left off. Null for sessions written before this field existed, and
+  /// clamped on restore when the file shrank while the app was closed.
+  final int? cursorOffset;
+
   PersistedTab({
     required this.filePath,
     this.isBoardFile = false,
     this.boardFilePath,
     this.isSaved = true,
     this.unsavedContent,
+    this.cursorOffset,
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +28,7 @@ class PersistedTab {
     'boardFilePath': boardFilePath,
     'isSaved': isSaved,
     'unsavedContent': unsavedContent,
+    'cursorOffset': cursorOffset,
   };
 
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
@@ -30,6 +37,7 @@ class PersistedTab {
     boardFilePath: json['boardFilePath'] as String?,
     isSaved: json['isSaved'] as bool? ?? true,
     unsavedContent: json['unsavedContent'] as String?,
+    cursorOffset: (json['cursorOffset'] as num?)?.toInt(),
   );
 }
 
@@ -37,6 +45,11 @@ class PersistedData {
   final String? projectPath;
   final List<PersistedTab> tabs;
   final int selectedTabIndex;
+
+  /// File path of the tab that was selected, preferred over [selectedTabIndex]
+  /// when restoring because the rebuilt tab list does not share the saved
+  /// index space. See `TabsPersistedData.selectedTabPath`.
+  final String? selectedTabPath;
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
@@ -119,6 +132,7 @@ class PersistedData {
     this.projectPath,
     this.tabs = const [],
     this.selectedTabIndex = 0,
+    this.selectedTabPath,
     this.themeMode = 'system',
     this.themeStyle = 'standard',
     this.themeColorValue,

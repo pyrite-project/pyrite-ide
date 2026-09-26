@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
@@ -110,25 +111,36 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     // rename re-key); never stack duplicates on the same controller.
     final staleListener = _unsavedListeners.remove(file.path);
     if (staleListener != null) {
-      editorController.removeListener(staleListener);
+      editorController.displayChanges.removeListener(staleListener);
     }
 
-    String savedText = editorController.text;
+    // Subscribes to `displayChanges`, not to the controller directly.
+    //
+    // The controller notifies from inside the editor's own lifecycle — its
+    // `initState` clears diagnostics through `openedFile`, and bracket
+    // highlighting, fold recomputation and the buffer flush a caret move
+    // triggers all run during its build. A listener attached to the controller
+    // itself is therefore invoked while the tree is building, and the write
+    // below reaches `TabData.leading`, which is a ChangeNotifier setter that
+    // forwards through `TabbedViewController` to `TabbedView.setState` — a
+    // "marked as needing to be built during build" throw.
+    //
+    // `displayChanges` is the controller's frame-safe signal for exactly this
+    // kind of out-of-subtree consumer.
+    var lastSeenVersion = editorController.contentVersion;
     void unsavedListener() {
-      if (tab.value is TabDataValue) {
-        final val = tab.value as TabDataValue;
-        final currentText = editorController.text;
-        if (currentText == savedText) return;
-        savedText = currentText;
-        if (_markFileTabUnsaved(tab, val)) {
-          _publishTabsPreservingSelection();
-          onUnsavedChange?.call();
-        }
+      if (tab.value is! TabDataValue) return;
+      final currentVersion = editorController.contentVersion;
+      if (currentVersion == lastSeenVersion) return;
+      lastSeenVersion = currentVersion;
+      if (_markFileTabUnsaved(tab, tab.value as TabDataValue)) {
+        _publishTabsPreservingSelection();
+        onUnsavedChange?.call();
       }
     }
 
     _unsavedListeners[file.path] = unsavedListener;
-    editorController.addListener(unsavedListener);
+    editorController.displayChanges.addListener(unsavedListener);
 
     return tab;
   }
@@ -309,6 +321,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         );
   }
 
+  /// Republishes the tab list so listeners (and the tab strip) see the new
+  /// `TabDataValue` instances produced by the dirty/saved transitions.
+  ///
+  /// No frame guard is needed here: the only caller that can run mid-frame is
+  /// the editor's unsaved listener, and `CodeForgeController.notifyListeners`
+  /// now defers out of the build phase before reaching it.
   void _publishTabsPreservingSelection() {
     final selectedIndex = state.selectedIndex;
     final newController = TabbedViewController(List.from(state.tabs));
@@ -612,8 +630,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   Future<void> restoreTabs(
     List<PersistedTab> persistedTabs,
-    int selectedIndex,
-  ) async {
+    int selectedIndex, {
+    String? selectedTabPath,
+  }) async {
     final List<TabData> tabs = [];
 
     tabs.addAll(_buildTabbedViewController(ref).tabs);
@@ -644,16 +663,74 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         if (!persisted.isSaved) {
           _markFileTabUnsaved(tab, tab.value as TabDataValue);
         }
+        _restoreCursorPosition(controller, persisted.cursorOffset);
         tabs.add(tab);
       }
     }
 
     refreshFileTabTitles(tabs);
     final newController = TabbedViewController(tabs);
-    if (selectedIndex > 0 && selectedIndex < tabs.length) {
-      newController.selectedIndex = selectedIndex;
+    final restoredIndex = _resolveRestoredSelection(
+      tabs,
+      selectedTabPath,
+      selectedIndex,
+    );
+    if (restoredIndex != null) {
+      newController.selectedIndex = restoredIndex;
     }
     state = newController;
+  }
+
+  /// Puts the caret back where it was, clamped to the current document, and
+  /// scrolls that line into view.
+  ///
+  /// Only the caret is persisted, not the scroll offset, so a caret parked far
+  /// from the viewport is what gets restored. That matches what the user was
+  /// last editing, which is the useful signal here. Restoring a true scroll
+  /// position would need a public `firstVisibleLine` getter on the code_forge
+  /// controller.
+  void _restoreCursorPosition(CodeForgeController controller, int? offset) {
+    if (offset == null) return;
+    // The file may have shrunk on disk while the app was closed, so the saved
+    // offset can point past the end. Clamping puts the caret at the last
+    // character instead of throwing.
+    final safeOffset = offset.clamp(0, controller.length).toInt();
+    controller.setSelectionSilently(
+      TextSelection.collapsed(offset: safeOffset),
+    );
+    final line = controller.getLineAtOffset(safeOffset);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        controller.scrollToLine(line);
+      } on StateError {
+        // The tab may have been closed before its editor was mounted.
+      }
+    });
+  }
+
+  /// Finds the tab to select after a restore.
+  ///
+  /// Path wins over index: the restored list always carries the welcome tab in
+  /// front and drops any file that disappeared while the app was closed, so
+  /// the saved index does not line up with the rebuilt list. The index is only
+  /// used for sessions written before [selectedTabPath] existed, and then only
+  /// when it still points inside the rebuilt list.
+  int? _resolveRestoredSelection(
+    List<TabData> tabs,
+    String? selectedTabPath,
+    int selectedIndex,
+  ) {
+    if (selectedTabPath != null) {
+      for (var i = 0; i < tabs.length; i++) {
+        final value = tabs[i].value;
+        if (value is TabDataValue && value.filePath == selectedTabPath) {
+          return i;
+        }
+      }
+      return null;
+    }
+    if (selectedIndex > 0 && selectedIndex < tabs.length) return selectedIndex;
+    return null;
   }
 }
 

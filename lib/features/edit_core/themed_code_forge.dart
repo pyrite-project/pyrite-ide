@@ -10,7 +10,7 @@ import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:re_highlight/languages/python.dart';
+import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 
 /// Resolves the active editor theme (built-in or plugin-contributed) the same
 /// way the main editor does, including the de-italicized comment treatment.
@@ -150,6 +150,11 @@ Widget buildThemedCodeForge(
   final fontSize = ref.watch(editorFontSize);
   final fontFamily = editorTextFonts[ref.watch(editorTextFontProvider)];
   final primary = Theme.of(context).colorScheme.primary;
+  // Grammar follows the file's extension. `languageId` is deliberately *not*
+  // sourced from here: semantic tokens come from the LSP server, whose language
+  // id is configured in LSP settings and already reaches the widget through the
+  // controller's `lspConfig`.
+  final language = resolveEditorLanguage(filePath);
   return CodeForge(
     key: ValueKey(rebuildKey ?? filePath ?? ''),
     filePath: filePath,
@@ -166,7 +171,7 @@ Widget buildThemedCodeForge(
       fontFamily: fontFamily,
       borderRadius: hoverDetailsBorderRadius,
     ),
-    language: langPython,
+    language: language.mode,
     controller: controller,
     undoController: undoController,
     readOnly: readOnly,
