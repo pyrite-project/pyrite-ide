@@ -1112,7 +1112,19 @@ class ProjectFiles extends ConsumerWidget {
             final uniquePath = await local.getUniqueFilePath(
               path.join(parentDir, "new_file"),
             );
-            ref.read(fileProvider.notifier).createFile(uniquePath);
+            try {
+              await ref
+                  .read(fileProvider.notifier)
+                  .createFileAndStartRename(uniquePath);
+            } catch (error) {
+              if (!context.mounted) return;
+              showIdeError(
+                context,
+                tr(I18nKey.fileMessageCreateLocalFileFailed, {
+                  'error': error.toString(),
+                }),
+              );
+            }
           },
         ),
         MenuAction(
@@ -1371,15 +1383,20 @@ class ProjectFiles extends ConsumerWidget {
                       final uniquePath = await local.getUniqueFilePath(
                         path.join(parentPath, "new_file"),
                       );
-                      ref.read(fileProvider.notifier).createFile(uniquePath);
-                      if (!context.mounted) return;
-                      showIdeSuccess(
-                        context,
-                        tr(
-                          ref,
-                          I18nKey.fileMessageCreatedLocalFile,
-                        ).replaceAll('{path}', uniquePath),
-                      );
+                      try {
+                        await ref
+                            .read(fileProvider.notifier)
+                            .createFileAndStartRename(uniquePath);
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        showIdeError(
+                          context,
+                          tr(
+                            ref,
+                            I18nKey.fileMessageCreateLocalFileFailed,
+                          ).replaceAll('{error}', error.toString()),
+                        );
+                      }
                     },
                     icon: const Icon(Icons.note_add_outlined),
                   ),
