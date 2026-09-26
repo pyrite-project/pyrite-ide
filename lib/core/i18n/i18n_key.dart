@@ -309,6 +309,10 @@ enum I18nKey {
     'file.message.downloaded_folder_to_local',
     '已下载文件夹到本地：{path}',
   ),
+  fileMessageCreateLocalFileFailed(
+    'file.message.create_local_file_failed',
+    '创建本地文件失败：{error}',
+  ),
   fileMessageCreatedLocalFile(
     'file.message.created_local_file',
     '已创建本地文件：{path}',
