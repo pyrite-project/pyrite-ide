@@ -783,10 +783,19 @@ NavigationRailDestination _tooltippedDestination(
   final tooltip = _destinationTooltip(ref, destination.label);
   if (tooltip == null) return destination;
   return NavigationRailDestination(
-    icon: Tooltip(message: tooltip, child: destination.icon),
+    // `container: true` keeps each rail destination its own semantics node so
+    // adjacent destinations cannot absorb one another's tooltip anchor and
+    // orphan its overlay node. See flutter/flutter#182444.
+    icon: Tooltip(
+      message: tooltip,
+      child: Semantics(container: true, child: destination.icon),
+    ),
     selectedIcon: Tooltip(
       message: tooltip,
-      child: _selectedRailIcon(context, destination.selectedIcon),
+      child: Semantics(
+        container: true,
+        child: _selectedRailIcon(context, destination.selectedIcon),
+      ),
     ),
     label: destination.label,
     padding: destination.padding ?? const EdgeInsets.symmetric(vertical: 3),
