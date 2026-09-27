@@ -40,6 +40,15 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// they can be removed when the tab closes.
   final Map<String, VoidCallback> _unsavedListeners = {};
 
+  /// Exact text last written to (or last read from) the tab's backing store,
+  /// keyed by file path.
+  ///
+  /// This is the baseline the editor's unsaved listener diffs against, so it
+  /// has to be captured from the same source the save path writes to. A `null`
+  /// entry means "no baseline known", which the listener treats as not-dirty
+  /// rather than guessing.
+  final Map<String, String> _lastSavedText = {};
+
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
 
@@ -74,6 +83,16 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     bool isBoardFile = false,
     String? boardFilePath,
     bool isSaved = true,
+
+    /// Text the backing store holds for this path, when it differs from the
+    /// buffer being opened.
+    ///
+    /// Only a restored unsaved session needs this: the buffer holds
+    /// `unsavedContent` while the file on disk still holds the last saved
+    /// bytes, and that on-disk text is the baseline "modified" is measured
+    /// against. A normal open needs no argument because the buffer *is* the
+    /// stored text.
+    String? savedBaseline,
   }) async {
     if (editorController == null) {
       return null;
@@ -114,6 +133,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       editorController.displayChanges.removeListener(staleListener);
     }
 
+    // Baseline for the content-based dirty check below. An unsaved restore is
+    // seeded with the restored buffer so the dot matches `isSaved: false`
+    // without having to be re-derived.
+    _lastSavedText[file.path] = savedBaseline ?? editorController.text;
+
     // Subscribes to `displayChanges`, not to the controller directly.
     //
     // The controller notifies from inside the editor's own lifecycle — its
@@ -127,16 +151,35 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     //
     // `displayChanges` is the controller's frame-safe signal for exactly this
     // kind of out-of-subtree consumer.
+    //
+    // The dirty state is derived from the *text*, not from `contentVersion`.
+    // A version bump only means "some mutating API was called": undo/redo, a
+    // no-op backspace at offset 0, applying a workspace edit that rewrites the
+    // buffer with identical content, or a save-time format that reformats to
+    // the same bytes all bump it without changing the document. Keying off the
+    // version therefore lit the modified dot on tabs the user never touched.
+    // Comparing against the last persisted text is O(n), but it only runs when
+    // the version moved, and it is what "modified" actually means.
     var lastSeenVersion = editorController.contentVersion;
     void unsavedListener() {
       if (tab.value is! TabDataValue) return;
       final currentVersion = editorController.contentVersion;
       if (currentVersion == lastSeenVersion) return;
       lastSeenVersion = currentVersion;
-      if (_markFileTabUnsaved(tab, tab.value as TabDataValue)) {
-        _publishTabsPreservingSelection();
+      final value = tab.value as TabDataValue;
+      final next = resolveDirtyState(
+        savedText: _lastSavedText[value.filePath],
+        currentText: editorController.text,
+        isSaved: value.isSaved,
+      );
+      if (next == null) return;
+      if (next) {
+        if (!_markFileTabUnsaved(tab, value)) return;
         onUnsavedChange?.call();
+      } else {
+        if (!markFileTabSaved(tab)) return;
       }
+      _publishTabsPreservingSelection();
     }
 
     _unsavedListeners[file.path] = unsavedListener;
@@ -303,6 +346,29 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     );
     final affectedPaths = result.affectedPaths;
     if (affectedPaths.isEmpty) return;
+
+    // Re-seed the diff baseline to the buffer's current contents.
+    //
+    // These tabs are marked unsaved because the file changed *underneath* them,
+    // not because their buffer moved. The old baseline is the text as of the
+    // last write, which the transfer has now replaced. If it were left in
+    // place, the next edit followed by an undo would diff back to the original
+    // text, match it, and silently clear a dot that is still legitimately set.
+    // Pinning the baseline to the buffer means the tab can only return to clean
+    // by an actual save, which is the intended behaviour.
+    for (final tab in state.tabs) {
+      final value = tab.value;
+      if (value is! TabDataValue || value.type != 'file') continue;
+      final candidatePath = boardFiles ? value.boardFilePath : value.filePath;
+      if (candidatePath == null || !affectedPaths.contains(candidatePath)) {
+        continue;
+      }
+      final controller = value.editorController;
+      if (controller != null) {
+        _lastSavedText[candidatePath] = controller.text;
+      }
+    }
+
     _publishTabsPreservingSelection();
     if (result.newlyUnsaved) onUnsavedChange?.call();
     final key = boardFiles
@@ -383,6 +449,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     final listener = _unsavedListeners.remove(oldPath);
     if (listener != null) {
       _unsavedListeners[newPath] = listener;
+    }
+    // The dirty baseline is keyed by path, so it has to follow the rename.
+    // Carry the text across rather than dropping it: the buffer is unchanged
+    // by a rename, so the old baseline is still the right one, and dropping it
+    // would leave a genuinely dirty tab with nothing to diff against.
+    final baseline = _lastSavedText.remove(oldPath);
+    if (baseline != null) {
+      _lastSavedText[newPath] = baseline;
     }
   }
 
@@ -618,14 +692,42 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     // listener, remove it from the controller map, and dispose the editor
     // (which also closes its LSP connection/subprocess) and undo stack.
     _unsavedListeners.remove(filePath);
+    _lastSavedText.remove(filePath);
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
     value.undoRedoController?.dispose();
   }
 
+  /// Marks a tab clean after its buffer was written to the backing store.
+  ///
+  /// The text is read back here rather than trusted from the caller so the
+  /// diff baseline matches exactly what was persisted, including a save-time
+  /// format pass that may have rewritten the buffer between the write and this
+  /// call.
   void afterFileSave(TabData tab) {
+    final value = tab.value;
+    if (value is! TabDataValue) return;
+    final controller = value.editorController;
+    if (controller != null) {
+      _lastSavedText[value.filePath] = controller.text;
+    }
     if (!state.tabs.contains(tab) || !markFileTabSaved(tab)) return;
     _publishTabsPreservingSelection();
+  }
+
+  /// Reads the text a path currently holds, without throwing.
+  ///
+  /// A missing or unreadable file yields `null`, which leaves the dirty check
+  /// without a baseline and keeps the restored tab marked unsaved -- the safe
+  /// direction, since claiming a file is clean when its text cannot be read
+  /// would risk dropping the user's edits.
+  Future<String?> _readStoredText(File file, bool isBoardFile) async {
+    try {
+      return await file.readAsString();
+    } catch (error) {
+      debugPrint('[editor] could not read stored text for dirty check: $error');
+      return null;
+    }
   }
 
   Future<void> restoreTabs(
@@ -641,6 +743,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       final file = File(persisted.filePath);
       final exists = await file.exists();
       if (!exists) continue;
+
+      // The on-disk text is the baseline for an unsaved restore: the buffer is
+      // seeded with the unsaved content, so without this the comparison would
+      // measure the buffer against itself and the dot would never clear.
+      final String? savedBaseline = persisted.isSaved
+          ? null
+          : await _readStoredText(file, persisted.isBoardFile == true);
 
       final controller = await ref
           .read(editorControllerMapProvider.notifier)
@@ -658,6 +767,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         isBoardFile: persisted.isBoardFile,
         boardFilePath: persisted.boardFilePath,
         isSaved: persisted.isSaved,
+        savedBaseline: savedBaseline,
       );
       if (tab != null) {
         if (!persisted.isSaved) {
@@ -816,6 +926,32 @@ Set<String> _visitOpenFilesAffectedByTransfer(
     }
   }
   return affected;
+}
+
+/// Decides whether a tab's dirty flag should change, given the text it was
+/// last saved with and its current buffer.
+///
+/// Returns the new `isSaved` value, or `null` when nothing should change.
+///
+/// The distinction that matters is between "the buffer differs from what is
+/// stored" and "some mutating API ran". Only the former means modified, which
+/// is why a version bump alone is not treated as a change: undo back to the
+/// saved text, a no-op edit, or a format that re-emits identical bytes all move
+/// the version without modifying the document.
+///
+/// A `null` [savedText] means no baseline is known -- the file could not be
+/// read back. That returns `null` rather than guessing, leaving the current
+/// flag alone; flipping a tab to dirty on a guess would show a modified dot
+/// for an untouched file, which is the bug this exists to remove.
+bool? resolveDirtyState({
+  required String? savedText,
+  required String currentText,
+  required bool isSaved,
+}) {
+  if (savedText == null) return null;
+  final isModified = savedText != currentText;
+  if (isModified == !isSaved) return null;
+  return !isModified;
 }
 
 bool _markFileTabUnsaved(TabData tab, TabDataValue value) {
