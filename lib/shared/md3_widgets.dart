@@ -306,9 +306,26 @@ class StatusBarButton extends StatelessWidget {
       },
     );
 
+    // `container: true` keeps this anchor as its own semantics node.
+    //
+    // A Tooltip is an OverlayPortal, and its overlay content is linked to the
+    // anchor by a semantics traversal-parent identifier. When two adjacent
+    // tooltip anchors get merged into a single node -- which is what
+    // IndexedSemantics does for every row of a ListView -- the second anchor's
+    // traversal-parent identifier is dropped instead of merged, leaving its
+    // overlay content as an orphan that points outside the tree. Windows then
+    // rejects the whole accessibility update and logs:
+    //   Failed to update ui::AXTree, error: N will not be in the tree and is
+    //   not the new root
+    // It is an engine-side framework bug (flutter/flutter#182444, still
+    // unfixed in the pinned engine), and `container: true` is the workaround
+    // that keeps every anchor un-mergeable. Do not "simplify" this away.
     final result = tooltip == null
         ? child
-        : Tooltip(message: tooltip!, child: child);
+        : Tooltip(
+            message: tooltip!,
+            child: Semantics(container: true, child: child),
+          );
 
     if (fixedWidth != null) {
       return SizedBox(
