@@ -856,6 +856,96 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 }
 
+/// One option button (Aa / ab / .*) in the find bar.
+///
+/// The hover fill, the active fill and the border are all painted by the same
+/// [BoxDecoration] on the same square, so no state can draw a rectangle offset
+/// from the others. The gap between neighbouring buttons comes from padding
+/// around that square rather than a margin on it.
+class _FindBarToggle extends StatefulWidget {
+  const _FindBarToggle({
+    required this.label,
+    required this.tooltip,
+    required this.active,
+    required this.foreground,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String tooltip;
+  final bool active;
+  final Color foreground;
+  final VoidCallback onPressed;
+
+  @override
+  State<_FindBarToggle> createState() => _FindBarToggleState();
+}
+
+class _FindBarToggleState extends State<_FindBarToggle> {
+  static const double _size = _EditorFindBar._buttonSize - 2;
+  static const double _radius = 5;
+
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // `container: true` prevents adjacent toolbar buttons from merging this
+    // tooltip's semantics anchor into one shared node. See
+    // flutter/flutter#182444.
+    return Tooltip(
+      message: widget.tooltip,
+      child: Semantics(
+        container: true,
+        child: Padding(
+          // Separates adjacent toggles without shrinking the painted square.
+          padding: const EdgeInsets.only(left: 2),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hovered = true),
+            onExit: (_) => setState(() => _hovered = false),
+            child: GestureDetector(
+              onTap: widget.onPressed,
+              child: Container(
+                width: _size,
+                height: _size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_radius),
+                  color: widget.active
+                      ? widget.foreground.withAlpha(36)
+                      : _hovered
+                      ? widget.foreground.withAlpha(20)
+                      : Colors.transparent,
+                  // Hover reuses the border slot so it can never paint a
+                  // second, offset rectangle next to the active one.
+                  border: Border.all(
+                    color: widget.active
+                        ? widget.foreground.withAlpha(130)
+                        : _hovered
+                        ? widget.foreground.withAlpha(90)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: widget.foreground.withAlpha(
+                      widget.active ? 255 : 150,
+                    ),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// VSCode-style floating find widget: a compact rounded panel that hovers over
 /// the top-right corner of the editor viewport instead of pushing content down.
 class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
@@ -1091,34 +1181,12 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
     required bool active,
     required VoidCallback onPressed,
   }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(5),
-        child: Container(
-          width: _buttonSize - 2,
-          height: _buttonSize - 2,
-          margin: const EdgeInsets.only(left: 2),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-            color: active ? foreground.withAlpha(36) : Colors.transparent,
-            border: Border.all(
-              color: active ? foreground.withAlpha(130) : Colors.transparent,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: foreground.withAlpha(active ? 255 : 150),
-              fontSize: 10.5,
-              fontWeight: FontWeight.w600,
-              height: 1,
-            ),
-          ),
-        ),
-      ),
+    return _FindBarToggle(
+      label: label,
+      tooltip: tooltip,
+      active: active,
+      foreground: foreground,
+      onPressed: onPressed,
     );
   }
 
