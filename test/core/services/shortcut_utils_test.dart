@@ -106,7 +106,7 @@ void main() {
         LogicalKeyboardKey.backspace,
         LogicalKeyboardKey.delete,
       ]) {
-        const original = SingleActivator(key, control: true);
+        final original = SingleActivator(key, control: true);
         final restored = stringToActivator(activatorToString(original));
         expect(restored, isNotNull, reason: 'failed for $key');
         expect(restored!.trigger, original.trigger, reason: 'failed for $key');
