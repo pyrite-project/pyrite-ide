@@ -6,7 +6,6 @@ import 'dart:math';
 import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:code_forge/code_forge/find_controller.dart';
-import 'package:code_forge/code_forge/styling.dart';
 import 'package:code_forge/code_forge/undo_redo.dart';
 import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
@@ -30,8 +29,9 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
-import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/line_comment.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 
 class EditCore extends ConsumerStatefulWidget {
@@ -552,40 +552,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
         (location['uri'] != null || location['targetUri'] != null);
   }
 
-  /// Opens [targetPath] in an editor tab, places the caret at
-  /// ([targetLine], [targetCharacter]) and scrolls the line into view.
-  Future<void> revealLspLocation(
-    BuildContext context,
-    WidgetRef ref,
-    String targetPath,
-    int? targetLine,
-    int? targetCharacter,
-  ) async {
-    if (targetLine == null || targetCharacter == null) return;
-    await ref
-        .read(tabbedViewControllerProvider.notifier)
-        .openFile(context, file: File(targetPath));
-    if (!context.mounted) return;
-    final targetController =
-        ref
-                .read(tabbedViewControllerProvider)
-                .selectedTab
-                ?.value
-                .editorController
-            as CodeForgeController?;
-    if (targetController == null) return;
-    targetController.selection = TextSelection.collapsed(
-      offset: targetController.getLineStartOffset(targetLine) + targetCharacter,
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        targetController.scrollToLine(targetLine);
-      } on StateError {
-        // The target tab may have been closed before it was mounted.
-      }
-    });
-  }
-
   /// Formats the current document via `textDocument/formatting`.
   ///
   /// When [quiet] is set (format-on-save), success feedback and
@@ -604,7 +570,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 
   /// Finds all references to the symbol at the caret (or [textOffset]) and
-  /// shows them in a navigable list dialog.
+  /// shows them in the shared jump-to-location window.
   Future<void> _findReferences(
     BuildContext context,
     WidgetRef ref, {
@@ -641,22 +607,24 @@ class _EditCoreState extends ConsumerState<EditCore> {
       return;
     }
     final symbol = symbolAtOffset(controller.text, offset);
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => _ReferencesDialog(
-        symbol: symbol,
-        locations: locations.whereType<Map>().toList(),
-        onOpen: (path, rangeStart) async {
-          Navigator.of(dialogContext).pop();
-          final start = rangeStart is Map ? rangeStart : null;
-          await revealLspLocation(
-            context,
-            ref,
-            path,
-            start == null ? null : (start['line'] as num?)?.toInt(),
-            start == null ? null : (start['character'] as num?)?.toInt(),
-          );
-        },
+    final entries = [
+      for (final location in locations.whereType<Map>())
+        ?LspLocationEntry.fromLspMap(location),
+    ];
+    await showLspLocationDialog(
+      context,
+      ref,
+      titleBuilder: (ref) =>
+          translateForWidget(ref, I18nKey.editorReferencesResultTitle)
+              .replaceAll('{symbol}', symbol.isEmpty ? '?' : symbol)
+              .replaceAll('{count}', entries.length.toString()),
+      entries: entries,
+      onOpen: (entry) => revealLspLocation(
+        context,
+        ref,
+        entry.path,
+        entry.line,
+        entry.character,
       ),
     );
   }
@@ -1182,282 +1150,6 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         width: _buttonSize,
         height: _buttonSize,
       ),
-    );
-  }
-}
-
-/// A parsed `textDocument/references` entry for [_ReferencesDialog].
-class _ReferenceLocation {
-  const _ReferenceLocation({
-    required this.path,
-    required this.rangeStart,
-    this.line,
-    this.character,
-  });
-
-  final String path;
-
-  /// Raw LSP `range.start` map, forwarded verbatim when jumping.
-  final dynamic rangeStart;
-  final int? line;
-  final int? character;
-}
-
-_ReferenceLocation? _parseReferenceLocation(Map<dynamic, dynamic> location) {
-  final uri = (location['uri'] ?? location['targetUri'])?.toString();
-  final parsed = uri == null ? null : Uri.tryParse(uri);
-  if (parsed == null || parsed.scheme != 'file') return null;
-  final range = location['range'] ?? location['targetSelectionRange'];
-  final start = range is Map ? range['start'] : null;
-  return _ReferenceLocation(
-    path: parsed.toFilePath(),
-    rangeStart: start,
-    line: start is Map ? (start['line'] as num?)?.toInt() : null,
-    character: start is Map ? (start['character'] as num?)?.toInt() : null,
-  );
-}
-
-/// Find-all-references results: a read-only editor preview (the exact same
-/// themed [CodeForge] as the main editor) on the left and the reference list
-/// on the right.
-///
-/// Single click previews the reference line's context; double click jumps to
-/// it in the real editor. The first reference is previewed by default.
-class _ReferencesDialog extends ConsumerStatefulWidget {
-  const _ReferencesDialog({
-    required this.symbol,
-    required this.locations,
-    required this.onOpen,
-  });
-
-  final String symbol;
-  final List<Map<dynamic, dynamic>> locations;
-  final Future<void> Function(String path, dynamic rangeStart) onOpen;
-
-  @override
-  ConsumerState<_ReferencesDialog> createState() => _ReferencesDialogState();
-}
-
-class _ReferencesDialogState extends ConsumerState<_ReferencesDialog> {
-  late final CodeForgeController _previewController;
-  final Map<String, String?> _contentCache = {};
-  late final List<_ReferenceLocation> _items;
-  var _selectedIndex = 0;
-  var _loadingContent = false;
-  String? _failedPath;
-
-  @override
-  void initState() {
-    super.initState();
-    _previewController = CodeForgeController();
-    _items = [
-      for (final location in widget.locations)
-        ?_parseReferenceLocation(location),
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _items.isNotEmpty) unawaited(_select(0));
-    });
-  }
-
-  @override
-  void dispose() {
-    _previewController.dispose();
-    super.dispose();
-  }
-
-  /// Returns the referenced file's content, preferring the live buffer of an
-  /// open tab (so unsaved edits preview correctly) and caching disk reads.
-  Future<String?> _loadContent(String path) async {
-    if (_contentCache.containsKey(path)) return _contentCache[path];
-    final liveBuffer = ref.read(editorControllerMapProvider)[path];
-    if (liveBuffer != null) {
-      return _contentCache[path] = liveBuffer.text;
-    }
-    try {
-      final file = File(path);
-      if (!await file.exists()) return _contentCache[path] = null;
-      return _contentCache[path] = await file.readAsString();
-    } catch (_) {
-      return _contentCache[path] = null;
-    }
-  }
-
-  Future<void> _select(int index) async {
-    if (index < 0 || index >= _items.length) return;
-    final item = _items[index];
-    setState(() {
-      _selectedIndex = index;
-      _loadingContent = true;
-    });
-    final content = await _loadContent(item.path);
-    if (!mounted) return;
-    if (content == null) {
-      setState(() {
-        _loadingContent = false;
-        _failedPath = item.path;
-      });
-      return;
-    }
-    if (_previewController.text != content) {
-      _previewController.text = content;
-    }
-    // Highlight the referenced line and place the caret there.
-    _previewController.clearLineDecorations();
-    final targetLine = item.line ?? 0;
-    try {
-      _previewController.addLineDecoration(
-        LineDecoration(
-          id: 'references-highlight',
-          startLine: targetLine,
-          endLine: targetLine,
-          type: LineDecorationType.background,
-          color: Theme.of(context).colorScheme.primary.withAlpha(45),
-        ),
-      );
-    } catch (_) {}
-    var offset = _previewController.getLineStartOffset(targetLine);
-    offset = (offset + (item.character ?? 0))
-        .clamp(0, _previewController.text.length)
-        .toInt();
-    _previewController.selection = TextSelection.collapsed(offset: offset);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        _previewController.scrollToLine(targetLine);
-      } on StateError {
-        // Preview not mounted yet.
-      }
-    });
-    setState(() {
-      _loadingContent = false;
-      _failedPath = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.sizeOf(context);
-    // Portrait stacks preview above the list; landscape puts them side by side.
-    final isPortrait = screenSize.height > screenSize.width;
-    return AlertDialog(
-      title: Text(
-        translateForWidget(ref, I18nKey.editorReferencesResultTitle)
-            .replaceAll('{symbol}', widget.symbol.isEmpty ? '?' : widget.symbol)
-            .replaceAll('{count}', widget.locations.length.toString()),
-      ),
-      content: SizedBox(
-        width: min(920.0, screenSize.width * 0.92),
-        height: min(isPortrait ? 620.0 : 540.0, screenSize.height * 0.8),
-        child: _items.isEmpty
-            ? Center(
-                child: Text(
-                  translateForWidget(ref, I18nKey.editorReferencesEmpty),
-                ),
-              )
-            : isPortrait
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _buildPreview(context)),
-                  const Divider(height: 24),
-                  SizedBox(height: 220, child: _buildReferenceList(context)),
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _buildPreview(context)),
-                  const VerticalDivider(width: 20),
-                  SizedBox(width: 300, child: _buildReferenceList(context)),
-                ],
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => context.pop(),
-          child: Text(translateForWidget(ref, I18nKey.commonCancel)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPreview(BuildContext context) {
-    final item = _items[_selectedIndex.clamp(0, _items.length - 1)];
-    final failedToLoad = _failedPath == item.path;
-    return Container(
-      // Clip the editor to the rounded shape; the border is drawn via
-      // foregroundDecoration so it paints ON TOP of the opaque editor
-      // background. A `decoration` border would be painted first and then
-      // covered by the child on straight edges, leaving only the corner
-      // arcs visible — which looked like a notched corner.
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-      child: failedToLoad
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  translateForWidget(
-                    ref,
-                    I18nKey.editorReferencesPreviewUnavailable,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          : Stack(
-              children: [
-                buildThemedCodeForge(
-                  context,
-                  ref,
-                  controller: _previewController,
-                  filePath: item.path,
-                  rebuildKey: 'references-preview:${item.path}',
-                  readOnly: true,
-                ),
-                if (_loadingContent)
-                  const Center(child: CircularProgressIndicator()),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildReferenceList(BuildContext context) {
-    return ListView.builder(
-      itemCount: _items.length,
-      itemBuilder: (context, index) {
-        final item = _items[index];
-        final lineLabel = item.line == null ? '?' : '${item.line! + 1}';
-        final charLabel = item.character == null ? '?' : '${item.character}';
-        return GestureDetector(
-          onTap: () => unawaited(_select(index)),
-          // Double click closes the dialog and reveals the reference in the
-          // real editor ([widget.onOpen] pops the dialog first).
-          onDoubleTap: () =>
-              unawaited(widget.onOpen(item.path, item.rangeStart)),
-          child: ListTile(
-            dense: true,
-            selected: index == _selectedIndex,
-            selectedTileColor: Theme.of(
-              context,
-            ).colorScheme.primary.withAlpha(30),
-            leading: const Icon(Icons.description_outlined, size: 18),
-            title: Text(
-              item.path.split(RegExp(r'[\\/]')).last,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              'line $lineLabel:$charLabel',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        );
-      },
     );
   }
 }
