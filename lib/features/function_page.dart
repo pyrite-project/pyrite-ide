@@ -42,6 +42,7 @@ import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -2207,7 +2208,9 @@ class _EditorStateLabel extends ConsumerWidget {
         }
 
         final position = _positionText(ref, controller);
-        final problems = errors > 0 ? _problemText(ref, errors, warnings) : null;
+        final problems = errors > 0
+            ? _problemText(ref, errors, warnings)
+            : null;
 
         return Padding(
           padding: const EdgeInsetsDirectional.only(start: 4, end: 6),
@@ -2217,22 +2220,14 @@ class _EditorStateLabel extends ConsumerWidget {
               if (position.isNotEmpty) Text(position, style: textStyle),
               if (problems != null) ...[
                 const SizedBox(width: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: compact ? 14 : 16,
-                      color: scheme.error,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      problems,
-                      style:
-                          textStyle?.copyWith(color: scheme.error) ??
-                          textStyle,
-                    ),
-                  ],
+                // Clicking the error/warning count opens the shared jump
+                // window listing every diagnostic of this file.
+                _ProblemButton(
+                  text: problems,
+                  textStyle: textStyle,
+                  iconSize: compact ? 14 : 16,
+                  onPressed: () =>
+                      showEditorDiagnosticsPicker(context, ref, controller),
                 ),
               ],
             ],
@@ -2283,4 +2278,132 @@ class _EditorStateLabel extends ConsumerWidget {
       key,
     ).replaceAll('{errors}', '$errors').replaceAll('{warnings}', '$warnings');
   }
+}
+
+/// Clickable form of the status bar's error/warning count.
+///
+/// A [TextButton] rather than an [InkWell] wrapped around the readout so the
+/// whole segment is one real hover/focus target. The child is still a plain
+/// [Row] of an icon and a [Text], so the segment renders and measures
+/// exactly like the previous non-interactive readout.
+class _ProblemButton extends StatelessWidget {
+  const _ProblemButton({
+    required this.text,
+    required this.textStyle,
+    required this.onPressed,
+    this.iconSize = 16,
+  });
+
+  final String text;
+  final TextStyle? textStyle;
+  final VoidCallback onPressed;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: scheme.error,
+        minimumSize: const Size(0, 32),
+        // Same pill shape, height and padding as [StatusBarButton], so the
+        // error count reads as one more segment of the status bar instead of
+        // a differently shaped chip.
+        padding: const EdgeInsetsDirectional.only(start: 10, end: 12),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: context.effectiveRadius),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, size: iconSize, color: scheme.error),
+          const SizedBox(width: 3),
+          Text(
+            text,
+            style: textStyle?.copyWith(color: scheme.error) ?? textStyle,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens the shared jump window over every diagnostic reported for
+/// [controller]'s file, so the status bar's error count navigates exactly
+/// like find-references does.
+///
+/// The file comes from the controller rather than an argument so the window
+/// always describes the file whose count was just clicked.
+Future<void> showEditorDiagnosticsPicker(
+  BuildContext context,
+  WidgetRef ref,
+  CodeForgeController controller,
+) async {
+  final filePath = controller.openedFile;
+  if (filePath == null) return;
+  // The same two severities the status bar counts. Information and Hint are
+  // noise for a board script, and leaving them out keeps the list and the
+  // count from ever disagreeing.
+  const errorSeverity = 1;
+  const warningSeverity = 2;
+  final scheme = Theme.of(context).colorScheme;
+  final entries = <LspLocationEntry>[];
+  for (final diagnostic in controller.diagnostics) {
+    if (diagnostic.severity != errorSeverity &&
+        diagnostic.severity != warningSeverity) {
+      continue;
+    }
+    final start = diagnostic.range['start'];
+    if (start is! Map) continue;
+    final line = (start['line'] as num?)?.toInt();
+    final character = (start['character'] as num?)?.toInt();
+    final isError = diagnostic.severity == errorSeverity;
+    entries.add(
+      LspLocationEntry(
+        path: filePath,
+        line: line,
+        character: character,
+        // The diagnostic message is the useful label here: every row is the
+        // same file, so repeating the file name as the title would waste the
+        // one line that actually says something.
+        title: diagnostic.message,
+        subtitle:
+            '${filePath.split(RegExp(r'[\\/]')).last}  '
+            '${line == null ? '?' : line + 1}:${character ?? '?'}',
+        icon: isError ? Icons.error_outline : Icons.warning_amber_rounded,
+        iconColor: isError ? scheme.error : Colors.yellow.shade700,
+        severityRank: isError ? 0 : 1,
+      ),
+    );
+  }
+  if (entries.isEmpty) {
+    ref
+        .read(ideMessageProvider.notifier)
+        .show(translateForWidget(ref, I18nKey.editorDiagnosticsEmpty));
+    return;
+  }
+  // Errors first, then in document order, so the list reads like the file.
+  entries.sort((a, b) {
+    final bySeverity = a.severityRank.compareTo(b.severityRank);
+    if (bySeverity != 0) return bySeverity;
+    return (a.line ?? 0).compareTo(b.line ?? 0);
+  });
+  await showLspLocationDialog(
+    context,
+    ref,
+    titleBuilder: (ref) => translateForWidget(
+      ref,
+      I18nKey.editorDiagnosticsTitle,
+    ).replaceAll('{count}', entries.length.toString()),
+    entries: entries,
+    emptyKey: I18nKey.editorDiagnosticsEmpty,
+    onOpen: (entry) => revealLspLocation(
+      context,
+      ref,
+      entry.path,
+      entry.line,
+      entry.character,
+    ),
+  );
 }
