@@ -95,7 +95,10 @@ void main() {
     const anchorY = 150.0;
     const popupHeight = 60.0;
 
-    late Offset popupTopLeft;
+    // Measure after the frame instead of during build: a Builder runs before
+    // its own child render object exists, so reading it there threw a null
+    // check error and left the variable unassigned.
+    final popupKey = GlobalKey();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -117,15 +120,7 @@ void main() {
                           left: 0,
                           width: 200,
                           height: popupHeight,
-                          child: Builder(
-                            builder: (innerContext) {
-                              popupTopLeft =
-                                  innerContext.findRenderObject()!
-                                      as RenderBox
-                                      .localToGlobal(Offset.zero);
-                              return const ColoredBox(color: Colors.white);
-                            },
-                          ),
+                          child: ColoredBox(key: popupKey, color: Colors.white),
                         );
                       },
                     ),
@@ -141,7 +136,13 @@ void main() {
 
     // The popup's bottom edge must sit `bottomGap` above the anchor, measured
     // inside the 200px-tall target - not inside the 600px-tall test window.
-    expect(popupTopLeft.dy, targetOrigin.dy + (anchorY - bottomGap - popupHeight));
+    final popupTopLeft =
+        (popupKey.currentContext!.findRenderObject()! as RenderBox)
+            .localToGlobal(Offset.zero);
+    expect(
+      popupTopLeft.dy,
+      targetOrigin.dy + (anchorY - bottomGap - popupHeight),
+    );
   });
 
   test('the hover popup keeps a tight gap to the hovered line', () {
