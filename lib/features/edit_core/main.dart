@@ -963,6 +963,18 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   static const double _buttonSize = 28;
   static const double _radius = 8;
 
+  /// Minimum width of the match counter, used while it shows a result.
+  static const double _matchCounterMinWidth = 34;
+
+  /// Horizontal breathing room around the match counter text.
+  static const double _matchCounterPadding = 6;
+
+  /// Leading offset of both input rows: the leading button plus its gap, the
+  /// leading icon and the gap that separates it from the input. The replace
+  /// row has no leading button, so it pads that slot instead, which keeps both
+  /// inputs starting at the same x position.
+  static const double _leadingWidth = _buttonSize + 4 + 16 + 6;
+
   @override
   Size get preferredSize => Size.fromHeight(controller.isReplaceMode ? 80 : 44);
 
@@ -1006,109 +1018,132 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: _rowHeight,
-                child: Row(
-                  children: [
-                    _iconButton(
-                      icon: controller.isReplaceMode
-                          ? Icons.expand_more
-                          : Icons.chevron_right,
-                      tooltip: tr(
-                        controller.isReplaceMode
-                            ? I18nKey.editorFindHideReplace
-                            : I18nKey.editorFindShowReplace,
-                      ),
-                      onPressed: controller.toggleReplaceMode,
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.search, size: 16, color: foreground),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _textField(
-                        controller: controller.findInputController,
-                        focusNode: controller.findInputFocusNode,
-                        hintText: tr(I18nKey.editorFindHint),
-                        onSubmitted: (_) => _shiftHeld
-                            ? controller.previous()
-                            : controller.next(),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    _matchCounter(tr),
-                    _toggle(
-                      label: 'Aa',
-                      tooltip: tr(I18nKey.editorFindCaseSensitive),
-                      active: controller.caseSensitive,
-                      onPressed: controller.toggleCaseSensitive,
-                    ),
-                    _toggle(
-                      label: 'ab',
-                      tooltip: tr(I18nKey.editorFindWholeWord),
-                      active: controller.matchWholeWord,
-                      onPressed: controller.toggleMatchWholeWord,
-                    ),
-                    _toggle(
-                      label: '.*',
-                      tooltip: tr(I18nKey.editorFindRegex),
-                      active: controller.isRegex,
-                      onPressed: controller.toggleRegex,
-                    ),
-                    _navButton(
-                      icon: Icons.keyboard_arrow_up,
-                      tooltip: tr(I18nKey.editorFindPrevious),
-                      onPressed: controller.previous,
-                    ),
-                    _navButton(
-                      icon: Icons.keyboard_arrow_down,
-                      tooltip: tr(I18nKey.editorFindNext),
-                      onPressed: controller.next,
-                    ),
-                    _navButton(
-                      icon: Icons.close,
-                      tooltip: tr(I18nKey.editorFindClose),
-                      onPressed: () => controller.isActive = false,
-                    ),
-                  ],
-                ),
-              ),
-              if (controller.isReplaceMode)
-                SizedBox(
-                  height: _rowHeight,
-                  child: Row(
-                    children: [
-                      Icon(Icons.find_replace, size: 16, color: foreground),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _textField(
-                          controller: controller.replaceInputController,
-                          focusNode: controller.replaceInputFocusNode,
-                          hintText: tr(I18nKey.editorReplaceHint),
-                          onSubmitted: (_) => controller.replace(),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final counter = _matchCounter(tr);
+              // Both inputs get the same width so their left and right edges
+              // line up, independent of how wide the trailing buttons are. The
+              // counter only reserves the width its text needs, so both inputs
+              // grow into the space it leaves free.
+              final fieldWidth = max(
+                0.0,
+                constraints.maxWidth -
+                    _leadingWidth -
+                    (6 + counter.width + _buttonSize * 6),
+              );
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: _rowHeight,
+                    child: Row(
+                      children: [
+                        _iconButton(
+                          icon: controller.isReplaceMode
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          tooltip: tr(
+                            controller.isReplaceMode
+                                ? I18nKey.editorFindHideReplace
+                                : I18nKey.editorFindShowReplace,
+                          ),
+                          onPressed: controller.toggleReplaceMode,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      _iconButton(
-                        icon: Icons.check,
-                        tooltip: tr(I18nKey.editorReplaceApply),
-                        onPressed: controller.matchCount > 0
-                            ? controller.replace
-                            : null,
-                      ),
-                      _iconButton(
-                        icon: Icons.done_all,
-                        tooltip: tr(I18nKey.editorReplaceAll),
-                        onPressed: controller.matchCount > 0
-                            ? controller.replaceAll
-                            : null,
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Icon(Icons.search, size: 16, color: foreground),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: fieldWidth,
+                          child: _textField(
+                            controller: controller.findInputController,
+                            focusNode: controller.findInputFocusNode,
+                            hintText: tr(I18nKey.editorFindHint),
+                            onSubmitted: (_) => _shiftHeld
+                                ? controller.previous()
+                                : controller.next(),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        counter.widget,
+                        _toggle(
+                          label: 'Aa',
+                          tooltip: tr(I18nKey.editorFindCaseSensitive),
+                          active: controller.caseSensitive,
+                          onPressed: controller.toggleCaseSensitive,
+                        ),
+                        _toggle(
+                          label: 'ab',
+                          tooltip: tr(I18nKey.editorFindWholeWord),
+                          active: controller.matchWholeWord,
+                          onPressed: controller.toggleMatchWholeWord,
+                        ),
+                        _toggle(
+                          label: '.*',
+                          tooltip: tr(I18nKey.editorFindRegex),
+                          active: controller.isRegex,
+                          onPressed: controller.toggleRegex,
+                        ),
+                        _navButton(
+                          icon: Icons.keyboard_arrow_up,
+                          tooltip: tr(I18nKey.editorFindPrevious),
+                          onPressed: controller.previous,
+                        ),
+                        _navButton(
+                          icon: Icons.keyboard_arrow_down,
+                          tooltip: tr(I18nKey.editorFindNext),
+                          onPressed: controller.next,
+                        ),
+                        _navButton(
+                          icon: Icons.close,
+                          tooltip: tr(I18nKey.editorFindClose),
+                          onPressed: () => controller.isActive = false,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+                  if (controller.isReplaceMode)
+                    SizedBox(
+                      height: _rowHeight,
+                      child: Row(
+                        children: [
+                          // Pads the slot the find row's leading button uses so
+                          // the two inputs share the same left edge.
+                          const SizedBox(width: _buttonSize + 4),
+                          Icon(Icons.find_replace, size: 16, color: foreground),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: fieldWidth,
+                            child: _textField(
+                              controller: controller.replaceInputController,
+                              focusNode: controller.replaceInputFocusNode,
+                              hintText: tr(I18nKey.editorReplaceHint),
+                              onSubmitted: (_) => controller.replace(),
+                            ),
+                          ),
+                          // The replace row has fewer trailing buttons, so the
+                          // leftover width is left blank.
+                          const Spacer(),
+                          const SizedBox(width: 6),
+                          _iconButton(
+                            icon: Icons.check,
+                            tooltip: tr(I18nKey.editorReplaceApply),
+                            onPressed: controller.matchCount > 0
+                                ? controller.replace
+                                : null,
+                          ),
+                          _iconButton(
+                            icon: Icons.done_all,
+                            tooltip: tr(I18nKey.editorReplaceAll),
+                            onPressed: controller.matchCount > 0
+                                ? controller.replaceAll
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -1150,7 +1185,9 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _matchCounter(String Function(I18nKey) tr) {
+  /// Builds the match counter together with the width it occupies so the
+  /// caller can size the find input against it.
+  ({double width, Widget widget}) _matchCounter(String Function(I18nKey) tr) {
     final hasQuery = controller.findInputController.text.isNotEmpty;
     final noResults = hasQuery && controller.matchCount == 0;
     final text = !hasQuery
@@ -1158,18 +1195,28 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         : noResults
         ? tr(I18nKey.editorFindNoResults)
         : '${controller.currentMatchIndex + 1}/${controller.matchCount}';
-    return Container(
-      constraints: const BoxConstraints(minWidth: 44),
-      alignment: Alignment.center,
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: noResults
-              ? Colors.redAccent.withAlpha(220)
-              : foreground.withAlpha(200),
-          fontSize: 11,
-        ),
+    final color = noResults
+        ? Colors.redAccent.withAlpha(220)
+        : foreground.withAlpha(200);
+    final textStyle = TextStyle(color: color, fontSize: 11);
+    if (text.isEmpty) {
+      return (width: 0, widget: const SizedBox.shrink());
+    }
+    // Measure the label so the counter never reserves more room than it uses.
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final width = max(
+      _matchCounterMinWidth,
+      painter.width + _matchCounterPadding,
+    );
+    return (
+      width: width,
+      widget: Container(
+        width: width,
+        alignment: Alignment.center,
+        child: Text(text, textAlign: TextAlign.center, style: textStyle),
       ),
     );
   }
