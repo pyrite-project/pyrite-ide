@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pyrite_ide/features/plugin_view/data/visible_range_tracker.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// Virtualized flat list for plugin views.
 ///
@@ -288,7 +289,7 @@ class PluginVirtualListState extends State<PluginVirtualList> {
         color: Theme.of(
           context,
         ).colorScheme.onSurfaceVariant.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(2),
+        borderRadius: context.innerCorners,
       ),
       child: const SizedBox(height: 8, width: double.infinity),
     ),

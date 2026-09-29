@@ -17,6 +17,7 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 final replInputControllerProvider = Provider<ReplInputController>((ref) {
   final controller = ReplInputController();
@@ -1236,7 +1237,7 @@ class _ReplSignaturePopup extends StatelessWidget {
             key: const ValueKey('repl-signature-popup'),
             elevation: 6,
             color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: context.outerCorners,
             clipBehavior: Clip.antiAlias,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1297,7 +1298,7 @@ class _ReplCompletionPopup extends StatelessWidget {
             key: const ValueKey('repl-completion-popup'),
             elevation: 8,
             color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: context.outerCorners,
             clipBehavior: Clip.antiAlias,
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 4),

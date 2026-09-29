@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 class EditorSettings extends ConsumerWidget {
   const EditorSettings({super.key});
@@ -382,7 +383,7 @@ class EditorSettings extends ConsumerWidget {
                   height: 32,
                   decoration: BoxDecoration(
                     color: bgColor,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: context.innerCorners,
                     border: Border.all(
                       color: Theme.of(context).colorScheme.outlineVariant,
                     ),

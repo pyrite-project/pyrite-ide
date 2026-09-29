@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
+/// Legacy alias for the shared corner radius scale, which now lives in
+/// `core/constants/corner_radius.dart`.
+///
+/// Prefer [outerCorners] / [innerCorners] for new code; this name is kept so
+/// existing call sites keep working.
 extension BuildContextRadius on BuildContext {
-  BorderRadius get effectiveRadius {
-    final shape = Theme.of(this).cardTheme.shape;
-    if (shape is RoundedRectangleBorder) {
-      return shape.borderRadius.resolve(TextDirection.ltr);
-    }
-    return BorderRadius.circular(12);
-  }
+  /// The shared outer corner radius for top-level surfaces.
+  BorderRadius get effectiveRadius => outerCorners;
 }
 
 class PaneHeader extends ConsumerWidget {

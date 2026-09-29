@@ -15,6 +15,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// One jumpable place in a file: a file path plus an optional LSP
 /// line/character position inside it.
@@ -386,9 +387,9 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
       // covered by the child on straight edges, leaving only the corner
       // arcs visible - which looked like a notched corner.
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(borderRadius: context.outerCorners),
       foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: context.outerCorners,
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: failedToLoad

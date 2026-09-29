@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 class WelcomeOobePage extends ConsumerStatefulWidget {
@@ -180,7 +181,7 @@ class _AndroidPermissionPanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: context.outerCorners,
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),

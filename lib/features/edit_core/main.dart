@@ -33,6 +33,7 @@ import 'package:pyrite_ide/features/edit_core/line_comment.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -883,7 +884,10 @@ class _FindBarToggle extends StatefulWidget {
 
 class _FindBarToggleState extends State<_FindBarToggle> {
   static const double _size = _EditorFindBar._buttonSize - 2;
-  static const double _radius = 5;
+
+  /// Sibling toggles share the find bar's inset, so every button in the row has
+  /// the same corner radius.
+  static const double _inset = _EditorFindBar._inset;
 
   bool _hovered = false;
 
@@ -910,7 +914,7 @@ class _FindBarToggleState extends State<_FindBarToggle> {
                 height: _size,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(_radius),
+                  borderRadius: context.nestedCorners(_inset),
                   color: widget.active
                       ? widget.foreground.withAlpha(36)
                       : _hovered
@@ -961,7 +965,11 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
 
   static const double _rowHeight = 32;
   static const double _buttonSize = 28;
-  static const double _radius = 8;
+
+  /// Horizontal inset between the find bar surface and its children. Nested
+  /// surfaces derive their radius from this so their arcs stay concentric
+  /// with the bar.
+  static const double _inset = 8;
 
   /// Minimum width of the match counter, used while it shows a result.
   static const double _matchCounterMinWidth = 34;
@@ -1013,11 +1021,14 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         shadowColor: Colors.black.withAlpha(90),
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_radius),
+          borderRadius: context.outerCorners,
           side: BorderSide(color: foreground.withAlpha(38)),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(
+            horizontal: _EditorFindBar._inset,
+            vertical: 6,
+          ),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final counter = _matchCounter(tr);
@@ -1055,6 +1066,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                         SizedBox(
                           width: fieldWidth,
                           child: _textField(
+                            context,
                             controller: controller.findInputController,
                             focusNode: controller.findInputFocusNode,
                             hintText: tr(I18nKey.editorFindHint),
@@ -1114,6 +1126,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                           SizedBox(
                             width: fieldWidth,
                             child: _textField(
+                              context,
                               controller: controller.replaceInputController,
                               focusNode: controller.replaceInputFocusNode,
                               hintText: tr(I18nKey.editorReplaceHint),
@@ -1152,7 +1165,8 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
 
   static bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
-  Widget _textField({
+  Widget _textField(
+    BuildContext context, {
     required TextEditingController controller,
     required FocusNode focusNode,
     required String hintText,
@@ -1174,11 +1188,11 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         hintStyle: TextStyle(color: foreground.withAlpha(110), fontSize: 13),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: context.nestedCorners(_EditorFindBar._inset),
           borderSide: BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: context.nestedCorners(_EditorFindBar._inset),
           borderSide: BorderSide(color: foreground.withAlpha(160)),
         ),
       ),
@@ -1528,7 +1542,7 @@ class _EditorContextMenu extends ConsumerWidget {
     return Material(
       elevation: 8,
       color: colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: context.outerCorners,
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(

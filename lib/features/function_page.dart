@@ -46,6 +46,7 @@ import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
@@ -770,7 +771,7 @@ Widget _selectedRailIcon(BuildContext context, Widget icon) {
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
       color: scheme.secondaryContainer,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: context.innerCorners,
     ),
     child: icon,
   );
