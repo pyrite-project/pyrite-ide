@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
@@ -721,7 +720,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// without a baseline and keeps the restored tab marked unsaved -- the safe
   /// direction, since claiming a file is clean when its text cannot be read
   /// would risk dropping the user's edits.
-  Future<String?> _readStoredText(File file, bool isBoardFile) async {
+  Future<String?> _readStoredText(File file) async {
     try {
       return await file.readAsString();
     } catch (error) {
@@ -749,7 +748,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       // measure the buffer against itself and the dot would never clear.
       final String? savedBaseline = persisted.isSaved
           ? null
-          : await _readStoredText(file, persisted.isBoardFile == true);
+          : await _readStoredText(file);
 
       final controller = await ref
           .read(editorControllerMapProvider.notifier)

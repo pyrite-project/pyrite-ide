@@ -458,12 +458,12 @@ class _EditCoreState extends ConsumerState<EditCore> {
   void _addCursorAtOffset(CodeForgeController controller, int offset) {
     if (controller.readOnly) return;
     final safeOffset = offset.clamp(0, controller.length).toInt();
-    final line = controller.lineCount == 0
-        ? 0
-        : controller.getLineAtOffset(safeOffset);
-    final column = controller.lineCount == 0
-        ? 0
-        : safeOffset - controller.getLineStartOffset(line);
+    // An empty document has no line to query, so fall through with line 0.
+    final hasLines = controller.lineCount > 0;
+    final line = hasLines ? controller.getLineAtOffset(safeOffset) : 0;
+    final column = hasLines
+        ? safeOffset - controller.getLineStartOffset(line)
+        : 0;
     controller.addMultiCursor(line, column);
   }
 
@@ -977,11 +977,28 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   /// Horizontal breathing room around the match counter text.
   static const double _matchCounterPadding = 6;
 
+  /// Size of the leading search/replace icon in both rows.
+  static const double _leadingIconSize = 16;
+
+  /// Gap between the leading button and the leading icon.
+  static const double _gapAfterLeadingButton = 4;
+
+  /// Gap between the leading icon and the input, and between the input and
+  /// whatever follows it.
+  static const double _gapAroundField = 6;
+
   /// Leading offset of both input rows: the leading button plus its gap, the
   /// leading icon and the gap that separates it from the input. The replace
   /// row has no leading button, so it pads that slot instead, which keeps both
   /// inputs starting at the same x position.
-  static const double _leadingWidth = _buttonSize + 4 + 16 + 6;
+  static const double _leadingWidth =
+      _buttonSize + _gapAfterLeadingButton + _leadingIconSize + _gapAroundField;
+
+  /// Width of everything between the find input and the right edge except the
+  /// match counter: the gap in front of it plus the six trailing buttons
+  /// (three option toggles and three nav buttons). The counter's measured
+  /// width is added at build time.
+  static const double _trailingWidth = _gapAroundField + _buttonSize * 6;
 
   @override
   Size get preferredSize => Size.fromHeight(controller.isReplaceMode ? 80 : 44);
@@ -1040,7 +1057,8 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                 0.0,
                 constraints.maxWidth -
                     _leadingWidth -
-                    (6 + counter.width + _buttonSize * 6),
+                    counter.width -
+                    _trailingWidth,
               );
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1060,9 +1078,13 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                           ),
                           onPressed: controller.toggleReplaceMode,
                         ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.search, size: 16, color: foreground),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: _gapAfterLeadingButton),
+                        Icon(
+                          Icons.search,
+                          size: _leadingIconSize,
+                          color: foreground,
+                        ),
+                        const SizedBox(width: _gapAroundField),
                         SizedBox(
                           width: fieldWidth,
                           child: _textField(
@@ -1075,7 +1097,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                                 : controller.next(),
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: _gapAroundField),
                         counter.widget,
                         _toggle(
                           label: 'Aa',
@@ -1120,9 +1142,15 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                         children: [
                           // Pads the slot the find row's leading button uses so
                           // the two inputs share the same left edge.
-                          const SizedBox(width: _buttonSize + 4),
-                          Icon(Icons.find_replace, size: 16, color: foreground),
-                          const SizedBox(width: 6),
+                          const SizedBox(
+                            width: _buttonSize + _gapAfterLeadingButton,
+                          ),
+                          Icon(
+                            Icons.find_replace,
+                            size: _leadingIconSize,
+                            color: foreground,
+                          ),
+                          const SizedBox(width: _gapAroundField),
                           SizedBox(
                             width: fieldWidth,
                             child: _textField(
@@ -1136,7 +1164,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                           // The replace row has fewer trailing buttons, so the
                           // leftover width is left blank.
                           const Spacer(),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: _gapAroundField),
                           _iconButton(
                             icon: Icons.check,
                             tooltip: tr(I18nKey.editorReplaceApply),

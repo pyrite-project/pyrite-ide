@@ -36,19 +36,16 @@ bool isZubanLanguageServer({
   required String stdioArgs,
 }) {
   final executable = stdioExecutable.trim();
-  if (executable.isNotEmpty) {
-    final name = path.basename(executable).toLowerCase();
-    if (name == 'zuban' || name == 'zuban.exe') return true;
-  }
+  if (executable.isNotEmpty && _isZubanBinaryName(executable)) return true;
   // Covers wrappers such as `python -m zuban` and `uvx zuban`.
-  return stdioArgs.split(RegExp(r'\s+')).any((token) {
-    final normalized = token.toLowerCase();
-    if (normalized.isEmpty) return false;
-    if (normalized == 'zuban' || normalized == 'zuban.exe') return true;
-    // An explicit path to the binary, e.g. `C:/tools/zuban.exe`.
-    final base = path.basename(normalized);
-    return base == 'zuban' || base == 'zuban.exe';
-  });
+  return stdioArgs.split(RegExp(r'\s+')).any(_isZubanBinaryName);
+}
+
+/// Whether [name] is the Zuban binary, either bare or at the end of a path
+/// such as `C:/tools/zuban.exe`.
+bool _isZubanBinaryName(String name) {
+  final base = path.basename(name.trim().toLowerCase());
+  return base == 'zuban' || base == 'zuban.exe';
 }
 
 LspStubsConfig buildLspStubsConfig(

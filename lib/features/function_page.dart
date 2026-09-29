@@ -2157,6 +2157,14 @@ class MobileNavigationDrawerButton extends ConsumerWidget {
   }
 }
 
+/// LSP `DiagnosticSeverity` values the status bar counts and the diagnostic
+/// picker lists. Information and Hint are intentionally left out: for a board
+/// script they are noise, and counting them would make the number look
+/// alarming for correct code. Sharing one pair of constants is what keeps the
+/// status bar count and the picker list from ever disagreeing.
+const int _lspSeverityError = 1;
+const int _lspSeverityWarning = 2;
+
 /// Non-interactive trailing status bar segment: caret position, selection size
 /// and the current file's LSP error/warning counts.
 ///
@@ -2181,12 +2189,6 @@ class _EditorStateLabel extends ConsumerWidget {
   final CodeForgeController controller;
   final bool compact;
 
-  /// LSP `DiagnosticSeverity` values that matter here. Information and Hint
-  /// are intentionally not counted: for a board script they are noise, and
-  /// counting them would make the number look alarming for correct code.
-  static const int _severityError = 1;
-  static const int _severityWarning = 2;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListenableBuilder(
@@ -2201,9 +2203,9 @@ class _EditorStateLabel extends ConsumerWidget {
         var errors = 0;
         var warnings = 0;
         for (final diagnostic in controller.diagnostics) {
-          if (diagnostic.severity == _severityError) {
+          if (diagnostic.severity == _lspSeverityError) {
             errors++;
-          } else if (diagnostic.severity == _severityWarning) {
+          } else if (diagnostic.severity == _lspSeverityWarning) {
             warnings++;
           }
         }
@@ -2247,14 +2249,14 @@ class _EditorStateLabel extends ConsumerWidget {
       0,
       controller.length,
     );
-    final line = controller.lineCount == 0
-        ? 0
-        : controller.getLineAtOffset(offset);
     // Columns are 1-based and counted in characters, matching the LSP and
-    // matching what a board traceback points at.
-    final column = controller.lineCount == 0
-        ? offset + 1
-        : offset - controller.getLineStartOffset(line) + 1;
+    // matching what a board traceback points at. An empty document has no
+    // line to query, so fall through with column 1.
+    final hasLines = controller.lineCount > 0;
+    final line = hasLines ? controller.getLineAtOffset(offset) : 0;
+    final column = hasLines
+        ? offset - controller.getLineStartOffset(line) + 1
+        : offset + 1;
     final caret = translateForWidget(
       ref,
       I18nKey.statusCursorPosition,
@@ -2270,8 +2272,8 @@ class _EditorStateLabel extends ConsumerWidget {
 
   String _problemText(WidgetRef ref, int errors, int warnings) {
     final I18nKey key = switch ((errors, warnings)) {
-      (final e, 0) => I18nKey.statusProblemsErrorsOnly,
-      (0, final w) => I18nKey.statusProblemsWarningsOnly,
+      (_, 0) => I18nKey.statusProblemsErrorsOnly,
+      (0, _) => I18nKey.statusProblemsWarningsOnly,
       _ => I18nKey.statusProblems,
     };
     return translateForWidget(
@@ -2320,10 +2322,7 @@ class _ProblemButton extends StatelessWidget {
         children: [
           Icon(Icons.error_outline, size: iconSize, color: scheme.error),
           const SizedBox(width: 3),
-          Text(
-            text,
-            style: textStyle?.copyWith(color: scheme.error) ?? textStyle,
-          ),
+          Text(text, style: textStyle?.copyWith(color: scheme.error)),
         ],
       ),
     );
@@ -2343,35 +2342,26 @@ Future<void> showEditorDiagnosticsPicker(
 ) async {
   final filePath = controller.openedFile;
   if (filePath == null) return;
-  // The same two severities the status bar counts. Information and Hint are
-  // noise for a board script, and leaving them out keeps the list and the
-  // count from ever disagreeing.
-  const errorSeverity = 1;
-  const warningSeverity = 2;
   final scheme = Theme.of(context).colorScheme;
   final entries = <LspLocationEntry>[];
   for (final diagnostic in controller.diagnostics) {
-    if (diagnostic.severity != errorSeverity &&
-        diagnostic.severity != warningSeverity) {
+    if (diagnostic.severity != _lspSeverityError &&
+        diagnostic.severity != _lspSeverityWarning) {
       continue;
     }
     final start = diagnostic.range['start'];
     if (start is! Map) continue;
-    final line = (start['line'] as num?)?.toInt();
-    final character = (start['character'] as num?)?.toInt();
-    final isError = diagnostic.severity == errorSeverity;
+    final isError = diagnostic.severity == _lspSeverityError;
     entries.add(
       LspLocationEntry(
         path: filePath,
-        line: line,
-        character: character,
+        line: (start['line'] as num?)?.toInt(),
+        character: (start['character'] as num?)?.toInt(),
         // The diagnostic message is the useful label here: every row is the
         // same file, so repeating the file name as the title would waste the
-        // one line that actually says something.
+        // one line that actually says something. The subtitle falls back to
+        // the dialog's default "file line:column" rendering.
         title: diagnostic.message,
-        subtitle:
-            '${filePath.split(RegExp(r'[\\/]')).last}  '
-            '${line == null ? '?' : line + 1}:${character ?? '?'}',
         icon: isError ? Icons.error_outline : Icons.warning_amber_rounded,
         iconColor: isError ? scheme.error : Colors.yellow.shade700,
         severityRank: isError ? 0 : 1,

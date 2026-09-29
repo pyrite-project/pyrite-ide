@@ -271,8 +271,9 @@ class PersistenceManager {
         selectedIndex >= 0 &&
         selectedIndex < tabController.tabs.length) {
       final selectedValue = tabController.tabs[selectedIndex].value;
-      if (selectedValue is TabDataValue)
+      if (selectedValue is TabDataValue) {
         selectedTabPath = selectedValue.filePath;
+      }
     }
     await tabsPersistence.save(
       TabsPersistedData(

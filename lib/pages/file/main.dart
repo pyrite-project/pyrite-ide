@@ -1430,10 +1430,9 @@ class ProjectFiles extends ConsumerWidget {
                         if (!context.mounted) return;
                         showIdeError(
                           context,
-                          tr(
-                            ref,
-                            I18nKey.fileMessageCreateLocalFolderFailed,
-                          ).replaceAll('{error}', error.toString()),
+                          tr(ref, I18nKey.fileMessageCreateLocalFolderFailed, {
+                            'error': error.toString(),
+                          }),
                         );
                       }
                     },

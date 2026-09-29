@@ -286,10 +286,19 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
       });
       return;
     }
+    _showPreviewContent(entry, content);
+    setState(() {
+      _loadingContent = false;
+      _failedPath = null;
+    });
+  }
+
+  /// Puts [content] into the preview, highlights [entry]'s line and places the
+  /// caret there.
+  void _showPreviewContent(LspLocationEntry entry, String content) {
     if (_previewController.text != content) {
       _previewController.text = content;
     }
-    // Highlight the target line and place the caret there.
     _previewController.clearLineDecorations();
     final targetLine = entry.line ?? 0;
     try {
@@ -318,10 +327,6 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
       // the controller re-read the file - which drops the mirrored
       // diagnostics. Restore them once the new editor exists.
       if (mounted) _lspMirror.resync();
-    });
-    setState(() {
-      _loadingContent = false;
-      _failedPath = null;
     });
   }
 
@@ -455,7 +460,7 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
             ).colorScheme.primary.withAlpha(30),
             leading: Icon(entry.icon, size: 18, color: entry.iconColor),
             title: Text(
-              entry.title ?? entry.path.split(RegExp(r'[\\/]')).last,
+              entry.title ?? _fileNameOf(entry.path),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -473,9 +478,12 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
   String _defaultSubtitle(LspLocationEntry entry) {
     final line = entry.line == null ? '?' : '${entry.line! + 1}';
     final character = entry.character == null ? '?' : '${entry.character}';
-    return '${entry.path.split(RegExp(r'[\\/]')).last}  $line:$character';
+    return '${_fileNameOf(entry.path)}  $line:$character';
   }
 }
+
+/// The file name of [path], accepting either path separator.
+String _fileNameOf(String path) => path.split(RegExp(r'[\\/]')).last;
 
 /// Mirrors the LSP decorations of an open tab onto the read-only preview.
 ///
