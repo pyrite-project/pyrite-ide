@@ -15,6 +15,15 @@ import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:path/path.dart' as path;
 
+/// The language id sent to the language server for every document.
+///
+/// The language id is no longer a setting: this IDE ships one Python language
+/// server integration, and the document language shown to the user comes from
+/// the per-file grammar in `editor_language.dart` instead. Anything that wants
+/// a second language server needs a per-language server mapping, not a single
+/// global id.
+const String defaultLspLanguageId = 'python';
+
 class EditorControllerMapNotifier
     extends StateNotifier<Map<String, CodeForgeController>> {
   final Ref ref;
@@ -40,11 +49,9 @@ class EditorControllerMapNotifier
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
-    final languageId = ref.read(lspLanguageId).trim();
 
     LspConfig? lspConfig;
     if (ref.read(useLsp) &&
-        languageId.isNotEmpty &&
         (path.extension(file.path) == ".py" || ref.read(lspAlwaysStart))) {
       final type = ref.read(lspType);
       final capabilities = LspClientCapabilities(
@@ -83,7 +90,7 @@ class EditorControllerMapNotifier
       if (type == LspType.webSocket) {
         lspConfig = LspSocketConfig(
           workspacePath: projectPath,
-          languageId: languageId,
+          languageId: defaultLspLanguageId,
           serverUrl: "ws://${ref.read(lspWebSocketPath)}",
           capabilities: capabilities,
           initializationOptions: stubsConfig.initializationOptions,
@@ -101,7 +108,7 @@ class EditorControllerMapNotifier
               executable: executable,
               args: args,
               workspacePath: projectPath,
-              languageId: languageId,
+              languageId: defaultLspLanguageId,
               capabilities: capabilities,
               initializationOptions: stubsConfig.initializationOptions,
               workspaceConfiguration: stubsConfig.workspaceConfiguration,

@@ -48,18 +48,23 @@ void main() {
     expect(data.toJson().containsKey('lspPythonInterpreter'), isFalse);
   });
 
-  test('LSP language ID and stdio arguments use generic defaults', () {
+  test('LSP stdio arguments use generic defaults', () {
     final defaults = SettingsPersistedData.fromJson(const {});
-    expect(defaults.lspLanguageId, 'python');
     expect(defaults.lspStdioArgs, isEmpty);
 
     final data = SettingsPersistedData.fromJson({
-      'lspLanguageId': 'custom-language',
       'lspStdioArgs': 'serve --stdio',
     });
 
-    expect(data.toJson()['lspLanguageId'], 'custom-language');
     expect(data.toJson()['lspStdioArgs'], 'serve --stdio');
+  });
+
+  test('no longer persists the removed LSP language id', () {
+    final data = SettingsPersistedData.fromJson({
+      'lspLanguageId': 'custom-language',
+    });
+
+    expect(data.toJson().containsKey('lspLanguageId'), isFalse);
   });
 
   test('migrates an old LSP Python interpreter path to its environment', () {

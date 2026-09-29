@@ -73,7 +73,6 @@ class PersistedData {
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
-  final String lspLanguageId;
   final String lspStdioExecutable;
   final String lspStdioArgs;
   final String lspVirtualEnvironment;
@@ -156,7 +155,6 @@ class PersistedData {
     this.useLsp = true,
     this.lspType = 'web_socket',
     this.lspWebSocketPath = '127.0.0.1:2026',
-    this.lspLanguageId = 'python',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
     this.lspVirtualEnvironment = '',
