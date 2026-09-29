@@ -16,6 +16,7 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 
 class UseWindow with WindowListener {
   ProviderContainer? _container;
@@ -57,6 +58,19 @@ class UseWindow with WindowListener {
       await windowManager.destroy();
       exit(0);
     }
+  }
+
+  @override
+  void onWindowFocus() {
+    // A modifier held while the window lost focus never produces a key-up,
+    // which leaves the framework key cache claiming Alt is still down.
+    // Re-read the engine's view before the user can click.
+    editorModifierKeys.onWindowFocus();
+  }
+
+  @override
+  void onWindowBlur() {
+    editorModifierKeys.onWindowBlur();
   }
 
   Future<void> _closeDesktopTerminals() async {
