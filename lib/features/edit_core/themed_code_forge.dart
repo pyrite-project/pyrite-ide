@@ -6,6 +6,7 @@ import 'package:code_forge/code_forge/undo_redo.dart';
 import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -131,14 +132,15 @@ Widget buildThemedCodeForge(
   FindController? findController,
   bool readOnly = false,
 
-  /// Radius for the inner fenced Markdown code blocks shown in LSP popups.
-  /// Leave null to use [CodeForge.defaultMarkdownCodeBlockBorderRadius].
-  BorderRadius? markdownCodeBlockBorderRadius,
-
-  /// Outer radius for LSP hover and documentation popups.
+  /// Outer radius shared by every floating overlay this editor shows:
+  /// hover, documentation, signature help, completion and code-action popups.
   ///
-  /// Leave null to use [CodeForge.defaultHoverDetailsBorderRadius].
-  BorderRadius? hoverDetailsBorderRadius,
+  /// Leave null to use the app's unified outer radius. Anything nested inside
+  /// one of these overlays is derived by code_forge as
+  /// outer - kOverlayPadding, so a nested corner can never grow larger than
+  /// the popup that contains it.
+  BorderRadius? overlayBorderRadius,
+
   List<CustomContextMenu>? customContextMenuItems,
   ValueChanged<int>? onModifierTap,
   PreferredSizeWidget Function(BuildContext context, FindController)?
@@ -169,15 +171,13 @@ Widget buildThemedCodeForge(
       primary: primary,
       fontSize: fontSize,
       fontFamily: fontFamily,
-      borderRadius: hoverDetailsBorderRadius,
+      borderRadius: overlayBorderRadius ?? context.outerCorners,
     ),
     language: language.mode,
     controller: controller,
     undoController: undoController,
     readOnly: readOnly,
-    markdownCodeBlockBorderRadius:
-        markdownCodeBlockBorderRadius ??
-        CodeForge.defaultMarkdownCodeBlockBorderRadius,
+    overlayBorderRadius: overlayBorderRadius ?? context.outerCorners,
     matchHighlightStyle: const MatchHighlightStyle(
       currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
       otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
