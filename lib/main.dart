@@ -127,6 +127,7 @@ void _applyData(PersistedData data) {
   container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
   container.read(editorTabSize.notifier).state = data.editorTabSize;
   container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
+  container.read(editorSmoothCursor.notifier).state = data.editorSmoothCursor;
   container.read(editorFormatOnSave.notifier).state = data.editorFormatOnSave;
   container.read(useLsp.notifier).state = data.useLsp;
   container.read(lspType.notifier).state =

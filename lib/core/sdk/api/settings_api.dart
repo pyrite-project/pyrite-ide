@@ -217,6 +217,14 @@ class SettingsRegistry {
           ref.read(editorGutterDivider.notifier).state = v == true,
     ),
     _SettingEntry(
+      name: 'editor.smooth_cursor',
+      type: 'bool',
+      provider: editorSmoothCursor,
+      getter: (ref) => ref.read(editorSmoothCursor),
+      setter: (ref, v) =>
+          ref.read(editorSmoothCursor.notifier).state = v == true,
+    ),
+    _SettingEntry(
       name: 'lsp.enabled',
       type: 'bool',
       provider: useLsp,

@@ -190,6 +190,7 @@ Widget buildThemedCodeForge(
     enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
     enableGutter: ref.watch(editorLineNumber),
     enableGutterDivider: ref.watch(editorGutterDivider),
+    smoothCursor: ref.watch(editorSmoothCursor),
     useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
     tabSize: ref.watch(editorTabSize),
     gutterBuilder: GutterBuilder(

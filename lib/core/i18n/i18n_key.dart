@@ -764,6 +764,11 @@ enum I18nKey {
     'settings.editor.gutter_divider.subtitle',
     '在行号区域和代码之间显示分隔线',
   ),
+  settingsEditorSmoothCursor('settings.editor.smooth_cursor.title', '平滑光标'),
+  settingsEditorSmoothCursorSubtitle(
+    'settings.editor.smooth_cursor.subtitle',
+    '光标移动时平滑滑动到新位置，类似 VS Code 的平滑插入符动画',
+  ),
   settingsEditorCodeFolding('settings.editor.code_folding.title', '代码折叠'),
   settingsEditorCodeFoldingSubtitle(
     'settings.editor.code_folding.subtitle',

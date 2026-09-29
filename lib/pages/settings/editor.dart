@@ -157,6 +157,16 @@ class EditorSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
+              title: const UseText(I18nKey.settingsEditorSmoothCursor),
+              subtitle: const UseText(
+                I18nKey.settingsEditorSmoothCursorSubtitle,
+              ),
+              value: ref.watch(editorSmoothCursor),
+              onChanged: (value) =>
+                  ref.read(editorSmoothCursor.notifier).state = value,
+            ),
+
+            SwitchListTile(
               title: const UseText(I18nKey.settingsEditorCodeFolding),
               subtitle: const UseText(
                 I18nKey.settingsEditorCodeFoldingSubtitle,
