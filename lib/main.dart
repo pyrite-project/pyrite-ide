@@ -45,6 +45,8 @@ late final PersistenceManager persistenceManager;
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
+bool _persistDirty = true;
+bool _persistSaveInFlight = false;
 final UseWindow appWindow = UseWindow();
 DebugPrintCallback? _defaultDebugPrint;
 
@@ -225,10 +227,24 @@ void _applyData(PersistedData data) {
       .restoreContributions(data.dataContributions);
 }
 
-void _triggerSave() {
-  _debounceTimer?.cancel();
-  _debounceTimer = Timer(const Duration(seconds: 1), () async {
+// Starts dirty so the first periodic tick persists the freshly restored
+// state once, keeping a crash-recovery snapshot without steady-state writes.
+Future<void> _savePersistedDataNow() async {
+  if (_persistSaveInFlight) return;
+  _persistSaveInFlight = true;
+  try {
     await persistenceManager.saveFromContainer(container);
+    _persistDirty = false;
+  } finally {
+    _persistSaveInFlight = false;
+  }
+}
+
+void _triggerSave() {
+  _persistDirty = true;
+  _debounceTimer?.cancel();
+  _debounceTimer = Timer(const Duration(seconds: 1), () {
+    unawaited(_savePersistedDataNow());
   });
 }
 
@@ -241,8 +257,9 @@ void _triggerPluginSave() {
 
 void _startAutoSave() {
   _saveTimer?.cancel();
-  _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-    await persistenceManager.saveFromContainer(container);
+  _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    if (!_persistDirty) return;
+    unawaited(_savePersistedDataNow());
   });
   container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
     _triggerSave();
