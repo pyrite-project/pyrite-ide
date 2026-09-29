@@ -167,18 +167,18 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       if (currentVersion == lastSeenVersion) return;
       lastSeenVersion = currentVersion;
       final value = tab.value as TabDataValue;
-      final next = resolveDirtyState(
+      // Applies the transition itself rather than returning a flag the caller
+      // has to interpret. A bare `bool` here is a trap: the value means "is
+      // saved", but the interesting branch is "is dirty", and mixing the two
+      // up silently inverts every outcome without any type error. Keeping the
+      // mapping in one place is what makes that inversion impossible.
+      final changed = applyDirtyState(
+        tab,
         savedText: _lastSavedText[value.filePath],
         currentText: editorController.text,
-        isSaved: value.isSaved,
       );
-      if (next == null) return;
-      if (next) {
-        if (!_markFileTabUnsaved(tab, value)) return;
-        onUnsavedChange?.call();
-      } else {
-        if (!markFileTabSaved(tab)) return;
-      }
+      if (!changed) return;
+      if (!value.isSaved) onUnsavedChange?.call();
       _publishTabsPreservingSelection();
     }
 
@@ -926,6 +926,28 @@ Set<String> _visitOpenFilesAffectedByTransfer(
     }
   }
   return affected;
+}
+
+/// Applies the dirty transition to [tab] and reports whether the flag moved.
+///
+/// This is the single place where the comparison result becomes a UI state
+/// change, so callers cannot invert the meaning of the flag.
+bool applyDirtyState(
+  TabData tab, {
+  required String? savedText,
+  required String currentText,
+}) {
+  final value = tab.value;
+  if (value is! TabDataValue || value.type != 'file') return false;
+  final nextIsSaved = resolveDirtyState(
+    savedText: savedText,
+    currentText: currentText,
+    isSaved: value.isSaved,
+  );
+  if (nextIsSaved == null) return false;
+  // `nextIsSaved` is the new value of `isSaved`, so it maps straight onto the
+  // two setters without the caller having to re-derive the polarity.
+  return nextIsSaved ? markFileTabSaved(tab) : _markFileTabUnsaved(tab, value);
 }
 
 /// Decides whether a tab's dirty flag should change, given the text it was
