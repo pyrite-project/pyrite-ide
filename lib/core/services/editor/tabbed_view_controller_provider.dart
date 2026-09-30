@@ -355,18 +355,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     // text, match it, and silently clear a dot that is still legitimately set.
     // Pinning the baseline to the buffer means the tab can only return to clean
     // by an actual save, which is the intended behaviour.
-    for (final tab in state.tabs) {
-      final value = tab.value;
-      if (value is! TabDataValue || value.type != 'file') continue;
-      final candidatePath = boardFiles ? value.boardFilePath : value.filePath;
-      if (candidatePath == null || !affectedPaths.contains(candidatePath)) {
-        continue;
-      }
-      final controller = value.editorController;
-      if (controller != null) {
-        _lastSavedText[candidatePath] = controller.text;
-      }
-    }
+    _lastSavedText.addAll(
+      reseedOpenFileTransferBaselines(
+        state.tabs,
+        boardFiles: boardFiles,
+        affectedPaths: affectedPaths,
+      ),
+    );
 
     _publishTabsPreservingSelection();
     if (result.newlyUnsaved) onUnsavedChange?.call();
@@ -890,6 +885,38 @@ markOpenFilesAffectedByTransferUnsaved(
     },
   );
   return (affectedPaths: affectedPaths, newlyUnsaved: newlyUnsaved);
+}
+
+/// Recomputes the dirty baseline of every tab affected by a transfer.
+///
+/// Returns the entries to merge into the notifier's `_lastSavedText` map.
+///
+/// [affectedPaths] is matched in transfer-path space -- board paths for board
+/// tabs -- but the returned baselines are keyed by the tab's own `filePath`
+/// (the local cache path for board tabs). The unsaved-change listener diffs
+/// under exactly that key, so keying the reseed any other way would write
+/// where nothing reads: the listener would keep diffing against the stale
+/// pre-transfer text, and an undo back to that text would silently clear a
+/// modified dot that is still legitimately set.
+Map<String, String> reseedOpenFileTransferBaselines(
+  Iterable<TabData> tabs, {
+  required bool boardFiles,
+  required Set<String> affectedPaths,
+}) {
+  final baselines = <String, String>{};
+  for (final tab in tabs) {
+    final value = tab.value;
+    if (value is! TabDataValue || value.type != 'file') continue;
+    final candidatePath = boardFiles ? value.boardFilePath : value.filePath;
+    if (candidatePath == null || !affectedPaths.contains(candidatePath)) {
+      continue;
+    }
+    final controller = value.editorController;
+    if (controller != null) {
+      baselines[value.filePath] = controller.text;
+    }
+  }
+  return baselines;
 }
 
 Set<String> _visitOpenFilesAffectedByTransfer(

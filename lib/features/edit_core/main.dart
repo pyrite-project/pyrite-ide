@@ -508,23 +508,28 @@ class _EditCoreState extends ConsumerState<EditCore> {
     final offset = _lspOffset(controller, textOffset);
     final line = controller.getLineAtOffset(offset);
     final character = offset - controller.getLineStartOffset(line);
-    var response = await config.sendRequest(
-      method: method,
-      params: {
-        'textDocument': {'uri': Uri.file(filePath).toString()},
-        'position': {'line': line, 'character': character},
-      },
-    );
-    dynamic location = response['result'];
-    if (method == 'textDocument/implementation' && !_hasLocation(location)) {
-      response = await config.sendRequest(
-        method: 'textDocument/definition',
-        params: {
-          'textDocument': {'uri': Uri.file(filePath).toString()},
-          'position': {'line': line, 'character': character},
-        },
-      );
+    final params = {
+      'textDocument': {'uri': Uri.file(filePath).toString()},
+      'position': {'line': line, 'character': character},
+    };
+    dynamic location;
+    try {
+      var response = await config.sendRequest(method: method, params: params);
+      if (method == 'textDocument/implementation' &&
+          !_hasLocation(response['result'])) {
+        response = await config.sendRequest(
+          method: 'textDocument/definition',
+          params: params,
+        );
+      }
       location = response['result'];
+    } catch (error) {
+      // A dead or unresponsive language server throws here; without this
+      // guard the failure dies inside the unawaited future and F12 appears
+      // to do nothing.
+      if (!context.mounted) return;
+      _showLspRequestError(ref, error);
+      return;
     }
     if (location is List) location = location.firstOrNull;
     if (location is! Map) return;
@@ -590,14 +595,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       locations = await config.getReferences(filePath, line, character);
     } catch (error) {
       if (!context.mounted) return;
-      ref
-          .read(ideMessageProvider.notifier)
-          .error(
-            translateForWidget(
-              ref,
-              I18nKey.editorFormatFailed,
-            ).replaceAll('{error}', error.toString()),
-          );
+      _showLspRequestError(ref, error);
       return;
     }
     if (!context.mounted) return;
@@ -664,15 +662,36 @@ class _EditCoreState extends ConsumerState<EditCore> {
     final offset = _lspOffset(controller, textOffset);
     final line = controller.getLineAtOffset(offset);
     final character = offset - controller.getLineStartOffset(line);
-    final edit = await config.renameSymbol(
-      filePath,
-      line,
-      character,
-      newName.trim(),
-    );
-    if (edit.isNotEmpty) {
-      await _applyRenameEdit(ref, controller, edit);
+    try {
+      final edit = await config.renameSymbol(
+        filePath,
+        line,
+        character,
+        newName.trim(),
+      );
+      if (edit.isNotEmpty) {
+        await _applyRenameEdit(ref, controller, edit);
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      _showLspRequestError(ref, error);
     }
+  }
+
+  /// Surfaces a failed LSP request as an error message.
+  ///
+  /// Shared by the definition, rename and references flows so a dead or
+  /// unresponsive language server fails visibly instead of leaving the
+  /// shortcut to look broken.
+  void _showLspRequestError(WidgetRef ref, Object error) {
+    ref
+        .read(ideMessageProvider.notifier)
+        .error(
+          translateForWidget(
+            ref,
+            I18nKey.editorLspRequestFailed,
+          ).replaceAll('{error}', error.toString()),
+        );
   }
 
   Future<void> _applyRenameEdit(

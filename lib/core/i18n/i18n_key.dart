@@ -1357,6 +1357,10 @@ enum I18nKey {
     '当前文件没有可用的格式化服务',
   ),
   editorFormatFailed('editor.message.format_failed', '格式化失败：{error}'),
+  editorLspRequestFailed(
+    'editor.message.lsp_request_failed',
+    'LSP 请求失败：{error}',
+  ),
   editorReferencesResultTitle(
     'editor.references.result_title',
     '{symbol} 共 {count} 处引用',

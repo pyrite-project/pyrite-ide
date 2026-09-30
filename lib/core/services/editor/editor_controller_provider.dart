@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/workspace_lsp_config_pool.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -36,6 +37,23 @@ class EditorControllerMapNotifier
     });
   }
 
+  /// One language server per workspace root, shared by every open file under
+  /// it.
+  ///
+  /// Each editor used to start its own server, so a session with N tabs kept
+  /// N identical processes alive and restored sessions serialized N server
+  /// startups. The pool refcounts controllers; [removePath] releases a tab's
+  /// seat, and only the last one under a workspace root stops the server.
+  ///
+  /// Capabilities and stub settings are captured when the workspace's first
+  /// file opens and stay fixed until its last file closes — the same
+  /// negotiation window a real IDE has with one server per project.
+  late final WorkspaceLspConfigPool<LspConfig> _lspConfigPool =
+      WorkspaceLspConfigPool<LspConfig>(
+        create: _createWorkspaceLspConfig,
+        onEvict: (config) => config.dispose(),
+      );
+
   Future<CodeForgeController?> createNewEditorController(
     File file, {
     String? initialText,
@@ -53,92 +71,24 @@ class EditorControllerMapNotifier
     LspConfig? lspConfig;
     if (ref.read(useLsp) &&
         (path.extension(file.path) == ".py" || ref.read(lspAlwaysStart))) {
-      final type = ref.read(lspType);
-      final capabilities = LspClientCapabilities(
-        semanticHighlighting: ref.read(lspSemanticHighlighting),
-        codeCompletion: ref.read(lspCodeCompletion),
-        hoverInfo: ref.read(lspHoverInfo),
-        codeAction: ref.read(lspCodeAction),
-        signatureHelp: ref.read(lspSignatureHelp),
-        documentColor: ref.read(lspDocumentColor),
-        documentHighlight: ref.read(lspDocumentHighlight),
-        codeFolding: ref.read(lspCodeFolding),
-        inlayHint: ref.read(lspShowInlayHints),
-        goToDefinition: ref.read(lspGoToDefinition),
-        rename: ref.read(lspRename),
-      );
-      final stubsConfig = buildLspStubsConfig(
-        ref.read,
-        workspacePath: projectPath,
-      );
-      if (stubsConfig.paths.isNotEmpty) {
-        ref
-            .read(ideOutputLogProvider.notifier)
-            .add(
-              IdeOutputSource.ide,
-              'LSP stubs paths: ${stubsConfig.paths.join(Platform.pathSeparator)}',
-            );
-      }
-      if (stubsConfig.virtualEnvironment.isNotEmpty) {
-        ref
-            .read(ideOutputLogProvider.notifier)
-            .add(
-              IdeOutputSource.ide,
-              'LSP virtual environment: ${stubsConfig.virtualEnvironment}',
-            );
-      }
-      if (type == LspType.webSocket) {
-        lspConfig = LspSocketConfig(
-          workspacePath: projectPath,
-          languageId: defaultLspLanguageId,
-          serverUrl: "ws://${ref.read(lspWebSocketPath)}",
-          capabilities: capabilities,
-          initializationOptions: stubsConfig.initializationOptions,
-          workspaceConfiguration: stubsConfig.workspaceConfiguration,
-          disableWarning: ref.read(disableWarning),
-          disableError: ref.read(disableError),
-        );
-      } else if (type == LspType.stdio) {
-        final executable = ref.read(lspStdioExecutable).trim();
-        if (executable.isNotEmpty) {
-          final argsStr = ref.read(lspStdioArgs).trim();
-          final args = argsStr.split(' ').where((s) => s.isNotEmpty).toList();
-          try {
-            lspConfig = await LspStdioConfig.start(
-              executable: executable,
-              args: args,
-              workspacePath: projectPath,
-              languageId: defaultLspLanguageId,
-              capabilities: capabilities,
-              initializationOptions: stubsConfig.initializationOptions,
-              workspaceConfiguration: stubsConfig.workspaceConfiguration,
-              environment: stubsConfig.environment,
-              disableWarning: ref.read(disableWarning),
-              disableError: ref.read(disableError),
-            );
-          } catch (e) {
-            debugPrint('LSP stdio start failed: $e');
-            ref
-                .read(ideOutputLogProvider.notifier)
-                .add(
-                  IdeOutputSource.ide,
-                  translate(
-                    ref,
-                    I18nKey.lspStartFailedOutput,
-                  ).replaceAll('{error}', e.toString()),
-                );
-          }
-        }
+      final acquired = await _lspConfigPool.acquire(projectPath);
+      lspConfig = acquired.config;
+      if (lspConfig != null && acquired.created) {
+        unawaited(_sendWorkspaceConfiguration(lspConfig));
       }
     }
 
     CodeForgeController controller = PyriteCodeForgeController(
       lspConfig: lspConfig,
     );
-    if (lspConfig != null) {
-      unawaited(_sendWorkspaceConfiguration(lspConfig));
-    }
-    // controller.openedFile = file.path;
+    // Bind the path before the buffer. The editor widget only assigns
+    // `openedFile` itself when it finds the path unset, and that assignment
+    // re-reads the file from disk — which would clobber a restored unsaved
+    // buffer with the stale on-disk text. The setter's own synchronous read
+    // happens here, before `text` replaces it with the intended content; this
+    // mirrors the preview pane in lsp_location_dialog, which pre-sets
+    // `openedFile` for the same reason.
+    controller.openedFile = file.path;
     controller.text = text;
     state = {...state, file.path: controller};
     controller.setDocumentColorsEnabled(ref.read(lspDocumentColor));
@@ -146,6 +96,94 @@ class EditorControllerMapNotifier
       unawaited(_showInlayHintsWhenReady(controller));
     }
     return controller;
+  }
+
+  /// Builds a fresh LSP configuration for [workspacePath].
+  ///
+  /// Runs at most once per workspace at a time; the pool hands the result to
+  /// every controller opened under the same root. Returning null (no
+  /// executable configured, or the server failed to start) leaves the file's
+  /// editor fully offline.
+  Future<LspConfig?> _createWorkspaceLspConfig(String workspacePath) async {
+    final type = ref.read(lspType);
+    final capabilities = LspClientCapabilities(
+      semanticHighlighting: ref.read(lspSemanticHighlighting),
+      codeCompletion: ref.read(lspCodeCompletion),
+      hoverInfo: ref.read(lspHoverInfo),
+      codeAction: ref.read(lspCodeAction),
+      signatureHelp: ref.read(lspSignatureHelp),
+      documentColor: ref.read(lspDocumentColor),
+      documentHighlight: ref.read(lspDocumentHighlight),
+      codeFolding: ref.read(lspCodeFolding),
+      inlayHint: ref.read(lspShowInlayHints),
+      goToDefinition: ref.read(lspGoToDefinition),
+      rename: ref.read(lspRename),
+    );
+    final stubsConfig = buildLspStubsConfig(
+      ref.read,
+      workspacePath: workspacePath,
+    );
+    if (stubsConfig.paths.isNotEmpty) {
+      ref
+          .read(ideOutputLogProvider.notifier)
+          .add(
+            IdeOutputSource.ide,
+            'LSP stubs paths: ${stubsConfig.paths.join(Platform.pathSeparator)}',
+          );
+    }
+    if (stubsConfig.virtualEnvironment.isNotEmpty) {
+      ref
+          .read(ideOutputLogProvider.notifier)
+          .add(
+            IdeOutputSource.ide,
+            'LSP virtual environment: ${stubsConfig.virtualEnvironment}',
+          );
+    }
+    if (type == LspType.webSocket) {
+      return LspSocketConfig(
+        workspacePath: workspacePath,
+        languageId: defaultLspLanguageId,
+        serverUrl: "ws://${ref.read(lspWebSocketPath)}",
+        capabilities: capabilities,
+        initializationOptions: stubsConfig.initializationOptions,
+        workspaceConfiguration: stubsConfig.workspaceConfiguration,
+        disableWarning: ref.read(disableWarning),
+        disableError: ref.read(disableError),
+      );
+    }
+    if (type == LspType.stdio) {
+      final executable = ref.read(lspStdioExecutable).trim();
+      if (executable.isEmpty) return null;
+      final argsStr = ref.read(lspStdioArgs).trim();
+      final args = argsStr.split(' ').where((s) => s.isNotEmpty).toList();
+      try {
+        return await LspStdioConfig.start(
+          executable: executable,
+          args: args,
+          workspacePath: workspacePath,
+          languageId: defaultLspLanguageId,
+          capabilities: capabilities,
+          initializationOptions: stubsConfig.initializationOptions,
+          workspaceConfiguration: stubsConfig.workspaceConfiguration,
+          environment: stubsConfig.environment,
+          disableWarning: ref.read(disableWarning),
+          disableError: ref.read(disableError),
+        );
+      } catch (e) {
+        debugPrint('LSP stdio start failed: $e');
+        ref
+            .read(ideOutputLogProvider.notifier)
+            .add(
+              IdeOutputSource.ide,
+              translate(
+                ref,
+                I18nKey.lspStartFailedOutput,
+              ).replaceAll('{error}', e.toString()),
+            );
+        return null;
+      }
+    }
+    return null;
   }
 
   void _updateInlayHintsVisibility(bool visible) {
@@ -216,9 +254,12 @@ class EditorControllerMapNotifier
   /// Drops the controller registered for [filePath] from the map.
   ///
   /// Disposing the controller itself is left to the caller so tab teardown
-  /// stays in one place.
+  /// stays in one place. The controller's seat on its workspace's shared
+  /// language server is released here; the server is stopped only when the
+  /// last controller under that workspace root goes away.
   void removePath(String filePath) {
     if (!state.containsKey(filePath)) return;
+    _lspConfigPool.release(state[filePath]?.lspConfig);
     state = Map<String, CodeForgeController>.from(state)..remove(filePath);
   }
 
