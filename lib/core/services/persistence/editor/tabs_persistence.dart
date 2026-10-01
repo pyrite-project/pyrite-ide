@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
+import 'package:pyrite_ide/core/platform/pyrite_paths.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 class TabsPersistedData {

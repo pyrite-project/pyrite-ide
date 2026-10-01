@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 import 'package:video_player/video_player.dart' as video;
 
 /// Host-owned native video player for the `Video` plugin component.

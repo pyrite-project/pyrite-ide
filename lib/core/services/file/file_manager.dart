@@ -1,7 +1,7 @@
-import 'dart:io';
 
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
 enum FileManagerPlatform { windows, macos, linux, android, unsupported }
 

@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
+import 'package:pyrite_ide/core/platform/pyrite_paths.dart';
 
 class SettingsPersistedData {
   final String editorTextFont;

@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
 class GitDebugLog {
   static const enabled = bool.fromEnvironment('PYRITE_GIT_DEBUG_LOG');

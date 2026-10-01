@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';

@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:code_forge/code_forge.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 
 class ReplLspCompletionSource {

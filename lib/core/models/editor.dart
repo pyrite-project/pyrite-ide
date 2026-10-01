@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:code_forge/code_forge.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
 class TabDataValue {
   TabDataValue({

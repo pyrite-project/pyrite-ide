@@ -1,7 +1,7 @@
-import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
 /// Whether the platform's primary editor modifier is Command (Apple platforms)
 /// instead of Control.

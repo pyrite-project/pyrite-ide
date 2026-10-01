@@ -1,6 +1,6 @@
-import 'dart:io';
 
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
 class PythonVirtualEnvironment {
   const PythonVirtualEnvironment({

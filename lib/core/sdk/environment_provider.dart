@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
 /// Responsive layout mode, derived from the host's breakpoints.
 enum LayoutMode { mobile, tablet, desktop }
