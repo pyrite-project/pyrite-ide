@@ -24,6 +24,16 @@ class EditorLanguage {
 
   final Mode mode;
   final String id;
+
+  /// The language's line comment marker, or null when a line-comment toggle
+  /// makes no sense for the grammar (XML/HTML/Markdown comment with paired
+  /// block delimiters and JSON has no comments at all).
+  String? get lineCommentMarker => switch (id) {
+    'python' || 'ini' || 'properties' || 'yaml' || 'shell' => '#',
+    'c' || 'cpp' || 'javascript' => '//',
+    'lua' => '--',
+    _ => null,
+  };
 }
 
 /// Python, the language this editor exists for, and the fallback whenever the

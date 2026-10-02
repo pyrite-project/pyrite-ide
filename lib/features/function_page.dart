@@ -2165,8 +2165,8 @@ class MobileNavigationDrawerButton extends ConsumerWidget {
 const int _lspSeverityError = 1;
 const int _lspSeverityWarning = 2;
 
-/// Non-interactive trailing status bar segment: caret position, selection size
-/// and the current file's LSP error/warning counts.
+/// Trailing status bar segment: caret position, selection size and the
+/// current file's LSP error/warning counts.
 ///
 /// Listens to [CodeForgeController.displayChanges], the controller's
 /// frame-safe signal, and to nothing else. It must not subscribe to the
@@ -2174,11 +2174,13 @@ const int _lspSeverityWarning = 2;
 /// build, and this widget lives outside the editor's subtree, so a direct
 /// subscription would call back during the build phase.
 ///
-/// Plain [Text], like the other status bar items, rather than a [Semantics]
-/// wrapper. This app has no accessibility infrastructure today, and introducing
-/// its first explicit semantics node reshapes the engine's accessibility tree
-/// for the whole window. That is a separate piece of work, not something to
-/// smuggle in with a status bar readout.
+/// The caret readout is a [TextButton] (clicking it scrolls the caret line
+/// back into view) and the problem count is one as well, so the segment does
+/// introduce button semantics nodes. Beyond those two, labels stay plain
+/// [Text] rather than [Semantics] wrappers: this app has no accessibility
+/// infrastructure today, and reshaping the engine's accessibility tree for
+/// the whole window is a separate piece of work, not something to smuggle in
+/// with a status bar readout.
 class _EditorStateLabel extends ConsumerWidget {
   const _EditorStateLabel({
     super.key,
@@ -2220,7 +2222,29 @@ class _EditorStateLabel extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (position.isNotEmpty) Text(position, style: textStyle),
+              if (position.isNotEmpty)
+                // Clicking the line/column readout scrolls the caret line
+                // back into view after scrolling (or a find jump) has left
+                // it off-screen.
+                TextButton(
+                  onPressed: () => _revealCaret(controller),
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.onSurfaceVariant,
+                    minimumSize: const Size(0, 32),
+                    // Same pill shape, height and padding as
+                    // [_ProblemButton], so the readout stays one segment of
+                    // the status bar instead of a differently shaped chip.
+                    padding: const EdgeInsetsDirectional.only(
+                      start: 10,
+                      end: 12,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: context.effectiveRadius,
+                    ),
+                  ),
+                  child: Text(position, style: textStyle),
+                ),
               if (problems != null) ...[
                 const SizedBox(width: 8),
                 // Clicking the error/warning count opens the shared jump
@@ -2268,6 +2292,27 @@ class _EditorStateLabel extends ConsumerWidget {
       I18nKey.statusSelectionCount,
     ).replaceAll('{count}', '${selection.end - selection.start}');
     return '$caret · $selected';
+  }
+
+  /// Scrolls the editor so the caret's line is visible again.
+  ///
+  /// The caret can end up far off-screen after the user scrolls away or a
+  /// find jump moves the view, and the line/column readout is then the only
+  /// visible hint of where editing continues.
+  void _revealCaret(CodeForgeController controller) {
+    if (controller.lineCount == 0) return;
+    final offset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    final line = controller.getLineAtOffset(offset);
+    try {
+      controller.scrollToLine(line);
+    } on StateError catch (_) {
+      // The editor is not mounted (its tab was just closed, for example).
+    } on RangeError catch (_) {
+      // The caret outlived the document (the file shrank underneath it).
+    }
   }
 
   String _problemText(WidgetRef ref, int errors, int warnings) {

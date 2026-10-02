@@ -1328,6 +1328,10 @@ enum I18nKey {
   ),
   editorDownloadFailed('editor.message.download_failed', '下载失败：{error}'),
   editorNoRunnableFile('editor.message.no_runnable_file', '没有可运行的文件'),
+  editorFileTooLargeReadOnly(
+    'editor.message.file_too_large_read_only',
+    '文件过大，已以只读方式打开：{path}',
+  ),
   editorRunningFile('editor.message.running_file', '正在运行：{path}'),
   editorRunFailed('editor.message.run_failed', '运行失败：{error}'),
   editorRunFailedTerminal('editor.terminal.run_failed', '[运行失败：{error}]'),

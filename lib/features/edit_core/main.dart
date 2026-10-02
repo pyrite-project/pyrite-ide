@@ -29,6 +29,7 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
+import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 import 'package:pyrite_ide/features/edit_core/line_comment.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
@@ -289,11 +290,18 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ..isReplaceMode = replace;
   }
 
-  /// Toggles `#` comments over the selected lines, or the caret line when
+  /// Toggles line comments over the selected lines, or the caret line when
   /// the selection is collapsed.
+  ///
+  /// The marker follows the file's grammar (`#`, `//`, `--`); grammars without
+  /// a usable line comment (XML, Markdown, JSON) leave the shortcut inert.
   void _toggleLineComment() {
     final controller = widget.editorController;
     if (controller.readOnly || controller.lineCount == 0) return;
+    final marker = resolveEditorLanguage(
+      controller.openedFile,
+    ).lineCommentMarker;
+    if (marker == null) return;
 
     final selection = controller.selection;
     var startLine = controller.getLineAtOffset(selection.start);
@@ -310,7 +318,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       for (var line = startLine; line <= endLine; line++)
         controller.getLineText(line),
     ];
-    final result = toggleLineComments(oldLines);
+    final result = toggleLineComments(oldLines, marker: marker);
     if (result == null) return;
 
     int mapOffset(int offset) {
@@ -639,7 +647,15 @@ class _EditCoreState extends ConsumerState<EditCore> {
     if (config == null || filePath == null || !config.capabilities.rename) {
       return;
     }
-    final input = TextEditingController();
+    // Prefill the dialog with the symbol being renamed so the user edits the
+    // name in place instead of retyping it.
+    final offset = _lspOffset(controller, textOffset);
+    final currentName = symbolAtOffset(controller.text, offset);
+    final input = TextEditingController(text: currentName);
+    input.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: currentName.length,
+    );
     final newName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -659,7 +675,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
     );
     input.dispose();
     if (newName == null || newName.trim().isEmpty) return;
-    final offset = _lspOffset(controller, textOffset);
     final line = controller.getLineAtOffset(offset);
     final character = offset - controller.getLineStartOffset(line);
     try {

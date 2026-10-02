@@ -157,6 +157,14 @@ Widget buildThemedCodeForge(
   // id is configured in LSP settings and already reaches the widget through the
   // controller's `lspConfig`.
   final language = resolveEditorLanguage(filePath);
+  // Typing-behavior hints the engine needs per language: Python gets
+  // block-end dedent on Enter, and the line comment marker keeps bracket and
+  // quote auto-pairing out of comments.
+  controller.autoDedentAfterBlockEnd = language.id == 'python';
+  final commentMarker = language.lineCommentMarker;
+  controller.lineCommentMarkers = commentMarker == null
+      ? const <String>[]
+      : <String>[commentMarker];
   return CodeForge(
     key: ValueKey(rebuildKey ?? filePath ?? ''),
     filePath: filePath,
@@ -178,9 +186,15 @@ Widget buildThemedCodeForge(
     undoController: undoController,
     readOnly: readOnly,
     overlayBorderRadius: overlayBorderRadius ?? context.outerCorners,
-    matchHighlightStyle: const MatchHighlightStyle(
-      currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
-      otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
+    matchHighlightStyle: MatchHighlightStyle(
+      // Derived from the active theme instead of fixed hues: the accent marks
+      // the current match and the foreground color (guaranteed to contrast
+      // with the editor background) marks the other matches, so both stay
+      // legible on light and dark surfaces.
+      currentMatchStyle: TextStyle(backgroundColor: primary.withAlpha(90)),
+      otherMatchStyle: TextStyle(
+        backgroundColor: colors.foreground.withAlpha(45),
+      ),
     ),
     textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
     lineWrap: ref.watch(editorWordWrap),

@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/workspace_lsp_config_pool.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:path/path.dart' as path;
@@ -24,6 +25,15 @@ import 'package:path/path.dart' as path;
 /// a second language server needs a per-language server mapping, not a single
 /// global id.
 const String defaultLspLanguageId = 'python';
+
+/// Files larger than this open read-only.
+///
+/// Multi-megabyte text files are logs or data dumps rather than code; editing
+/// a document that size makes every keystroke and caret move traverse the
+/// whole buffer. The full content is still loaded — a truncated preview could
+/// be written back over the real file on save — but the editor is marked
+/// read-only so it is never offered as editable.
+const int maxEditableFileLength = 5 * 1024 * 1024;
 
 class EditorControllerMapNotifier
     extends StateNotifier<Map<String, CodeForgeController>> {
@@ -59,8 +69,12 @@ class EditorControllerMapNotifier
     String? initialText,
   }) async {
     String text = initialText ?? "";
+    var openedReadOnly = false;
     if (initialText == null) {
       try {
+        if (await file.length() > maxEditableFileLength) {
+          openedReadOnly = true;
+        }
         text = await file.readAsString();
       } on FileSystemException {
         return null;
@@ -90,6 +104,20 @@ class EditorControllerMapNotifier
     // `openedFile` for the same reason.
     controller.openedFile = file.path;
     controller.text = text;
+    if (openedReadOnly) {
+      controller.readOnly = true;
+      ref
+          .read(ideMessageProvider.notifier)
+          .show(
+            translate(
+              ref,
+              I18nKey.editorFileTooLargeReadOnly,
+            ).replaceAll('{path}', file.path),
+            type: IdeMessageType.warning,
+            duration: const Duration(seconds: 12),
+            closeable: true,
+          );
+    }
     state = {...state, file.path: controller};
     controller.setDocumentColorsEnabled(ref.read(lspDocumentColor));
     if (ref.read(lspShowInlayHints)) {
