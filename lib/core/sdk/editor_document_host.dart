@@ -58,7 +58,9 @@ class _ControllerAccess implements DocumentAccess {
 /// Reveals a location after the editor render object has attached its scrolling
 /// callback. Compact layouts temporarily unmount editors while another page is
 /// visible, so the first failed attempt can trigger navigation and then retry.
-@visibleForTesting
+///
+/// Shared by the plugin reveal API and the status bar's caret readout, which
+/// both target an editor that may not be mounted yet.
 Future<void> retryEditorReveal({
   required void Function() reveal,
   FutureOr<void> Function()? onEditorUnavailable,
@@ -87,7 +89,6 @@ Future<void> retryEditorReveal({
   throw StateError('Editor did not initialize before reveal timed out');
 }
 
-@visibleForTesting
 bool layoutNeedsDedicatedEditorRoute(LayoutMode layoutMode) =>
     layoutMode != LayoutMode.desktop;
 

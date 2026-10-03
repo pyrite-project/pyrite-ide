@@ -1,6 +1,42 @@
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 
+/// A folded region captured for a session, keyed by document lines.
+///
+/// [children] are nested ranges that were folded before their parent
+/// collapsed; restoring them lets the editor re-collapse those children when
+/// the parent is unfolded again.
+class PersistedFoldRange {
+  final int startLine;
+  final int endLine;
+  final List<PersistedFoldRange> children;
+
+  const PersistedFoldRange({
+    required this.startLine,
+    required this.endLine,
+    this.children = const [],
+  });
+
+  Map<String, dynamic> toJson() => {
+    'startLine': startLine,
+    'endLine': endLine,
+    'children': children.map((c) => c.toJson()).toList(),
+  };
+
+  factory PersistedFoldRange.fromJson(Map<String, dynamic> json) {
+    return PersistedFoldRange(
+      startLine: (json['startLine'] as num?)?.toInt() ?? 0,
+      endLine: (json['endLine'] as num?)?.toInt() ?? 0,
+      children:
+          (json['children'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(PersistedFoldRange.fromJson)
+              .toList() ??
+          const [],
+    );
+  }
+}
+
 class PersistedTab {
   final String filePath;
   final bool isBoardFile;
@@ -13,6 +49,18 @@ class PersistedTab {
   /// clamped on restore when the file shrank while the app was closed.
   final int? cursorOffset;
 
+  /// Zero-based index of the topmost visible line at save time.
+  ///
+  /// Restoring the viewport by line (not by pixel offset) survives font size
+  /// changes and window resizes between sessions. Null for sessions written
+  /// before this field existed, and clamped on restore when the file shrank.
+  final int? scrollLine;
+
+  /// Folded regions at save time, so a reopened tab collapses the same
+  /// regions. Empty for sessions written before this field existed; ranges
+  /// that no longer match the restored document are applied best-effort.
+  final List<PersistedFoldRange> foldedRanges;
+
   PersistedTab({
     required this.filePath,
     this.isBoardFile = false,
@@ -20,6 +68,8 @@ class PersistedTab {
     this.isSaved = true,
     this.unsavedContent,
     this.cursorOffset,
+    this.scrollLine,
+    this.foldedRanges = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -29,6 +79,8 @@ class PersistedTab {
     'isSaved': isSaved,
     'unsavedContent': unsavedContent,
     'cursorOffset': cursorOffset,
+    'scrollLine': scrollLine,
+    'foldedRanges': foldedRanges.map((f) => f.toJson()).toList(),
   };
 
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
@@ -38,6 +90,13 @@ class PersistedTab {
     isSaved: json['isSaved'] as bool? ?? true,
     unsavedContent: json['unsavedContent'] as String?,
     cursorOffset: (json['cursorOffset'] as num?)?.toInt(),
+    scrollLine: (json['scrollLine'] as num?)?.toInt(),
+    foldedRanges:
+        (json['foldedRanges'] as List<dynamic>?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(PersistedFoldRange.fromJson)
+            .toList() ??
+        const [],
   );
 }
 

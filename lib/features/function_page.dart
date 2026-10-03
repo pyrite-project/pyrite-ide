@@ -34,6 +34,8 @@ import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.d
 import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
 import 'package:pyrite_ide/core/sdk/command_service.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/editor_document_host.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
 import 'package:pyrite_ide/core/sdk/menu_resolver.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
@@ -2227,7 +2229,7 @@ class _EditorStateLabel extends ConsumerWidget {
                 // back into view after scrolling (or a find jump) has left
                 // it off-screen.
                 TextButton(
-                  onPressed: () => _revealCaret(controller),
+                  onPressed: () => _revealCaret(controller, ref),
                   style: TextButton.styleFrom(
                     foregroundColor: scheme.onSurfaceVariant,
                     minimumSize: const Size(0, 32),
@@ -2299,7 +2301,12 @@ class _EditorStateLabel extends ConsumerWidget {
   /// The caret can end up far off-screen after the user scrolls away or a
   /// find jump moves the view, and the line/column readout is then the only
   /// visible hint of where editing continues.
-  void _revealCaret(CodeForgeController controller) {
+  ///
+  /// Compact layouts unmount the editor while another page is visible while
+  /// the status bar keeps showing this readout, so a click can land on an
+  /// unmounted editor. That follows the same policy as plugin reveals: switch
+  /// to the dedicated editor route and retry until the editor mounts.
+  Future<void> _revealCaret(CodeForgeController controller, WidgetRef ref) async {
     if (controller.lineCount == 0) return;
     final offset = controller.selection.extentOffset.clamp(
       0,
@@ -2307,11 +2314,35 @@ class _EditorStateLabel extends ConsumerWidget {
     );
     final line = controller.getLineAtOffset(offset);
     try {
-      controller.scrollToLine(line);
-    } on StateError catch (_) {
-      // The editor is not mounted (its tab was just closed, for example).
-    } on RangeError catch (_) {
+      await retryEditorReveal(
+        reveal: () {
+          controller.scrollToLine(line);
+          // Hand focus back so the caret blinks at the revealed position —
+          // the flash alone is easy to miss on a long file.
+          controller.focusNode?.requestFocus();
+        },
+        onEditorUnavailable: () => _goToEditorPage(ref),
+      );
+    } on StateError catch (error) {
+      // The editor never mounted within the retry budget (its tab was just
+      // closed, for example).
+      debugPrint('status bar reveal: editor not mounted: $error');
+    } on RangeError catch (error) {
       // The caret outlived the document (the file shrank underneath it).
+      debugPrint('status bar reveal: caret out of range: $error');
+    }
+  }
+
+  /// Opens the editor page when the layout hosts the editor on its own route;
+  /// the desktop workspace keeps the editor mounted on every route.
+  void _goToEditorPage(WidgetRef ref) {
+    final layoutMode = ref
+        .read(environmentNotifierProvider)
+        .snapshot
+        .layoutMode;
+    if (layoutNeedsDedicatedEditorRoute(layoutMode) &&
+        !routes.state.matchedLocation.startsWith(edit)) {
+      routes.go(edit);
     }
   }
 

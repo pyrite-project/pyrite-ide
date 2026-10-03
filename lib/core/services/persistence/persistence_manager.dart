@@ -1,3 +1,4 @@
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -264,6 +265,8 @@ class PersistenceManager {
                 ? value.editorController!.text
                 : null,
             cursorOffset: value.editorController?.selection.extentOffset,
+            scrollLine: value.editorController?.firstVisibleLine,
+            foldedRanges: _persistFoldedRanges(value.editorController),
           ),
         );
       }
@@ -285,4 +288,20 @@ class PersistenceManager {
       ),
     );
   }
+}
+
+List<PersistedFoldRange> _persistFoldedRanges(CodeForgeController? controller) {
+  final snapshots = controller?.foldedRanges ?? const [];
+  if (snapshots.isEmpty) return const [];
+
+  List<PersistedFoldRange> convert(List<FoldRangeSnapshot> snapshots) => [
+    for (final snapshot in snapshots)
+      PersistedFoldRange(
+        startLine: snapshot.startLine,
+        endLine: snapshot.endLine,
+        children: convert(snapshot.children),
+      ),
+  ];
+
+  return convert(snapshots);
 }

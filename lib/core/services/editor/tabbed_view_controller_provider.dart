@@ -752,6 +752,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             initialText: !persisted.isSaved ? persisted.unsavedContent : null,
           );
       if (controller == null) continue;
+      // Seed the fold state before the tab is built: the editor hydrates its
+      // fold cache from `controller.foldings` when it mounts, so collapsed
+      // regions are honored from the first layout.
+      controller.restoreFoldedRanges(_foldSnapshots(persisted.foldedRanges));
       final tab = await _createNewFileTab(
         file,
         controller,
@@ -767,7 +771,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         if (!persisted.isSaved) {
           _markFileTabUnsaved(tab, tab.value as TabDataValue);
         }
-        _restoreCursorPosition(controller, persisted.cursorOffset);
+        _restoreViewPosition(controller, persisted);
         tabs.add(tab);
       }
     }
@@ -785,31 +789,46 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     state = newController;
   }
 
-  /// Puts the caret back where it was, clamped to the current document, and
-  /// scrolls that line into view.
+  /// Puts the caret and viewport back where they were.
   ///
-  /// Only the caret is persisted, not the scroll offset, so a caret parked far
-  /// from the viewport is what gets restored. That matches what the user was
-  /// last editing, which is the useful signal here. Restoring a true scroll
-  /// position would need a public `firstVisibleLine` getter on the code_forge
-  /// controller.
-  void _restoreCursorPosition(CodeForgeController controller, int? offset) {
-    if (offset == null) return;
-    // The file may have shrunk on disk while the app was closed, so the saved
-    // offset can point past the end. Clamping puts the caret at the last
-    // character instead of throwing.
-    final safeOffset = offset.clamp(0, controller.length).toInt();
-    controller.setSelectionSilently(
-      TextSelection.collapsed(offset: safeOffset),
-    );
-    final line = controller.getLineAtOffset(safeOffset);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        controller.scrollToLine(line);
-      } on StateError {
-        // The tab may have been closed before its editor was mounted.
-      }
-    });
+  /// The caret is clamped to the current document: the file may have shrunk on
+  /// disk while the app was closed, so the saved offset can point past the
+  /// end. Only the caret offset itself can be applied to a controller with no
+  /// mounted editor — the scroll always needs the editor's viewport.
+  ///
+  /// The viewport restores by topmost visible line rather than pixel offset,
+  /// which survives font-size changes and resizes between sessions. When a
+  /// saved line exists it wins over centering the caret — it is what the user
+  /// actually saw — and it is handed to the controller as a pending viewport
+  /// line the editor consumes on mount: a post-frame scroll would silently
+  /// miss background tabs whose editor is not mounted yet.
+  void _restoreViewPosition(
+    CodeForgeController controller,
+    PersistedTab persisted,
+  ) {
+    final offset = persisted.cursorOffset;
+    int? caretLine;
+    if (offset != null) {
+      final safeOffset = offset.clamp(0, controller.length).toInt();
+      controller.setSelectionSilently(
+        TextSelection.collapsed(offset: safeOffset),
+      );
+      caretLine = controller.getLineAtOffset(safeOffset);
+    }
+    final scrollLine = persisted.scrollLine;
+    if (scrollLine != null &&
+        scrollLine > 0 &&
+        scrollLine < controller.lineCount) {
+      controller.pendingViewportLine = scrollLine;
+    } else if (caretLine != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          controller.scrollToLine(caretLine!);
+        } on StateError {
+          // The tab may have been closed before its editor was mounted.
+        }
+      });
+    }
   }
 
   /// Finds the tab to select after a restore.
@@ -845,6 +864,16 @@ String _gitDiffTabTitle(Ref ref, String filePath, bool staged) {
       : translate(ref, I18nKey.gitChanges);
   return '$fileName · $sideLabel';
 }
+
+/// Converts persisted fold ranges into the snapshots the editor seeds from.
+List<FoldRangeSnapshot> _foldSnapshots(List<PersistedFoldRange> ranges) => [
+  for (final range in ranges)
+    FoldRangeSnapshot(
+      startLine: range.startLine,
+      endLine: range.endLine,
+      children: _foldSnapshots(range.children),
+    ),
+];
 
 final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>
 tabbedViewControllerProvider = StateNotifierProvider(
