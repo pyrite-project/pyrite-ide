@@ -1,10 +1,15 @@
 /// Flutter Web implementation of the `pyrite_io` facade — a browser-backed
 /// subset of `dart:io` (see [WebFs] for the storage backend).
+///
+/// Synchronous filesystem operations cannot be mapped onto the asynchronous
+/// browser APIs, so `*Sync` members throw [UnsupportedError]; call sites that
+/// can run on the web have been moved to the async variants.
 library;
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:pyrite_ide/core/platform/web/pyrite_io_base.dart';
@@ -30,6 +35,15 @@ webfs.WebFs get _fs => webfs.WebFs.instance;
 // Platform
 // ---------------------------------------------------------------------------
 
+extension type _WebNavigator._(JSObject _) implements JSObject {
+  external JSString get userAgent;
+  external JSString get language;
+}
+
+final _WebNavigator _navigator = _WebNavigator._(
+  globalContext.getProperty('navigator'.toJS) as JSObject,
+);
+
 /// Web stand-in for `dart:io` [Platform], deriving the OS from the user agent.
 class Platform {
   Platform._();
@@ -38,7 +52,7 @@ class Platform {
   static String get _userAgent {
     final cached = _cachedUserAgent;
     if (cached != null) return cached;
-    final ua = web_windowNavigator.userAgent.toDart;
+    final ua = _navigator.userAgent.toDart;
     _cachedUserAgent = ua;
     return ua;
   }
@@ -63,7 +77,7 @@ class Platform {
 
   static String get operatingSystemVersion => '';
   static String get localHostname => '';
-  static String get localeName => web_windowNavigator.language.toDart;
+  static String get localeName => _navigator.language.toDart;
   static String get version => 'Flutter Web';
   static int get numberOfProcessors => 1;
   static String get pathSeparator => '/';
@@ -73,14 +87,24 @@ class Platform {
   static Uri get script => Uri.base;
 }
 
-extension type _WebNavigator._(JSObject _) implements JSObject {
-  external JSString get userAgent;
-  external JSString get language;
-}
+// ---------------------------------------------------------------------------
+// Top-level helpers
+// ---------------------------------------------------------------------------
 
-final _WebNavigator web_windowNavigator = _WebNavigator._(
-  (globalContext.getProperty('navigator'.toJS)) as JSObject,
-);
+/// Process id placeholder (no processes on the web).
+const int pid = 0;
+
+/// Web stand-in for `dart:io` [exit]; the browser tab cannot be terminated
+/// programmatically the way a desktop process can.
+Never exit(int code) =>
+    throw UnsupportedError('exit() is not supported on the web.');
+
+/// Web stand-in for `dart:io` [sleep].
+Never sleep(Duration duration) =>
+    throw UnsupportedError('sleep() is not supported on the web.');
+
+/// Web stand-in for `dart:io` [exitCode].
+int exitCode = 0;
 
 // ---------------------------------------------------------------------------
 // Process (unsupported)
@@ -109,7 +133,10 @@ class Process {
     List<String> arguments, {
     String? workingDirectory,
     Map<String, String>? environment,
+    bool includeParentEnvironment = true,
     bool runInShell = false,
+    Encoding? stdoutEncoding = const Utf8Codec(),
+    Encoding? stderrEncoding = const Utf8Codec(),
   }) =>
       _unsupported();
 
@@ -118,6 +145,7 @@ class Process {
     List<String> arguments, {
     String? workingDirectory,
     Map<String, String>? environment,
+    bool includeParentEnvironment = true,
     bool runInShell = false,
   }) =>
       _unsupported();
@@ -154,30 +182,59 @@ class Socket {
 
 /// Web stand-in for `dart:io` [FileStat].
 class FileStat {
-  FileStat._(this.modified, this.size);
+  FileStat._(this.modified, this.size, this.type);
 
   final DateTime modified;
   final int size;
+  final FileSystemEntityType type;
 
-  static Future<FileStat?> stat(String path) async {
-    final type = await _fs.typeOf(path);
-    if (type == webfs.WebFsEntryType.notFound) return null;
-    if (type == webfs.WebFsEntryType.file) {
+  static Future<FileStat> stat(String path) async {
+    final entryType = await _fs.typeOf(path);
+    if (entryType == webfs.WebFsEntryType.file) {
       final (modified, size) = await _fs.statFile(path);
-      return FileStat._(modified, size);
+      return FileStat._(modified, size, FileSystemEntityType.file);
     }
-    return FileStat._(DateTime.fromMillisecondsSinceEpoch(0), 0);
+    if (entryType == webfs.WebFsEntryType.directory) {
+      return FileStat._(
+        DateTime.fromMillisecondsSinceEpoch(0),
+        0,
+        FileSystemEntityType.directory,
+      );
+    }
+    return FileStat._(
+      DateTime.fromMillisecondsSinceEpoch(0),
+      -1,
+      FileSystemEntityType.notFound,
+    );
   }
 }
 
 /// Web stand-in for `dart:io` [Link]; symbolic links do not exist in the
 /// browser filesystem, so every operation throws.
 class Link extends FileSystemEntity {
-  Link._(super.path);
+  factory Link(String path) => Link._(path);
 
-  Future<String> target() async => _syncUnsupported('Link.target');
-  Future<Link> create(String target, {bool recursive = false}) async =>
+  Link._(super.path) : super._();
+
+  @override
+  Future<bool> exists() async => false;
+
+  @override
+  Future<Link> rename(String newPath) => _syncUnsupported('Link.rename');
+
+  Future<String> target() => _syncUnsupported('Link.target');
+
+  Future<Link> create(String target, {bool recursive = false}) =>
       _syncUnsupported('Link.create');
+
+  Link createSync(String target, {bool recursive = false}) =>
+      _syncUnsupported('Link.createSync');
+
+  Future<Link> delete({bool recursive = false}) =>
+      _syncUnsupported('Link.delete');
+
+  Link deleteSync({bool recursive = false}) =>
+      _syncUnsupported('Link.deleteSync');
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +286,8 @@ abstract class FileSystemEntity {
 
   static bool isDirectorySync(String path) =>
       _syncUnsupported('FileSystemEntity.isDirectorySync');
+
+  static Future<String> identifyFullPath(String path) async => path;
 }
 
 /// Modes accepted by the file writing APIs.
@@ -242,47 +301,70 @@ enum FileMode {
 
 /// Web stand-in for `dart:io` [File], backed by [WebFs].
 class File extends FileSystemEntity {
-  factory File(String path) {
+  factory File(String path) => File._(_normalize(path));
+
+  factory File.fromUri(Uri uri) => File._(_normalize(uri.toFilePath()));
+
+  File._(super.path) : super._();
+
+  static String _normalize(String path) {
     final normalized = webfs.normalizeVirtualPath(path);
     if (!normalized.startsWith('/')) {
       throw FileSystemException('Web paths must be absolute', path);
     }
-    return File._(normalized);
+    return normalized;
   }
-
-  File._(super.path);
 
   @override
   Future<bool> exists() => _fs.fileExists(path);
 
   @override
   Future<File> rename(String newPath) async {
-    await _fs.rename(path, webfs.normalizeVirtualPath(newPath));
-    return File(newPath);
+    await _fs.rename(path, _normalize(newPath));
+    return File._(_normalize(newPath));
   }
+
+  Future<File> renameSync(String newPath) => _syncUnsupported('File.renameSync');
 
   Future<File> create({bool recursive = false, bool exclusive = false}) async {
     await _fs.createFile(path, recursive: recursive);
     return this;
   }
 
+  Future<File> createSync({bool recursive = false, bool exclusive = false}) =>
+      _syncUnsupported('File.createSync');
+
   Future<DateTime> lastModified() async => (await _fs.statFile(path)).$1;
 
   Future<int> length() async => (await _fs.statFile(path)).$2;
 
+  int lengthSync() => _syncUnsupported('File.lengthSync');
+
+  Future<DateTime> lastModifiedSync() => _syncUnsupported('File.lastModifiedSync');
+
   Future<FileStat> stat() => FileStat.stat(path);
 
+  FileStat statSync() => _syncUnsupported('File.statSync');
+
   Future<Uint8List> readAsBytes() => _fs.readFileBytes(path);
+
+  Uint8List readAsBytesSync() => _syncUnsupported('File.readAsBytesSync');
 
   Future<String> readAsString({Encoding encoding = utf8}) async {
     final bytes = await _fs.readFileBytes(path);
     return encoding.decode(bytes);
   }
 
+  String readAsStringSync({Encoding encoding = utf8}) =>
+      _syncUnsupported('File.readAsStringSync');
+
   Future<List<String>> readAsLines({Encoding encoding = utf8}) async {
     final content = await readAsString(encoding: encoding);
     return const LineSplitter().convert(content);
   }
+
+  List<String> readAsLinesSync({Encoding encoding = utf8}) =>
+      _syncUnsupported('File.readAsLinesSync');
 
   Future<File> writeAsBytes(
     List<int> bytes, {
@@ -290,15 +372,21 @@ class File extends FileSystemEntity {
     bool flush = false,
   }) async {
     if (mode == FileMode.append || mode == FileMode.writeOnlyAppend) {
-      final existing = await exists()
-          ? await _fs.readFileBytes(path)
-          : Uint8List(0);
+      final existing =
+          await exists() ? await _fs.readFileBytes(path) : Uint8List(0);
       await _fs.writeFileBytes(path, [...existing, ...bytes]);
       return this;
     }
     await _fs.writeFileBytes(path, bytes);
     return this;
   }
+
+  File writeAsBytesSync(
+    List<int> bytes, {
+    FileMode mode = FileMode.write,
+    bool flush = false,
+  }) =>
+      _syncUnsupported('File.writeAsBytesSync');
 
   Future<File> writeAsString(
     String contents, {
@@ -309,47 +397,97 @@ class File extends FileSystemEntity {
     return writeAsBytes(encoding.encode(contents), mode: mode, flush: flush);
   }
 
+  File writeAsStringSync(
+    String contents, {
+    FileMode mode = FileMode.write,
+    Encoding encoding = utf8,
+    bool flush = false,
+  }) =>
+      _syncUnsupported('File.writeAsStringSync');
+
   Future<File> copy(String newPath) async {
-    await _fs.copyFile(path, webfs.normalizeVirtualPath(newPath));
-    return File(newPath);
+    await _fs.copyFile(path, _normalize(newPath));
+    return File._(_normalize(newPath));
   }
 
+  File copySync(String newPath) => _syncUnsupported('File.copySync');
+
+  Future<File> delete({bool recursive = false}) async {
+    await _fs.deleteEntry(path);
+    return this;
+  }
+
+  File deleteSync({bool recursive = false}) =>
+      _syncUnsupported('File.deleteSync');
+
   Directory get parent => Directory(_parentPath(path));
+
+  /// Absolute form; web paths are already absolute.
+  File get absolute => this;
 }
 
 /// Web stand-in for `dart:io` [Directory], backed by [WebFs].
 class Directory extends FileSystemEntity {
-  factory Directory(String path) {
+  factory Directory(String path) => Directory._(_normalize(path));
+
+  factory Directory.fromUri(Uri uri) => Directory._(_normalize(
+        uri.scheme == 'file' ? uri.toFilePath() : uri.path,
+      ));
+
+  Directory._(super.path) : super._();
+
+  /// The OPFS-backed temporary directory mount.
+  static Directory get systemTemp => Directory('/.pyrite_ide/tmp');
+
+  /// The app-support mount stands in for the (meaningless) web cwd.
+  static Directory get current => Directory('/.pyrite_ide');
+
+  /// Accepts a [Directory] or a path string, mirroring `dart:io`; changing
+  /// the working directory is meaningless on the web.
+  static set current(Object? path) =>
+      _syncUnsupported('Directory.current set');
+
+  static String _normalize(String path) {
     final normalized = webfs.normalizeVirtualPath(path);
     if (!normalized.startsWith('/')) {
       throw FileSystemException('Web paths must be absolute', path);
     }
-    return Directory._(normalized);
+    return normalized;
   }
-
-  Directory._(super.path);
 
   @override
   Future<bool> exists() => _fs.directoryExists(path);
 
   @override
   Future<Directory> rename(String newPath) async {
-    await _fs.rename(path, webfs.normalizeVirtualPath(newPath));
-    return Directory(newPath);
+    await _fs.rename(path, _normalize(newPath));
+    return Directory._(_normalize(newPath));
   }
+
+  Future<Directory> renameSync(String newPath) =>
+      _syncUnsupported('Directory.renameSync');
 
   Future<Directory> create({bool recursive = false}) async {
     await _fs.createDirectory(path, recursive: recursive);
     return this;
   }
 
-  Future<Directory> createTemp([String? prefix]) async =>
+  Directory createSync({bool recursive = false}) =>
+      _syncUnsupported('Directory.createSync');
+
+  Future<Directory> createTemp([String? prefix]) =>
       _syncUnsupported('Directory.createTemp');
+
+  Directory createTempSync([String? prefix]) =>
+      _syncUnsupported('Directory.createTempSync');
 
   Future<Directory> delete({bool recursive = false}) async {
     await _fs.deleteEntry(path, recursive: recursive);
     return this;
   }
+
+  Directory deleteSync({bool recursive = false}) =>
+      _syncUnsupported('Directory.deleteSync');
 
   /// Lists the children of this directory as a stream of [File] and
   /// [Directory] entities, mirroring `dart:io` semantics.
@@ -368,12 +506,21 @@ class Directory extends FileSystemEntity {
     }
   }
 
+  List<FileSystemEntity> listSync({
+    bool recursive = false,
+    bool followLinks = true,
+  }) =>
+      _syncUnsupported('Directory.listSync');
+
   Stream<FileSystemEvent> watch({
     int events = 15,
     bool recursive = false,
   }) => throw UnsupportedError('Directory.watch is not supported on the web.');
 
   Directory get parent => Directory(_parentPath(path));
+
+  /// Absolute form; web paths are already absolute.
+  Directory get absolute => this;
 }
 
 /// Computes the parent directory of a normalized absolute path.

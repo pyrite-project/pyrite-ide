@@ -92,7 +92,7 @@ class EditorControllerMapNotifier
           disableError: ref.read(disableError),
         );
       } else if (type == LspType.stdio) {
-        final executable = ref.read(lspStdioExecutable).trim();
+        final executable = kIsWeb ? '' : ref.read(lspStdioExecutable).trim();
         if (executable.isNotEmpty) {
           final argsStr = ref.read(lspStdioArgs).trim();
           final args = argsStr.split(' ').where((s) => s.isNotEmpty).toList();

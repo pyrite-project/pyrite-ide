@@ -1,8 +1,8 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 import 'package:pyrite_ide/core/sdk/component_schema.dart';
 import 'package:pyrite_ide/core/sdk/renderer_registry.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';

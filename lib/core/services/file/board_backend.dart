@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' as io;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 import 'package:pyrite_ide/core/platform/pyrite_paths.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
@@ -1173,9 +1173,9 @@ class BoardTransfer {
   BoardTransfer(this.ref, this._ops);
 
   Future<void> uploadFolder(String localPath, String remotePath) async {
-    final dir = io.Directory(localPath);
+    final dir = Directory(localPath);
     final entities = await dir.list(recursive: true).toList();
-    final files = entities.whereType<io.File>().toList(growable: false);
+    final files = entities.whereType<File>().toList(growable: false);
     final createdDirs = <String>{};
     ref
         .read(fileTransferProgressProvider.notifier)
@@ -1197,7 +1197,7 @@ class BoardTransfer {
           .replaceAll('\\', '/');
       final remoteEntityPath = _boardPath.join(remotePath, relativePath);
 
-      if (entity is io.Directory) {
+      if (entity is Directory) {
         debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
         await _ensureBoardFolder(remoteEntityPath, createdDirs);
       }
@@ -1271,7 +1271,7 @@ class BoardTransfer {
           ),
         );
 
-    final localDir = io.Directory(localPath);
+    final localDir = Directory(localPath);
     if (!await localDir.exists()) {
       await localDir.create(recursive: true);
     }
@@ -1281,7 +1281,7 @@ class BoardTransfer {
           .relative(item.path, from: remotePath)
           .replaceAll('\\', '/');
       final localItemPath = path.join(localPath, relativePath);
-      await io.Directory(localItemPath).create(recursive: true);
+      await Directory(localItemPath).create(recursive: true);
     }
 
     for (var i = 0; i < files.length; i++) {
@@ -1297,7 +1297,7 @@ class BoardTransfer {
         index: i + 1,
         totalFiles: files.length,
       );
-      final file = io.File(localItemPath);
+      final file = File(localItemPath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(bytes);
       debugPrint('[BoardWS] Downloaded: $localItemPath');
@@ -1329,13 +1329,13 @@ Future<List<TreeNode<FileSystemItem>>> buildBoardFileListItems(
   return items;
 }
 
-Future<io.File> getLocalFile(String boardFilePath) async {
+Future<File> getLocalFile(String boardFilePath) async {
   final supportDir = path.join(
     (await getApplicationSupportDirectory()).path,
     "temporary_board_files",
   );
   final relativePath = boardFilePath.split("/").skip(1).join("/");
-  final file = io.File(path.join(supportDir, relativePath));
+  final file = File(path.join(supportDir, relativePath));
   await file.create(recursive: true, exclusive: false);
   return file;
 }

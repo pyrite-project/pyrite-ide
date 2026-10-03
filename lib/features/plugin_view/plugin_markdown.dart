@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:markdown_widget/markdown_widget.dart' as md;
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
+import 'package:pyrite_ide/shared/pyrite_media.dart';
 
 /// Renders a plugin's markdown source with the same configuration the IDE's own
 /// markdown views use, so plugin docs and IDE docs look identical.
@@ -131,12 +132,13 @@ md.MarkdownConfig markdownConfigFor(
           if (file == null) {
             return const Icon(Icons.broken_image_outlined);
           }
-          return Image.file(
-            file,
-            width: double.tryParse(attributes['width'] ?? ''),
-            height: double.tryParse(attributes['height'] ?? ''),
-            fit: BoxFit.contain,
-          );
+          return fileImageWidget(
+                file,
+                width: double.tryParse(attributes['width'] ?? ''),
+                height: double.tryParse(attributes['height'] ?? ''),
+                fit: BoxFit.contain,
+              ) ??
+              const Icon(Icons.broken_image_outlined);
         },
       ),
       md.CodeConfig(

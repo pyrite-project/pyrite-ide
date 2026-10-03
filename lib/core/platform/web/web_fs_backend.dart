@@ -27,7 +27,7 @@ import 'package:web/web.dart' as web;
 // ---------------------------------------------------------------------------
 
 extension type _DirectoryPickerOptions._(JSObject _) implements JSObject {
-  external factory _DirectoryPickerOptions({JSString? mode, JSString? id});
+  external factory _DirectoryPickerOptions({JSString? mode});
 }
 
 extension type _PermissionDescriptor._(JSObject _) implements JSObject {
@@ -46,10 +46,7 @@ extension FileSystemHandleExtras on web.FileSystemHandle {
   external JSPromise<JSAny?> move(JSAny? target, [JSString? name]);
 
   Future<void> moveTo(web.FileSystemHandle? directory, String name) async {
-    await move(
-      directory,
-      name.toJS,
-    );
+    await move(directory, name.toJS).toDart;
   }
 }
 
@@ -146,9 +143,9 @@ class _HandleStore {
   Future<web.IDBDatabase> _open() async {
     final existing = _db;
     if (existing != null) return existing;
-    final request = web.indexedDB.open(_dbName, 1);
+    final request = web.window.indexedDB.open(_dbName, 1);
     request.onupgradeneeded = ((web.IDBVersionChangeEvent _) {
-      final db = request.result;
+      final db = request.result as web.IDBDatabase;
       if (!db.objectStoreNames.contains(_storeName)) {
         db.createObjectStore(_storeName);
       }
@@ -161,7 +158,7 @@ class _HandleStore {
   Future<web.FileSystemDirectoryHandle?> get(String key) async {
     try {
       final db = await _open();
-      final tx = db.transaction(_storeName, 'readonly');
+      final tx = db.transaction(_storeName.toJS, 'readonly');
       final request = tx.objectStore(_storeName).get(key.toJS);
       final result = await _requestToFuture(request);
       if (result == null || result.isUndefinedOrNull) return null;
@@ -174,15 +171,15 @@ class _HandleStore {
   Future<void> put(String key, web.FileSystemDirectoryHandle handle) async {
     try {
       final db = await _open();
-      final tx = db.transaction(_storeName, 'readwrite');
-      tx.objectStore(_storeName).put(handle.toJS, key.toJS);
+      final tx = db.transaction(_storeName.toJS, 'readwrite');
+      tx.objectStore(_storeName).put(handle, key.toJS);
     } catch (_) {}
   }
 
   Future<void> delete(String key) async {
     try {
       final db = await _open();
-      final tx = db.transaction(_storeName, 'readwrite');
+      final tx = db.transaction(_storeName.toJS, 'readwrite');
       tx.objectStore(_storeName).delete(key.toJS);
     } catch (_) {}
   }
@@ -452,7 +449,7 @@ class WebFs {
           .toDart;
       final file = await handle.getFile().toDart;
       final buffer = await file.arrayBuffer().toDart;
-      return buffer.asUint8List();
+      return buffer.toDart.asUint8List();
     } catch (error) {
       _rethrow(error, path);
     }
@@ -535,12 +532,11 @@ class WebFs {
       final base = path.endsWith('/') && path.length > 1
           ? path.substring(0, path.length - 1)
           : path;
-      final kind = child.kind.toDart;
       entries.add(
         WebFsEntry(
           name: child.name,
           path: '$base/${child.name}',
-          isDirectory: kind == 'directory',
+          isDirectory: child.kind == 'directory',
         ),
       );
     }

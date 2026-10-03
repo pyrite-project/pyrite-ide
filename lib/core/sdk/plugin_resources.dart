@@ -4,6 +4,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 import 'package:pyrite_ide/core/platform/pyrite_paths.dart';
 import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
+import 'package:pyrite_ide/shared/pyrite_media.dart';
 
 const pluginResourceScheme = 'plugin-resource';
 
@@ -114,20 +115,22 @@ class _PluginAssetImageState extends State<PluginAssetImage> {
       if (file == null) {
         return widget.fallback ?? const SizedBox.shrink();
       }
-      return Image.file(
-        file,
-        width: widget.width,
-        height: widget.height,
-        fit: widget.fit,
-        color:
-            widget.color ??
-            (widget.monochrome ? IconTheme.of(context).color : null),
-        colorBlendMode: widget.color == null && !widget.monochrome
-            ? null
-            : BlendMode.srcIn,
-        errorBuilder: (context, error, stackTrace) =>
-            widget.fallback ?? const SizedBox.shrink(),
-      );
+      return fileImageWidget(
+            file,
+            width: widget.width,
+            height: widget.height,
+            fit: widget.fit,
+            color:
+                widget.color ??
+                (widget.monochrome ? IconTheme.of(context).color : null),
+            colorBlendMode: widget.color == null && !widget.monochrome
+                ? null
+                : BlendMode.srcIn,
+            errorBuilder: (context, error, stackTrace) =>
+                widget.fallback ?? const SizedBox.shrink(),
+          ) ??
+          widget.fallback ??
+          const SizedBox.shrink();
     },
   );
 }

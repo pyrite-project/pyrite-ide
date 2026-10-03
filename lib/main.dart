@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:git2dart/git2dart.dart';
+import 'package:pyrite_ide/core/services/git/git_native_bootstrap.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -298,7 +298,7 @@ void main() async {
   GitDebugLog.log('WidgetsFlutterBinding initialized');
   await GitDebugLog.timeAsync(
     'git2dart PlatformSpecific.initialize',
-    PlatformSpecific.initialize,
+    initializeGitNative,
   );
 
   persistenceManager = PersistenceManager();
@@ -346,7 +346,7 @@ void main() async {
   }
 
   await RustLib.init();
-  await PlatformSpecific.initialize();
+  await initializeGitNative();
 
   if (data.tabs.isNotEmpty) {
     await container

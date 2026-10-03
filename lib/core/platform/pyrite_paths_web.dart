@@ -13,10 +13,17 @@ Future<Directory> getApplicationSupportDirectory() async {
 }
 
 Future<Directory> getTemporaryDirectory() async {
-  final support = await getApplicationSupportDirectory();
   final temp = Directory(kWebTempPath);
   if (!await temp.exists()) {
     await temp.create(recursive: true);
   }
   return temp;
+}
+
+Future<Directory> getApplicationCacheDirectory() async {
+  final cache = Directory('$kWebAppSupportPath/cache');
+  if (!await cache.exists()) {
+    await cache.create(recursive: true);
+  }
+  return cache;
 }

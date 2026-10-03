@@ -16,6 +16,7 @@ import 'package:pyrite_ide/features/plugin_view/plugin_menu.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_split_view.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_video_player.dart';
+import 'package:pyrite_ide/shared/pyrite_media.dart';
 
 /// Signature for dispatching a component event back to the plugin.
 ///
@@ -618,39 +619,41 @@ class ComponentBuilder {
         if (assetPath != null && file == null) {
           return const Icon(Icons.broken_image_outlined);
         }
-        return file == null
-            ? Image.network(
-                source,
-                width: (props['width'] as num?)?.toDouble(),
-                height: (props['height'] as num?)?.toDouble(),
-                fit: switch (props['fit']) {
-                  'cover' => BoxFit.cover,
-                  'fill' => BoxFit.fill,
-                  'none' => BoxFit.none,
-                  _ => BoxFit.contain,
-                },
-                errorBuilder: (context, error, stack) => Icon(
-                  Icons.broken_image_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-              )
-            : Image.file(
-                file,
-                width: (props['width'] as num?)?.toDouble(),
-                height: (props['height'] as num?)?.toDouble(),
-                fit: switch (props['fit']) {
-                  'cover' => BoxFit.cover,
-                  'fill' => BoxFit.fill,
-                  'none' => BoxFit.none,
-                  _ => BoxFit.contain,
-                },
-                errorBuilder: (context, error, stack) => Icon(
-                  Icons.broken_image_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-              );
+        if (file == null) {
+          return Image.network(
+            source,
+            width: (props['width'] as num?)?.toDouble(),
+            height: (props['height'] as num?)?.toDouble(),
+            fit: switch (props['fit']) {
+              'cover' => BoxFit.cover,
+              'fill' => BoxFit.fill,
+              'none' => BoxFit.none,
+              _ => BoxFit.contain,
+            },
+            errorBuilder: (context, error, stack) => Icon(
+              Icons.broken_image_outlined,
+              size: 16,
+              color: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+        return fileImageWidget(
+              file,
+              width: (props['width'] as num?)?.toDouble(),
+              height: (props['height'] as num?)?.toDouble(),
+              fit: switch (props['fit']) {
+                'cover' => BoxFit.cover,
+                'fill' => BoxFit.fill,
+                'none' => BoxFit.none,
+                _ => BoxFit.contain,
+              },
+              errorBuilder: (context, error, stack) => Icon(
+                Icons.broken_image_outlined,
+                size: 16,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ) ??
+            const Icon(Icons.broken_image_outlined);
       case 'Video':
         final source = props['src']?.toString() ?? '';
         final assetPath = pluginResourcePath(source);
@@ -1523,7 +1526,8 @@ class ComponentBuilder {
     final file = assetPath == null || pluginRootPath == null
         ? null
         : resolvePluginAssetFile(pluginRootPath!, assetPath);
-    if (file != null) return FileImage(file);
+    final fileProvider = fileImageProvider(file);
+    if (fileProvider != null) return fileProvider;
     final uri = Uri.tryParse(source);
     return uri != null && (uri.scheme == 'http' || uri.scheme == 'https')
         ? NetworkImage(source)

@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/core/platform/pyrite_io.dart';
+import 'package:pyrite_ide/shared/pyrite_media.dart';
 import 'package:video_player/video_player.dart' as video;
 
 /// Host-owned native video player for the `Video` plugin component.
@@ -49,7 +49,7 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
   @override
   void initState() {
     super.initState();
-    _replaceController();
+    unawaited(_replaceController());
   }
 
   @override
@@ -58,7 +58,7 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
     if (oldWidget.source != widget.source ||
         oldWidget.sourceType != widget.sourceType ||
         oldWidget.package != widget.package) {
-      _replaceController();
+      unawaited(_replaceController());
       return;
     }
 
@@ -77,7 +77,7 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
     }
   }
 
-  void _replaceController() {
+  Future<void> _replaceController() async {
     final generation = ++_generation;
     final previousController = _controller;
     if (previousController != null) {
@@ -98,7 +98,7 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
 
     late final video.VideoPlayerController controller;
     try {
-      controller = _createController();
+      controller = await _createController();
     } catch (error) {
       _error = error;
       return;
@@ -107,7 +107,7 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
     unawaited(_initializeController(controller, generation));
   }
 
-  video.VideoPlayerController _createController() {
+  Future<video.VideoPlayerController> _createController() async {
     switch (widget.sourceType) {
       case 'network':
         return video.VideoPlayerController.networkUrl(Uri.parse(widget.source));
@@ -118,7 +118,7 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
         );
       case 'file':
       default:
-        return video.VideoPlayerController.file(_fileFromSource(widget.source));
+        return fileVideoController(widget.source);
     }
   }
 
@@ -316,14 +316,6 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
       ),
     );
   }
-}
-
-File _fileFromSource(String source) {
-  final uri = Uri.tryParse(source);
-  if (uri?.scheme.toLowerCase() == 'file') {
-    return File.fromUri(uri!);
-  }
-  return File(source);
 }
 
 class _FullscreenPlayer extends StatelessWidget {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -433,7 +434,9 @@ class PluginRunManager {
   Future<void> _decodeAndEnqueue(Uint8List bytes) async {
     if (_stopped) return;
     final envelope = bytes.length > PluginPerfBudget.maxInlineJsonBytes
-        ? await Isolate.run(() => _decodePluginEnvelope(bytes))
+        ? (kIsWeb
+              ? _decodePluginEnvelope(bytes)
+              : await Isolate.run(() => _decodePluginEnvelope(bytes)))
         : _decodePluginEnvelope(bytes);
     final message = _InboundPluginMessage(
       envelope: envelope,

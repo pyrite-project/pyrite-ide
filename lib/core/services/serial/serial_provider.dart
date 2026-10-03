@@ -1,7 +1,4 @@
 import 'dart:async';
-import 'dart:ffi';
-import 'dart:io';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flserial/flserial.dart';
@@ -10,30 +7,7 @@ import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
-
-final DynamicLibrary? _kernel32 = Platform.isWindows
-    ? DynamicLibrary.open('kernel32.dll')
-    : null;
-
-final _createFileW = _kernel32
-    ?.lookupFunction<
-      IntPtr Function(
-        Pointer<Utf16>,
-        Uint32,
-        Uint32,
-        Pointer,
-        Uint32,
-        Uint32,
-        IntPtr,
-      ),
-      int Function(Pointer<Utf16>, int, int, Pointer, int, int, int)
-    >('CreateFileW');
-
-final _closeHandle = _kernel32
-    ?.lookupFunction<Int32 Function(IntPtr), int Function(int)>('CloseHandle');
-
-final _getLastError = _kernel32
-    ?.lookupFunction<Uint32 Function(), int Function()>('GetLastError');
+import 'package:pyrite_ide/core/services/serial/serial_port_probe.dart';
 
 class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   FlSerial? _serial;
@@ -73,24 +47,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   }
 
   Future<bool> _portExistsOnSystem(String portName) {
-    if (_createFileW == null) return Future.value(true);
-    try {
-      final path = '\\\\.\\$portName';
-      final wide = path.toNativeUtf16(allocator: malloc);
-      final handle = _createFileW!(wide, 0, 3, nullptr, 3, 0x80, 0);
-      malloc.free(wide);
-
-      const int invalidHandleValue = -1;
-      if (handle == invalidHandleValue) {
-        final error = _getLastError!();
-        return Future.value(error != 2 && error != 1617);
-      }
-
-      _closeHandle!(handle);
-      return Future.value(true);
-    } catch (_) {
-      return Future.value(true);
-    }
+    return serialPortExistsOnSystem(portName);
   }
 
   @override
