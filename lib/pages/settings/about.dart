@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:vertical_card_pager/vertical_card_pager.dart';
 
 class About extends ConsumerWidget {
@@ -52,7 +53,7 @@ class About extends ConsumerWidget {
       Hero(
         tag: "feature_modern_image",
         child: ClipRRect(
-          borderRadius: BorderRadiusGeometry.circular(10),
+          borderRadius: context.outerCorners,
           child: Image.asset("assets/about/1.webp", fit: BoxFit.cover),
         ),
       ),

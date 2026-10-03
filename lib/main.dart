@@ -45,6 +45,8 @@ late final PersistenceManager persistenceManager;
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
+bool _persistDirty = true;
+bool _persistSaveInFlight = false;
 final UseWindow appWindow = UseWindow();
 DebugPrintCallback? _defaultDebugPrint;
 
@@ -125,12 +127,12 @@ void _applyData(PersistedData data) {
   container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
   container.read(editorTabSize.notifier).state = data.editorTabSize;
   container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
+  container.read(editorSmoothCursor.notifier).state = data.editorSmoothCursor;
   container.read(editorFormatOnSave.notifier).state = data.editorFormatOnSave;
   container.read(useLsp.notifier).state = data.useLsp;
   container.read(lspType.notifier).state =
       LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
   container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
-  container.read(lspLanguageId.notifier).state = data.lspLanguageId;
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(lspVirtualEnvironment.notifier).state =
@@ -226,10 +228,24 @@ void _applyData(PersistedData data) {
       .restoreContributions(data.dataContributions);
 }
 
-void _triggerSave() {
-  _debounceTimer?.cancel();
-  _debounceTimer = Timer(const Duration(seconds: 1), () async {
+// Starts dirty so the first periodic tick persists the freshly restored
+// state once, keeping a crash-recovery snapshot without steady-state writes.
+Future<void> _savePersistedDataNow() async {
+  if (_persistSaveInFlight) return;
+  _persistSaveInFlight = true;
+  try {
     await persistenceManager.saveFromContainer(container);
+    _persistDirty = false;
+  } finally {
+    _persistSaveInFlight = false;
+  }
+}
+
+void _triggerSave() {
+  _persistDirty = true;
+  _debounceTimer?.cancel();
+  _debounceTimer = Timer(const Duration(seconds: 1), () {
+    unawaited(_savePersistedDataNow());
   });
 }
 
@@ -242,8 +258,9 @@ void _triggerPluginSave() {
 
 void _startAutoSave() {
   _saveTimer?.cancel();
-  _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-    await persistenceManager.saveFromContainer(container);
+  _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    if (!_persistDirty) return;
+    unawaited(_savePersistedDataNow());
   });
   container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
     _triggerSave();
@@ -351,7 +368,11 @@ void main() async {
   if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
-        .restoreTabs(data.tabs, data.selectedTabIndex);
+        .restoreTabs(
+          data.tabs,
+          data.selectedTabIndex,
+          selectedTabPath: data.selectedTabPath,
+        );
   }
 
   appWindow.bind(container);

@@ -116,7 +116,10 @@ GoRouter routes = GoRouter(
                 pluginId.isEmpty ||
                 containerId == null ||
                 containerId.isEmpty) {
-              return topCustomTransitionPage(child: Scaffold(body: Center(child: Text('插件视图不可用'))), state: state);
+              return topCustomTransitionPage(
+                child: Scaffold(body: Center(child: Text('插件视图不可用'))),
+                state: state,
+              );
             }
             return topCustomTransitionPage(
               child: PluginViewHost(
@@ -124,7 +127,7 @@ GoRouter routes = GoRouter(
                 containerId: containerId,
                 viewId: state.uri.queryParameters['view'],
               ),
-              state: state
+              state: state,
             );
           },
         ),

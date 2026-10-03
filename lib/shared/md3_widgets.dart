@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
+/// Legacy alias for the shared corner radius scale, which now lives in
+/// `core/constants/corner_radius.dart`.
+///
+/// Prefer [outerCorners] / [innerCorners] for new code; this name is kept so
+/// existing call sites keep working.
 extension BuildContextRadius on BuildContext {
-  BorderRadius get effectiveRadius {
-    final shape = Theme.of(this).cardTheme.shape;
-    if (shape is RoundedRectangleBorder) {
-      return shape.borderRadius.resolve(TextDirection.ltr);
-    }
-    return BorderRadius.circular(12);
-  }
+  /// The shared outer corner radius for top-level surfaces.
+  BorderRadius get effectiveRadius => outerCorners;
 }
 
 class PaneHeader extends ConsumerWidget {
@@ -41,9 +42,9 @@ class PaneHeader extends ConsumerWidget {
     final comfortable = !isCompact && tier == ThemeStyle.comfortable;
     final tokens = ThemeDensityTokens.forStyle(tier);
     final titleStyle = tier == ThemeStyle.compact
-        ? Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: scheme.onSurface,
-        )
+        ? Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: scheme.onSurface)
         : null;
     return Container(
       constraints: BoxConstraints(
@@ -59,7 +60,11 @@ class PaneHeader extends ConsumerWidget {
       child: Row(
         children: [
           if (leadingIcon != null) ...[
-            Icon(leadingIcon, size: tokens.headerIconSize, color: scheme.onSurfaceVariant),
+            Icon(
+              leadingIcon,
+              size: tokens.headerIconSize,
+              color: scheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -67,7 +72,12 @@ class PaneHeader extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                UseText(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                UseText(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle,
+                ),
                 if (subtitle != null && !isCompact)
                   UseText(
                     subtitle!,
@@ -235,10 +245,7 @@ class StatusBarButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(99),
                 border: Border.all(color: scheme.surfaceContainer, width: 1.5),
               ),
-              child: SizedBox(
-                width: compact ? 6 : 8,
-                height: compact ? 6 : 8,
-              ),
+              child: SizedBox(width: compact ? 6 : 8, height: compact ? 6 : 8),
             ),
           ),
       ],
@@ -265,10 +272,7 @@ class StatusBarButton extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: compact
-                      ? TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        )
+                      ? TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)
                       : null,
                 ),
               )
@@ -303,9 +307,26 @@ class StatusBarButton extends StatelessWidget {
       },
     );
 
+    // `container: true` keeps this anchor as its own semantics node.
+    //
+    // A Tooltip is an OverlayPortal, and its overlay content is linked to the
+    // anchor by a semantics traversal-parent identifier. When two adjacent
+    // tooltip anchors get merged into a single node -- which is what
+    // IndexedSemantics does for every row of a ListView -- the second anchor's
+    // traversal-parent identifier is dropped instead of merged, leaving its
+    // overlay content as an orphan that points outside the tree. Windows then
+    // rejects the whole accessibility update and logs:
+    //   Failed to update ui::AXTree, error: N will not be in the tree and is
+    //   not the new root
+    // It is an engine-side framework bug (flutter/flutter#182444, still
+    // unfixed in the pinned engine), and `container: true` is the workaround
+    // that keeps every anchor un-mergeable. Do not "simplify" this away.
     final result = tooltip == null
         ? child
-        : Tooltip(message: tooltip!, child: child);
+        : Tooltip(
+            message: tooltip!,
+            child: Semantics(container: true, child: child),
+          );
 
     if (fixedWidth != null) {
       return SizedBox(

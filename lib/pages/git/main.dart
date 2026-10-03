@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 
 const _fallbackAuthorName = 'Pyrite User';
@@ -1207,7 +1208,7 @@ class _BlockedPathList extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: context.innerCorners,
         ),
         child: ListView.builder(
           shrinkWrap: true,
@@ -2180,7 +2181,7 @@ class _StatusTile extends ConsumerWidget {
       height: 28,
       child: InkWell(
         onTap: isBusy ? null : onOpenDiff,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: context.innerCorners,
         child: Padding(
           padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
           child: Row(

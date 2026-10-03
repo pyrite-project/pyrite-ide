@@ -15,6 +15,7 @@ import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 const List<int> kAvailableBaudRates = [
   9600,
@@ -851,7 +852,7 @@ class _TerminalColorPreview extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: context.outerCorners,
           border: Border.all(color: Theme.of(context).colorScheme.outline),
         ),
         child: RichText(
@@ -892,7 +893,7 @@ class _ColorSettingTile extends StatelessWidget {
               height: 30,
               decoration: BoxDecoration(
                 color: color,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: context.innerCorners,
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outline,
                 ),

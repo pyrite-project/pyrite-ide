@@ -74,6 +74,7 @@ StateProvider<bool> editorKeyboardSuggestions = StateProvider<bool>(
 StateProvider<bool> editorUseSpaceAsTab = StateProvider<bool>((ref) => true);
 StateProvider<int> editorTabSize = StateProvider<int>((ref) => 4);
 StateProvider<bool> editorGutterDivider = StateProvider<bool>((ref) => false);
+StateProvider<bool> editorSmoothCursor = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorFormatOnSave = StateProvider<bool>((ref) => false);
 
 StateProvider<bool> useLsp = StateProvider<bool>((ref) => true);
@@ -83,7 +84,6 @@ StateProvider<LspType> lspType = StateProvider<LspType>(
 StateProvider<String> lspWebSocketPath = StateProvider<String>(
   (ref) => "127.0.0.1:2026",
 );
-StateProvider<String> lspLanguageId = StateProvider<String>((ref) => "python");
 StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
 StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
 StateProvider<String> lspVirtualEnvironment = StateProvider<String>(

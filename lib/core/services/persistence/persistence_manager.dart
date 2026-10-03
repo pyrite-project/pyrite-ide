@@ -1,3 +1,4 @@
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -57,11 +58,11 @@ class PersistenceManager {
       editorUseSpaceAsTab: settings?.editorUseSpaceAsTab ?? true,
       editorTabSize: settings?.editorTabSize ?? 4,
       editorGutterDivider: settings?.editorGutterDivider ?? false,
+      editorSmoothCursor: settings?.editorSmoothCursor ?? false,
       editorFormatOnSave: settings?.editorFormatOnSave ?? false,
       useLsp: settings?.useLsp ?? true,
       lspType: settings?.lspType ?? 'web_socket',
       lspWebSocketPath: settings?.lspWebSocketPath ?? '127.0.0.1:2026',
-      lspLanguageId: settings?.lspLanguageId ?? 'python',
       lspStdioExecutable: settings?.lspStdioExecutable ?? '',
       lspStdioArgs: settings?.lspStdioArgs ?? '',
       lspVirtualEnvironment: settings?.lspVirtualEnvironment ?? '',
@@ -90,6 +91,7 @@ class PersistenceManager {
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
+      selectedTabPath: tabsData?.selectedTabPath,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       ensureBoardFilesystemOnConnect:
@@ -158,11 +160,11 @@ class PersistenceManager {
           editorUseSpaceAsTab: container.read(editorUseSpaceAsTab),
           editorTabSize: container.read(editorTabSize),
           editorGutterDivider: container.read(editorGutterDivider),
+          editorSmoothCursor: container.read(editorSmoothCursor),
           editorFormatOnSave: container.read(editorFormatOnSave),
           useLsp: container.read(useLsp),
           lspType: container.read(lspType).jsonName,
           lspWebSocketPath: container.read(lspWebSocketPath),
-          lspLanguageId: container.read(lspLanguageId),
           lspStdioExecutable: container.read(lspStdioExecutable),
           lspStdioArgs: container.read(lspStdioArgs),
           lspVirtualEnvironment: container.read(lspVirtualEnvironment),
@@ -249,6 +251,7 @@ class PersistenceManager {
   Future<void> _saveTabs(ProviderContainer container) async {
     final tabController = container.read(tabbedViewControllerProvider);
     final List<PersistedTab> tabs = [];
+    String? selectedTabPath;
     for (final tab in tabController.tabs) {
       final value = tab.value;
       if (value is TabDataValue && value.type == "file") {
@@ -261,15 +264,44 @@ class PersistenceManager {
             unsavedContent: (!value.isSaved && value.editorController != null)
                 ? value.editorController!.text
                 : null,
+            cursorOffset: value.editorController?.selection.extentOffset,
+            scrollLine: value.editorController?.firstVisibleLine,
+            foldedRanges: _persistFoldedRanges(value.editorController),
           ),
         );
+      }
+    }
+    final selectedIndex = tabController.selectedIndex;
+    if (selectedIndex != null &&
+        selectedIndex >= 0 &&
+        selectedIndex < tabController.tabs.length) {
+      final selectedValue = tabController.tabs[selectedIndex].value;
+      if (selectedValue is TabDataValue) {
+        selectedTabPath = selectedValue.filePath;
       }
     }
     await tabsPersistence.save(
       TabsPersistedData(
         tabs: tabs,
-        selectedTabIndex: tabController.selectedIndex ?? 0,
+        selectedTabIndex: selectedIndex ?? 0,
+        selectedTabPath: selectedTabPath,
       ),
     );
   }
+}
+
+List<PersistedFoldRange> _persistFoldedRanges(CodeForgeController? controller) {
+  final snapshots = controller?.foldedRanges ?? const [];
+  if (snapshots.isEmpty) return const [];
+
+  List<PersistedFoldRange> convert(List<FoldRangeSnapshot> snapshots) => [
+    for (final snapshot in snapshots)
+      PersistedFoldRange(
+        startLine: snapshot.startLine,
+        endLine: snapshot.endLine,
+        children: convert(snapshot.children),
+      ),
+  ];
+
+  return convert(snapshots);
 }

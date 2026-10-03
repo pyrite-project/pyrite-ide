@@ -17,11 +17,11 @@ class SettingsPersistedData {
   final bool editorUseSpaceAsTab;
   final int editorTabSize;
   final bool editorGutterDivider;
+  final bool editorSmoothCursor;
   final bool editorFormatOnSave;
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
-  final String lspLanguageId;
   final String lspStdioExecutable;
   final String lspStdioArgs;
   final String lspVirtualEnvironment;
@@ -81,11 +81,11 @@ class SettingsPersistedData {
     this.editorUseSpaceAsTab = true,
     this.editorTabSize = 4,
     this.editorGutterDivider = false,
+    this.editorSmoothCursor = false,
     this.editorFormatOnSave = false,
     required this.useLsp,
     this.lspType = 'web_socket',
     required this.lspWebSocketPath,
-    this.lspLanguageId = 'python',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
     this.lspVirtualEnvironment = '',
@@ -146,11 +146,11 @@ class SettingsPersistedData {
     'editorUseSpaceAsTab': editorUseSpaceAsTab,
     'editorTabSize': editorTabSize,
     'editorGutterDivider': editorGutterDivider,
+    'editorSmoothCursor': editorSmoothCursor,
     'editorFormatOnSave': editorFormatOnSave,
     'useLsp': useLsp,
     'lspType': lspType,
     'lspWebSocketPath': lspWebSocketPath,
-    'lspLanguageId': lspLanguageId,
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
     'lspVirtualEnvironment': lspVirtualEnvironment,
@@ -216,11 +216,11 @@ class SettingsPersistedData {
     editorUseSpaceAsTab: json['editorUseSpaceAsTab'] as bool? ?? true,
     editorTabSize: json['editorTabSize'] as int? ?? 4,
     editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
+    editorSmoothCursor: json['editorSmoothCursor'] as bool? ?? false,
     editorFormatOnSave: json['editorFormatOnSave'] as bool? ?? false,
     useLsp: json['useLsp'] as bool? ?? true,
     lspType: json['lspType'] as String? ?? 'web_socket',
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
-    lspLanguageId: json['lspLanguageId'] as String? ?? 'python',
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
     lspStdioArgs: json['lspStdioArgs'] as String? ?? '',
     lspVirtualEnvironment:
@@ -332,7 +332,12 @@ class SettingsPersistence {
   Future<void> save(SettingsPersistedData data) async {
     try {
       final file = await _file;
-      await file.writeAsString(jsonEncode(data.toJson()));
+      // Temp file + rename, matching TabsPersistence and PluginPersistence.
+      // A partial write here used to produce truncated JSON that `load` then
+      // swallowed into `null`, silently resetting every user setting.
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.rename(file.path);
     } catch (e) {
       debugPrint('SettingsPersistence: Failed to save: $e');
     }

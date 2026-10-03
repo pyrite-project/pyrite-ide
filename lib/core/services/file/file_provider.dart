@@ -186,6 +186,17 @@ class FileNotifier extends StateNotifier<Directory?> {
     return folderPath;
   }
 
+  /// Creates [folderPath] and starts an inline rename so the user can name
+  /// the new folder right away instead of renaming it from the context menu
+  /// later.
+  Future<String> createFolderAndStartRename(String folderPath) async {
+    final createdPath = await createFolder(folderPath);
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    controller.setSelectedNodeId(createdPath);
+    controller.setRenamingNodeId(createdPath);
+    return createdPath;
+  }
+
   TreeNode<FileSystemItem>? getFocusFileNode() {
     return getFocusFileNodeFromProvider(
       ref,

@@ -41,6 +41,17 @@ String replaceShortcutLabel() => usesCommandShortcut ? 'Cmd+Alt+H' : 'Ctrl+H';
 
 String toggleCommentShortcutLabel() => usesCommandShortcut ? 'Cmd+/' : 'Ctrl+/';
 
+/// Labels for the editor shortcuts that are registered inline in
+/// `EditCore.build` rather than through [CodeForgeKeyboardShortcuts].
+///
+/// The editor context menu shows these in the description column, so keeping
+/// them here means a binding and its label change together. Items with no
+/// keyboard shortcut pass an empty description rather than a placeholder, which
+/// used to render the literal text "LSP" where a key should be.
+String goToDefinitionShortcutLabel() => 'F12';
+
+String renameShortcutLabel() => 'F2';
+
 String activatorToString(SingleActivator activator) {
   final parts = <String>[];
   if (activator.control) parts.add('Ctrl');
@@ -51,7 +62,13 @@ String activatorToString(SingleActivator activator) {
   return parts.join('+');
 }
 
-SingleActivator stringToActivator(String str) {
+/// Parses a recorded shortcut string such as `Ctrl+Shift+S`.
+///
+/// Returns null when the key name is not recognised. This used to fall back to
+/// [LogicalKeyboardKey.enter] silently, which meant a shortcut recorded on a
+/// key outside the hardcoded list below (F13, an arrow key, a media key)
+/// quietly became Enter and fired on every confirm.
+SingleActivator? stringToActivator(String str) {
   final parts = str.split('+').map((s) => s.trim()).toList();
   final control = parts.remove('Ctrl') || parts.remove('ctrl');
   final shift = parts.remove('Shift') || parts.remove('shift');
@@ -63,8 +80,20 @@ SingleActivator stringToActivator(String str) {
       parts.remove('cmd') ||
       parts.remove('Command') ||
       parts.remove('command');
-  final keyLabel = parts.isNotEmpty ? parts.last : 'enter';
-  final key = _resolveKey(keyLabel);
+  if (parts.isEmpty) {
+    debugPrint(
+      'shortcut_utils: ignored shortcut "$str" because it names no key',
+    );
+    return null;
+  }
+  final key = _resolveKey(parts.last);
+  if (key == null) {
+    debugPrint(
+      'shortcut_utils: ignored shortcut "$str" because '
+      '"${parts.last}" is not a known key name',
+    );
+    return null;
+  }
   return SingleActivator(
     key,
     control: control,
@@ -81,10 +110,22 @@ String _keyLabel(LogicalKeyboardKey key) {
   if (key == LogicalKeyboardKey.tab) return 'Tab';
   if (key == LogicalKeyboardKey.backspace) return 'Backspace';
   if (key == LogicalKeyboardKey.delete) return 'Delete';
+  // Flutter's keyLabel for the navigation keys is a symbol ("↑", "Page Up"),
+  // which _resolveKey cannot parse back. Spell them out so a recorded
+  // shortcut round-trips.
+  if (key == LogicalKeyboardKey.arrowUp) return 'ArrowUp';
+  if (key == LogicalKeyboardKey.arrowDown) return 'ArrowDown';
+  if (key == LogicalKeyboardKey.arrowLeft) return 'ArrowLeft';
+  if (key == LogicalKeyboardKey.arrowRight) return 'ArrowRight';
+  if (key == LogicalKeyboardKey.home) return 'Home';
+  if (key == LogicalKeyboardKey.end) return 'End';
+  if (key == LogicalKeyboardKey.pageUp) return 'PageUp';
+  if (key == LogicalKeyboardKey.pageDown) return 'PageDown';
+  if (key == LogicalKeyboardKey.insert) return 'Insert';
   return key.keyLabel;
 }
 
-LogicalKeyboardKey _resolveKey(String label) {
+LogicalKeyboardKey? _resolveKey(String label) {
   switch (label.toLowerCase()) {
     case 'enter':
       return LogicalKeyboardKey.enter;
@@ -100,6 +141,24 @@ LogicalKeyboardKey _resolveKey(String label) {
     case 'delete':
     case 'del':
       return LogicalKeyboardKey.delete;
+    case 'arrowup':
+      return LogicalKeyboardKey.arrowUp;
+    case 'arrowdown':
+      return LogicalKeyboardKey.arrowDown;
+    case 'arrowleft':
+      return LogicalKeyboardKey.arrowLeft;
+    case 'arrowright':
+      return LogicalKeyboardKey.arrowRight;
+    case 'home':
+      return LogicalKeyboardKey.home;
+    case 'end':
+      return LogicalKeyboardKey.end;
+    case 'pageup':
+      return LogicalKeyboardKey.pageUp;
+    case 'pagedown':
+      return LogicalKeyboardKey.pageDown;
+    case 'insert':
+      return LogicalKeyboardKey.insert;
     case 'a':
       return LogicalKeyboardKey.keyA;
     case 'b':
@@ -197,6 +256,6 @@ LogicalKeyboardKey _resolveKey(String label) {
     case 'f12':
       return LogicalKeyboardKey.f12;
     default:
-      return LogicalKeyboardKey.enter;
+      return null;
   }
 }

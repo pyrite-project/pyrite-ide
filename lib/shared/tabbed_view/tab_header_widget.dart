@@ -140,7 +140,18 @@ class TabHeaderWidget extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
     );
     if (tab.tooltip != null) {
-      tabText = Tooltip(message: tab.tooltip, child: tabText);
+      // `container: true` prevents this anchor from being merged into a
+      // neighbouring tab's semantics node. A Tooltip links its overlay content
+      // to the anchor with a traversal-parent identifier, and a merge drops
+      // that identifier instead of combining it, which orphans the tooltip
+      // node and makes Windows reject the entire accessibility tree update
+      // ("will not be in the tree and is not the new root"). The tab strip is
+      // the worst place for this: tabs sit side by side and a partially
+      // visible one is common. See flutter/flutter#182444.
+      tabText = Tooltip(
+        message: tab.tooltip!,
+        child: Semantics(container: true, child: tabText),
+      );
     }
     textAndButtons.add(
       Expanded(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/sdk/component_schema.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// Renders schema problems inline instead of letting a malformed component tree
 /// take down the surrounding IDE page.
@@ -31,7 +32,7 @@ class ComponentErrorBoundary extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.errorContainer.withValues(alpha: 0.35),
         border: Border.all(color: scheme.error.withValues(alpha: 0.6)),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: context.outerCorners,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

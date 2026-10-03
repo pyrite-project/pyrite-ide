@@ -16,6 +16,7 @@ import 'package:pyrite_ide/features/plugin_view/plugin_menu.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_split_view.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_video_player.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// Signature for dispatching a component event back to the plugin.
 ///
@@ -692,7 +693,7 @@ class ComponentBuilder {
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: context.outerCorners,
           ),
           child: SelectableText(
             props['code']?.toString() ?? '',
