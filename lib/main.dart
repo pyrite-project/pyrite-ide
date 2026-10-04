@@ -254,6 +254,16 @@ void _startAutoSave() {
 }
 
 Future<void> _startRuntimeAndPlugins() async {
+  if (kIsWeb) {
+    container
+        .read(ideOutputLogProvider.notifier)
+        .add(
+          IdeOutputSource.ide,
+          'Python runtime is not available in the web build; '
+          'plugins are disabled. (Web 环境暂不支持 Python 运行时，插件已停用)',
+        );
+    return;
+  }
   final runtimeHost = container.read(pythonRuntimeHostProvider);
   try {
     await runtimeHost.start();
@@ -294,7 +304,9 @@ void main() async {
   // Wait for Material Icons font to be fully loaded before first frame.
   // This prevents the "tofu" (question mark box) issue on desktop platforms.
   await Future.delayed(const Duration(milliseconds: 50));
-  VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
+  if (!kIsWeb) {
+    VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
+  }
   GitDebugLog.log('WidgetsFlutterBinding initialized');
   await GitDebugLog.timeAsync(
     'git2dart PlatformSpecific.initialize',
@@ -345,7 +357,24 @@ void main() async {
     }
   }
 
-  await RustLib.init();
+  if (kIsWeb) {
+    // The Rust editor core loads from wasm; a failed load must not prevent
+    // the rest of the IDE from booting.
+    try {
+      await RustLib.init();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'pyrite_ide',
+          context: ErrorDescription('while loading the editor wasm module'),
+        ),
+      );
+    }
+  } else {
+    await RustLib.init();
+  }
   await initializeGitNative();
 
   if (data.tabs.isNotEmpty) {

@@ -1,6 +1,6 @@
 {
-    "name": "pyrite_ide",
-    "short_name": "pyrite_ide",
+    "name": "PyriteIDE",
+    "short_name": "PyriteIDE",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

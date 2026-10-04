@@ -10,10 +10,8 @@ import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
-import 'package:pyrite_ide/core/sdk/python_bridge_plugin_transport.dart';
-import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
-import 'package:serious_python/serious_python.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_defaults.dart';
 
 enum PluginSessionState { starting, ready, stopping, stopped, failed }
 
@@ -94,12 +92,12 @@ class PythonRuntimeHost {
     String Function()? sessionIdFactory,
     DateTime Function()? clock,
     this.stopTimeout = const Duration(seconds: 2),
-  }) : _bootstrapRuntime = bootstrapRuntime ?? _defaultBootstrapRuntime,
-       _resetRuntime = resetRuntime ?? SeriousPython.resetRuntime,
+  }) : _bootstrapRuntime = bootstrapRuntime ?? defaultBootstrapRuntime,
+       _resetRuntime = resetRuntime ?? defaultResetRuntime,
        _supportDirectory =
            supportDirectory ?? (() => getApplicationSupportDirectory()),
-       _transportFactory = transportFactory ?? _defaultTransportFactory,
-       _runProgram = runProgram ?? _defaultRunProgram,
+       _transportFactory = transportFactory ?? defaultTransportFactory,
+       _runProgram = runProgram ?? defaultRunProgram,
        _sessionIdFactory = sessionIdFactory ?? _newSessionId,
        _clock = clock ?? DateTime.now;
 
@@ -598,44 +596,6 @@ class PythonRuntimeHost {
       onError: (Object _, StackTrace _) {},
     );
     return next;
-  }
-
-  static Future<void> _defaultBootstrapRuntime() async {
-    final runtimeDirectory = await extractAssetZip(
-      pythonRuntimeBootAsset,
-      targetPath: pythonRuntimeBootCachePath,
-      checkHash: true,
-    );
-    final error = await SeriousPython.runProgram(
-      path.join(runtimeDirectory, 'boot.py'),
-      sync: true,
-    );
-    if (error != null) throw StateError(error);
-  }
-
-  static PluginLaunchTransport _defaultTransportFactory({
-    required String pluginId,
-    required String sessionId,
-    required bool runOnce,
-  }) {
-    final suffix = runOnce ? '.once' : '';
-    return PythonBridgePluginTransport(
-      channelLabel: 'pyrite.plugin.$pluginId.$sessionId$suffix',
-    );
-  }
-
-  static Future<String?> _defaultRunProgram(
-    String appPath, {
-    required List<String> modulePaths,
-    required Map<String, String> environmentVariables,
-    required bool sync,
-  }) {
-    return SeriousPython.runProgram(
-      appPath,
-      modulePaths: modulePaths,
-      environmentVariables: environmentVariables,
-      sync: sync,
-    );
   }
 
   static String _newSessionId() {

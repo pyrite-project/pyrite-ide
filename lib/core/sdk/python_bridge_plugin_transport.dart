@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
-import 'package:serious_python/bridge.dart';
+import 'package:pyrite_ide/core/sdk/python_bridge_channel.dart';
 
 abstract interface class PluginPythonBridgeChannel {
   int get port;
@@ -14,29 +14,6 @@ abstract interface class PluginPythonBridgeChannel {
   void signalDartSession(String channelLabel);
 
   void close();
-}
-
-class SeriousPythonBridgeChannel implements PluginPythonBridgeChannel {
-  SeriousPythonBridgeChannel() : _bridge = PythonBridge();
-
-  final PythonBridge _bridge;
-
-  @override
-  int get port => _bridge.port;
-
-  @override
-  Stream<Uint8List> get messages => _bridge.messages;
-
-  @override
-  bool send(Uint8List message) => _bridge.send(message);
-
-  @override
-  void signalDartSession(String channelLabel) {
-    DartBridge.instance.signalDartSession({channelLabel: port});
-  }
-
-  @override
-  void close() => _bridge.close();
 }
 
 class PythonBridgePluginTransport implements PluginLaunchTransport {
@@ -94,7 +71,7 @@ class PythonBridgePluginTransport implements PluginLaunchTransport {
   Map<String, String> get startupEnvironment => {
     portEnvironmentVariable: '$port',
     channelLabelEnvironmentVariable: channelLabel,
-    dartSessionTokenEnvironmentVariable: '${DartBridge.dartSessionToken}',
+    dartSessionTokenEnvironmentVariable: pythonBridgeSessionToken(),
   };
 
   @override
