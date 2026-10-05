@@ -29,7 +29,25 @@ String translateWithReplacements(
   I18nKey key, [
   Map<String, String> replacements = const {},
 ]) {
-  var value = translate(ref, key);
+  final locale = ref.read(activeLocaleProvider);
+  final registry = ref.read(dataRegistryProvider);
+  return translateWithReplacementsFromRegistry(
+    registry,
+    locale,
+    key,
+    replacements,
+  );
+}
+
+/// The container-scoped form of [translateWithReplacements], for widgets that
+/// only have a [BuildContext] and reach the registry through the container.
+String translateWithReplacementsFromRegistry(
+  DataRegistry registry,
+  String locale,
+  I18nKey key, [
+  Map<String, String> replacements = const {},
+]) {
+  var value = translateFromRegistry(registry, locale, key);
   for (final entry in replacements.entries) {
     value = value.replaceAll('{${entry.key}}', entry.value);
   }
