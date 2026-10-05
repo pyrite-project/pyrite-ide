@@ -1,0 +1,31 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export function frb_dart_fn_deliver_output(a: number, b: number, c: number, d: number): void;
+export function frb_get_rust_content_hash(): number;
+export function frb_pde_ffi_dispatcher_primary(a: number, b: number, c: number, d: number, e: number): void;
+export function frb_pde_ffi_dispatcher_sync(a: number, b: number, c: number, d: number): number;
+export function rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLayoutMap(a: number): void;
+export function rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerRopeBridge(a: number): void;
+export function rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLayoutMap(a: number): void;
+export function rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerRopeBridge(a: number): void;
+export function __wbg_workerpool_free(a: number): void;
+export function receive_transfer_closure(a: number, b: number, c: number, d: number): void;
+export function workerpool_new(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number): void;
+export function workerpool_new_raw(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number): void;
+export function frb_rust_vec_u8_free(a: number, b: number): void;
+export function frb_rust_vec_u8_new(a: number): number;
+export function frb_rust_vec_u8_resize(a: number, b: number, c: number): number;
+export function frb_dart_opaque_rust2dart_decode(a: number): number;
+export function frb_dart_opaque_dart2rust_encode(a: number, b: number): number;
+export function frb_dart_opaque_drop_thread_box_persistent_handle(a: number): void;
+export function wasm_start_callback(): void;
+export function __wbindgen_malloc(a: number, b: number): number;
+export function __wbindgen_realloc(a: number, b: number, c: number, d: number): number;
+export const __wbindgen_export_2: WebAssembly.Table;
+export function _dyn_core_ed718c3d60ebd546___ops__function__FnMut_______Output______as_wasm_bindgen_348abfbd64cc0e2a___closure__WasmClosure___describe__invoke___web_sys_9d51e0c24db2936c___features__gen_MessageEvent__MessageEvent_____(a: number, b: number, c: number): void;
+export function _dyn_core_ed718c3d60ebd546___ops__function__FnMut_______Output______as_wasm_bindgen_348abfbd64cc0e2a___closure__WasmClosure___describe__invoke___wasm_bindgen_348abfbd64cc0e2a___JsValue_____(a: number, b: number, c: number): void;
+export function __wbindgen_add_to_stack_pointer(a: number): number;
+export function __wbindgen_exn_store(a: number): void;
+export function __wbindgen_free(a: number, b: number, c: number): void;
+export function __wbindgen_start(): void;
