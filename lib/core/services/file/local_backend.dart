@@ -3,6 +3,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:super_tree/super_tree.dart';
@@ -165,16 +166,29 @@ Future<File?> sysCreateFile() async {
   return file;
 }
 
-Future<bool> sysSaveAs(String content) async {
+/// Writes [content] to a user-chosen path.
+///
+/// [encoding] and [byteOrderMark] reproduce the source file's character set, so
+/// saving a GBK or UTF-16 buffer to a new name does not transcode it to UTF-8.
+/// Returns the written path, or null when the user cancelled.
+Future<String?> sysSaveAs(
+  String content, {
+  String? encoding,
+  bool byteOrderMark = false,
+}) async {
   FileSaveLocation? path0 = await getSaveLocation();
-  if (path0 != null) {
-    String path = path0.path;
-    final file = File(path);
-    await file.create();
-    file.writeAsString(content);
-    return true;
+  if (path0 == null) return null;
+  final file = File(path0.path);
+  await file.create();
+  if (encoding == null && !byteOrderMark) {
+    await file.writeAsString(content, flush: true);
+  } else {
+    await file.writeAsBytes(
+      encodeFileText(content, encoding: encoding, byteOrderMark: byteOrderMark),
+      flush: true,
+    );
   }
-  return false;
+  return file.path;
 }
 
 // ---------------------------------------------------------------------------

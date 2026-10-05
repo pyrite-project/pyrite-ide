@@ -12,6 +12,8 @@ class TabDataValue {
     this.isBoardFile,
     this.boardFilePath,
     this.isSaved = true,
+    this.encoding,
+    this.byteOrderMark = false,
     this.pluginId,
     this.viewId,
     this.viewInstanceId,
@@ -32,6 +34,17 @@ class TabDataValue {
   final bool? isBoardFile;
   final String? boardFilePath;
   bool isSaved;
+
+  /// Character set the file's bytes were decoded with when the tab was opened,
+  /// or null when the editor writes plain UTF-8.
+  ///
+  /// Saving has to reproduce this: writing a GBK buffer as UTF-8 silently
+  /// transcodes the file, and UTF-16 content loses its byte order mark, so
+  /// every non-ASCII character round-trips wrong.
+  final String? encoding;
+
+  /// Whether the file on disk started with a byte order mark for [encoding].
+  final bool byteOrderMark;
 
   /// Set only when [type] is [pluginViewType]; together they address the one
   /// view instance this tab hosts.
