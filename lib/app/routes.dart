@@ -36,6 +36,9 @@ CustomTransitionPage topCustomTransitionPage({
 }
 
 GoRouter routes = GoRouter(
+  // Pinned so appContext can reach a context that can actually push routes;
+  // go_router would otherwise create this key privately.
+  navigatorKey: appNavigatorKey,
   observers: [routeObserver],
   redirect: (context, state) {
     final isDesktop = ResponsiveBreakpoints.of(context).isDesktop;
