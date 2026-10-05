@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 // ---------------------------------------------------------------------------
 // RunningOperation — describes a single long-running operation
@@ -8,8 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 class RunningOperation {
   const RunningOperation({
     required this.id,
-    required this.label,
     required this.icon,
+    this.label = '',
+    this.labelKey,
     this.canInterrupt = false,
     this.canForceReset = false,
     this.onInterrupt,
@@ -22,7 +24,14 @@ class RunningOperation {
   final String id;
 
   /// Display text shown in the status bar.
+  ///
+  /// Prefer [labelKey] so the status bar renders the label in the active
+  /// locale; [label] is the raw-text fallback for callers without an i18n key.
   final String label;
+
+  /// Localized display text; the status bar widget resolves it at build time
+  /// so a locale change re-renders running chips without re-registering them.
+  final I18nKey? labelKey;
 
   /// Display icon shown in the status bar.
   final IconData icon;
@@ -48,6 +57,7 @@ class RunningOperation {
   RunningOperation copyWith({
     String? id,
     String? label,
+    I18nKey? labelKey,
     IconData? icon,
     bool? canInterrupt,
     bool? canForceReset,
@@ -59,6 +69,7 @@ class RunningOperation {
     return RunningOperation(
       id: id ?? this.id,
       label: label ?? this.label,
+      labelKey: labelKey ?? this.labelKey,
       icon: icon ?? this.icon,
       canInterrupt: canInterrupt ?? this.canInterrupt,
       canForceReset: canForceReset ?? this.canForceReset,

@@ -44,6 +44,8 @@ import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
+import 'package:pyrite_ide/features/function_page/problems_view.dart';
+import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -72,6 +74,11 @@ class ConsolePage extends ConsumerWidget {
     final useWebRepl =
         webReplConnected || webReplState.state == WebReplState.waitingPassword;
     final selectedTab = ref.watch(bottomPanelTabProvider);
+    final problems = ref.watch(problemsProvider);
+    var problemCount = 0;
+    for (final file in problems) {
+      problemCount += file.errorCount + file.warningCount;
+    }
     final actions = _buildConsoleActions(
       ref,
       selectedTab,
@@ -82,7 +89,15 @@ class ConsolePage extends ConsumerWidget {
 
     return Column(
       children: [
-        _BottomPanelTabs(selectedIndex: selectedTab, actions: actions),
+        _BottomPanelTabs(
+          selectedIndex: selectedTab,
+          actions: actions,
+          // The count rides on the translated label so a locale switch
+          // re-renders it together with the tab text.
+          problemsLabel: problemCount > 0
+              ? '${translateForWidget(ref, I18nKey.bottomPanelProblemsTab)} ($problemCount)'
+              : translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
+        ),
         Expanded(
           child: IndexedStack(
             index: selectedTab,
@@ -90,6 +105,7 @@ class ConsolePage extends ConsumerWidget {
               ReplView(),
               OutputLogView(),
               DesktopTerminalView(),
+              ProblemsView(),
             ],
           ),
         ),
@@ -115,6 +131,8 @@ class ConsolePage extends ConsumerWidget {
         ];
       case 2:
         return const [];
+      case 3:
+        return [_buildProblemsCollapseAction(ref)];
       default:
         return [
           if (!isConnected && !useWebRepl)
@@ -188,13 +206,50 @@ class ConsolePage extends ConsumerWidget {
         ];
     }
   }
+
+  /// Collapse-all / expand-all toggle for the Problems panel, shown while
+  /// that tab is selected. "All" covers every file that currently has rows;
+  /// stale paths from closed files are ignored.
+  Widget _buildProblemsCollapseAction(WidgetRef ref) {
+    final problems = ref.watch(problemsProvider);
+    final collapsed = ref.watch(collapsedProblemFilesProvider);
+    final groupPaths = [
+      for (final file in problems)
+        if (file.diagnostics.isNotEmpty) file.path,
+    ];
+    final allCollapsed =
+        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
+    return IconButton(
+      tooltip: translateForWidget(
+        ref,
+        allCollapsed
+            ? I18nKey.problemsPanelExpandAll
+            : I18nKey.problemsPanelCollapseAll,
+      ),
+      onPressed: () {
+        ref.read(collapsedProblemFilesProvider.notifier).state = allCollapsed
+            ? <String>{}
+            : Set<String>.from(groupPaths);
+      },
+      icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
+    );
+  }
 }
 
 class _BottomPanelTabs extends ConsumerWidget {
-  const _BottomPanelTabs({required this.selectedIndex, required this.actions});
+  const _BottomPanelTabs({
+    required this.selectedIndex,
+    required this.actions,
+    this.problemsLabel,
+  });
 
   final int selectedIndex;
   final List<Widget> actions;
+
+  /// Pre-translated Problems tab label; carries the open-problem count when
+  /// there is one, so the tab reads like VS Code's badge without adding a
+  /// badge slot to [_BottomPanelTab].
+  final String? problemsLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -226,6 +281,13 @@ class _BottomPanelTabs extends ConsumerWidget {
             index: 2,
             selectedIndex: selectedIndex,
           ),
+          if (problemsLabel != null)
+            _BottomPanelTab(
+              label: problemsLabel!,
+              icon: Icons.report_problem_outlined,
+              index: 3,
+              selectedIndex: selectedIndex,
+            ),
           const Spacer(),
           if (actions.isNotEmpty) ...[
             SizedBox(
@@ -2102,7 +2164,11 @@ class EditorToolsBar extends ConsumerWidget {
             ),
           SizedBox(width: compact ? 4 : 6),
           Text(
-            op.label,
+            // Registry items can carry a raw label or an i18n key; the key is
+            // resolved at build time so a locale switch re-renders the chip.
+            op.labelKey != null
+                ? translateForWidget(ref, op.labelKey!)
+                : op.label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: scheme.onSurfaceVariant,
               fontSize: compact ? 12 : null,
@@ -2266,6 +2332,17 @@ class _EditorStateLabel extends ConsumerWidget {
     );
   }
 
+  /// The line the caret sits on, with the offset clamped to the document so a
+  /// caret that outlived its text (the file shrank underneath it) still
+  /// resolves instead of throwing.
+  int _caretLine(CodeForgeController controller) {
+    final offset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    return controller.getLineAtOffset(offset);
+  }
+
   /// Caret line/column, plus the selection size when there is a selection.
   ///
   /// A WidgetRef cannot use `translateWithReplacements` (it takes a `Ref`), so
@@ -2279,7 +2356,7 @@ class _EditorStateLabel extends ConsumerWidget {
     // matching what a board traceback points at. An empty document has no
     // line to query, so fall through with column 1.
     final hasLines = controller.lineCount > 0;
-    final line = hasLines ? controller.getLineAtOffset(offset) : 0;
+    final line = hasLines ? _caretLine(controller) : 0;
     final column = hasLines
         ? offset - controller.getLineStartOffset(line) + 1
         : offset + 1;
@@ -2306,13 +2383,12 @@ class _EditorStateLabel extends ConsumerWidget {
   /// the status bar keeps showing this readout, so a click can land on an
   /// unmounted editor. That follows the same policy as plugin reveals: switch
   /// to the dedicated editor route and retry until the editor mounts.
-  Future<void> _revealCaret(CodeForgeController controller, WidgetRef ref) async {
+  Future<void> _revealCaret(
+    CodeForgeController controller,
+    WidgetRef ref,
+  ) async {
     if (controller.lineCount == 0) return;
-    final offset = controller.selection.extentOffset.clamp(
-      0,
-      controller.length,
-    );
-    final line = controller.getLineAtOffset(offset);
+    final line = _caretLine(controller);
     try {
       await retryEditorReveal(
         reveal: () {
