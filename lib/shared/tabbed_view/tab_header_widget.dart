@@ -2,14 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
 
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
@@ -25,6 +23,54 @@ import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
 import 'package:tabbed_view/src/internal/tab/tab_button_widget.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 
+/// The count VSCode prints beside a tab name whose file has problems.
+///
+/// Errors win over warnings: showing "3" in orange next to three red ones would
+/// read as "three problems, mild", which is the opposite of what the file needs.
+/// The digits stay small and low-contrast so the label still reads first, and
+/// drop further on an unselected tab; the tooltip carries the full breakdown.
+class _ProblemsBadge extends StatelessWidget {
+  const _ProblemsBadge(this.problems, {required this.dimmed});
+
+  final TabProblemCounts problems;
+
+  /// Whether the tab is not the active one, which VSCode reflects as a fainter
+  /// decoration.
+  final bool dimmed;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasErrors = problems.errors > 0;
+    final count = hasErrors ? problems.errors : problems.warnings;
+    final color = hasErrors
+        ? Theme.of(context).colorScheme.error
+        : const Color(0xFFF2A33C);
+
+    final container = ProviderScope.containerOf(context);
+    final message = translateWithReplacementsFromRegistry(
+      container.read(dataRegistryProvider),
+      container.read(activeLocaleProvider),
+      I18nKey.tabProblemBadgeTooltip,
+      {'errors': '${problems.errors}', 'warnings': '${problems.warnings}'},
+    );
+
+    final textStyle = DefaultTextStyle.of(context).style;
+
+    return Tooltip(
+      message: message,
+      child: Text(
+        '$count',
+        style: textStyle.copyWith(
+          fontSize: (textStyle.fontSize ?? 13) * 0.8,
+          height: 1.1,
+          fontWeight: FontWeight.w500,
+          color: color.withValues(alpha: dimmed ? 0.45 : 0.85),
+        ),
+      ),
+    );
+  }
+}
+
 class TabHeaderWidget extends StatelessWidget {
   const TabHeaderWidget({
     super.key,
@@ -33,6 +79,7 @@ class TabHeaderWidget extends StatelessWidget {
     required this.provider,
     required this.onClose,
     required this.sideTabsLayout,
+    this.problems,
   });
 
   final int index;
@@ -40,6 +87,9 @@ class TabHeaderWidget extends StatelessWidget {
   final TabbedViewProvider provider;
   final Function onClose;
   final SideTabsLayout sideTabsLayout;
+
+  /// Diagnostics for the file behind this tab, when it shows one.
+  final TabProblemCounts? problems;
 
   @override
   Widget build(BuildContext context) {
@@ -200,6 +250,21 @@ class TabHeaderWidget extends StatelessWidget {
         );
       }
     }
+    if (problems != null && (problems!.errors > 0 || problems!.warnings > 0)) {
+      EdgeInsets? badgePadding;
+      if (tabTheme.buttonsGap > 0) {
+        badgePadding = EdgeInsets.only(left: tabTheme.buttonsGap);
+      }
+      textAndButtons.add(
+        Container(
+          padding: badgePadding,
+          child: _ProblemsBadge(
+            problems!,
+            dimmed: status != TabStatus.selected,
+          ),
+        ),
+      );
+    }
     if (tab.closable) {
       final bool enabled =
           provider.draggingTabIndex == null &&
@@ -215,68 +280,8 @@ class TabHeaderWidget extends StatelessWidget {
         tabTheme.closeIcon,
         onPressed: () async {
           final TabData tabData = provider.controller.tabs[index];
-          final value = tabData.value;
-          final bool isUnsaved = value is TabDataValue && !value.isSaved;
-          if (isUnsaved) {
-            showDialog(
-              context: context,
-              builder: (dialogContext) {
-                final container = ProviderScope.containerOf(dialogContext);
-                final registry = container.read(dataRegistryProvider);
-                final locale = container.read(activeLocaleProvider);
-                String tr(I18nKey key) =>
-                    translateFromRegistry(registry, locale, key);
-                return AlertDialog(
-                  title: Text(tr(I18nKey.tabUnsavedDialogTitle)),
-                  content: Text(tr(I18nKey.tabUnsavedDialogContent)),
-                  actions: [
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Theme.of(
-                          dialogContext,
-                        ).colorScheme.error,
-                        foregroundColor: Theme.of(
-                          dialogContext,
-                        ).colorScheme.onError,
-                      ),
-                      onPressed: () async {
-                        if (!dialogContext.mounted) return;
-                        dialogContext.pop();
-                        await _onClose(dialogContext, index);
-                      },
-                      child: Text(tr(I18nKey.tabUnsavedDialogDiscard)),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        // Save the tab being closed, not whichever tab is
-                        // currently selected.
-                        await container
-                            .read(fileProvider.notifier)
-                            .saveTab(tabData);
-
-                        container
-                            .read(ideMessageProvider.notifier)
-                            .success(tr(I18nKey.tabSavedCurrentFile));
-
-                        if (!dialogContext.mounted) return;
-                        // ignore: use_build_context_synchronously
-                        dialogContext.pop();
-                        // ignore: use_build_context_synchronously
-                        await _onClose(dialogContext, index);
-                      },
-                      child: Text(tr(I18nKey.tabUnsavedDialogSave)),
-                    ),
-                    TextButton(
-                      onPressed: () => dialogContext.pop(),
-                      child: Text(tr(I18nKey.tabUnsavedDialogCancel)),
-                    ),
-                  ],
-                );
-              },
-            );
-          } else {
-            await _onClose(context, index);
-          }
+          if (!await confirmCloseUnsavedTab(context, tabData)) return;
+          await _onClose(context, index);
         },
         toolTip: provider.closeButtonTooltip,
       );
