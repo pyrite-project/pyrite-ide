@@ -1,4 +1,5 @@
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/platform/pyrite_io.dart';
 
@@ -18,6 +19,10 @@ PythonVirtualEnvironment? resolvePythonVirtualEnvironment({
   required String configuredVirtualEnvironment,
   String? workspacePath,
 }) {
+  // The web build has no local filesystem to probe synchronously and never
+  // launches a local interpreter, so there is no environment to discover.
+  if (kIsWeb) return null;
+
   final configuredPath = configuredVirtualEnvironment.trim();
   if (configuredPath.isNotEmpty) {
     final rootPath =

@@ -7,7 +7,9 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pyrite_ide/core/platform/pyrite_io.dart';
+import 'package:pyrite_ide/core/platform/web/workspace_directory_picker.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -54,7 +56,12 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   Future<Directory?> getDirectory() async {
-    final String? path = await getDirectoryPath();
+    final String? path;
+    if (kIsWeb) {
+      path = await pickWorkspaceDirectory();
+    } else {
+      path = await getDirectoryPath();
+    }
     final Directory? dir;
     if (path != null) {
       dir = Directory(path);

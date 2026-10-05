@@ -357,11 +357,18 @@ void main() async {
     }
   }
 
-  if (kIsWeb) {
-    // The Rust editor core loads from wasm; a failed load must not prevent
-    // the rest of the IDE from booting.
+if (kIsWeb) {
+    // The Rust editor core loads from wasm. The loader waits on a <script>
+    // load event that never fires when the asset is missing, so the whole
+    // boot is bounded and the rest of the IDE still comes up without an
+    // editor core.
     try {
-      await RustLib.init();
+      await RustLib.init().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException(
+          'The editor wasm module did not finish loading',
+        ),
+      );
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(

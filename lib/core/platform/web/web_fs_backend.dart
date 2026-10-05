@@ -253,6 +253,15 @@ class WebFs {
   /// Returns the virtual root path (for example `/my-project`), or null when
   /// the user cancels.
   Future<String?> pickWorkspaceDirectory() async {
+    final pickerAvailable = (web.window as JSObject)
+        .hasProperty('showDirectoryPicker'.toJS)
+        .toDart;
+    if (!pickerAvailable) {
+      // Browsers without the File System Access API (Firefox/Safari) fall
+      // back to an OPFS-backed virtual workspace so file management,
+      // editing and saving still work.
+      return useOpfsWorkspace();
+    }
     final web.FileSystemDirectoryHandle handle;
     try {
       handle = await web.window
@@ -287,6 +296,22 @@ class WebFs {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Mounts (or reuses) an OPFS-backed virtual workspace directory.
+  Future<String> useOpfsWorkspace() async {
+    const label = 'web-workspace';
+    if (_mounts.containsKey(label)) return '/$label';
+    final root = await opfsRoot();
+    final dir = await root
+        .getDirectoryHandle(
+          label,
+          web.FileSystemGetDirectoryOptions(create: true),
+        )
+        .toDart;
+    _mounts[label] = dir;
+    workspaceLabel = label;
+    return '/$label';
   }
 
   /// Requests access to the persisted workspace inside a user gesture.
