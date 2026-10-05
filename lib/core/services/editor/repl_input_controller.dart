@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
+import 'package:pyrite_ide/core/services/editor/repl_history_store.dart';
 
 enum ReplInteractionMode {
   unknown,
@@ -10,17 +13,90 @@ enum ReplInteractionMode {
 }
 
 class ReplInputController extends ChangeNotifier {
-  ReplInputController() {
+  ReplInputController({ReplHistoryStore? store, String deviceBucket = ''})
+    : _store = store ?? ReplHistoryStore(),
+      _deviceBucket = deviceBucket {
     text.addListener(_onTextChanged);
+    // Fire and forget: the first Up-arrow before the file has been read sees an
+    // empty history rather than blocking the console on a disk read.
+    unawaited(_restoreHistory());
   }
 
   final TextEditingController text = TextEditingController();
+  final ReplHistoryStore _store;
+
+  /// Device this history belongs to — a serial port name or a WebREPL host.
+  ///
+  /// Empty before a device is connected, in which case nothing is loaded and
+  /// nothing is written: an unattached REPL has no commands worth keeping, and
+  /// attributing them to some default device would mix them into a real one's
+  /// history later.
+  String get deviceBucket => _deviceBucket;
+  String _deviceBucket;
+
   final List<String> _history = <String>[];
   ReplInteractionMode _mode = ReplInteractionMode.unknown;
   int? _historyIndex;
   String _historyDraft = '';
   bool _draftInHistory = false;
   bool _restoringHistory = false;
+
+  /// Debounce for the disk write, so holding Up-arrow through a long history
+  /// does not rewrite the file once per entry.
+  Timer? _saveDebounce;
+  static const _saveDelay = Duration(milliseconds: 400);
+
+  /// Points this controller at another device's history.
+  ///
+  /// The old bucket is written out before the new one is read, so unplugging a
+  /// board cannot lose its commands. Swapping in place rather than building a
+  /// new controller matters because the console outlives the device switch and
+  /// holds this object in a field — a replacement would leave it holding a
+  /// disposed notifier.
+  Future<void> useDeviceBucket(String bucket) async {
+    if (bucket == _deviceBucket) return;
+    await flushHistory();
+    _deviceBucket = bucket;
+    _historyIndex = null;
+    _historyDraft = '';
+    _draftInHistory = false;
+    _history.clear();
+    await _restoreHistory(replace: true);
+  }
+
+  Future<void> _restoreHistory({bool replace = false}) async {
+    if (_deviceBucket.isEmpty) return;
+    final entries = await _store.load(_deviceBucket);
+    if (entries.isEmpty) return;
+    if (replace) {
+      _history
+        ..clear()
+        ..addAll(entries);
+    } else {
+      // A draft slot may already hold the in-progress line; dropping it here
+      // would lose what the user was typing when the load landed.
+      _history.insertAll(0, entries);
+    }
+    if (_history.length > ReplHistoryStore.maxEntriesPerBucket) {
+      _history.removeRange(
+        0,
+        _history.length - ReplHistoryStore.maxEntriesPerBucket,
+      );
+    }
+    // The console reads this controller before it starts listening, so the
+    // history is loaded either way; only the notification waits for a listener.
+    if (hasListeners) notifyListeners();
+  }
+
+  void _scheduleSave() {
+    if (deviceBucket.isEmpty) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(_saveDelay, () {
+      unawaited(
+        _store.save(_deviceBucket, List<String>.unmodifiable(_history)),
+      );
+    });
+  }
 
   ReplInteractionMode get mode => _mode;
   bool get isInlineEditable =>
@@ -50,7 +126,10 @@ class ReplInputController extends ChangeNotifier {
     _removeDraftHistory();
     if (_history.isEmpty || _history.last != value) {
       _history.add(value);
-      if (_history.length > 500) _history.removeAt(0);
+      if (_history.length > ReplHistoryStore.maxEntriesPerBucket) {
+        _history.removeAt(0);
+      }
+      _scheduleSave();
     }
     _historyIndex = null;
     _historyDraft = '';
@@ -79,12 +158,20 @@ class ReplInputController extends ChangeNotifier {
     final start = item.replaceStart.clamp(0, text.text.length);
     final end = item.replaceEnd.clamp(start, text.text.length);
     final nextText = text.text.replaceRange(start, end, item.insertText);
+    // A snippet carries the argument the user is meant to type over; the
+    // selection is what makes it a template rather than finished code. Anything
+    // else leaves the caret after the inserted text.
+    final snippetStart = item.snippetSelectionStart;
+    final snippetEnd = item.snippetSelectionEnd;
     _restoringHistory = true;
     text.value = text.value.copyWith(
       text: nextText,
-      selection: TextSelection.collapsed(
-        offset: start + item.insertText.length,
-      ),
+      selection: snippetStart == null || snippetEnd == null
+          ? TextSelection.collapsed(offset: start + item.insertText.length)
+          : TextSelection(
+              baseOffset: start + snippetStart,
+              extentOffset: start + snippetEnd,
+            ),
       composing: TextRange.empty,
     );
     _restoringHistory = false;
@@ -226,6 +313,10 @@ class ReplInputController extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Unawaited: dispose cannot be async, and the write cannot throw (the
+    // store swallows its own errors), so letting it finish in the background
+    // loses nothing.
+    unawaited(flushHistory());
     text.removeListener(_onTextChanged);
     text.dispose();
     super.dispose();
@@ -294,6 +385,18 @@ class ReplInputController extends ChangeNotifier {
     if (!_draftInHistory) return;
     if (_history.isNotEmpty) _history.removeLast();
     _draftInHistory = false;
+  }
+
+  /// Flushes any pending history write.
+  ///
+  /// Called from [dispose] so the last command survives a quit that happens
+  /// inside the debounce window — which is exactly what happens when the user
+  /// types a command and immediately closes the IDE.
+  Future<void> flushHistory() async {
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    if (_deviceBucket.isEmpty) return;
+    await _store.save(_deviceBucket, List<String>.unmodifiable(_history));
   }
 }
 

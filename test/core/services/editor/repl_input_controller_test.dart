@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
+import 'package:pyrite_ide/core/services/editor/repl_history_store.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 
 void main() {
@@ -181,5 +184,94 @@ void main() {
     tracker.add('>>> ');
 
     expect(modes, [ReplInteractionMode.unknown, ReplInteractionMode.prompt]);
+  });
+
+  group('history buckets', () {
+    late Directory dir;
+    final controllers = <ReplInputController>[];
+
+    ReplInputController make({String bucket = '', ReplHistoryStore? store}) {
+      final controller = ReplInputController(
+        store: store ?? ReplHistoryStore(directory: dir.path),
+        deviceBucket: bucket,
+      );
+      controllers.add(controller);
+      return controller;
+    }
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('pyrite_repl_bucket_');
+    });
+
+    tearDown(() async {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+      controllers.clear();
+      // dispose() writes the history out in the background; deleting the
+      // directory under it fails on Windows until that write has closed.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    ReplHistoryStore store() => ReplHistoryStore(directory: dir.path);
+
+    /// The command the Up-arrow would show, or null when history is empty.
+    String? pageBack(ReplInputController controller) =>
+        controller.showPreviousHistory() ? controller.text.text : null;
+
+    test('a command recorded on one device does not leak to another', () async {
+      final controller = make(bucket: 'COM3');
+
+      controller.text.text = 'import webrepl';
+      controller.takeSubmission();
+      await controller.flushHistory();
+
+      await controller.useDeviceBucket('COM7');
+
+      expect(controller.deviceBucket, 'COM7');
+      expect(pageBack(controller), isNull);
+    });
+
+    test('reconnecting restores the device history', () async {
+      final history = store();
+      await history.save('COM3', ['a', 'b', 'c']);
+
+      final controller = make(bucket: 'COM7', store: history);
+
+      await controller.useDeviceBucket('COM3');
+
+      expect(pageBack(controller), 'c');
+    });
+
+    test('switching away writes the device history out first', () async {
+      final history = store();
+      final controller = make(bucket: 'COM3', store: history);
+
+      controller.text.text = 'repl.enter()';
+      controller.takeSubmission();
+      await controller.useDeviceBucket('COM7');
+
+      expect(await history.load('COM3'), ['repl.enter()']);
+    });
+
+    test('the in-progress line survives a device switch', () async {
+      final controller = make();
+
+      controller.text.text = 'half typed';
+      await controller.useDeviceBucket('COM3');
+
+      // Rebucketing is a storage concern; the console's own draft is not.
+      expect(controller.text.text, 'half typed');
+    });
+
+    test('switching to the same bucket is a no-op', () async {
+      final controller = make(bucket: 'COM3');
+
+      controller.text.text = 'kept';
+      await controller.useDeviceBucket('COM3');
+
+      expect(controller.text.text, 'kept');
+    });
   });
 }

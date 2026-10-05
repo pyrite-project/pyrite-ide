@@ -24,6 +24,8 @@ class ReplCompletionItem {
     required this.source,
     this.detail,
     this.documentation,
+    this.snippetSelectionStart,
+    this.snippetSelectionEnd,
   });
 
   final String label;
@@ -35,6 +37,12 @@ class ReplCompletionItem {
   final String? detail;
   final String? documentation;
 
+  /// Range inside [insertText] the caret should select after acceptance, for an
+  /// item that came from an LSP snippet. Null for a plain insertion, where the
+  /// caret belongs at the end.
+  final int? snippetSelectionStart;
+  final int? snippetSelectionEnd;
+
   ReplCompletionItem withRange(int start, int end) => ReplCompletionItem(
     label: label,
     insertText: insertText,
@@ -44,6 +52,8 @@ class ReplCompletionItem {
     source: source,
     detail: detail,
     documentation: documentation,
+    snippetSelectionStart: snippetSelectionStart,
+    snippetSelectionEnd: snippetSelectionEnd,
   );
 }
 
