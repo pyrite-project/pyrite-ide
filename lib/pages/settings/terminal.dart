@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
@@ -482,10 +483,8 @@ class TerminalSettings extends ConsumerWidget {
                   divisions: 18,
                   value: size,
                   label: size.toStringAsFixed(0),
-                  onChanged: (value) {
-                    ref.read(terminalFontSize.notifier).state = value;
-                    context.pop();
-                  },
+                  onChanged: (value) =>
+                      ref.read(terminalFontSize.notifier).state = value,
                 ),
               ),
             ],
@@ -542,67 +541,71 @@ class TerminalSettings extends ConsumerWidget {
     String currentValue,
     void Function(String) onSaved,
   ) {
-    final controller = TextEditingController(text: currentValue);
+    final initial = currentValue;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: UseText(title),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hint: UseText(hint),
-            border: const OutlineInputBorder(),
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: UseText(title),
+          content: TextField(
+            controller: c[0],
+            decoration: InputDecoration(
+              hint: UseText(hint),
+              border: const OutlineInputBorder(),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                onSaved(c[0].text);
+                Navigator.pop(context);
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              onSaved(controller.text);
-              Navigator.pop(context);
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
       ),
     );
   }
 
   void _showPortDialog(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController(
-      text: ref.read(webReplPort).toString(),
-    );
+    final initial = ref.read(webReplPort).toString();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsTerminalPort),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            hint: UseText(I18nKey.settingsTerminalDefaultPortHint),
-            border: OutlineInputBorder(),
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsTerminalPort),
+          content: TextField(
+            controller: c[0],
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              hint: UseText(I18nKey.settingsTerminalDefaultPortHint),
+              border: OutlineInputBorder(),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                final port = int.tryParse(c[0].text.trim());
+                if (port != null && port > 0 && port <= 65535) {
+                  ref.read(webReplPort.notifier).state = port;
+                  Navigator.pop(context);
+                }
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final port = int.tryParse(controller.text.trim());
-              if (port != null && port > 0 && port <= 65535) {
-                ref.read(webReplPort.notifier).state = port;
-                Navigator.pop(context);
-              }
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
       ),
     );
   }

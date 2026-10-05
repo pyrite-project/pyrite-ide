@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -929,98 +930,98 @@ class _GitPageState extends ConsumerState<GitPage> {
   }
 
   Future<void> _worktreeDialog() async {
-    final name = TextEditingController();
-    final path = TextEditingController();
     await showDialog<void>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const UseText(I18nKey.gitCreateWorktree),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(
-                  label: UseText(I18nKey.gitName),
+        return DialogFormFields(
+          initialValues: const ['', ''],
+          builder: (context, c) => AlertDialog(
+            title: const UseText(I18nKey.gitCreateWorktree),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: c[0],
+                  decoration: const InputDecoration(
+                    label: UseText(I18nKey.gitName),
+                  ),
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: c[1],
+                  decoration: const InputDecoration(
+                    label: UseText(I18nKey.gitPath),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const UseText(I18nKey.commonCancel),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: path,
-                decoration: const InputDecoration(
-                  label: UseText(I18nKey.gitPath),
-                ),
+              FilledButton(
+                onPressed: () {
+                  ref
+                      .read(gitProvider.notifier)
+                      .createWorktree(c[0].text, c[1].text);
+                  Navigator.of(context).pop();
+                },
+                child: const UseText(I18nKey.commonCreate),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const UseText(I18nKey.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                ref
-                    .read(gitProvider.notifier)
-                    .createWorktree(name.text, path.text);
-                Navigator.of(context).pop();
-              },
-              child: const UseText(I18nKey.commonCreate),
-            ),
-          ],
         );
       },
     );
-    name.dispose();
-    path.dispose();
   }
 
   Future<void> _remoteDialog() async {
-    final name = TextEditingController(text: 'origin');
-    final url = TextEditingController();
     await showDialog<void>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const UseText(I18nKey.gitAddRemote),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(
-                  label: UseText(I18nKey.gitRemoteName),
+        return DialogFormFields(
+          initialValues: const ['origin', ''],
+          builder: (context, c) => AlertDialog(
+            title: const UseText(I18nKey.gitAddRemote),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: c[0],
+                  decoration: const InputDecoration(
+                    label: UseText(I18nKey.gitRemoteName),
+                  ),
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: c[1],
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    label: UseText(I18nKey.gitRemoteUrl),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const UseText(I18nKey.commonCancel),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: url,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  label: UseText(I18nKey.gitRemoteUrl),
-                ),
+              FilledButton(
+                onPressed: () {
+                  ref
+                      .read(gitProvider.notifier)
+                      .addRemote(c[0].text, c[1].text);
+                  Navigator.of(context).pop();
+                },
+                child: const UseText(I18nKey.commonAdd),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const UseText(I18nKey.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                ref.read(gitProvider.notifier).addRemote(name.text, url.text);
-                Navigator.of(context).pop();
-              },
-              child: const UseText(I18nKey.commonAdd),
-            ),
-          ],
         );
       },
     );
-    name.dispose();
-    url.dispose();
   }
 
   Future<void> _textDialog({
@@ -1028,38 +1029,38 @@ class _GitPageState extends ConsumerState<GitPage> {
     required Object label,
     required Future<void> Function(String value) onSubmit,
   }) async {
-    final controller = TextEditingController();
     await showDialog<void>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: UseText(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(label: UseText(label)),
-            onSubmitted: (value) {
-              onSubmit(value);
-              Navigator.of(context).pop();
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const UseText(I18nKey.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                onSubmit(controller.text);
+        return DialogFormFields(
+          builder: (context, c) => AlertDialog(
+            title: UseText(title),
+            content: TextField(
+              controller: c[0],
+              autofocus: true,
+              decoration: InputDecoration(label: UseText(label)),
+              onSubmitted: (value) {
+                onSubmit(value);
                 Navigator.of(context).pop();
               },
-              child: const UseText(I18nKey.commonConfirm),
             ),
-          ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const UseText(I18nKey.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () {
+                  onSubmit(c[0].text);
+                  Navigator.of(context).pop();
+                },
+                child: const UseText(I18nKey.commonConfirm),
+              ),
+            ],
+          ),
         );
       },
     );
-    controller.dispose();
   }
 
   void _syncCredentialControllers(GitCredentialDraft draft) {
