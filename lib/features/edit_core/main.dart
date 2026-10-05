@@ -21,12 +21,14 @@ import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
@@ -126,6 +128,42 @@ class _EditCoreState extends ConsumerState<EditCore> {
       },
       SingleActivator(LogicalKeyboardKey.f12): () {
         _goToDefinition(context, ref);
+      },
+      // The engine declares these keys but returns a handled event for them
+      // whether or not the host supplied a handler, so the meta variants are
+      // bound here rather than in CodeForgeKeyboardShortcuts: that table has
+      // one activator per action and cannot express "F12 or Cmd+F12".
+      if (usesCommandShortcut)
+        const SingleActivator(LogicalKeyboardKey.f12, meta: true): () {
+          _goToDefinition(context, ref);
+        },
+      if (usesCommandShortcut)
+        const SingleActivator(
+          LogicalKeyboardKey.f12,
+          meta: true,
+          shift: true,
+        ): () {
+          unawaited(_findReferences(context, ref));
+        },
+      if (usesCommandShortcut)
+        const SingleActivator(
+          LogicalKeyboardKey.f12,
+          meta: true,
+          control: true,
+        ): () {
+          unawaited(
+            _goToDefinition(
+              context,
+              ref,
+              method: 'textDocument/implementation',
+            ),
+          );
+        },
+      SingleActivator(LogicalKeyboardKey.keyG, control: true): () {
+        _goToLine(context, ref);
+      },
+      SingleActivator(LogicalKeyboardKey.keyG, meta: true): () {
+        _goToLine(context, ref);
       },
       SingleActivator(LogicalKeyboardKey.f2): () {
         _renameSymbol(context, ref);
@@ -256,6 +294,12 @@ class _EditCoreState extends ConsumerState<EditCore> {
       customContextMenuItems: _editorContextMenuItems(ref),
       onModifierTap: (offset) =>
           unawaited(_goToDefinition(context, ref, textOffset: offset)),
+      onToggleBlockComment: _toggleBlockComment,
+      onFormatDocument: () => unawaited(_formatDocument(context, ref)),
+      onFindReferences: () => unawaited(_findReferences(context, ref)),
+      onGoToImplementation: () => unawaited(
+        _goToDefinition(context, ref, method: 'textDocument/implementation'),
+      ),
       finderBuilder: (context, controller) {
         final theme = resolveActiveThemeForSurface(context, ref);
         final colors = editorSurfaceColors(context, theme);
@@ -288,6 +332,41 @@ class _EditCoreState extends ConsumerState<EditCore> {
     _findController
       ..isActive = true
       ..isReplaceMode = replace;
+  }
+
+  /// Asks for a line number and moves the caret there, VSCode-style.
+  ///
+  /// The dialog is prefilled with the caret's line so correcting a nearby
+  /// line costs one edit; the jump follows the same scroll-then-select order
+  /// the plugin `go_to_line` command uses.
+  Future<void> _goToLine(BuildContext context, WidgetRef ref) async {
+    final controller = widget.editorController;
+    final lineCount = controller.lineCount;
+    if (lineCount == 0) return;
+    final caretOffset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    final caretLine = controller.getLineAtOffset(caretOffset);
+
+    final rawLine = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) =>
+          _GoToLineDialog(initialLine: caretLine + 1, lineCount: lineCount),
+    );
+    if (rawLine == null) return;
+    final line = (int.tryParse(rawLine) ?? 0) - 1;
+    if (line < 0 || line >= lineCount) return;
+    try {
+      controller.scrollToLine(line);
+    } on StateError {
+      // The editor was not mounted (tab closed while the dialog was open).
+      return;
+    }
+    controller.setSelectionSilently(
+      TextSelection.collapsed(offset: controller.getLineStartOffset(line)),
+    );
+    controller.focusNode?.requestFocus();
   }
 
   /// Toggles line comments over the selected lines, or the caret line when
@@ -353,6 +432,33 @@ class _EditCoreState extends ConsumerState<EditCore> {
     );
   }
 
+  /// Toggles a paired block comment over the selected lines, or the caret line
+  /// when the selection is collapsed.
+  ///
+  /// Deliberately separate from [_toggleLineComment] rather than a fallback
+  /// from it: for JSON there is no block comment *and* no line comment, so
+  /// guessing would insert a delimiter that breaks the file. A grammar with
+  /// only a line comment (`#` in Python) leaves this key inert rather than
+  /// reaching for the line toggle behind the user's back.
+  void _toggleBlockComment() {
+    final controller = widget.editorController;
+    if (controller.readOnly || controller.lineCount == 0) return;
+    final delimiters = resolveEditorLanguage(
+      controller.openedFile,
+    ).blockCommentDelimiters;
+    if (delimiters == null) return;
+
+    final tabSize = ref.read(editorTabSize);
+    controller.toggleBlockComment(
+      start: delimiters.start,
+      end: delimiters.end,
+      // Match what the user actually types rather than a hardcoded four spaces:
+      // re-indenting a block to a different width than the rest of the file is
+      // a diff they did not ask for.
+      indentUnit: ref.read(editorUseSpaceAsTab) ? ' ' * tabSize : '\t',
+    );
+  }
+
   List<CustomContextMenu> _editorContextMenuItems(WidgetRef ref) {
     final controller = widget.editorController;
     final config = controller.lspConfig;
@@ -371,16 +477,27 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ),
       CustomContextMenu(
         label: translateForWidget(ref, I18nKey.editorMenuFormatDocument),
-        description: '',
+        description: formatDocumentShortcutLabel(),
         icon: Icons.format_align_left,
         onPress: () => unawaited(_formatDocument(context, ref)),
       ),
+      // Only offered when the grammar has a paired delimiter: offering a
+      // disabled-looking item for JSON would suggest the editor is missing a
+      // feature when the file format genuinely has no block comment.
+      if (resolveEditorLanguage(controller.openedFile).blockCommentDelimiters !=
+          null)
+        CustomContextMenu(
+          label: translateForWidget(ref, I18nKey.editorMenuToggleComment),
+          description: toggleBlockCommentShortcutLabel(),
+          icon: Icons.format_quote,
+          onPress: _toggleBlockComment,
+        ),
       // Secondary cursors are otherwise only reachable through Alt+Click and
       // Alt+Shift+Down, which is undiscoverable in practice. This is the
       // discoverable entry point into the editor's multi-cursor support.
       CustomContextMenu(
         label: translateForWidget(ref, I18nKey.statusEditorAddCursor),
-        description: '',
+        description: addCursorShortcutLabel(),
         icon: Icons.add_comment_outlined,
         // Only visibleAt: the widget prefers it over `visible` when both are
         // present, and _addCursorAtOffset re-checks readOnly before acting.
@@ -405,7 +522,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       items.add(
         CustomContextMenu(
           label: translateForWidget(ref, I18nKey.editorMenuGoToImplementation),
-          description: '',
+          description: goToImplementationShortcutLabel(),
           icon: Icons.arrow_forward,
           visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
           onPressAt: (offset) => unawaited(
@@ -442,7 +559,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
     items.add(
       CustomContextMenu(
         label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
-        description: '',
+        description: findReferencesShortcutLabel(),
         icon: Icons.manage_search,
         visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
         onPressAt: (offset) =>
@@ -554,7 +671,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
     await revealLspLocation(
       context,
       ref,
-      targetUri.toFilePath(),
+      canonicalLocalPath(targetUri.toFilePath()),
       (start['line'] as num?)?.toInt(),
       (start['character'] as num?)?.toInt(),
     );
@@ -580,6 +697,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ref,
       widget.editorController,
       quiet: quiet,
+      // An explicit format request means "what I have selected"; the
+      // format-on-save path leaves this off and always formats the file.
+      selectionOnly: true,
     );
   }
 
@@ -651,29 +771,27 @@ class _EditCoreState extends ConsumerState<EditCore> {
     // name in place instead of retyping it.
     final offset = _lspOffset(controller, textOffset);
     final currentName = symbolAtOffset(controller.text, offset);
-    final input = TextEditingController(text: currentName);
-    input.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: currentName.length,
-    );
     final newName = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(translateForWidget(ref, I18nKey.fileActionRename)),
-        content: TextField(controller: input, autofocus: true),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: Text(translateForWidget(ref, I18nKey.commonCancel)),
-          ),
-          FilledButton(
-            onPressed: () => context.pop(input.text),
-            child: Text(translateForWidget(ref, I18nKey.commonConfirm)),
-          ),
-        ],
+      builder: (context) => DialogFormFields(
+        initialValues: [currentName],
+        selectAll: true,
+        builder: (context, c) => AlertDialog(
+          title: Text(translateForWidget(ref, I18nKey.fileActionRename)),
+          content: TextField(controller: c[0], autofocus: true),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: Text(translateForWidget(ref, I18nKey.commonCancel)),
+            ),
+            FilledButton(
+              onPressed: () => context.pop(c[0].text),
+              child: Text(translateForWidget(ref, I18nKey.commonConfirm)),
+            ),
+          ],
+        ),
       ),
     );
-    input.dispose();
     if (newName == null || newName.trim().isEmpty) return;
     final line = controller.getLineAtOffset(offset);
     final character = offset - controller.getLineStartOffset(line);
@@ -741,7 +859,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
     for (final entry in changes.entries) {
       final uri = Uri.tryParse(entry.key);
       if (uri == null || uri.scheme != 'file') continue;
-      final filePath = uri.toFilePath();
+      // Canonical spelling so open tabs are found by path even when the
+      // server spells the drive differently than the file picker did.
+      final filePath = canonicalLocalPath(uri.toFilePath());
       final targetUri = Uri.file(filePath).toString();
       final controller = currentController.openedFile == filePath
           ? currentController
@@ -888,6 +1008,88 @@ class _EditCoreState extends ConsumerState<EditCore> {
           null;
       if (context.mounted) context.go('/file');
     }
+  }
+}
+
+/// Asks for a line number and pops the accepted value as a string.
+///
+/// The input controller is owned by [DialogFormFields] rather than by the
+/// caller, because `showDialog` completes the instant the route is popped -
+/// *before* the exit animation and the dialog's teardown have run. A caller
+/// that disposes its controller as soon as the future resolves disposes one
+/// the [TextField] is still listening to.
+///
+/// The Ctrl+G prompt.
+///
+/// Controller ownership is delegated to [DialogFormFields] for the reason
+/// documented there; this widget only owns the validation message, which
+/// needs a [setState] of its own.
+class _GoToLineDialog extends ConsumerStatefulWidget {
+  const _GoToLineDialog({required this.initialLine, required this.lineCount});
+
+  /// One-based line the field starts on.
+  final int initialLine;
+
+  /// Total lines in the document, used to validate and to word the message.
+  final int lineCount;
+
+  @override
+  ConsumerState<_GoToLineDialog> createState() => _GoToLineDialogState();
+}
+
+class _GoToLineDialogState extends ConsumerState<_GoToLineDialog> {
+  String? _errorText;
+
+  /// Pops with the accepted value, or shows the range error in place.
+  void _submit(TextEditingController input) {
+    final line = int.tryParse(input.text.trim());
+    if (line == null || line < 1 || line > widget.lineCount) {
+      setState(() {
+        _errorText = translateForWidget(
+          ref,
+          I18nKey.editorGoToLineInvalid,
+        ).replaceAll('{lines}', '${widget.lineCount}');
+      });
+      return;
+    }
+    context.pop(input.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DialogFormFields(
+      initialValues: ['${widget.initialLine}'],
+      selectAll: true,
+      builder: (context, c) => AlertDialog(
+        title: Text(translateForWidget(ref, I18nKey.editorGoToLine)),
+        content: TextField(
+          controller: c[0],
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: InputDecoration(
+            hintText: translateForWidget(
+              ref,
+              I18nKey.editorGoToLineHint,
+            ).replaceAll('{lines}', '${widget.lineCount}'),
+            errorText: _errorText,
+          ),
+          onSubmitted: (_) => _submit(c[0]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(),
+            child: Text(translateForWidget(ref, I18nKey.commonCancel)),
+          ),
+          FilledButton(
+            onPressed: () => _submit(c[0]),
+            child: Text(
+              translateForWidget(ref, I18nKey.editorJumpGoToLocation),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1287,6 +1489,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
       _matchCounterMinWidth,
       painter.width + _matchCounterPadding,
     );
+    painter.dispose();
     return (
       width: width,
       widget: Container(
@@ -1468,11 +1671,18 @@ Future<void> saveFile(
 /// Returns true when formatting was applied. With [quiet] (format-on-save)
 /// success feedback and "no formatter available" notices are suppressed so
 /// saving stays silent; only hard failures surface as error messages.
+///
+/// With [selectionOnly] and a non-collapsed selection, the selection is sent
+/// as a range instead of the whole document — the VSCode behaviour, where
+/// formatting a whole file because four lines are selected is a surprise. It
+/// is deliberately off for format-on-save: a save should normalise the file the
+/// user is actually keeping, not just the part they happened to have selected.
 Future<bool> formatEditorDocument(
   BuildContext context,
   WidgetRef ref,
   CodeForgeController controller, {
   bool quiet = false,
+  bool selectionOnly = false,
 }) async {
   final config = controller.lspConfig;
   final filePath = controller.openedFile;
@@ -1484,8 +1694,35 @@ Future<bool> formatEditorDocument(
     }
     return false;
   }
+  // The formatter is told the user's own settings rather than a hardcoded
+  // width, so formatting does not reindent the file against their preference.
+  final tabSize = ref.read(editorTabSize);
+  final insertSpaces = ref.read(editorUseSpaceAsTab);
   try {
-    final edits = await config.formatDocument(filePath);
+    final selection = controller.selection;
+    final useRange =
+        selectionOnly && !selection.isCollapsed && controller.lineCount > 0;
+    final List<dynamic> edits;
+    if (useRange) {
+      final startLine = controller.getLineAtOffset(selection.start);
+      final endLine = controller.getLineAtOffset(selection.end);
+      edits = await config.formatRange(
+        filePath: filePath,
+        startLine: startLine,
+        startCharacter:
+            selection.start - controller.getLineStartOffset(startLine),
+        endLine: endLine,
+        endCharacter: selection.end - controller.getLineStartOffset(endLine),
+        tabSize: tabSize,
+        insertSpaces: insertSpaces,
+      );
+    } else {
+      edits = await config.formatDocument(
+        filePath,
+        tabSize: tabSize,
+        insertSpaces: insertSpaces,
+      );
+    }
     if (edits.isEmpty) {
       if (!quiet && context.mounted) {
         ref

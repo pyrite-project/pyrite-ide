@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
@@ -69,7 +70,9 @@ class LspLocationEntry {
         location['targetRange'];
     final start = range is Map ? range['start'] : null;
     return LspLocationEntry(
-      path: parsed.toFilePath(),
+      // Servers on Windows commonly spell the drive lowercase; the entry path
+      // is matched against open tabs, which spell it the way the picker did.
+      path: canonicalLocalPath(parsed.toFilePath()),
       line: start is Map ? (start['line'] as num?)?.toInt() : null,
       character: start is Map ? (start['character'] as num?)?.toInt() : null,
     );
@@ -505,7 +508,8 @@ class _PreviewLspMirror {
   CodeForgeController? _source;
   List<LspErrors>? _diagnostics;
   List<LspSemanticToken>? _tokens;
-  bool _publishScheduled = false, _disposed = false;
+  bool _publishScheduled = false;
+  bool _disposed = false;
 
   /// The highest semantic token version published to the preview so far.
   ///

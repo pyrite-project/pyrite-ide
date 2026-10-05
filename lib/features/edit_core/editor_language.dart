@@ -34,6 +34,23 @@ class EditorLanguage {
     'lua' => '--',
     _ => null,
   };
+
+  /// The paired delimiters a block comment toggle wraps with, or null when the
+  /// grammar has none.
+  ///
+  /// Null is not a "fall back to line comments" case: JSON has no comments at
+  /// all, and guessing a delimiter there would corrupt the file. The caller is
+  /// expected to leave the buffer untouched instead.
+  ///
+  /// Python's is `"""` rather than the C-style `/* */` because a MicroPython
+  /// file is nearly always Python and `"""` reads as the comment the user
+  /// expected rather than a syntax error to a reader who never ran it.
+  ({String start, String end})? get blockCommentDelimiters => switch (id) {
+    'python' => (start: '"""', end: '"""'),
+    'c' || 'cpp' || 'javascript' => (start: '/*', end: '*/'),
+    'xml' || 'markdown' => (start: '<!--', end: '-->'),
+    _ => null,
+  };
 }
 
 /// Python, the language this editor exists for, and the fallback whenever the

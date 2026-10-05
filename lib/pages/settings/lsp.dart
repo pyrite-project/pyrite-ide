@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
@@ -513,162 +514,164 @@ class LspSettings extends ConsumerWidget {
   }
 
   void _showExtraPathsDialog(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(
-      text: ref.read(microPythonStubsExtraPaths).join('\n'),
-    );
+    final initial = ref.read(microPythonStubsExtraPaths).join('\n');
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsLspExtraPathsDialog),
-        content: SizedBox(
-          width: 460,
-          child: TextField(
-            controller: controller,
-            minLines: 6,
-            maxLines: 12,
-            decoration: const InputDecoration(
-              helper: UseText(I18nKey.settingsLspExtraPathsHelper),
-              border: OutlineInputBorder(),
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspExtraPathsDialog),
+          content: SizedBox(
+            width: 460,
+            child: TextField(
+              controller: c[0],
+              minLines: 6,
+              maxLines: 12,
+              decoration: const InputDecoration(
+                helper: UseText(I18nKey.settingsLspExtraPathsHelper),
+                border: OutlineInputBorder(),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                ref.read(microPythonStubsExtraPaths.notifier).state = c[0].text
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .where((line) => line.isNotEmpty)
+                    .toList();
+                context.pop();
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(microPythonStubsExtraPaths.notifier).state = controller
-                  .text
-                  .split('\n')
-                  .map((line) => line.trim())
-                  .where((line) => line.isNotEmpty)
-                  .toList();
-              context.pop();
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
       ),
     );
   }
 
   void showPathDialog(BuildContext context, WidgetRef ref) async {
-    final TextEditingController controller = TextEditingController();
-    controller.text = ref.read(lspWebSocketPath);
+    final initial = ref.read(lspWebSocketPath);
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsLspWebSocketAddress),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            label: UseText(I18nKey.settingsLspAddress),
-            helper: UseText(I18nKey.settingsLspAddressHint),
-            prefixText: "ws://",
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspWebSocketAddress),
+          content: TextField(
+            controller: c[0],
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              label: UseText(I18nKey.settingsLspAddress),
+              helper: UseText(I18nKey.settingsLspAddressHint),
+              prefixText: "ws://",
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim().replaceFirst(
-                RegExp(r'^ws://'),
-                '',
-              );
-              if (value.isEmpty) return;
-              final Uri? uri;
-              try {
-                uri = Uri.tryParse("ws://$value");
-                if (uri == null ||
-                    uri.host.isEmpty ||
-                    !uri.hasPort ||
-                    uri.port <= 0 ||
-                    uri.port > 65535) {
-                  throw const FormatException("Invalid WebSocket address");
-                }
-              } on FormatException {
-                showIdeError(
-                  context,
-                  translateForWidget(ref, I18nKey.settingsLspInvalidAddress),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = c[0].text.trim().replaceFirst(
+                  RegExp(r'^ws://'),
+                  '',
                 );
-                return;
-              }
-              ref.read(lspWebSocketPath.notifier).state = value;
-              context.pop();
-              showIdeSuccess(
-                context,
-                translateForWidget(ref, I18nKey.settingsLspAddressUpdated),
-              );
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
+                if (value.isEmpty) return;
+                final Uri? uri;
+                try {
+                  uri = Uri.tryParse("ws://$value");
+                  if (uri == null ||
+                      uri.host.isEmpty ||
+                      !uri.hasPort ||
+                      uri.port <= 0 ||
+                      uri.port > 65535) {
+                    throw const FormatException("Invalid WebSocket address");
+                  }
+                } on FormatException {
+                  showIdeError(
+                    context,
+                    translateForWidget(ref, I18nKey.settingsLspInvalidAddress),
+                  );
+                  return;
+                }
+                ref.read(lspWebSocketPath.notifier).state = value;
+                context.pop();
+                showIdeSuccess(
+                  context,
+                  translateForWidget(ref, I18nKey.settingsLspAddressUpdated),
+                );
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   void showVirtualEnvironmentDialog(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(
-      text: ref.read(lspVirtualEnvironment),
-    );
+    final initial = ref.read(lspVirtualEnvironment);
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsLspVirtualEnvironment),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            label: const UseText(I18nKey.settingsLspVirtualEnvironment),
-            helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
-            suffixIcon: IconButton(
-              tooltip: '选择虚拟环境目录',
-              icon: const Icon(Icons.folder_open_outlined),
-              onPressed: () async {
-                final directoryPath = await getDirectoryPath();
-                if (directoryPath != null) controller.text = directoryPath;
-              },
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspVirtualEnvironment),
+          content: TextField(
+            controller: c[0],
+            decoration: InputDecoration(
+              label: const UseText(I18nKey.settingsLspVirtualEnvironment),
+              helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
+              suffixIcon: IconButton(
+                tooltip: '选择虚拟环境目录',
+                icon: const Icon(Icons.folder_open_outlined),
+                onPressed: () async {
+                  final directoryPath = await getDirectoryPath();
+                  if (directoryPath != null) c[0].text = directoryPath;
+                },
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            TextButton(
+              onPressed: () {
+                ref.read(lspVirtualEnvironment.notifier).state = '';
+                refreshOpenLspConfiguration(ref.read);
+                context.pop();
+              },
+              child: const Text('清空'),
+            ),
+            FilledButton(
+              onPressed: () {
+                ref.read(lspVirtualEnvironment.notifier).state = c[0].text
+                    .trim();
+                refreshOpenLspConfiguration(ref.read);
+                context.pop();
+                showIdeSuccess(
+                  context,
+                  translateForWidget(
+                    ref,
+                    I18nKey.settingsLspVirtualEnvironmentUpdated,
+                  ),
+                );
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          TextButton(
-            onPressed: () {
-              ref.read(lspVirtualEnvironment.notifier).state = '';
-              refreshOpenLspConfiguration(ref.read);
-              context.pop();
-            },
-            child: const Text('清空'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(lspVirtualEnvironment.notifier).state = controller.text
-                  .trim();
-              refreshOpenLspConfiguration(ref.read);
-              context.pop();
-              showIdeSuccess(
-                context,
-                translateForWidget(
-                  ref,
-                  I18nKey.settingsLspVirtualEnvironmentUpdated,
-                ),
-              );
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
       ),
     );
-    controller.dispose();
   }
 
   void _showBasedPyrightTypeCheckingModeDialog(
