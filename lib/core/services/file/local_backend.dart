@@ -1,5 +1,7 @@
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/platform/web_file_dialogs.dart';
 import 'package:pyrite_ide/core/services/file/git_ignore_filter.dart';
 
 export 'package:pyrite_ide/core/services/file/git_ignore_filter.dart'
@@ -105,6 +107,7 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
 // ---------------------------------------------------------------------------
 
 Future<File?> sysGetFile() async {
+  if (kIsWeb) return openExternalFileIntoWorkspace();
   final XFile? file = await openFile();
   if (file != null) {
     return File(file.path);
@@ -114,6 +117,7 @@ Future<File?> sysGetFile() async {
 }
 
 Future<File?> sysCreateFile() async {
+  if (kIsWeb) return createWorkspaceFileForSave();
   FileSaveLocation? path0 = await getSaveLocation();
   File? file;
   if (path0 != null) {
@@ -127,6 +131,7 @@ Future<File?> sysCreateFile() async {
 }
 
 Future<bool> sysSaveAs(String content) async {
+  if (kIsWeb) return saveTextToDisk(content);
   FileSaveLocation? path0 = await getSaveLocation();
   if (path0 != null) {
     String path = path0.path;
