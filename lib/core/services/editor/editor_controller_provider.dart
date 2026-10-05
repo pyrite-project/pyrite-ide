@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/workspace_lsp_config_pool.dart';
+import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
@@ -67,17 +69,32 @@ class EditorControllerMapNotifier
   Future<CodeForgeController?> createNewEditorController(
     File file, {
     String? initialText,
+    bool openReadOnly = false,
   }) async {
+    // The map is keyed by the exact path string and `openedFile` is matched
+    // against it elsewhere, so every registration of the same file must land
+    // on one spelling regardless of how the caller spelled it.
+    file = File(canonicalLocalPath(file.path));
     String text = initialText ?? "";
-    var openedReadOnly = false;
+    var openedReadOnly = openReadOnly;
+    var tooLarge = false;
     if (initialText == null) {
       try {
-        if (await file.length() > maxEditableFileLength) {
-          openedReadOnly = true;
-        }
+        tooLarge = await file.length() > maxEditableFileLength;
+        openedReadOnly = openedReadOnly || tooLarge;
         text = await file.readAsString();
       } on FileSystemException {
         return null;
+      } on FormatException {
+        // Binary or non-UTF-8 content reaching the headless path (session
+        // restore has no context for dialogs): keep the buffer usable with a
+        // malformed-tolerant decode and block editing so garbage is never
+        // written back over the file.
+        openedReadOnly = true;
+        text = utf8.decode(
+          await file.readAsBytes(),
+          allowMalformed: true,
+        );
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
@@ -106,17 +123,22 @@ class EditorControllerMapNotifier
     controller.text = text;
     if (openedReadOnly) {
       controller.readOnly = true;
-      ref
-          .read(ideMessageProvider.notifier)
-          .show(
-            translate(
-              ref,
-              I18nKey.editorFileTooLargeReadOnly,
-            ).replaceAll('{path}', file.path),
-            type: IdeMessageType.warning,
-            duration: const Duration(seconds: 12),
-            closeable: true,
-          );
+      // Only the size case gets a notice here: a binary file opened through
+      // the interactive flow already saw its own dialog, and the headless
+      // restore path surfaces its state through the read-only editor itself.
+      if (tooLarge) {
+        ref
+            .read(ideMessageProvider.notifier)
+            .show(
+              translate(
+                ref,
+                I18nKey.editorFileTooLargeReadOnly,
+              ).replaceAll('{path}', file.path),
+              type: IdeMessageType.warning,
+              duration: const Duration(seconds: 12),
+              closeable: true,
+            );
+      }
     }
     state = {...state, file.path: controller};
     controller.setDocumentColorsEnabled(ref.read(lspDocumentColor));

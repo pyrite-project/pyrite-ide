@@ -167,6 +167,14 @@ class EditorSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
+              title: const UseText(I18nKey.settingsEditorMinimap),
+              subtitle: const UseText(I18nKey.settingsEditorMinimapSubtitle),
+              value: ref.watch(editorMinimap),
+              onChanged: (value) =>
+                  ref.read(editorMinimap.notifier).state = value,
+            ),
+
+            SwitchListTile(
               title: const UseText(I18nKey.settingsEditorCodeFolding),
               subtitle: const UseText(
                 I18nKey.settingsEditorCodeFoldingSubtitle,

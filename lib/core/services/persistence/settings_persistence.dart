@@ -18,6 +18,7 @@ class SettingsPersistedData {
   final int editorTabSize;
   final bool editorGutterDivider;
   final bool editorSmoothCursor;
+  final bool editorMinimap;
   final bool editorFormatOnSave;
   final bool useLsp;
   final String lspType;
@@ -82,6 +83,7 @@ class SettingsPersistedData {
     this.editorTabSize = 4,
     this.editorGutterDivider = false,
     this.editorSmoothCursor = false,
+    this.editorMinimap = true,
     this.editorFormatOnSave = false,
     required this.useLsp,
     this.lspType = 'web_socket',
@@ -147,6 +149,7 @@ class SettingsPersistedData {
     'editorTabSize': editorTabSize,
     'editorGutterDivider': editorGutterDivider,
     'editorSmoothCursor': editorSmoothCursor,
+    'editorMinimap': editorMinimap,
     'editorFormatOnSave': editorFormatOnSave,
     'useLsp': useLsp,
     'lspType': lspType,
@@ -217,6 +220,7 @@ class SettingsPersistedData {
     editorTabSize: json['editorTabSize'] as int? ?? 4,
     editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
     editorSmoothCursor: json['editorSmoothCursor'] as bool? ?? false,
+    editorMinimap: json['editorMinimap'] as bool? ?? true,
     editorFormatOnSave: json['editorFormatOnSave'] as bool? ?? false,
     useLsp: json['useLsp'] as bool? ?? true,
     lspType: json['lspType'] as String? ?? 'web_socket',

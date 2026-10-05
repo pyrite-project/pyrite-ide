@@ -129,6 +129,7 @@ class PersistedData {
   final int editorTabSize;
   final bool editorGutterDivider;
   final bool editorSmoothCursor;
+  final bool editorMinimap;
   final bool editorFormatOnSave;
   final bool useLsp;
   final String lspType;
@@ -212,6 +213,7 @@ class PersistedData {
     this.editorTabSize = 4,
     this.editorGutterDivider = false,
     this.editorSmoothCursor = false,
+    this.editorMinimap = true,
     this.editorFormatOnSave = false,
     this.useLsp = true,
     this.lspType = 'web_socket',

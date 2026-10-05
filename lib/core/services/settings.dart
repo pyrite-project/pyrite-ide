@@ -75,6 +75,7 @@ StateProvider<bool> editorUseSpaceAsTab = StateProvider<bool>((ref) => true);
 StateProvider<int> editorTabSize = StateProvider<int>((ref) => 4);
 StateProvider<bool> editorGutterDivider = StateProvider<bool>((ref) => false);
 StateProvider<bool> editorSmoothCursor = StateProvider<bool>((ref) => false);
+StateProvider<bool> editorMinimap = StateProvider<bool>((ref) => true);
 StateProvider<bool> editorFormatOnSave = StateProvider<bool>((ref) => false);
 
 StateProvider<bool> useLsp = StateProvider<bool>((ref) => true);

@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
+import 'package:pyrite_ide/features/edit_core/editor_minimap.dart';
 
 /// Resolves the active editor theme (built-in or plugin-contributed) the same
 /// way the main editor does, including the de-italicized comment treatment.
@@ -146,6 +147,15 @@ Widget buildThemedCodeForge(
   PreferredSizeWidget Function(BuildContext context, FindController)?
   finderBuilder,
   CodeForgeContextMenuBuilder? contextMenuBuilder,
+
+  /// Host implementations for the engine keys that need grammar or a language
+  /// server to act on. The engine declares the shortcut and returns a handled
+  /// event, but it has no grammar and no LSP, so without these the key is a
+  /// silent no-op.
+  VoidCallback? onToggleBlockComment,
+  VoidCallback? onFormatDocument,
+  VoidCallback? onFindReferences,
+  VoidCallback? onGoToImplementation,
 }) {
   final resolvedTheme = resolveActiveThemeForSurface(context, ref);
   final colors = editorSurfaceColors(context, resolvedTheme);
@@ -165,52 +175,84 @@ Widget buildThemedCodeForge(
   controller.lineCommentMarkers = commentMarker == null
       ? const <String>[]
       : <String>[commentMarker];
-  return CodeForge(
-    key: ValueKey(rebuildKey ?? filePath ?? ''),
-    filePath: filePath,
-    editorTheme: resolvedTheme,
-    findController: findController,
-    customContextMenuItems: customContextMenuItems,
-    onModifierTap: onModifierTap,
-    finderBuilder: finderBuilder,
-    hoverDetailsStyle: buildThemedCodeForgeHoverDetailsStyle(
-      foreground: colors.foreground,
-      background: colors.background,
-      primary: primary,
-      fontSize: fontSize,
-      fontFamily: fontFamily,
-      borderRadius: overlayBorderRadius ?? context.outerCorners,
-    ),
-    language: language.mode,
+  return MinimapEditorShell(
     controller: controller,
-    undoController: undoController,
-    readOnly: readOnly,
-    overlayBorderRadius: overlayBorderRadius ?? context.outerCorners,
-    matchHighlightStyle: MatchHighlightStyle(
-      // Derived from the active theme instead of fixed hues: the accent marks
-      // the current match and the foreground color (guaranteed to contrast
-      // with the editor background) marks the other matches, so both stay
-      // legible on light and dark surfaces.
-      currentMatchStyle: TextStyle(backgroundColor: primary.withAlpha(90)),
-      otherMatchStyle: TextStyle(
-        backgroundColor: colors.foreground.withAlpha(45),
-      ),
-    ),
-    textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+    enabled: ref.watch(editorMinimap),
     lineWrap: ref.watch(editorWordWrap),
-    enableFolding: ref.watch(editorCodeFolding),
-    enableGuideLines: ref.watch(editorGuideLines),
-    enableLocalSuggestions: ref.watch(editorLocalSuggestions),
-    enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
-    enableGutter: ref.watch(editorLineNumber),
-    enableGutterDivider: ref.watch(editorGutterDivider),
-    smoothCursor: ref.watch(editorSmoothCursor),
-    useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
-    tabSize: ref.watch(editorTabSize),
-    gutterBuilder: GutterBuilder(
-      builder: (lineNumber, lineText) => '$lineNumber',
-      includeReplacedIndex: false,
+    foreground: colors.foreground,
+    background: colors.background,
+    // Matches the engine default multiplier (fontSize * 1.2) until the
+    // renderer publishes the real line height onto the controller.
+    estimatedLineHeight: fontSize * 1.2,
+    child: CodeForge(
+      key: ValueKey(rebuildKey ?? filePath ?? ''),
+      filePath: filePath,
+      editorTheme: resolvedTheme,
+      findController: findController,
+      customContextMenuItems: customContextMenuItems,
+      onModifierTap: onModifierTap,
+      finderBuilder: finderBuilder,
+      diagnosticColors: buildDiagnosticColors(context),
+      hoverDetailsStyle: buildThemedCodeForgeHoverDetailsStyle(
+        foreground: colors.foreground,
+        background: colors.background,
+        primary: primary,
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        borderRadius: overlayBorderRadius ?? context.outerCorners,
+      ),
+      language: language.mode,
+      controller: controller,
+      undoController: undoController,
+      readOnly: readOnly,
+      overlayBorderRadius: overlayBorderRadius ?? context.outerCorners,
+      matchHighlightStyle: MatchHighlightStyle(
+        // Derived from the active theme instead of fixed hues: the accent marks
+        // the current match and the foreground color (guaranteed to contrast
+        // with the editor background) marks the other matches, so both stay
+        // legible on light and dark surfaces.
+        currentMatchStyle: TextStyle(backgroundColor: primary.withAlpha(90)),
+        otherMatchStyle: TextStyle(
+          backgroundColor: colors.foreground.withAlpha(45),
+        ),
+      ),
+      textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+      lineWrap: ref.watch(editorWordWrap),
+      enableFolding: ref.watch(editorCodeFolding),
+      enableGuideLines: ref.watch(editorGuideLines),
+      enableLocalSuggestions: ref.watch(editorLocalSuggestions),
+      enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
+      enableGutter: ref.watch(editorLineNumber),
+      enableGutterDivider: ref.watch(editorGutterDivider),
+      smoothCursor: ref.watch(editorSmoothCursor),
+      useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
+      tabSize: ref.watch(editorTabSize),
+      gutterBuilder: GutterBuilder(
+        builder: (lineNumber, lineText) => '$lineNumber',
+        includeReplacedIndex: false,
+      ),
+      contextMenuBuilder: contextMenuBuilder,
+      onToggleBlockComment: onToggleBlockComment,
+      onFormatDocument: onFormatDocument,
+      onFindReferences: onFindReferences,
+      onGoToImplementation: onGoToImplementation,
     ),
-    contextMenuBuilder: contextMenuBuilder,
+  );
+}
+
+/// Squiggle colors derived from the active Material color scheme, so the
+/// diagnostic underlines follow the app theme instead of a fixed palette.
+///
+/// Material's scheme has no dedicated warning role, so the warning color is
+/// picked from the amber ramp by brightness; error, information and hint use
+/// their nearest scheme roles.
+DiagnosticColorsStyle buildDiagnosticColors(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return DiagnosticColorsStyle(
+    error: scheme.error,
+    warning: isDark ? Colors.amber.shade300 : Colors.amber.shade800,
+    information: scheme.primary,
+    hint: scheme.onSurfaceVariant,
   );
 }
