@@ -97,19 +97,42 @@ StateProvider<BasedPyrightTypeCheckingMode> lspBasedPyrightTypeCheckingMode =
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>(
-  (ref) => false,
+  (ref) => true,
 );
 StateProvider<bool> lspCodeCompletion = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspHoverInfo = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspCodeAction = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspSignatureHelp = StateProvider<bool>((ref) => true);
-StateProvider<bool> lspDocumentColor = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspDocumentColor = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspDocumentHighlight = StateProvider<bool>((ref) => true);
-StateProvider<bool> lspCodeFolding = StateProvider<bool>((ref) => false);
-StateProvider<bool> lspShowInlayHints = StateProvider<bool>((ref) => false);
+StateProvider<bool> lspCodeFolding = StateProvider<bool>((ref) => true);
+StateProvider<bool> lspShowInlayHints = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspGoToDefinition = StateProvider<bool>((ref) => true);
 StateProvider<bool> lspRename = StateProvider<bool>((ref) => true);
+// Not a capability: it decides which files get a server at all, so it stays off
+// and the language server only starts for .py files until the user opts in.
 StateProvider<bool> lspAlwaysStart = StateProvider<bool>((ref) => false);
+
+/// The LSP client capabilities exposed as switches on the LSP settings page.
+///
+/// [EditorControllerMapNotifier] subscribes to this list so a flip reaches the
+/// language servers that are already running. A capability is only ever read
+/// out of these providers when a workspace's server is created, so a switch
+/// missing from this list is one that only ever applies to servers started
+/// later.
+final List<StateProvider<bool>> lspCapabilityProviders = [
+  lspSemanticHighlighting,
+  lspCodeCompletion,
+  lspHoverInfo,
+  lspCodeAction,
+  lspSignatureHelp,
+  lspDocumentColor,
+  lspDocumentHighlight,
+  lspCodeFolding,
+  lspShowInlayHints,
+  lspGoToDefinition,
+  lspRename,
+];
 
 StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
   (ref) => true,

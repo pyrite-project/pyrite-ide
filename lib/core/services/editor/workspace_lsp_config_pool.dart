@@ -29,6 +29,13 @@ class WorkspaceLspConfigPool<T> {
   /// spawning a duplicate process.
   final Map<String, Future<T?>> _bootstraps = {};
 
+  /// Every config currently held by the pool.
+  ///
+  /// A pooled config outlives any single editor, so settings that live inside
+  /// it — most importantly the LSP client capabilities — can only be updated by
+  /// walking the pool rather than by touching one controller.
+  Iterable<T> get activeConfigs => _configs.values;
+
   /// Returns the pooled config for [workspacePath], creating it on first use.
   ///
   /// `created` marks the call that started the config, so the caller can run

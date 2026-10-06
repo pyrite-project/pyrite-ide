@@ -41,12 +41,33 @@ class EditorControllerMapNotifier
     extends StateNotifier<Map<String, CodeForgeController>> {
   final Ref ref;
   EditorControllerMapNotifier(this.ref) : super({}) {
+    for (final provider in lspCapabilityProviders) {
+      ref.listen<bool>(provider, (_, _) => _applyLspCapabilities());
+    }
     ref.listen<bool>(lspDocumentColor, (_, enabled) {
       _updateDocumentColorPicker(enabled);
     });
     ref.listen<bool>(lspShowInlayHints, (_, visible) {
       _updateInlayHintsVisibility(visible);
     });
+  }
+
+  /// Pushes the current capability settings into every running language server
+  /// and re-runs the editor features that render what the server sends.
+  ///
+  /// A pooled config keeps the [LspClientCapabilities] it was built with, and
+  /// every request gate reads that instance, so overwriting its flags is what
+  /// makes a switch take effect without closing the workspace's tabs. Whatever
+  /// the server already sent under the previous setting then needs clearing,
+  /// which is what the per-controller refresh is for.
+  void _applyLspCapabilities() {
+    final capabilities = _readLspCapabilities(ref);
+    for (final config in _lspConfigPool.activeConfigs) {
+      config.capabilities.applyFrom(capabilities);
+    }
+    for (final controller in state.values) {
+      unawaited(controller.refreshLspFeatures());
+    }
   }
 
   /// One language server per workspace root, shared by every open file under
@@ -57,9 +78,12 @@ class EditorControllerMapNotifier
   /// startups. The pool refcounts controllers; [removePath] releases a tab's
   /// seat, and only the last one under a workspace root stops the server.
   ///
-  /// Capabilities and stub settings are captured when the workspace's first
-  /// file opens and stay fixed until its last file closes — the same
-  /// negotiation window a real IDE has with one server per project.
+  /// The stubs and venv settings sent to the server are captured when the
+  /// workspace's first file opens and stay fixed until its last file closes —
+  /// the same negotiation window a real IDE has with one server per project.
+  /// The capability switches are the exception: [_applyLspCapabilities]
+  /// rewrites them on every running server, because the request gates read the
+  /// config's own capability instance.
   late final WorkspaceLspConfigPool<LspConfig> _lspConfigPool =
       WorkspaceLspConfigPool<LspConfig>(
         create: _createWorkspaceLspConfig,
@@ -156,19 +180,7 @@ class EditorControllerMapNotifier
   /// editor fully offline.
   Future<LspConfig?> _createWorkspaceLspConfig(String workspacePath) async {
     final type = ref.read(lspType);
-    final capabilities = LspClientCapabilities(
-      semanticHighlighting: ref.read(lspSemanticHighlighting),
-      codeCompletion: ref.read(lspCodeCompletion),
-      hoverInfo: ref.read(lspHoverInfo),
-      codeAction: ref.read(lspCodeAction),
-      signatureHelp: ref.read(lspSignatureHelp),
-      documentColor: ref.read(lspDocumentColor),
-      documentHighlight: ref.read(lspDocumentHighlight),
-      codeFolding: ref.read(lspCodeFolding),
-      inlayHint: ref.read(lspShowInlayHints),
-      goToDefinition: ref.read(lspGoToDefinition),
-      rename: ref.read(lspRename),
-    );
+    final capabilities = _readLspCapabilities(ref);
     final stubsConfig = buildLspStubsConfig(
       ref.read,
       workspacePath: workspacePath,
@@ -383,4 +395,22 @@ final StateNotifierProvider<
 >
 editorControllerMapProvider = StateNotifierProvider(
   (ref) => EditorControllerMapNotifier(ref),
+);
+
+/// Snapshots the LSP capability settings as the client capabilities to negotiate.
+///
+/// Read in two places: when a workspace's server is created, and again on every
+/// capability change so the already-running servers can be brought up to date.
+LspClientCapabilities _readLspCapabilities(Ref ref) => LspClientCapabilities(
+  semanticHighlighting: ref.read(lspSemanticHighlighting),
+  codeCompletion: ref.read(lspCodeCompletion),
+  hoverInfo: ref.read(lspHoverInfo),
+  codeAction: ref.read(lspCodeAction),
+  signatureHelp: ref.read(lspSignatureHelp),
+  documentColor: ref.read(lspDocumentColor),
+  documentHighlight: ref.read(lspDocumentHighlight),
+  codeFolding: ref.read(lspCodeFolding),
+  inlayHint: ref.read(lspShowInlayHints),
+  goToDefinition: ref.read(lspGoToDefinition),
+  rename: ref.read(lspRename),
 );
