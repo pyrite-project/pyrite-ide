@@ -181,6 +181,11 @@ Widget buildThemedCodeForge(
     lineWrap: ref.watch(editorWordWrap),
     foreground: colors.foreground,
     background: colors.background,
+    // The minimap colors its bars from the very theme and grammar the editor
+    // runs with, so a bar shows the colors of the code it stands for.
+    editorTheme: resolvedTheme,
+    language: language.mode,
+    baseTextStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
     // Matches the engine default multiplier (fontSize * 1.2) until the
     // renderer publishes the real line height onto the controller.
     estimatedLineHeight: fontSize * 1.2,
