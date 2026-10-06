@@ -17,7 +17,6 @@ import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
-import 'package:pyrite_ide/shared/tabbed_view/tab_overflow_menu.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 
 class Editor extends ConsumerWidget {
@@ -227,7 +226,6 @@ class Editor extends ConsumerWidget {
       ),
       child: TabbedView(
         controller: ref.watch(tabbedViewControllerProvider),
-        tabsAreaButtonsBuilder: buildTabOverflowButtons,
       ),
     );
   }
