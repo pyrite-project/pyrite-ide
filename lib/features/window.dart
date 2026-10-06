@@ -40,6 +40,11 @@ class UseWindow with WindowListener {
       await windowManager.setAlwaysOnTop(
         _container?.read(alwaysOnTopProvider) ?? false,
       );
+      // window_manager's focus callbacks only exist on macOS and Linux; the
+      // Windows embedder never handles WM_ACTIVATE, so `onWindowFocus` below
+      // is dead code there. Handing the editor a real focus probe is what
+      // actually recovers a modifier held across an Alt+Tab on Windows.
+      editorModifierKeys.windowFocusProbe = windowManager.isFocused;
       windowManager.addListener(this);
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
@@ -65,7 +70,9 @@ class UseWindow with WindowListener {
     try {
       mayClose = await _confirmDiscardUnsavedTabs();
     } catch (error) {
-      debugPrint('[window] unsaved-changes prompt failed, closing anyway: $error');
+      debugPrint(
+        '[window] unsaved-changes prompt failed, closing anyway: $error',
+      );
     }
     if (!mayClose) return;
     _closing = true;
@@ -189,7 +196,9 @@ class UseWindow with WindowListener {
   void onWindowFocus() {
     // A modifier held while the window lost focus never produces a key-up,
     // which leaves the framework key cache claiming Alt is still down.
-    // Re-read the engine's view before the user can click.
+    // Re-read the engine's view before the user can click. Only macOS and
+    // Linux reach here; Windows relies on `windowFocusProbe` instead, which
+    // this class supplies in `init`.
     editorModifierKeys.onWindowFocus();
     // Focus is when a file this window had open is most likely to have been
     // changed elsewhere: a git checkout, another editor, or a command line

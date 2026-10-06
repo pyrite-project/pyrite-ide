@@ -321,4 +321,110 @@ void main() {
       expect(keys.isAltPressed, isTrue);
     },
   );
+
+  group('focus loss while Alt is held', () {
+    // The engine is no help here. It tracks the keys delivered to this window,
+    // so a key-up that lands while the window is in the background is lost for
+    // the engine exactly as it is for the framework, and `getKeyboardState`
+    // goes on reporting Alt as held. On Windows there is additionally no focus
+    // callback at all - window_manager never handles WM_ACTIVATE and the engine
+    // has no lifecycle channel - so the only witness is the platform.
+    //
+    // The engine mock therefore reports Alt as held throughout: that is the
+    // real state, and it is exactly what makes the case unrecoverable from the
+    // engine alone.
+
+    setUp(() {
+      answerWith(
+        pressed(PhysicalKeyboardKey.altLeft, LogicalKeyboardKey.altLeft),
+      );
+    });
+
+    test('a focus loss the probe reports retires the lost key-up', () async {
+      var focused = true;
+      final keys = EditorModifierKeys()..windowFocusProbe = () async => focused;
+      addTearDown(keys.dispose);
+
+      // Alt goes down and the window is still focused: a genuine alt-click, and
+      // it has to keep working.
+      keys.observeKeyEvent(altDown());
+      expect(keys.isAltPressed, isTrue);
+
+      // Alt+Tab away, the user lets go of Alt over the other app, Alt+Tab back
+      // and clicks. Nothing this process can see ever recorded the key-up.
+      focused = false;
+      await keys.probeWindowFocusNow();
+      expect(keys.isAltPressed, isFalse);
+    });
+
+    test('pressing Alt again makes alt-click work once more', () async {
+      var focused = true;
+      final keys = EditorModifierKeys()..windowFocusProbe = () async => focused;
+      addTearDown(keys.dispose);
+
+      keys.observeKeyEvent(altDown());
+      focused = false;
+      await keys.probeWindowFocusNow();
+      expect(keys.isAltPressed, isFalse);
+
+      // A real key event is genuine evidence, so it outranks the suspicion.
+      focused = true;
+      keys.observeKeyEvent(altDown());
+      expect(keys.isAltPressed, isTrue);
+    });
+
+    test('a focused window leaves the modifier alone', () async {
+      final keys = EditorModifierKeys()..windowFocusProbe = () async => true;
+      addTearDown(keys.dispose);
+
+      keys.observeKeyEvent(altDown());
+      await keys.probeWindowFocusNow();
+      expect(keys.isAltPressed, isTrue);
+    });
+
+    test('a probe that throws is dropped instead of retried forever', () async {
+      final keys = EditorModifierKeys()
+        ..windowFocusProbe = () async => throw UnimplementedError();
+      addTearDown(keys.dispose);
+
+      keys.observeKeyEvent(altDown());
+      await keys.probeWindowFocusNow();
+
+      expect(keys.windowFocusProbe, isNull);
+      // The tracker keeps its previous behaviour rather than giving up on Alt
+      // entirely: a genuine alt-click still registers.
+      expect(keys.isAltPressed, isTrue);
+    });
+
+    test('the watch stays idle when no probe is supplied', () async {
+      final keys = EditorModifierKeys();
+      addTearDown(keys.dispose);
+
+      // The polling only exists to serve the host probe, so without one there
+      // is nothing to poll and nothing to break.
+      keys.observeKeyEvent(altDown());
+      await pumpEventQueue();
+      expect(keys.isAltPressed, isTrue);
+    });
+  });
+
+  test('an answer requested before invalidate is discarded', () async {
+    // A query already in flight when the focus hook invalidates must not
+    // resurrect the answer it was carrying. Without this the drop in
+    // `onWindowFocus` is undone the moment the older reply lands, which is the
+    // one window where a stale "Alt is held" gets adopted.
+    final gate = Completer<Map<int, int>?>();
+    messenger.setMockMethodCallHandler(channel, (_) => gate.future);
+    final keys = EditorModifierKeys();
+    addTearDown(keys.dispose);
+
+    keys.observeKeyEvent(altDown());
+    keys.invalidate();
+
+    gate.complete(<int, int>{});
+    await pumpEventQueue();
+    await pumpEventQueue();
+
+    expect(keys.hasEngineState, isFalse);
+  });
 }
