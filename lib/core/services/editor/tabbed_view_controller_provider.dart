@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
+import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
 import 'package:pyrite_ide/core/services/editor/external_file_change.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
@@ -59,6 +60,25 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// moments the editor itself is responsible for the bytes: opening a file and
   /// writing it back.
   final Map<String, FileDiskStamp> _diskStamps = {};
+
+  /// Serializes disk reconciliation.
+  ///
+  /// Reconciliation is driven from two independent places -- the window focus
+  /// check and the save path -- and the focus check is fired unawaited on every
+  /// activation, several of which can arrive while the first pass is still
+  /// sitting on its dialog. Two passes then both see the same unresolved
+  /// conflict and each opens a copy, so the dialogs stack: the user has to
+  /// click through them one at a time and the barriers pile up behind.
+  final ExclusivePass _reconcilePass = ExclusivePass();
+
+  /// The disk state a cancelled prompt was about, keyed by file path.
+  ///
+  /// Cancel means "leave the buffer alone for now", not "ask me about the same
+  /// bytes again every time the window comes back". The stamp is kept so a
+  /// later change on disk raises the question anew. The save path deliberately
+  /// ignores this: it is about to destroy the other program's work, so it asks
+  /// every time.
+  final Map<String, FileDiskStamp> _declinedExternalChanges = {};
 
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
@@ -547,6 +567,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     if (stamp != null) {
       _diskStamps[newPath] = stamp;
     }
+    // A rename does not change the bytes either, so a conflict the user
+    // declined for the old path is still declined for the new one.
+    final declined = _declinedExternalChanges.remove(oldPath);
+    if (declined != null) {
+      _declinedExternalChanges[newPath] = declined;
+    }
   }
 
   void _publishRenamedTabs() {
@@ -783,6 +809,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     _unsavedListeners.remove(filePath);
     _lastSavedText.remove(filePath);
     _diskStamps.remove(filePath);
+    _declinedExternalChanges.remove(filePath);
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
     value.undoRedoController?.dispose();
@@ -823,17 +850,25 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// to have just switched back from the editor that changed the file. Without
   /// it, a change made elsewhere is invisible until a save silently discards
   /// it — or throws on a file that was deleted outright.
-  Future<void> checkExternalChanges(BuildContext context) async {
-    for (final tab in List<TabData>.from(state.tabs)) {
-      final value = tab.value;
-      if (value is! TabDataValue ||
-          value.type != 'file' ||
-          value.isBoardFile == true) {
-        continue;
+  ///
+  /// Opportunistic by design: a pass that is already running is reading the
+  /// same files at this moment and its prompt, if any, is still on screen.
+  /// Queueing behind it would only produce the same dialog a second time once
+  /// the user answers the first, so a burst of focus events is dropped
+  /// instead -- the running pass sees everything this one would have.
+  Future<void> checkExternalChanges(BuildContext context) {
+    return _reconcilePass.runIfIdle(() async {
+      for (final tab in List<TabData>.from(state.tabs)) {
+        final value = tab.value;
+        if (value is! TabDataValue ||
+            value.type != 'file' ||
+            value.isBoardFile == true) {
+          continue;
+        }
+        if (!context.mounted) return;
+        await _reconcileTabWithDisk(context, tab, value);
       }
-      if (!context.mounted) return;
-      await _reconcileTabWithDisk(context, tab, value);
-    }
+    });
   }
 
   /// The save-path half of [checkExternalChanges].
@@ -844,20 +879,26 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   Future<bool> confirmSaveOverwritesExternalChange(
     BuildContext context,
     TabData tab,
-  ) async {
-    final value = tab.value;
-    if (value is! TabDataValue ||
-        value.type != 'file' ||
-        value.isBoardFile == true) {
-      return true;
-    }
-    final decision = await _reconcileTabWithDisk(
-      context,
-      tab,
-      value,
-      onSaveConflict: true,
-    );
-    return decision != ExternalChangeAction.prompt;
+  ) {
+    // Unlike the focus check this one cannot be dropped: the answer decides
+    // whether the save writes at all. It waits its turn, then reconciles the
+    // tab itself -- by then the pass ahead of it has already recorded whatever
+    // the user decided, so this one usually exits on the cheap stamp compare.
+    return _reconcilePass.run(() async {
+      final value = tab.value;
+      if (value is! TabDataValue ||
+          value.type != 'file' ||
+          value.isBoardFile == true) {
+        return true;
+      }
+      final decision = await _reconcileTabWithDisk(
+        context,
+        tab,
+        value,
+        onSaveConflict: true,
+      );
+      return decision != ExternalChangeAction.prompt;
+    });
   }
 
   /// Applies [planExternalChange] for one tab and reports what it did.
@@ -890,11 +931,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
     switch (action) {
       case ExternalChangeAction.none:
+        _declinedExternalChanges.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
       case ExternalChangeAction.touchOnly:
+        _declinedExternalChanges.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
       case ExternalChangeAction.deleted:
         _diskStamps.remove(value.filePath);
+        _declinedExternalChanges.remove(value.filePath);
         // The buffer stays readable — the user may still want to copy out of it
         // or undo — but a save must not recreate a file someone deliberately
         // removed.
@@ -910,9 +954,29 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
               closeable: true,
             );
       case ExternalChangeAction.reload:
+        _declinedExternalChanges.remove(value.filePath);
         await _reloadTabFromDisk(tab, value, diskText!);
       case ExternalChangeAction.prompt:
         if (!context.mounted) return action;
+        // Planning a prompt means the file is there, so the stamp is too.
+        final stamp = currentStamp!;
+        final declinedStamp = _declinedExternalChanges[value.filePath];
+        if (declinedStamp != null) {
+          if (declinedStamp.sameAs(stamp)) {
+            if (!onSaveConflict) {
+              // The user already said "not now" about these exact bytes, and
+              // the file has not moved since. Reopening this on the next window
+              // activation is nagging about a conflict they are aware of. A
+              // save is the opposite case: it is about to overwrite the other
+              // program's work, so it asks every time.
+              return action;
+            }
+          } else {
+            // The file moved on since they declined, so what they were shown
+            // is no longer what is on disk.
+            _declinedExternalChanges.remove(value.filePath);
+          }
+        }
         final resolution = await showExternalChangeDialog(
           ref,
           context,
@@ -920,15 +984,19 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           onSaveConflict: onSaveConflict,
         );
         if (resolution == ExternalChangeResolution.reload) {
+          _declinedExternalChanges.remove(value.filePath);
           await _reloadTabFromDisk(tab, value, diskText);
         } else if (resolution == ExternalChangeResolution.keepEditor) {
+          _declinedExternalChanges.remove(value.filePath);
           // The user chose this buffer's version, so its content becomes the
           // baseline: the next check must not raise the same conflict again
           // for a difference we have already resolved.
           _lastSavedText[value.filePath] = diskText ?? '';
-          if (currentStamp != null) {
-            _diskStamps[value.filePath] = currentStamp;
-          }
+          _diskStamps[value.filePath] = stamp;
+        } else {
+          // Cancelled, or the dialog was dismissed. Remember the state so the
+          // focus check does not reopen it on the very next activation.
+          _declinedExternalChanges[value.filePath] = stamp;
         }
     }
     return action;
