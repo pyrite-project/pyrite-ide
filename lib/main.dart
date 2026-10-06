@@ -268,7 +268,85 @@ void _startAutoSave() {
   container.read(pluginManagerProvider.notifier).setOnChanged(() {
     _triggerPluginSave();
   });
+  for (final provider in _persistedSettingsProviders) {
+    _settingsSubscriptions.add(
+      container.listen<Object?>(provider, (_, _) => _triggerSave()),
+    );
+  }
 }
+
+/// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
+final List<ProviderSubscription<Object?>> _settingsSubscriptions = [];
+
+/// The settings providers whose values reach `settings.json`.
+///
+/// Dirtying a tab was the only thing that used to mark the persisted state
+/// stale, so a value changed on a settings page was written out only if some
+/// file happened to be edited in the same session. Subscribing to the settings
+/// themselves makes a setting change enough on its own. Keep this list in step
+/// with the providers read by `PersistenceManager.saveFromContainer`.
+final List<StateProvider<Object?>> _persistedSettingsProviders = [
+  editorTextFontProvider,
+  editorFontSize,
+  editorWordWrap,
+  editorLineNumber,
+  editorCodeFolding,
+  editorGuideLines,
+  editorLocalSuggestions,
+  editorKeyboardSuggestions,
+  editorUseSpaceAsTab,
+  editorTabSize,
+  editorGutterDivider,
+  editorSmoothCursor,
+  editorMinimap,
+  editorFormatOnSave,
+  useLsp,
+  lspType,
+  lspWebSocketPath,
+  lspStdioExecutable,
+  lspStdioArgs,
+  lspVirtualEnvironment,
+  lspBasedPyrightTypeCheckingMode,
+  disableWarning,
+  disableError,
+  lspSemanticHighlighting,
+  lspCodeCompletion,
+  lspHoverInfo,
+  lspCodeAction,
+  lspSignatureHelp,
+  lspDocumentColor,
+  lspDocumentHighlight,
+  lspCodeFolding,
+  lspShowInlayHints,
+  lspGoToDefinition,
+  lspRename,
+  lspAlwaysStart,
+  chineseToUnicodeConversion,
+  enableSignalDetection,
+  ensureBoardFilesystemOnConnect,
+  serialDefaultBaudRate,
+  serialAutoReconnect,
+  terminalFontFamily,
+  terminalFontSize,
+  terminalLineHeight,
+  terminalLigatures,
+  terminalAppearance,
+  terminalMinimumContrast,
+  terminalCustomForeground,
+  terminalCustomBackground,
+  terminalCustomPalette,
+  useMaterialContextMenu,
+  uploadConfirmStyleProvider,
+  confirmShortcutProvider,
+  cancelShortcutProvider,
+  webReplHost,
+  webReplPort,
+  webReplPassword,
+  microPythonStubsEnabled,
+  microPythonStubsAutoDetectLayers,
+  microPythonStubsLayers,
+  microPythonStubsExtraPaths,
+];
 
 Future<void> _startRuntimeAndPlugins() async {
   final runtimeHost = container.read(pythonRuntimeHostProvider);
