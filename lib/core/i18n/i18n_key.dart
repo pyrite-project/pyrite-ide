@@ -9,18 +9,18 @@ enum I18nKey {
   settingsWorkspaceSection('settings.workspace.section', '工作区'),
   settingsWorkspaceDescription(
     'settings.workspace.description',
-    '编辑器、终端和语言服务行为。',
+    '编辑器、终端和语言服务。',
   ),
   settingsEditorTitle('settings.editor.title', '编辑器'),
   settingsEditorSubtitle('settings.editor.subtitle', '字体、字号、折行、行号'),
   settingsTerminalTitle('settings.terminal.title', '调试与终端'),
   settingsTerminalSubtitle('settings.terminal.subtitle', '波特率、自动重连、REPL'),
   settingsLspTitle('settings.lsp.title', '语言服务器'),
-  settingsLspSubtitle('settings.lsp.subtitle', '诊断、补全和 LSP WebSocket 地址'),
+  settingsLspSubtitle('settings.lsp.subtitle', '补全、诊断和连接地址'),
   settingsInterfaceSection('settings.interface.section', '界面'),
   settingsInterfaceDescription('settings.interface.description', '主题、颜色和显示偏好。'),
   settingsStyleTitle('settings.style.title', '外观与风格'),
-  settingsStyleSubtitle('settings.style.subtitle', '主题模式、动态颜色和种子色'),
+  settingsStyleSubtitle('settings.style.subtitle', '主题模式与配色'),
   settingsFunctionPanelTitle('settings.function_panel.title', '功能面板'),
   settingsFunctionPanelSubtitle(
     'settings.function_panel.subtitle',
@@ -37,7 +37,7 @@ enum I18nKey {
     '显示/隐藏扩展信息面板',
   ),
   settingsWelcomeTitle('settings.welcome.title', '重新显示欢迎引导'),
-  settingsWelcomeSubtitle('settings.welcome.subtitle', '用于测试首次启动 OOBE 覆盖层'),
+  settingsWelcomeSubtitle('settings.welcome.subtitle', '重新显示首次启动引导'),
   settingsAboutTitle('settings.about.title', '关于'),
   settingsAboutSubtitle('settings.about.subtitle', '产品信息和当前阶段'),
   settingsLanguageTitle('settings.language.title', '语言'),
@@ -447,7 +447,7 @@ enum I18nKey {
   settingsStyleThemeMode('settings.style.theme_mode.title', '主题模式'),
   settingsStyleThemeModeDescription(
     'settings.style.theme_mode.description',
-    '决定界面跟随系统、常亮或常暗。',
+    '界面跟随系统，或固定为亮色/暗色。',
   ),
   settingsStyleThemeModePluginLockedDark(
     'settings.style.theme_mode.plugin_locked_dark',
@@ -463,7 +463,7 @@ enum I18nKey {
   settingsStyleThemeStyle('settings.style.theme_style.title', '主题风格'),
   settingsStyleThemeStyleDescription(
     'settings.style.theme_style.description',
-    '切换不同风格的组件样式与布局密度。',
+    '组件样式与信息密度。',
   ),
   settingsStylePluginThemeDisabledDescription(
     'settings.style.plugin_theme_disabled.description',
@@ -475,25 +475,25 @@ enum I18nKey {
   settingsStyleThemeColor('settings.style.theme_color.title', '主题颜色'),
   settingsStyleThemeColorDescription(
     'settings.style.theme_color.description',
-    '保留 MD3 动态颜色，也可以选择固定种子色。',
+    '使用系统动态色，或指定固定主题色。',
   ),
   settingsStyleFollowSystem('settings.style.follow_system', '跟随系统'),
   settingsStylePluginTheme('settings.style.plugin_theme.title', '插件主题'),
   settingsStylePluginThemeDescription(
     'settings.style.plugin_theme.description',
-    '使用插件提供的主题配色方案。选中后将覆盖上方的主题风格和主题颜色设置。',
+    '使用插件提供的主题配色，会覆盖主题风格和主题颜色。',
   ),
   settingsStyleBuiltin('settings.style.builtin', '内置'),
   settingsStyleBuiltinSubtitle(
     'settings.style.builtin.subtitle',
-    '使用系统动态色或自定义种子色',
+    '使用系统动态色或自定义主题色',
   ),
   settingsStyleDarkOnly('settings.style.dark_only', '仅暗色'),
   settingsStyleLightOnly('settings.style.light_only', '仅亮色'),
   settingsStyleMenuStyle('settings.style.menu_style.title', '菜单样式'),
   settingsStyleMenuStyleDescription(
     'settings.style.menu_style.description',
-    '控制桌面右键菜单的视觉样式。',
+    '桌面右键菜单的样式。',
   ),
   settingsStyleMd3ContextMenu(
     'settings.style.md3_context_menu.title',
@@ -501,12 +501,12 @@ enum I18nKey {
   ),
   settingsStyleMd3ContextMenuSubtitle(
     'settings.style.md3_context_menu.subtitle',
-    '使用自绘菜单样式替代默认桌面菜单 fallback',
+    '用应用内绘制的菜单替代系统默认菜单',
   ),
   settingsTerminalSerialSection('settings.terminal.serial.title', '串口设置'),
   settingsTerminalSerialDescription(
     'settings.terminal.serial.description',
-    '配置开发板的串口连接参数。',
+    '开发板串口连接参数。',
   ),
   settingsTerminalBaudRate('settings.terminal.baud_rate', '波特率'),
   settingsTerminalAutoReconnect(
@@ -523,15 +523,15 @@ enum I18nKey {
   ),
   settingsTerminalSignalDetectionSubtitle(
     'settings.terminal.signal_detection.subtitle',
-    '通过串口信号线检测设备是否断开，兼容常见 USB 串口芯片',
+    '通过串口信号线判断设备是否断开',
   ),
   settingsTerminalEnsureFilesystem(
     'settings.terminal.ensure_filesystem.title',
-    '连接时校验设备文件系统',
+    '连接时检查文件系统',
   ),
   settingsTerminalEnsureFilesystemSubtitle(
     'settings.terminal.ensure_filesystem.subtitle',
-    '为部分 mPython 固件尝试挂载未就绪的根 VFS，默认关闭',
+    '尝试挂载尚未就绪的设备文件系统，默认关闭',
   ),
   settingsTerminalChineseToUnicode(
     'settings.terminal.chinese_to_unicode.title',
@@ -539,12 +539,12 @@ enum I18nKey {
   ),
   settingsTerminalChineseToUnicodeSubtitle(
     'settings.terminal.chinese_to_unicode.subtitle',
-    '输入中文时自动转为 \\uXXXX 转义序列',
+    '输入中文时自动转为 \\uXXXX 转义',
   ),
   settingsTerminalReplMode('settings.terminal.repl_mode.title', 'REPL 模式'),
   settingsTerminalReplModeSubtitle(
     'settings.terminal.repl_mode.subtitle',
-    'Paste 模式使用 Ctrl-E 粘贴模式执行，兼容所有 MicroPython 固件',
+    'Paste 模式通过 Ctrl-E 粘贴执行，兼容所有固件',
   ),
   settingsTerminalReplModeRawPaste(
     'settings.terminal.repl_mode.raw_paste',
@@ -558,7 +558,7 @@ enum I18nKey {
   settingsTerminalTransferMode('settings.terminal.transfer_mode', '文件传输模式'),
   settingsTerminalTransferModeSubtitle(
     'settings.terminal.transfer_mode.subtitle',
-    'Raw REPL 使用所选协议；Paste 始终使用分块传输',
+    'Raw REPL 使用所选协议，Paste 始终分块传输',
   ),
   settingsTerminalTransferModeStreaming(
     'settings.terminal.transfer_mode.streaming',
@@ -591,7 +591,7 @@ enum I18nKey {
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
   settingsTerminalDisplayDescription(
     'settings.terminal.display.description',
-    '影响 REPL、日志和桌面终端的字体呈现。',
+    'REPL、日志和桌面终端的字体样式。',
   ),
   settingsTerminalFont('settings.terminal.font', '字体'),
   settingsTerminalFontSize('settings.terminal.font_size', '字体大小'),
@@ -599,7 +599,7 @@ enum I18nKey {
   settingsTerminalLigatures('settings.terminal.ligatures.title', '编程连体字'),
   settingsTerminalLigaturesSubtitle(
     'settings.terminal.ligatures.subtitle',
-    '合并显示 =>、!= 等编程符号（需要字体支持）',
+    '合并显示 =>、!= 等符号（需要字体支持）',
   ),
   settingsTerminalAppearance('settings.terminal.appearance.title', '终端外观'),
   settingsTerminalAppearanceFollowIde(
@@ -630,7 +630,7 @@ enum I18nKey {
   ),
   settingsTerminalOverrideBackgroundSubtitle(
     'settings.terminal.override_background.subtitle',
-    '忽略终端程序设置的默认背景色，仅影响桌面 Shell 终端',
+    '忽略终端程序自带的背景色，仅影响桌面终端',
   ),
   settingsTerminalCustomForeground(
     'settings.terminal.custom.foreground',
@@ -646,7 +646,7 @@ enum I18nKey {
   ),
   settingsTerminalCustomSectionDescription(
     'settings.terminal.custom.section.description',
-    '调整默认前景色和背景色。',
+    '设置默认前景色和背景色。',
   ),
   settingsTerminalCustomPreview('settings.terminal.custom.preview', '终端预览'),
   settingsTerminalCustomBaseColors(
@@ -713,12 +713,12 @@ enum I18nKey {
   settingsEditorFontSection('settings.editor.font_section.title', '字体'),
   settingsEditorFontDescription(
     'settings.editor.font_section.description',
-    '影响代码编辑区域的阅读和输入体验。',
+    '代码编辑区的字体与字号。',
   ),
   settingsEditorThemeSection('settings.editor.theme_section.title', '编辑器主题'),
   settingsEditorThemeDescription(
     'settings.editor.theme_section.description',
-    '选择代码高亮配色方案，亮色/暗色随应用主题自动切换。',
+    '代码高亮配色，亮暗随应用主题切换。',
   ),
   settingsEditorColorScheme('settings.editor.color_scheme', '配色方案'),
   settingsEditorThemePluginLocked(
@@ -749,40 +749,40 @@ enum I18nKey {
   settingsEditorWordWrap('settings.editor.word_wrap.title', '自动折行'),
   settingsEditorWordWrapSubtitle(
     'settings.editor.word_wrap.subtitle',
-    '长行在可视区域内换行显示',
+    '超出编辑器宽度时折行显示',
   ),
   settingsEditorLineNumber('settings.editor.line_number.title', '显示行号'),
   settingsEditorLineNumberSubtitle(
     'settings.editor.line_number.subtitle',
-    '显示左侧 gutter 行号区域',
+    '在代码左侧显示行号',
   ),
   settingsEditorGutterDivider(
     'settings.editor.gutter_divider.title',
-    '显示 gutter 分隔线',
+    '显示行号分隔线',
   ),
   settingsEditorGutterDividerSubtitle(
     'settings.editor.gutter_divider.subtitle',
-    '在行号区域和代码之间显示分隔线',
+    '在行号和代码之间画一条分隔线',
   ),
   settingsEditorSmoothCursor('settings.editor.smooth_cursor.title', '平滑光标'),
   settingsEditorSmoothCursorSubtitle(
     'settings.editor.smooth_cursor.subtitle',
-    '光标移动时平滑滑动到新位置，类似 VS Code 的平滑插入符动画',
+    '光标移动时平滑滑动到新位置',
   ),
   settingsEditorMinimap('settings.editor.minimap.title', '代码缩略图'),
   settingsEditorMinimapSubtitle(
     'settings.editor.minimap.subtitle',
-    '在编辑器右侧显示整份代码的缩略图（自动换行开启时隐藏）',
+    '在右侧显示全文缩略图，自动折行时隐藏',
   ),
   settingsEditorCodeFolding('settings.editor.code_folding.title', '代码折叠'),
   settingsEditorCodeFoldingSubtitle(
     'settings.editor.code_folding.subtitle',
-    '显示折叠图标并允许折叠代码块',
+    '显示折叠图标，可折叠代码块',
   ),
   settingsEditorGuideLines('settings.editor.guide_lines.title', '缩进参考线'),
   settingsEditorGuideLinesSubtitle(
     'settings.editor.guide_lines.subtitle',
-    '显示每级缩进的纵向参考线',
+    '显示每一级缩进的竖线',
   ),
   settingsEditorLocalSuggestions(
     'settings.editor.local_suggestions.title',
@@ -790,7 +790,7 @@ enum I18nKey {
   ),
   settingsEditorLocalSuggestionsSubtitle(
     'settings.editor.local_suggestions.subtitle',
-    '启用非 LSP 的本地补全建议，较大文件可能有额外开销',
+    '不依赖 LSP 的本地补全，大文件可能稍慢',
   ),
   settingsEditorKeyboardSuggestions(
     'settings.editor.keyboard_suggestions.title',
@@ -803,7 +803,7 @@ enum I18nKey {
   settingsEditorSpaceAsTab('settings.editor.space_as_tab.title', 'Tab 输入空格'),
   settingsEditorSpaceAsTabSubtitle(
     'settings.editor.space_as_tab.subtitle',
-    '按 Tab 时插入空格而不是制表符',
+    '按 Tab 插入空格而不是制表符',
   ),
   settingsEditorTabSize('settings.editor.tab_size', 'Tab 大小'),
   settingsEditorTabSizeValue('settings.editor.tab_size.value', '{count} 个字符'),
@@ -813,7 +813,7 @@ enum I18nKey {
   ),
   settingsEditorFormatOnSaveSubtitle(
     'settings.editor.format_on_save.subtitle',
-    '保存前通过语言服务器格式化当前文件（需要 LSP 格式化支持）',
+    '保存前由语言服务器格式化当前文件',
   ),
   settingsEditorSelectFont('settings.editor.select_font', '选择编辑器字体'),
   settingsEditorSelectTheme('settings.editor.select_theme', '选择编辑器主题'),
@@ -821,17 +821,13 @@ enum I18nKey {
   settingsLspServiceSection('settings.lsp.service.title', '语言服务'),
   settingsLspServiceDescription(
     'settings.lsp.service.description',
-    '设置会在新打开的编辑器标签页中生效。',
+    '改动会在新打开的编辑器标签页中生效。',
   ),
   settingsLspEnable('settings.lsp.enable.title', '启用语言服务器'),
   settingsLspEnableSubtitle('settings.lsp.enable.subtitle', '提供补全、诊断和跳转等编辑能力'),
   settingsLspConnectionType('settings.lsp.connection_type', '连接方式'),
-  settingsLspStdioLocal('settings.lsp.stdio_local', 'stdio (本地进程)'),
-  settingsLspWebSocketSubtitle(
-    'settings.lsp.websocket.subtitle',
-    '连接到远程 WebSocket 服务器',
-  ),
-  settingsLspStdioSubtitle('settings.lsp.stdio.subtitle', '启动本地语言服务器进程'),
+  settingsLspWebSocketSubtitle('settings.lsp.websocket.subtitle', '远程服务器'),
+  settingsLspStdioSubtitle('settings.lsp.stdio.subtitle', '本地进程'),
   settingsLspWebSocketAddress('settings.lsp.websocket.address', 'WebSocket 地址'),
   settingsLspExecutablePath('settings.lsp.stdio.executable', '可执行文件路径'),
   settingsLspExecutablePathHint(
@@ -864,7 +860,7 @@ enum I18nKey {
   ),
   settingsLspBasedPyrightDescription(
     'settings.lsp.basedpyright.description',
-    '配置 BasedPyright 的类型检查严格程度。',
+    'BasedPyright 的类型检查严格程度。',
   ),
   settingsLspBasedPyrightTypeCheckingMode(
     'settings.lsp.basedpyright.type_checking_mode',
@@ -893,7 +889,7 @@ enum I18nKey {
   settingsLspDiagnosticsSection('settings.lsp.diagnostics.title', '诊断显示'),
   settingsLspDiagnosticsDescription(
     'settings.lsp.diagnostics.description',
-    '控制编辑器是否显示语言服务器返回的问题标记。',
+    '控制是否显示语言服务器返回的问题标记。',
   ),
   settingsLspWarningDiagnostics(
     'settings.lsp.warning_diagnostics.title',
@@ -901,12 +897,12 @@ enum I18nKey {
   ),
   settingsLspWarningDiagnosticsSubtitle(
     'settings.lsp.warning_diagnostics.subtitle',
-    '开启后，警告会以下划线标识',
+    '警告以下划线标出',
   ),
   settingsLspErrorDiagnostics('settings.lsp.error_diagnostics.title', '显示错误诊断'),
   settingsLspErrorDiagnosticsSubtitle(
     'settings.lsp.error_diagnostics.subtitle',
-    '开启后，错误会以下划线标识',
+    '错误以下划线标出',
   ),
   settingsLspStubsDescription(
     'settings.lsp.stubs.description',
@@ -915,7 +911,7 @@ enum I18nKey {
   settingsLspEnableStubs('settings.lsp.stubs.enable.title', '启用 Stubs'),
   settingsLspEnableStubsSubtitle(
     'settings.lsp.stubs.enable.subtitle',
-    '启用后语言服务可读取配置的 stubs layer',
+    '语言服务可读取已配置的 stubs layer',
   ),
   settingsLspAutoDetectLayer(
     'settings.lsp.stubs.auto_detect.title',
@@ -923,35 +919,87 @@ enum I18nKey {
   ),
   settingsLspAutoDetectLayerSubtitle(
     'settings.lsp.stubs.auto_detect.subtitle',
-    '后续可根据连接设备推荐 generic/port/board stubs',
+    '按已连接设备推荐 generic/port/board stubs',
   ),
   settingsLspExtraPaths('settings.lsp.stubs.extra_paths', '额外路径'),
   settingsLspNotConfigured('settings.lsp.not_configured', '未配置'),
   settingsLspPathCount('settings.lsp.path_count', '{count} 个路径'),
-  settingsLspFeaturesSection('settings.lsp.features.title', 'LSP 功能'),
+  settingsLspFeaturesSection('settings.lsp.features.title', '语言服务器功能'),
   settingsLspFeaturesDescription(
     'settings.lsp.features.description',
-    '控制 CodeForge 向语言服务器声明和使用的能力。设置会在新打开的编辑器标签页中生效。',
+    '开关 CodeForge 请求的语言服务器功能。改动立即生效，但能力声明要重新连接后才会更新。',
   ),
   settingsLspSemanticHighlighting(
     'settings.lsp.feature.semantic_highlighting',
     '语义高亮',
   ),
+  settingsLspSemanticHighlightingDescription(
+    'settings.lsp.feature.semantic_highlighting.description',
+    '按服务器返回的语义标记着色，替代本地语法高亮。',
+  ),
   settingsLspCodeCompletion('settings.lsp.feature.code_completion', '代码补全'),
+  settingsLspCodeCompletionDescription(
+    'settings.lsp.feature.code_completion.description',
+    '输入时向服务器请求补全候选。',
+  ),
   settingsLspHoverInfo('settings.lsp.feature.hover_info', '悬浮提示'),
+  settingsLspHoverInfoDescription(
+    'settings.lsp.feature.hover_info.description',
+    '悬停符号时向服务器请求文档与类型信息。',
+  ),
   settingsLspCodeAction('settings.lsp.feature.code_action', '代码操作'),
+  settingsLspCodeActionDescription(
+    'settings.lsp.feature.code_action.description',
+    '向服务器请求快速修复与重构建议，显示在灯泡菜单。',
+  ),
   settingsLspSignatureHelp('settings.lsp.feature.signature_help', '签名帮助'),
-  settingsLspDocumentColor('settings.lsp.feature.document_color', '颜色选择器支持'),
+  settingsLspSignatureHelpDescription(
+    'settings.lsp.feature.signature_help.description',
+    '在函数调用的参数之间显示签名与当前参数名。',
+  ),
+  settingsLspDocumentColor('settings.lsp.feature.document_color', '颜色识别与取色器'),
+  settingsLspDocumentColorDescription(
+    'settings.lsp.feature.document_color.description',
+    '识别文档中的颜色字面量，并在编辑器中显示取色器。',
+  ),
   settingsLspDocumentHighlight(
     'settings.lsp.feature.document_highlight',
     '文档高亮',
   ),
-  settingsLspCodeFolding('settings.lsp.feature.code_folding', '代码折叠'),
+  settingsLspDocumentHighlightDescription(
+    'settings.lsp.feature.document_highlight.description',
+    '高亮光标所在符号的全部出现位置。',
+  ),
+  settingsLspCodeFolding('settings.lsp.feature.code_folding', '服务器折叠范围'),
+  settingsLspCodeFoldingDescription(
+    'settings.lsp.feature.code_folding.description',
+    '使用服务器返回的折叠范围；本地折叠由「编辑器」页的折叠开关单独控制。',
+  ),
   settingsLspShowInlayHints('settings.lsp.feature.show_inlay_hints', '显示内联提示'),
+  settingsLspShowInlayHintsDescription(
+    'settings.lsp.feature.show_inlay_hints.description',
+    '在代码之间显示参数名、推断类型等标注。',
+  ),
   settingsLspGoToDefinition('settings.lsp.feature.go_to_definition', '跳转定义'),
+  settingsLspGoToDefinitionDescription(
+    'settings.lsp.feature.go_to_definition.description',
+    '跳转符号时向服务器请求定义位置。',
+  ),
   settingsLspRename('settings.lsp.feature.rename', '重命名符号'),
-  settingsLspScope('settings.lsp.scope', 'LSP 生效范围'),
+  settingsLspRenameDescription(
+    'settings.lsp.feature.rename.description',
+    '重命名时向服务器请求跨文件的修改。',
+  ),
+  settingsLspScope('settings.lsp.scope', '语言服务器生效范围'),
+  settingsLspScopeDescription(
+    'settings.lsp.scope.description',
+    '决定哪些文件会启动语言服务器。',
+  ),
   settingsLspAlwaysStart('settings.lsp.scope.always_start', '对所有文件启用'),
+  settingsLspAlwaysStartDescription(
+    'settings.lsp.scope.always_start.description',
+    '关闭时只为 .py 文件启动语言服务器。',
+  ),
   gitEmptyTitle('git.empty.title', '没有检测到 Git 仓库'),
   gitEmptyNoGitMessage(
     'git.empty.no_git_message',
