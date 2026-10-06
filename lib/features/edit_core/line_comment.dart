@@ -33,9 +33,7 @@ LineCommentToggleResult? toggleLineComments(
   String marker = '#',
 }) {
   if (lines.isEmpty) return null;
-  final markerRegExp = RegExp(
-    r'^(\s*)' + RegExp.escape(marker) + r' ?',
-  );
+  final markerRegExp = RegExp(r'^(\s*)' + RegExp.escape(marker) + r' ?');
 
   var contentCount = 0;
   var commentedCount = 0;
