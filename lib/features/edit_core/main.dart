@@ -33,6 +33,7 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 import 'package:pyrite_ide/features/edit_core/line_comment.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_context_menu_actions.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
@@ -487,7 +488,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       if (resolveEditorLanguage(controller.openedFile).blockCommentDelimiters !=
           null)
         CustomContextMenu(
-          label: translateForWidget(ref, I18nKey.editorMenuToggleComment),
+          label: translateForWidget(ref, I18nKey.editorMenuToggleBlockComment),
           description: toggleBlockCommentShortcutLabel(),
           icon: Icons.format_quote,
           onPress: _toggleBlockComment,
@@ -506,8 +507,16 @@ class _EditCoreState extends ConsumerState<EditCore> {
         onPressAt: (offset) => _addCursorAtOffset(controller, offset),
       ),
     ];
-    if (config == null) return items;
-    if (config.capabilities.goToDefinition) {
+    // Read the switches themselves rather than the config's capability
+    // snapshot: the menu is assembled during build, so watching is what makes
+    // an entry appear or disappear the moment the user flips the switch, on a
+    // file that is already open.
+    final lspActions = lspContextMenuActions(
+      hasLanguageServer: config != null,
+      goToDefinition: ref.watch(lspGoToDefinition),
+      rename: ref.watch(lspRename),
+    );
+    if (lspActions.contains(EditorLspMenuAction.goToDefinition)) {
       items.add(
         CustomContextMenu(
           label: translateForWidget(ref, I18nKey.editorMenuGoToDefinition),
@@ -543,7 +552,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
         ),
       );
     }
-    if (config.capabilities.rename) {
+    if (lspActions.contains(EditorLspMenuAction.rename)) {
       items.add(
         CustomContextMenu(
           label: translateForWidget(ref, I18nKey.fileActionRename),
@@ -556,17 +565,19 @@ class _EditCoreState extends ConsumerState<EditCore> {
         ),
       );
     }
-    items.add(
-      CustomContextMenu(
-        label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
-        description: findReferencesShortcutLabel(),
-        icon: Icons.manage_search,
-        visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
-        onPressAt: (offset) =>
-            unawaited(_findReferences(context, ref, textOffset: offset)),
-        onPress: () => unawaited(_findReferences(context, ref)),
-      ),
-    );
+    if (lspActions.contains(EditorLspMenuAction.findReferences)) {
+      items.add(
+        CustomContextMenu(
+          label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
+          description: findReferencesShortcutLabel(),
+          icon: Icons.manage_search,
+          visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
+          onPressAt: (offset) =>
+              unawaited(_findReferences(context, ref, textOffset: offset)),
+          onPress: () => unawaited(_findReferences(context, ref)),
+        ),
+      );
+    }
     return items;
   }
 
