@@ -34,14 +34,7 @@ class LspSettings extends ConsumerWidget {
               },
             ),
 
-            ListTile(
-              title: const UseText(I18nKey.settingsLspConnectionType),
-              subtitle: Text(
-                ref.watch(lspType) == LspType.webSocket
-                    ? "WebSocket"
-                    : I18nKey.settingsLspStdioLocal.fallback,
-              ),
-            ),
+            ListTile(title: const UseText(I18nKey.settingsLspConnectionType)),
             RadioGroup<LspType>(
               groupValue: ref.watch(lspType),
               onChanged: (value) {
@@ -241,66 +234,78 @@ class LspSettings extends ConsumerWidget {
           children: [
             _CapabilitySwitch(
               title: I18nKey.settingsLspSemanticHighlighting,
+              description: I18nKey.settingsLspSemanticHighlightingDescription,
               provider: lspSemanticHighlighting,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeCompletion,
+              description: I18nKey.settingsLspCodeCompletionDescription,
               provider: lspCodeCompletion,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspHoverInfo,
+              description: I18nKey.settingsLspHoverInfoDescription,
               provider: lspHoverInfo,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeAction,
+              description: I18nKey.settingsLspCodeActionDescription,
               provider: lspCodeAction,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspSignatureHelp,
+              description: I18nKey.settingsLspSignatureHelpDescription,
               provider: lspSignatureHelp,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspDocumentColor,
+              description: I18nKey.settingsLspDocumentColorDescription,
               provider: lspDocumentColor,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspDocumentHighlight,
+              description: I18nKey.settingsLspDocumentHighlightDescription,
               provider: lspDocumentHighlight,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeFolding,
+              description: I18nKey.settingsLspCodeFoldingDescription,
               provider: lspCodeFolding,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspShowInlayHints,
+              description: I18nKey.settingsLspShowInlayHintsDescription,
               provider: lspShowInlayHints,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspGoToDefinition,
+              description: I18nKey.settingsLspGoToDefinitionDescription,
               provider: lspGoToDefinition,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspRename,
+              description: I18nKey.settingsLspRenameDescription,
               provider: lspRename,
             ),
           ],
         ),
         SettingsSection(
           title: I18nKey.settingsLspScope,
-          description: I18nKey.settingsLspServiceDescription,
+          description: I18nKey.settingsLspScopeDescription,
           children: [
             _CapabilitySwitch(
               title: I18nKey.settingsLspAlwaysStart,
+              description: I18nKey.settingsLspAlwaysStartDescription,
               provider: lspAlwaysStart,
             ),
           ],
@@ -717,16 +722,27 @@ class LspSettings extends ConsumerWidget {
   };
 }
 
+/// A labelled on/off switch backed by one settings provider.
+///
+/// [description] spells out what the switch actually changes in the editor, so
+/// the settings page does not leave the reader guessing which layer a given
+/// protocol capability ends up affecting.
 class _CapabilitySwitch extends ConsumerWidget {
-  const _CapabilitySwitch({required this.title, required this.provider});
+  const _CapabilitySwitch({
+    required this.title,
+    required this.description,
+    required this.provider,
+  });
 
   final Object title;
+  final Object description;
   final StateProvider<bool> provider;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SwitchListTile(
       title: UseText(title),
+      subtitle: UseText(description),
       value: ref.watch(provider),
       onChanged: (value) => ref.read(provider.notifier).state = value,
     );
