@@ -121,6 +121,10 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   Rect? _caretRectInTarget;
   bool _completionOpensAbove = false;
 
+  /// Width of the scrollbar's grip, matching the framework default so pinning
+  /// it here changes nothing visually.
+  static const double _scrollbarGrip = 6;
+
   @override
   void initState() {
     super.initState();
@@ -202,22 +206,26 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
             color: widget.backgroundColor,
             child: Listener(
               behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => _handleSurfacePointerDown(),
+              onPointerDown: _handleSurfacePointerDown,
               child: LayoutBuilder(
                 builder: (context, _) {
                   final inputVisible = _input.hasVisibleInput;
                   return Scrollbar(
                     controller: _scrollController,
-                    child: SingleChildScrollView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!_transcript.isEmpty) _buildTranscript(context),
-                          _buildInputBlock(context, visible: inputVisible),
-                        ],
+                    thickness: _scrollbarGrip,
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: _trackUserScroll,
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (!_transcript.isEmpty) _buildTranscript(context),
+                            _buildInputBlock(context, visible: inputVisible),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -635,11 +643,49 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     return TextSpan(children: spans, style: outputStyle);
   }
 
-  void _handleSurfacePointerDown() {
+  /// Whether a drag the user started — on the scrollbar thumb, on its track or
+  /// on the transcript — is in progress.
+  ///
+  /// Restoring focus to the input pins the scroll offset for a few frames so
+  /// that focusing cannot drag the transcript out from under the user, and that
+  /// pin is applied with [ScrollPosition.jumpTo], which cancels whatever drag is
+  /// running. Pressing the scrollbar thumb triggers both — the thumb press is a
+  /// pointer down on the panel — so without this the press would kill its own
+  /// drag before the thumb ever moved. A drag the console started itself is not
+  /// a user drag and must still be pinned.
+  bool _userDragging = false;
+
+  bool _trackUserScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _userDragging = notification.dragDetails != null;
+    } else if (notification is ScrollEndNotification) {
+      _userDragging = false;
+    }
+    return false;
+  }
+
+  void _handleSurfacePointerDown(PointerDownEvent event) {
+    // A press on the scrollbar is a thumb drag, not a click into the transcript.
+    // Moving focus here makes the input scroll itself into view, and that
+    // animation ends the thumb drag on its first update, so the press is left
+    // to the scrollbar alone — along with the selection it would have cleared.
+    if (_isOnScrollbarGrip(event)) return;
     _clearOutputSelection();
     if (_input.hasVisibleInput) {
       _requestInputFocus(force: true, preserveScroll: true);
     }
+  }
+
+  /// Whether [event] landed on the scrollbar's grip rather than the transcript.
+  ///
+  /// The grip is the trailing [thickness] pixels of the panel, which is the
+  /// strip the framework hit-tests a scrollbar against: a mouse press anywhere
+  /// on that track is a thumb or track drag.
+  bool _isOnScrollbarGrip(PointerDownEvent event) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return false;
+    final local = box.globalToLocal(event.position);
+    return local.dx >= box.size.width - _scrollbarGrip;
   }
 
   void _onPromptMode(ReplInteractionMode mode) {
@@ -917,7 +963,9 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   void _keepFocusScrollPosition() {
     final anchor = _focusScrollAnchor;
-    if (anchor == null || !_scrollController.hasClients) return;
+    if (anchor == null || _userDragging || !_scrollController.hasClients) {
+      return;
+    }
     final position = _scrollController.position;
     if ((position.pixels - anchor).abs() < .5) return;
     final target = anchor.clamp(
@@ -929,7 +977,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   void _restoreFocusScrollOffset(double offset, int framesRemaining) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
+      if (!mounted || _userDragging || !_scrollController.hasClients) return;
       final position = _scrollController.position;
       final target = offset.clamp(
         position.minScrollExtent,

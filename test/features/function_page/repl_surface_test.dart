@@ -1,5 +1,8 @@
-import 'package:flutter/rendering.dart';
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -159,6 +162,46 @@ void main() {
 
     expect(scroll.offset, closeTo(before, 1));
   });
+
+  testWidgets(
+    'scrollbar thumb can be dragged',
+    (tester) async {
+      await _pumpSurface(tester, height: 200);
+      // The prompt is what leaves the inline input on screen, and it is what the
+      // panel focuses when the transcript is clicked.
+      writeReplOutput(
+        '${List.generate(60, (index) => 'line $index\r\n').join()}>>> ',
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final scroll = tester
+          .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .controller!;
+      scroll.jumpTo(scroll.position.maxScrollExtent / 2);
+      await tester.pump();
+      // The thumb only accepts pointer events once the fade-in has run.
+      await tester.pump(const Duration(milliseconds: 400));
+      final before = scroll.offset;
+
+      final gesture = await tester.startGesture(
+        _thumbCenter(tester, scroll),
+        kind: PointerDeviceKind.mouse,
+      );
+      // A real press is followed by a frame in which the panel focuses its input.
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      expect(scroll.offset, greaterThan(before));
+
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      expect(scroll.offset, closeTo(before, 1));
+      await gesture.up();
+    },
+    // The scrollbar only accepts thumb drags on desktop platforms.
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
 
   testWidgets('filters ANSI-wrapped prompts without duplicating the gutter', (
     tester,
@@ -564,6 +607,23 @@ void main() {
     expect(repl.onOutput, same(previousOutput));
     expect(replClearSink, same(previousClear));
   });
+}
+
+/// Centre of the scrollbar thumb, which the framework paints flush against
+/// the right edge and sizes from how much of the transcript is on screen.
+Offset _thumbCenter(WidgetTester tester, ScrollController scroll) {
+  final surface = tester.getRect(find.byType(ReplSurface));
+  final metrics = scroll.position;
+  const thickness = 6.0;
+  const minThumbExtent = 18.0;
+  final visible =
+      metrics.viewportDimension /
+      (metrics.viewportDimension + metrics.maxScrollExtent);
+  final thumbExtent = math.max(minThumbExtent, surface.height * visible);
+  final travelled = surface.height - thumbExtent;
+  final top =
+      surface.top + (metrics.pixels / metrics.maxScrollExtent) * travelled;
+  return Offset(surface.right - thickness / 2, top + thumbExtent / 2);
 }
 
 Future<void> _pumpSurface(
