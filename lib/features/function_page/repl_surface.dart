@@ -15,9 +15,13 @@ import 'package:pyrite_ide/core/services/editor/repl_traceback_frames.dart';
 import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart'
+    show getLocalFile;
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:code_forge/code_forge.dart' show CodeForgeController;
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
@@ -269,9 +273,9 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   /// wrapping on, a tap can land at the same vertical position on any of the
   /// visual lines, so the paragraph — not the widget — is the authority.
   void _handleTranscriptTap(TapUpDetails details) {
-    final renderObject = _transcriptTextKey.currentContext?.findRenderObject();
-    if (renderObject is! RenderParagraph) return;
-    final position = renderObject.getPositionForOffset(details.localPosition);
+    final paragraph = _transcriptParagraph();
+    if (paragraph == null) return;
+    final position = paragraph.getPositionForOffset(details.localPosition);
     final offset = position.offset;
     for (final range in tracebackFrameRanges(_transcript.text)) {
       if (offset < range.start || offset > range.end) continue;
@@ -280,47 +284,213 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     }
   }
 
+  /// The laid-out paragraph for the transcript text.
+  ///
+  /// The key sits on the [Text.rich], but inside a [SelectionArea] that widget
+  /// builds a [RenderMouseRegion] above its paragraph, so the key's own render
+  /// object is the region rather than the paragraph and an `is RenderParagraph`
+  /// check on it always fails. Walking down to the first paragraph descendant
+  /// is what actually makes taps resolve.
+  RenderParagraph? _transcriptParagraph() {
+    RenderParagraph? found;
+    _transcriptTextKey.currentContext?.findRenderObject()?.visitChildren((
+      child,
+    ) {
+      child.visitChildren((grandChild) {
+        if (found == null && grandChild is RenderParagraph) {
+          found = grandChild;
+        }
+      });
+      if (found == null && child is RenderParagraph) found = child;
+    });
+    return found;
+  }
+
   /// Opens the editor at the frame the user tapped.
   ///
-  /// A path that no longer exists is left alone rather than reported: a
-  /// traceback can name a file that has since been renamed or deleted, and
-  /// telling the user their own traceback is unopenable is less useful than
-  /// leaving the console exactly as it was.
+  /// A frame that resolves to nothing is reported in the transcript rather than
+  /// dropped silently: the common case is a device-side file with no local
+  /// counterpart, and a click that appears to do nothing is indistinguishable
+  /// from a broken console.
   void _openTracebackFrame(TracebackFrame frame) {
-    final resolved = _resolveReplSourcePath(frame.file);
-    if (resolved == null) return;
-    unawaited(revealLspLocation(context, ref, resolved, frame.line, 0));
+    // Python reports 1-based line numbers; the editor's line and column APIs
+    // are 0-based. Handing over the raw number lands the caret one line below
+    // the frame the traceback named.
+    final line = editorLineFor(frame);
+    if (line < 0) return;
+    unawaited(_openTracebackFrameAt(frame.file, line));
+  }
+
+  /// Resolves [file] and reveals [line], preferring the device's own copy.
+  ///
+  /// The device is asked first because the traceback came from it: the file the
+  /// program actually died in is the board file, and a same-named local file is
+  /// a different file that happens to share a name. Only when no device is
+  /// attached, or it does not hold the file, does this fall back to local
+  /// search.
+  Future<void> _openTracebackFrameAt(String file, int line) async {
+    if (await _openBoardTracebackFrame(file, line)) return;
+    if (!mounted) return;
+    final resolved = _resolveReplSourcePath(file);
+    if (resolved == null) {
+      _reportUnresolvedFrame(file);
+      return;
+    }
+    await revealLspLocation(context, ref, resolved, line, 0);
+  }
+
+  /// Opens [file] from the attached device, if the device holds it.
+  ///
+  /// Returns whether the jump was handled. The board file is downloaded into the
+  /// same support-directory cache the file tree uses, so this works whether or
+  /// not the user has opened the file before — previously an unopened board
+  /// file had no local path to resolve to and the click did nothing.
+  Future<bool> _openBoardTracebackFrame(String file, int line) async {
+    if (!_deviceAttached) return false;
+    final boardPath = '/${file.replaceAll('\\', '/').replaceFirst('^/', '')}';
+    final ops = ref.read(boardProvider).ops;
+    try {
+      if (!await ops.boardPathExistsAny(boardPath)) return false;
+      if (!mounted) return false;
+      final local = await getLocalFile(boardPath);
+      await local.writeAsString(await ops.getFileContent(boardPath));
+      if (!mounted) return false;
+      await ref
+          .read(tabbedViewControllerProvider.notifier)
+          .openFile(
+            context,
+            file: local,
+            isBoardFile: true,
+            boardFilePath: boardPath,
+          );
+      if (!mounted) return false;
+      final controller =
+          ref
+                  .read(tabbedViewControllerProvider)
+                  .selectedTab
+                  ?.value
+                  .editorController
+              as CodeForgeController?;
+      if (controller == null) return true;
+      // The device's copy can be shorter than the line the frame named, for
+      // instance when the file was edited after the crash; both the offset
+      // lookup and the scroll reject a line past the end.
+      final target = line < controller.lineCount ? line : 0;
+      final offset = controller
+          .getLineStartOffset(target)
+          .clamp(0, controller.length);
+      controller.selection = TextSelection.collapsed(offset: offset);
+      controller.scrollToLine(target);
+      return true;
+    } catch (_) {
+      // A device that is busy, mid-upload, or answering with an error must not
+      // break the tap; the local search below still gets its turn.
+      return false;
+    }
+  }
+
+  /// Whether a board is attached over serial or WebREPL.
+  ///
+  /// Reading the device costs a round trip, so it is only attempted when there
+  /// is something listening.
+  bool get _deviceAttached =>
+      ref.read(serialProvider).isConnected ||
+      switch (ref.read(webReplProvider).state) {
+        WebReplState.connected || WebReplState.waitingPassword => true,
+        _ => false,
+      };
+
+  /// Notes in the transcript that a frame's file could not be located.
+  ///
+  /// Rendered as an ordinary output line rather than a dialog so it stays in the
+  /// scrollback, where the traceback that prompted it still is. No colour is
+  /// attempted: the transcript drops ANSI escapes instead of rendering them.
+  void _reportUnresolvedFrame(String file) {
+    _transcript.append('\r\ncannot locate $file — no matching file here\r\n');
+    _managedOutputAtLineStart = true;
+    _scheduleScrollToBottom();
   }
 
   /// Maps a traceback's file name onto a path on this machine.
   ///
   /// The device reports a bare name like `main.py`, relative to wherever the
-  /// firmware's cwd was. The workspace root is the only anchor the IDE has, so
-  /// the name is resolved against it; if that does not exist, the bare name is
-  /// tried against the cwd, which covers a project opened from inside its own
-  /// directory.
+  /// firmware's cwd was, so the name is resolved against the local directory
+  /// of an open file tab and finally against the bare name relative to the
+  /// process cwd. This is the fallback for when the device cannot be reached;
+  /// [\_ReplSurfaceState._openBoardTracebackFrame] gets first refusal.
   String? _resolveReplSourcePath(String file) {
-    final candidates = <String>[file];
-    if (!file.contains('/') && !file.contains(r'\')) {
-      final workspaceRoot = _currentWorkspaceRoot();
-      if (workspaceRoot != null) {
-        candidates.insert(0, '$workspaceRoot${Platform.pathSeparator}$file');
-      }
-    }
+    final candidates = <String>[
+      for (final root in _localSearchRoots())
+        if (_isBareName(file)) path.join(root, file),
+      file,
+    ];
     for (final candidate in candidates) {
       if (File(candidate).existsSync()) return candidate;
     }
     return null;
   }
 
-  String? _currentWorkspaceRoot() {
-    for (final tab in ref.read(tabbedViewControllerProvider).tabs) {
-      final value = tab.value;
-      if (value is! TabDataValue) continue;
-      final parent = path.dirname(value.filePath);
-      if (Directory(parent).existsSync()) return parent;
+  /// Whether [file] is a bare name with no directory part.
+  ///
+  /// Only these get anchored onto a search root; a name that already carries a
+  /// separator is used verbatim, since the device spelled out a real location.
+  static bool _isBareName(String file) =>
+      !file.contains('/') && !file.contains(r'\');
+
+  /// Directories a bare device file name is likely to sit in.
+  ///
+  /// Derived from open file tabs rather than a stored workspace root: the tabs
+  /// are the only record of where the user's code actually is. The selected tab
+  /// comes first because that is the file being worked on right now, and each
+  /// directory is walked up to its project root so a traceback naming
+  /// `main.py` resolves even when the open file lives in a subdirectory.
+  List<String> _localSearchRoots() {
+    final tabs = ref.read(tabbedViewControllerProvider).tabs;
+    final roots = <String>[];
+    final selected = ref.read(tabbedViewControllerProvider).selectedTab?.value;
+
+    void addFrom(TabDataValue? value) {
+      if (value == null || value.type != 'file') return;
+      final fileDir = path.dirname(value.filePath);
+      if (!Directory(fileDir).existsSync()) return;
+      final projectRoot = _projectRootOf(fileDir);
+      roots
+        ..add(fileDir)
+        ..add(projectRoot);
     }
-    return null;
+
+    addFrom(selected is TabDataValue ? selected : null);
+    for (final tab in tabs) {
+      addFrom(tab.value is TabDataValue ? tab.value as TabDataValue : null);
+    }
+    return roots.where((root) => root.isNotEmpty).toList();
+  }
+
+  /// Walks up from [directory] looking for the marker that roots a project.
+  ///
+  /// The directory itself is returned when no marker is found, so this never
+  /// fails to produce a usable root — a plain folder of scripts has no marker
+  /// and is still the right place to look.
+  static const _projectMarkers = <String>[
+    '.git',
+    'pubspec.yaml',
+    'pyproject.toml',
+    'package.json',
+  ];
+
+  String _projectRootOf(String directory) {
+    var current = Directory(directory);
+    for (var depth = 0; depth < 16; depth++) {
+      for (final marker in _projectMarkers) {
+        if (File(path.join(current.path, marker)).existsSync()) {
+          return current.path;
+        }
+      }
+      final parent = current.parent;
+      if (parent.path == current.path) break;
+      current = parent;
+    }
+    return directory;
   }
 
   Widget _buildInputBlock(BuildContext context, {required bool visible}) {

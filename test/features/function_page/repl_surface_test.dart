@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -441,6 +442,53 @@ void main() {
       expect(transcript, isNot(contains(r'\u4f60')));
     },
   );
+
+  testWidgets('reports a traceback frame whose file cannot be located', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    writeReplOutput(
+      'Traceback (most recent call last):\r\n'
+      '  File "<stdin>", line 4, in <module>\r\n'
+      '  File "definitely_missing_9f2a.py", line 2, in c\r\n'
+      "NameError: name 'ErrorHere' isn't defined\r\n",
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // <stdin> is never a jump target, so the one real frame is the only link.
+    final transcript = container.read(replTranscriptControllerProvider).text;
+    final frameStart = transcript.indexOf('definitely_missing_9f2a.py');
+    final frameEnd = transcript.indexOf(', line 2', frameStart);
+
+    // The whole transcript is one paragraph, so its centre is not on the
+    // frame's line; tap the laid-out box of the frame span instead.
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.byType(RichText).first,
+    );
+    final boxes = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: frameStart, extentOffset: frameEnd),
+    );
+    expect(boxes, isNotEmpty, reason: 'frame should occupy a laid-out box');
+
+    final origin = tester.getTopLeft(find.byType(ReplSurface));
+    await tester.tapAt(origin + boxes.first.toRect().center);
+    await tester.pump();
+    await tester.pump();
+
+    // The frame was styled like a link, so a silent no-op read as a dead
+    // console rather than a file that is not on this machine.
+    expect(
+      container.read(replTranscriptControllerProvider).text,
+      contains('cannot locate definitely_missing_9f2a.py'),
+    );
+  });
 
   testWidgets('keeps multiline input and transcript in one scroll document', (
     tester,
