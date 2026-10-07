@@ -115,50 +115,20 @@ void main() {
   group('lspPositionToOffset', () {
     test('resolves positions inside the document', () {
       const text = 'abc\ndef';
-      expect(
-        lspPositionToOffset(text, {
-          'line': 0,
-          'character': 2,
-        }),
-        2,
-      );
-      expect(
-        lspPositionToOffset(text, {
-          'line': 1,
-          'character': 0,
-        }),
-        4,
-      );
+      expect(lspPositionToOffset(text, {'line': 0, 'character': 2}), 2);
+      expect(lspPositionToOffset(text, {'line': 1, 'character': 0}), 4);
     });
 
     test('rejects characters beyond the line content', () {
       const text = 'abc\ndef';
-      expect(
-        lspPositionToOffset(text, {
-          'line': 0,
-          'character': 4,
-        }),
-        isNull,
-      );
+      expect(lspPositionToOffset(text, {'line': 0, 'character': 4}), isNull);
     });
 
     test('allows a character at the end of a CRLF line', () {
       const text = 'abc\r\ndef';
       // character == line length (excluding CR) points just before \r.
-      expect(
-        lspPositionToOffset(text, {
-          'line': 0,
-          'character': 3,
-        }),
-        3,
-      );
-      expect(
-        lspPositionToOffset(text, {
-          'line': 0,
-          'character': 4,
-        }),
-        isNull,
-      );
+      expect(lspPositionToOffset(text, {'line': 0, 'character': 3}), 3);
+      expect(lspPositionToOffset(text, {'line': 0, 'character': 4}), isNull);
     });
 
     test('rejects lines beyond the document and malformed input', () {

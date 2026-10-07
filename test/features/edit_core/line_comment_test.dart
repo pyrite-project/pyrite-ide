@@ -59,4 +59,37 @@ void main() {
       expect(toggleLineComments([]), isNull);
     });
   });
+
+  group('toggleLineComments | non-python markers', () {
+    test('comments C-style with //', () {
+      final result = toggleLineComments(['int x;', '  y();'], marker: '//')!;
+      expect(result.lines, ['// int x;', '  // y();']);
+      expect(result.deltas, [3, 3]);
+    });
+
+    test('uncomments C-style without eating code', () {
+      final result = toggleLineComments(['// int x;', '//x'], marker: '//')!;
+      expect(result.lines, ['int x;', 'x']);
+    });
+
+    test('a lone blank line gains a fresh // marker', () {
+      expect(toggleLineComments([''], marker: '//')!.lines, ['// ']);
+    });
+
+    test('comments Lua-style with --', () {
+      final result = toggleLineComments(['local x = 1'], marker: '--')!;
+      expect(result.lines, ['-- local x = 1']);
+    });
+
+    test('does not treat a -- marker as a # marker', () {
+      final result = toggleLineComments(['-- a'], marker: '#')!;
+      expect(result.lines, ['# -- a']);
+    });
+
+    test('markers containing regex metacharacters are escaped', () {
+      final commented = toggleLineComments(['a'], marker: '//*')!.lines;
+      expect(commented, ['//* a']);
+      expect(toggleLineComments(commented, marker: '//*')!.lines, ['a']);
+    });
+  });
 }

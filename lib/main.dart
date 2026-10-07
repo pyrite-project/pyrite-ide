@@ -45,6 +45,8 @@ late final PersistenceManager persistenceManager;
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
+bool _persistDirty = true;
+bool _persistSaveInFlight = false;
 final UseWindow appWindow = UseWindow();
 DebugPrintCallback? _defaultDebugPrint;
 
@@ -125,12 +127,12 @@ void _applyData(PersistedData data) {
   container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
   container.read(editorTabSize.notifier).state = data.editorTabSize;
   container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
+  container.read(editorSmoothCursor.notifier).state = data.editorSmoothCursor;
   container.read(editorFormatOnSave.notifier).state = data.editorFormatOnSave;
   container.read(useLsp.notifier).state = data.useLsp;
   container.read(lspType.notifier).state =
       LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
   container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
-  container.read(lspLanguageId.notifier).state = data.lspLanguageId;
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(lspVirtualEnvironment.notifier).state =
@@ -226,10 +228,24 @@ void _applyData(PersistedData data) {
       .restoreContributions(data.dataContributions);
 }
 
-void _triggerSave() {
-  _debounceTimer?.cancel();
-  _debounceTimer = Timer(const Duration(seconds: 1), () async {
+// Starts dirty so the first periodic tick persists the freshly restored
+// state once, keeping a crash-recovery snapshot without steady-state writes.
+Future<void> _savePersistedDataNow() async {
+  if (_persistSaveInFlight) return;
+  _persistSaveInFlight = true;
+  try {
     await persistenceManager.saveFromContainer(container);
+    _persistDirty = false;
+  } finally {
+    _persistSaveInFlight = false;
+  }
+}
+
+void _triggerSave() {
+  _persistDirty = true;
+  _debounceTimer?.cancel();
+  _debounceTimer = Timer(const Duration(seconds: 1), () {
+    unawaited(_savePersistedDataNow());
   });
 }
 
@@ -242,8 +258,9 @@ void _triggerPluginSave() {
 
 void _startAutoSave() {
   _saveTimer?.cancel();
-  _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-    await persistenceManager.saveFromContainer(container);
+  _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    if (!_persistDirty) return;
+    unawaited(_savePersistedDataNow());
   });
   container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
     _triggerSave();
@@ -251,7 +268,85 @@ void _startAutoSave() {
   container.read(pluginManagerProvider.notifier).setOnChanged(() {
     _triggerPluginSave();
   });
+  for (final provider in _persistedSettingsProviders) {
+    _settingsSubscriptions.add(
+      container.listen<Object?>(provider, (_, _) => _triggerSave()),
+    );
+  }
 }
+
+/// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
+final List<ProviderSubscription<Object?>> _settingsSubscriptions = [];
+
+/// The settings providers whose values reach `settings.json`.
+///
+/// Dirtying a tab was the only thing that used to mark the persisted state
+/// stale, so a value changed on a settings page was written out only if some
+/// file happened to be edited in the same session. Subscribing to the settings
+/// themselves makes a setting change enough on its own. Keep this list in step
+/// with the providers read by `PersistenceManager.saveFromContainer`.
+final List<StateProvider<Object?>> _persistedSettingsProviders = [
+  editorTextFontProvider,
+  editorFontSize,
+  editorWordWrap,
+  editorLineNumber,
+  editorCodeFolding,
+  editorGuideLines,
+  editorLocalSuggestions,
+  editorKeyboardSuggestions,
+  editorUseSpaceAsTab,
+  editorTabSize,
+  editorGutterDivider,
+  editorSmoothCursor,
+  editorMinimap,
+  editorFormatOnSave,
+  useLsp,
+  lspType,
+  lspWebSocketPath,
+  lspStdioExecutable,
+  lspStdioArgs,
+  lspVirtualEnvironment,
+  lspBasedPyrightTypeCheckingMode,
+  disableWarning,
+  disableError,
+  lspSemanticHighlighting,
+  lspCodeCompletion,
+  lspHoverInfo,
+  lspCodeAction,
+  lspSignatureHelp,
+  lspDocumentColor,
+  lspDocumentHighlight,
+  lspCodeFolding,
+  lspShowInlayHints,
+  lspGoToDefinition,
+  lspRename,
+  lspAlwaysStart,
+  chineseToUnicodeConversion,
+  enableSignalDetection,
+  ensureBoardFilesystemOnConnect,
+  serialDefaultBaudRate,
+  serialAutoReconnect,
+  terminalFontFamily,
+  terminalFontSize,
+  terminalLineHeight,
+  terminalLigatures,
+  terminalAppearance,
+  terminalMinimumContrast,
+  terminalCustomForeground,
+  terminalCustomBackground,
+  terminalCustomPalette,
+  useMaterialContextMenu,
+  uploadConfirmStyleProvider,
+  confirmShortcutProvider,
+  cancelShortcutProvider,
+  webReplHost,
+  webReplPort,
+  webReplPassword,
+  microPythonStubsEnabled,
+  microPythonStubsAutoDetectLayers,
+  microPythonStubsLayers,
+  microPythonStubsExtraPaths,
+];
 
 Future<void> _startRuntimeAndPlugins() async {
   final runtimeHost = container.read(pythonRuntimeHostProvider);
@@ -351,7 +446,11 @@ void main() async {
   if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
-        .restoreTabs(data.tabs, data.selectedTabIndex);
+        .restoreTabs(
+          data.tabs,
+          data.selectedTabIndex,
+          selectedTabPath: data.selectedTabPath,
+        );
   }
 
   appWindow.bind(container);

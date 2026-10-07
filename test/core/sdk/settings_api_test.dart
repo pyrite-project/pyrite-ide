@@ -312,8 +312,7 @@ void main() {
     expect(
       settings.whereType<Map>().any(
         (item) =>
-            item['name'] == 'terminal.appearance' &&
-            item['type'] == 'string',
+            item['name'] == 'terminal.appearance' && item['type'] == 'string',
       ),
       isTrue,
     );

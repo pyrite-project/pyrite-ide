@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:material_table_view/material_table_view.dart';
 import 'package:material_table_view/table_view_typedefs.dart';
 import 'package:pyrite_ide/features/plugin_view/data/visible_range_tracker.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// A stable column definition supplied by a plugin.
 class PluginColumn {
@@ -390,7 +391,7 @@ class PluginDataTableState extends State<PluginDataTable> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: scheme.onSurfaceVariant.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(2),
+          borderRadius: context.innerCorners,
         ),
         child: const SizedBox(height: 8, width: double.infinity),
       ),

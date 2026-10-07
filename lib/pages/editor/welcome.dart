@@ -203,9 +203,7 @@ class QuickStartStep extends StatelessWidget {
               children: [
                 UseText(
                   title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(),
                 ),
                 const SizedBox(height: 2),
                 UseText(

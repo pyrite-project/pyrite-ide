@@ -6,11 +6,13 @@ import 'package:code_forge/code_forge/undo_redo.dart';
 import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:re_highlight/languages/python.dart';
+import 'package:pyrite_ide/features/edit_core/editor_language.dart';
+import 'package:pyrite_ide/features/edit_core/editor_minimap.dart';
 
 /// Resolves the active editor theme (built-in or plugin-contributed) the same
 /// way the main editor does, including the de-italicized comment treatment.
@@ -63,6 +65,36 @@ Map<String, TextStyle> resolveActiveThemeForSurface(
   );
 }
 
+/// Builds the hover popup style shared by every themed [CodeForge] instance.
+HoverDetailsStyle buildThemedCodeForgeHoverDetailsStyle({
+  required Color foreground,
+  required Color background,
+  required Color primary,
+  required double fontSize,
+  String? fontFamily,
+  BorderRadius? borderRadius,
+}) {
+  final hoverBackground = Color.alphaBlend(
+    foreground.withAlpha(18),
+    background,
+  ).withAlpha(255);
+  return HoverDetailsStyle(
+    shape: RoundedRectangleBorder(
+      borderRadius: borderRadius ?? CodeForge.defaultHoverDetailsBorderRadius,
+      side: BorderSide(color: foreground.withAlpha(80)),
+    ),
+    backgroundColor: hoverBackground,
+    focusColor: primary.withAlpha(50),
+    hoverColor: primary.withAlpha(25),
+    splashColor: primary.withAlpha(50),
+    textStyle: TextStyle(
+      color: foreground,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+    ),
+  );
+}
+
 /// Composite key describing every input that requires rebuilding the
 /// [CodeForge] element when it changes: built-in theme, active plugin theme,
 /// resolved plugin styles identity, brightness, and surface color.
@@ -100,66 +132,132 @@ Widget buildThemedCodeForge(
   UndoRedoController? undoController,
   FindController? findController,
   bool readOnly = false,
+
+  /// Outer radius shared by every floating overlay this editor shows:
+  /// hover, documentation, signature help, completion and code-action popups.
+  ///
+  /// Leave null to use the app's unified outer radius. Anything nested inside
+  /// one of these overlays is derived by code_forge as
+  /// outer - kOverlayPadding, so a nested corner can never grow larger than
+  /// the popup that contains it.
+  BorderRadius? overlayBorderRadius,
+
   List<CustomContextMenu>? customContextMenuItems,
   ValueChanged<int>? onModifierTap,
   PreferredSizeWidget Function(BuildContext context, FindController)?
   finderBuilder,
   CodeForgeContextMenuBuilder? contextMenuBuilder,
+
+  /// Host implementations for the engine keys that need grammar or a language
+  /// server to act on. The engine declares the shortcut and returns a handled
+  /// event, but it has no grammar and no LSP, so without these the key is a
+  /// silent no-op.
+  VoidCallback? onToggleBlockComment,
+  VoidCallback? onFormatDocument,
+  VoidCallback? onFindReferences,
+  VoidCallback? onGoToImplementation,
 }) {
   final resolvedTheme = resolveActiveThemeForSurface(context, ref);
   final colors = editorSurfaceColors(context, resolvedTheme);
-  final hoverBackground = Color.alphaBlend(
-    colors.foreground.withAlpha(18),
-    colors.background,
-  ).withAlpha(255);
-  return CodeForge(
-    key: ValueKey(rebuildKey ?? filePath ?? ''),
-    filePath: filePath,
-    editorTheme: resolvedTheme,
-    findController: findController,
-    customContextMenuItems: customContextMenuItems,
-    onModifierTap: onModifierTap,
-    finderBuilder: finderBuilder,
-    hoverDetailsStyle: HoverDetailsStyle(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: colors.foreground.withAlpha(80)),
-      ),
-      backgroundColor: hoverBackground,
-      focusColor: Theme.of(context).colorScheme.primary.withAlpha(50),
-      hoverColor: Theme.of(context).colorScheme.primary.withAlpha(25),
-      splashColor: Theme.of(context).colorScheme.primary.withAlpha(50),
-      textStyle: TextStyle(
-        color: colors.foreground,
-        fontSize: ref.watch(editorFontSize),
-        fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-      ),
-    ),
-    language: langPython,
+  final fontSize = ref.watch(editorFontSize);
+  final fontFamily = editorTextFonts[ref.watch(editorTextFontProvider)];
+  final primary = Theme.of(context).colorScheme.primary;
+  // Grammar follows the file's extension. `languageId` is deliberately *not*
+  // sourced from here: semantic tokens come from the LSP server, whose language
+  // id is configured in LSP settings and already reaches the widget through the
+  // controller's `lspConfig`.
+  final language = resolveEditorLanguage(filePath);
+  // Typing-behavior hints the engine needs per language: Python gets
+  // block-end dedent on Enter, and the line comment marker keeps bracket and
+  // quote auto-pairing out of comments.
+  controller.autoDedentAfterBlockEnd = language.id == 'python';
+  final commentMarker = language.lineCommentMarker;
+  controller.lineCommentMarkers = commentMarker == null
+      ? const <String>[]
+      : <String>[commentMarker];
+  return MinimapEditorShell(
     controller: controller,
-    undoController: undoController,
-    readOnly: readOnly,
-    matchHighlightStyle: const MatchHighlightStyle(
-      currentMatchStyle: TextStyle(backgroundColor: Color(0xFFFFA726)),
-      otherMatchStyle: TextStyle(backgroundColor: Color(0x55FFFF00)),
-    ),
-    textStyle: TextStyle(
-      fontSize: ref.watch(editorFontSize),
-      fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-    ),
+    enabled: ref.watch(editorMinimap),
     lineWrap: ref.watch(editorWordWrap),
-    enableFolding: ref.watch(editorCodeFolding),
-    enableGuideLines: ref.watch(editorGuideLines),
-    enableLocalSuggestions: ref.watch(editorLocalSuggestions),
-    enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
-    enableGutter: ref.watch(editorLineNumber),
-    enableGutterDivider: ref.watch(editorGutterDivider),
-    useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
-    tabSize: ref.watch(editorTabSize),
-    gutterBuilder: GutterBuilder(
-      builder: (lineNumber, lineText) => '$lineNumber',
-      includeReplacedIndex: false,
+    foreground: colors.foreground,
+    background: colors.background,
+    // The minimap colors its bars from the very theme and grammar the editor
+    // runs with, so a bar shows the colors of the code it stands for.
+    editorTheme: resolvedTheme,
+    language: language.mode,
+    baseTextStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+    // Matches the engine default multiplier (fontSize * 1.2) until the
+    // renderer publishes the real line height onto the controller.
+    estimatedLineHeight: fontSize * 1.2,
+    child: CodeForge(
+      key: ValueKey(rebuildKey ?? filePath ?? ''),
+      filePath: filePath,
+      editorTheme: resolvedTheme,
+      findController: findController,
+      customContextMenuItems: customContextMenuItems,
+      onModifierTap: onModifierTap,
+      finderBuilder: finderBuilder,
+      diagnosticColors: buildDiagnosticColors(context),
+      hoverDetailsStyle: buildThemedCodeForgeHoverDetailsStyle(
+        foreground: colors.foreground,
+        background: colors.background,
+        primary: primary,
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        borderRadius: overlayBorderRadius ?? context.outerCorners,
+      ),
+      language: language.mode,
+      controller: controller,
+      undoController: undoController,
+      readOnly: readOnly,
+      overlayBorderRadius: overlayBorderRadius ?? context.outerCorners,
+      matchHighlightStyle: MatchHighlightStyle(
+        // Derived from the active theme instead of fixed hues: the accent marks
+        // the current match and the foreground color (guaranteed to contrast
+        // with the editor background) marks the other matches, so both stay
+        // legible on light and dark surfaces.
+        currentMatchStyle: TextStyle(backgroundColor: primary.withAlpha(90)),
+        otherMatchStyle: TextStyle(
+          backgroundColor: colors.foreground.withAlpha(45),
+        ),
+      ),
+      textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+      lineWrap: ref.watch(editorWordWrap),
+      enableFolding: ref.watch(editorCodeFolding),
+      enableGuideLines: ref.watch(editorGuideLines),
+      enableLocalSuggestions: ref.watch(editorLocalSuggestions),
+      enableKeyboardSuggestions: ref.watch(editorKeyboardSuggestions),
+      enableGutter: ref.watch(editorLineNumber),
+      enableGutterDivider: ref.watch(editorGutterDivider),
+      smoothCursor: ref.watch(editorSmoothCursor),
+      useSpaceAsTab: ref.watch(editorUseSpaceAsTab),
+      tabSize: ref.watch(editorTabSize),
+      gutterBuilder: GutterBuilder(
+        builder: (lineNumber, lineText) => '$lineNumber',
+        includeReplacedIndex: false,
+      ),
+      contextMenuBuilder: contextMenuBuilder,
+      onToggleBlockComment: onToggleBlockComment,
+      onFormatDocument: onFormatDocument,
+      onFindReferences: onFindReferences,
+      onGoToImplementation: onGoToImplementation,
     ),
-    contextMenuBuilder: contextMenuBuilder,
+  );
+}
+
+/// Squiggle colors derived from the active Material color scheme, so the
+/// diagnostic underlines follow the app theme instead of a fixed palette.
+///
+/// Material's scheme has no dedicated warning role, so the warning color is
+/// picked from the amber ramp by brightness; error, information and hint use
+/// their nearest scheme roles.
+DiagnosticColorsStyle buildDiagnosticColors(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return DiagnosticColorsStyle(
+    error: scheme.error,
+    warning: isDark ? Colors.amber.shade300 : Colors.amber.shade800,
+    information: scheme.primary,
+    hint: scheme.onSurfaceVariant,
   );
 }

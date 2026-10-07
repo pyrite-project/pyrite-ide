@@ -6,7 +6,6 @@ import 'dart:math';
 import 'package:code_forge/code_forge/code_area.dart';
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:code_forge/code_forge/find_controller.dart';
-import 'package:code_forge/code_forge/styling.dart';
 import 'package:code_forge/code_forge/undo_redo.dart';
 import 'package:code_forge/code_forge/utils.dart';
 import 'package:flutter/material.dart';
@@ -22,17 +21,23 @@ import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
-import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
+import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 import 'package:pyrite_ide/features/edit_core/line_comment.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_context_menu_actions.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -125,6 +130,42 @@ class _EditCoreState extends ConsumerState<EditCore> {
       SingleActivator(LogicalKeyboardKey.f12): () {
         _goToDefinition(context, ref);
       },
+      // The engine declares these keys but returns a handled event for them
+      // whether or not the host supplied a handler, so the meta variants are
+      // bound here rather than in CodeForgeKeyboardShortcuts: that table has
+      // one activator per action and cannot express "F12 or Cmd+F12".
+      if (usesCommandShortcut)
+        const SingleActivator(LogicalKeyboardKey.f12, meta: true): () {
+          _goToDefinition(context, ref);
+        },
+      if (usesCommandShortcut)
+        const SingleActivator(
+          LogicalKeyboardKey.f12,
+          meta: true,
+          shift: true,
+        ): () {
+          unawaited(_findReferences(context, ref));
+        },
+      if (usesCommandShortcut)
+        const SingleActivator(
+          LogicalKeyboardKey.f12,
+          meta: true,
+          control: true,
+        ): () {
+          unawaited(
+            _goToDefinition(
+              context,
+              ref,
+              method: 'textDocument/implementation',
+            ),
+          );
+        },
+      SingleActivator(LogicalKeyboardKey.keyG, control: true): () {
+        _goToLine(context, ref);
+      },
+      SingleActivator(LogicalKeyboardKey.keyG, meta: true): () {
+        _goToLine(context, ref);
+      },
       SingleActivator(LogicalKeyboardKey.f2): () {
         _renameSymbol(context, ref);
       },
@@ -149,10 +190,17 @@ class _EditCoreState extends ConsumerState<EditCore> {
     };
 
     if (pending != null || pendingDownload != null) {
-      bindings[stringToActivator(confirmAct)] = () =>
-          _handleConfirm(context, ref);
-      bindings[stringToActivator(cancelAct)] = () =>
-          _handleCancel(context, ref);
+      // A recording that cannot be parsed is dropped rather than bound to a
+      // wrong key, so the confirm action stays unreachable instead of firing
+      // on Enter.
+      final confirmActivator = stringToActivator(confirmAct);
+      if (confirmActivator != null) {
+        bindings[confirmActivator] = () => _handleConfirm(context, ref);
+      }
+      final cancelActivator = stringToActivator(cancelAct);
+      if (cancelActivator != null) {
+        bindings[cancelActivator] = () => _handleCancel(context, ref);
+      }
     }
 
     return Focus(
@@ -247,6 +295,12 @@ class _EditCoreState extends ConsumerState<EditCore> {
       customContextMenuItems: _editorContextMenuItems(ref),
       onModifierTap: (offset) =>
           unawaited(_goToDefinition(context, ref, textOffset: offset)),
+      onToggleBlockComment: _toggleBlockComment,
+      onFormatDocument: () => unawaited(_formatDocument(context, ref)),
+      onFindReferences: () => unawaited(_findReferences(context, ref)),
+      onGoToImplementation: () => unawaited(
+        _goToDefinition(context, ref, method: 'textDocument/implementation'),
+      ),
       finderBuilder: (context, controller) {
         final theme = resolveActiveThemeForSurface(context, ref);
         final colors = editorSurfaceColors(context, theme);
@@ -281,11 +335,53 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ..isReplaceMode = replace;
   }
 
-  /// Toggles `#` comments over the selected lines, or the caret line when
+  /// Asks for a line number and moves the caret there, VSCode-style.
+  ///
+  /// The dialog is prefilled with the caret's line so correcting a nearby
+  /// line costs one edit; the jump follows the same scroll-then-select order
+  /// the plugin `go_to_line` command uses.
+  Future<void> _goToLine(BuildContext context, WidgetRef ref) async {
+    final controller = widget.editorController;
+    final lineCount = controller.lineCount;
+    if (lineCount == 0) return;
+    final caretOffset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    final caretLine = controller.getLineAtOffset(caretOffset);
+
+    final rawLine = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) =>
+          _GoToLineDialog(initialLine: caretLine + 1, lineCount: lineCount),
+    );
+    if (rawLine == null) return;
+    final line = (int.tryParse(rawLine) ?? 0) - 1;
+    if (line < 0 || line >= lineCount) return;
+    try {
+      controller.scrollToLine(line);
+    } on StateError {
+      // The editor was not mounted (tab closed while the dialog was open).
+      return;
+    }
+    controller.setSelectionSilently(
+      TextSelection.collapsed(offset: controller.getLineStartOffset(line)),
+    );
+    controller.focusNode?.requestFocus();
+  }
+
+  /// Toggles line comments over the selected lines, or the caret line when
   /// the selection is collapsed.
+  ///
+  /// The marker follows the file's grammar (`#`, `//`, `--`); grammars without
+  /// a usable line comment (XML, Markdown, JSON) leave the shortcut inert.
   void _toggleLineComment() {
     final controller = widget.editorController;
     if (controller.readOnly || controller.lineCount == 0) return;
+    final marker = resolveEditorLanguage(
+      controller.openedFile,
+    ).lineCommentMarker;
+    if (marker == null) return;
 
     final selection = controller.selection;
     var startLine = controller.getLineAtOffset(selection.start);
@@ -302,7 +398,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       for (var line = startLine; line <= endLine; line++)
         controller.getLineText(line),
     ];
-    final result = toggleLineComments(oldLines);
+    final result = toggleLineComments(oldLines, marker: marker);
     if (result == null) return;
 
     int mapOffset(int offset) {
@@ -337,6 +433,33 @@ class _EditCoreState extends ConsumerState<EditCore> {
     );
   }
 
+  /// Toggles a paired block comment over the selected lines, or the caret line
+  /// when the selection is collapsed.
+  ///
+  /// Deliberately separate from [_toggleLineComment] rather than a fallback
+  /// from it: for JSON there is no block comment *and* no line comment, so
+  /// guessing would insert a delimiter that breaks the file. A grammar with
+  /// only a line comment (`#` in Python) leaves this key inert rather than
+  /// reaching for the line toggle behind the user's back.
+  void _toggleBlockComment() {
+    final controller = widget.editorController;
+    if (controller.readOnly || controller.lineCount == 0) return;
+    final delimiters = resolveEditorLanguage(
+      controller.openedFile,
+    ).blockCommentDelimiters;
+    if (delimiters == null) return;
+
+    final tabSize = ref.read(editorTabSize);
+    controller.toggleBlockComment(
+      start: delimiters.start,
+      end: delimiters.end,
+      // Match what the user actually types rather than a hardcoded four spaces:
+      // re-indenting a block to a different width than the rest of the file is
+      // a diff they did not ask for.
+      indentUnit: ref.read(editorUseSpaceAsTab) ? ' ' * tabSize : '\t',
+    );
+  }
+
   List<CustomContextMenu> _editorContextMenuItems(WidgetRef ref) {
     final controller = widget.editorController;
     final config = controller.lspConfig;
@@ -355,17 +478,60 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ),
       CustomContextMenu(
         label: translateForWidget(ref, I18nKey.editorMenuFormatDocument),
-        description: 'LSP',
+        description: formatDocumentShortcutLabel(),
         icon: Icons.format_align_left,
         onPress: () => unawaited(_formatDocument(context, ref)),
       ),
+      // Only offered when the grammar has a paired delimiter: offering a
+      // disabled-looking item for JSON would suggest the editor is missing a
+      // feature when the file format genuinely has no block comment.
+      if (resolveEditorLanguage(controller.openedFile).blockCommentDelimiters !=
+          null)
+        CustomContextMenu(
+          label: translateForWidget(ref, I18nKey.editorMenuToggleBlockComment),
+          description: toggleBlockCommentShortcutLabel(),
+          icon: Icons.format_quote,
+          onPress: _toggleBlockComment,
+        ),
+      // Secondary cursors are otherwise only reachable through Alt+Click and
+      // Alt+Shift+Down, which is undiscoverable in practice. This is the
+      // discoverable entry point into the editor's multi-cursor support.
+      CustomContextMenu(
+        label: translateForWidget(ref, I18nKey.statusEditorAddCursor),
+        description: addCursorShortcutLabel(),
+        icon: Icons.add_comment_outlined,
+        // Only visibleAt: the widget prefers it over `visible` when both are
+        // present, and _addCursorAtOffset re-checks readOnly before acting.
+        visibleAt: (_) => !controller.readOnly,
+        onPress: () => _addCursorAtSelection(controller),
+        onPressAt: (offset) => _addCursorAtOffset(controller, offset),
+      ),
     ];
-    if (config == null) return items;
-    if (config.capabilities.goToDefinition) {
+    // Read the switches themselves rather than the config's capability
+    // snapshot: the menu is assembled during build, so watching is what makes
+    // an entry appear or disappear the moment the user flips the switch, on a
+    // file that is already open.
+    final lspActions = lspContextMenuActions(
+      hasLanguageServer: config != null,
+      goToDefinition: ref.watch(lspGoToDefinition),
+      rename: ref.watch(lspRename),
+    );
+    if (lspActions.contains(EditorLspMenuAction.goToDefinition)) {
+      items.add(
+        CustomContextMenu(
+          label: translateForWidget(ref, I18nKey.editorMenuGoToDefinition),
+          description: goToDefinitionShortcutLabel(),
+          icon: Icons.arrow_outward,
+          visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
+          onPressAt: (offset) =>
+              unawaited(_goToDefinition(context, ref, textOffset: offset)),
+          onPress: () => unawaited(_goToDefinition(context, ref)),
+        ),
+      );
       items.add(
         CustomContextMenu(
           label: translateForWidget(ref, I18nKey.editorMenuGoToImplementation),
-          description: 'LSP',
+          description: goToImplementationShortcutLabel(),
           icon: Icons.arrow_forward,
           visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
           onPressAt: (offset) => unawaited(
@@ -386,11 +552,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
         ),
       );
     }
-    if (config.capabilities.rename) {
+    if (lspActions.contains(EditorLspMenuAction.rename)) {
       items.add(
         CustomContextMenu(
           label: translateForWidget(ref, I18nKey.fileActionRename),
-          description: 'F2',
+          description: renameShortcutLabel(),
           icon: Icons.drive_file_rename_outline,
           visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
           onPressAt: (offset) =>
@@ -399,18 +565,42 @@ class _EditCoreState extends ConsumerState<EditCore> {
         ),
       );
     }
-    items.add(
-      CustomContextMenu(
-        label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
-        description: 'LSP',
-        icon: Icons.manage_search,
-        visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
-        onPressAt: (offset) =>
-            unawaited(_findReferences(context, ref, textOffset: offset)),
-        onPress: () => unawaited(_findReferences(context, ref)),
-      ),
-    );
+    if (lspActions.contains(EditorLspMenuAction.findReferences)) {
+      items.add(
+        CustomContextMenu(
+          label: translateForWidget(ref, I18nKey.editorMenuFindReferences),
+          description: findReferencesShortcutLabel(),
+          icon: Icons.manage_search,
+          visibleAt: (offset) => _isSymbolAtOffset(controller, offset),
+          onPressAt: (offset) =>
+              unawaited(_findReferences(context, ref, textOffset: offset)),
+          onPress: () => unawaited(_findReferences(context, ref)),
+        ),
+      );
+    }
     return items;
+  }
+
+  /// Adds a secondary cursor at the caret, or at the start of the selection
+  /// when one is active.
+  void _addCursorAtSelection(CodeForgeController controller) {
+    final selection = controller.selection;
+    final anchor = selection.isCollapsed
+        ? selection.extentOffset
+        : selection.start;
+    _addCursorAtOffset(controller, anchor);
+  }
+
+  void _addCursorAtOffset(CodeForgeController controller, int offset) {
+    if (controller.readOnly) return;
+    final safeOffset = offset.clamp(0, controller.length).toInt();
+    // An empty document has no line to query, so fall through with line 0.
+    final hasLines = controller.lineCount > 0;
+    final line = hasLines ? controller.getLineAtOffset(safeOffset) : 0;
+    final column = hasLines
+        ? safeOffset - controller.getLineStartOffset(line)
+        : 0;
+    controller.addMultiCursor(line, column);
   }
 
   bool _isSymbolAtOffset(CodeForgeController controller, int offset) {
@@ -454,23 +644,28 @@ class _EditCoreState extends ConsumerState<EditCore> {
     final offset = _lspOffset(controller, textOffset);
     final line = controller.getLineAtOffset(offset);
     final character = offset - controller.getLineStartOffset(line);
-    var response = await config.sendRequest(
-      method: method,
-      params: {
-        'textDocument': {'uri': Uri.file(filePath).toString()},
-        'position': {'line': line, 'character': character},
-      },
-    );
-    dynamic location = response['result'];
-    if (method == 'textDocument/implementation' && !_hasLocation(location)) {
-      response = await config.sendRequest(
-        method: 'textDocument/definition',
-        params: {
-          'textDocument': {'uri': Uri.file(filePath).toString()},
-          'position': {'line': line, 'character': character},
-        },
-      );
+    final params = {
+      'textDocument': {'uri': Uri.file(filePath).toString()},
+      'position': {'line': line, 'character': character},
+    };
+    dynamic location;
+    try {
+      var response = await config.sendRequest(method: method, params: params);
+      if (method == 'textDocument/implementation' &&
+          !_hasLocation(response['result'])) {
+        response = await config.sendRequest(
+          method: 'textDocument/definition',
+          params: params,
+        );
+      }
       location = response['result'];
+    } catch (error) {
+      // A dead or unresponsive language server throws here; without this
+      // guard the failure dies inside the unawaited future and F12 appears
+      // to do nothing.
+      if (!context.mounted) return;
+      _showLspRequestError(ref, error);
+      return;
     }
     if (location is List) location = location.firstOrNull;
     if (location is! Map) return;
@@ -487,7 +682,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
     await revealLspLocation(
       context,
       ref,
-      targetUri.toFilePath(),
+      canonicalLocalPath(targetUri.toFilePath()),
       (start['line'] as num?)?.toInt(),
       (start['character'] as num?)?.toInt(),
     );
@@ -497,40 +692,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
     if (location is List) location = location.firstOrNull;
     return location is Map &&
         (location['uri'] != null || location['targetUri'] != null);
-  }
-
-  /// Opens [targetPath] in an editor tab, places the caret at
-  /// ([targetLine], [targetCharacter]) and scrolls the line into view.
-  Future<void> revealLspLocation(
-    BuildContext context,
-    WidgetRef ref,
-    String targetPath,
-    int? targetLine,
-    int? targetCharacter,
-  ) async {
-    if (targetLine == null || targetCharacter == null) return;
-    await ref
-        .read(tabbedViewControllerProvider.notifier)
-        .openFile(context, file: File(targetPath));
-    if (!context.mounted) return;
-    final targetController =
-        ref
-                .read(tabbedViewControllerProvider)
-                .selectedTab
-                ?.value
-                .editorController
-            as CodeForgeController?;
-    if (targetController == null) return;
-    targetController.selection = TextSelection.collapsed(
-      offset: targetController.getLineStartOffset(targetLine) + targetCharacter,
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        targetController.scrollToLine(targetLine);
-      } on StateError {
-        // The target tab may have been closed before it was mounted.
-      }
-    });
   }
 
   /// Formats the current document via `textDocument/formatting`.
@@ -547,11 +708,14 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ref,
       widget.editorController,
       quiet: quiet,
+      // An explicit format request means "what I have selected"; the
+      // format-on-save path leaves this off and always formats the file.
+      selectionOnly: true,
     );
   }
 
   /// Finds all references to the symbol at the caret (or [textOffset]) and
-  /// shows them in a navigable list dialog.
+  /// shows them in the shared jump-to-location window.
   Future<void> _findReferences(
     BuildContext context,
     WidgetRef ref, {
@@ -570,14 +734,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       locations = await config.getReferences(filePath, line, character);
     } catch (error) {
       if (!context.mounted) return;
-      ref
-          .read(ideMessageProvider.notifier)
-          .error(
-            translateForWidget(
-              ref,
-              I18nKey.editorFormatFailed,
-            ).replaceAll('{error}', error.toString()),
-          );
+      _showLspRequestError(ref, error);
       return;
     }
     if (!context.mounted) return;
@@ -588,22 +745,24 @@ class _EditCoreState extends ConsumerState<EditCore> {
       return;
     }
     final symbol = symbolAtOffset(controller.text, offset);
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => _ReferencesDialog(
-        symbol: symbol,
-        locations: locations.whereType<Map>().toList(),
-        onOpen: (path, rangeStart) async {
-          Navigator.of(dialogContext).pop();
-          final start = rangeStart is Map ? rangeStart : null;
-          await revealLspLocation(
-            context,
-            ref,
-            path,
-            start == null ? null : (start['line'] as num?)?.toInt(),
-            start == null ? null : (start['character'] as num?)?.toInt(),
-          );
-        },
+    final entries = [
+      for (final location in locations.whereType<Map>())
+        ?LspLocationEntry.fromLspMap(location),
+    ];
+    await showLspLocationDialog(
+      context,
+      ref,
+      titleBuilder: (ref) =>
+          translateForWidget(ref, I18nKey.editorReferencesResultTitle)
+              .replaceAll('{symbol}', symbol.isEmpty ? '?' : symbol)
+              .replaceAll('{count}', entries.length.toString()),
+      entries: entries,
+      onOpen: (entry) => revealLspLocation(
+        context,
+        ref,
+        entry.path,
+        entry.line,
+        entry.character,
       ),
     );
   }
@@ -619,38 +778,64 @@ class _EditCoreState extends ConsumerState<EditCore> {
     if (config == null || filePath == null || !config.capabilities.rename) {
       return;
     }
-    final input = TextEditingController();
+    // Prefill the dialog with the symbol being renamed so the user edits the
+    // name in place instead of retyping it.
+    final offset = _lspOffset(controller, textOffset);
+    final currentName = symbolAtOffset(controller.text, offset);
     final newName = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(translateForWidget(ref, I18nKey.fileActionRename)),
-        content: TextField(controller: input, autofocus: true),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: Text(translateForWidget(ref, I18nKey.commonCancel)),
-          ),
-          FilledButton(
-            onPressed: () => context.pop(input.text),
-            child: Text(translateForWidget(ref, I18nKey.commonConfirm)),
-          ),
-        ],
+      builder: (context) => DialogFormFields(
+        initialValues: [currentName],
+        selectAll: true,
+        builder: (context, c) => AlertDialog(
+          title: Text(translateForWidget(ref, I18nKey.fileActionRename)),
+          content: TextField(controller: c[0], autofocus: true),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: Text(translateForWidget(ref, I18nKey.commonCancel)),
+            ),
+            FilledButton(
+              onPressed: () => context.pop(c[0].text),
+              child: Text(translateForWidget(ref, I18nKey.commonConfirm)),
+            ),
+          ],
+        ),
       ),
     );
-    input.dispose();
     if (newName == null || newName.trim().isEmpty) return;
-    final offset = _lspOffset(controller, textOffset);
     final line = controller.getLineAtOffset(offset);
     final character = offset - controller.getLineStartOffset(line);
-    final edit = await config.renameSymbol(
-      filePath,
-      line,
-      character,
-      newName.trim(),
-    );
-    if (edit.isNotEmpty) {
-      await _applyRenameEdit(ref, controller, edit);
+    try {
+      final edit = await config.renameSymbol(
+        filePath,
+        line,
+        character,
+        newName.trim(),
+      );
+      if (edit.isNotEmpty) {
+        await _applyRenameEdit(ref, controller, edit);
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      _showLspRequestError(ref, error);
     }
+  }
+
+  /// Surfaces a failed LSP request as an error message.
+  ///
+  /// Shared by the definition, rename and references flows so a dead or
+  /// unresponsive language server fails visibly instead of leaving the
+  /// shortcut to look broken.
+  void _showLspRequestError(WidgetRef ref, Object error) {
+    ref
+        .read(ideMessageProvider.notifier)
+        .error(
+          translateForWidget(
+            ref,
+            I18nKey.editorLspRequestFailed,
+          ).replaceAll('{error}', error.toString()),
+        );
   }
 
   Future<void> _applyRenameEdit(
@@ -685,7 +870,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
     for (final entry in changes.entries) {
       final uri = Uri.tryParse(entry.key);
       if (uri == null || uri.scheme != 'file') continue;
-      final filePath = uri.toFilePath();
+      // Canonical spelling so open tabs are found by path even when the
+      // server spells the drive differently than the file picker did.
+      final filePath = canonicalLocalPath(uri.toFilePath());
       final targetUri = Uri.file(filePath).toString();
       final controller = currentController.openedFile == filePath
           ? currentController
@@ -835,6 +1022,181 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 }
 
+/// Asks for a line number and pops the accepted value as a string.
+///
+/// The input controller is owned by [DialogFormFields] rather than by the
+/// caller, because `showDialog` completes the instant the route is popped -
+/// *before* the exit animation and the dialog's teardown have run. A caller
+/// that disposes its controller as soon as the future resolves disposes one
+/// the [TextField] is still listening to.
+///
+/// The Ctrl+G prompt.
+///
+/// Controller ownership is delegated to [DialogFormFields] for the reason
+/// documented there; this widget only owns the validation message, which
+/// needs a [setState] of its own.
+class _GoToLineDialog extends ConsumerStatefulWidget {
+  const _GoToLineDialog({required this.initialLine, required this.lineCount});
+
+  /// One-based line the field starts on.
+  final int initialLine;
+
+  /// Total lines in the document, used to validate and to word the message.
+  final int lineCount;
+
+  @override
+  ConsumerState<_GoToLineDialog> createState() => _GoToLineDialogState();
+}
+
+class _GoToLineDialogState extends ConsumerState<_GoToLineDialog> {
+  String? _errorText;
+
+  /// Pops with the accepted value, or shows the range error in place.
+  void _submit(TextEditingController input) {
+    final line = int.tryParse(input.text.trim());
+    if (line == null || line < 1 || line > widget.lineCount) {
+      setState(() {
+        _errorText = translateForWidget(
+          ref,
+          I18nKey.editorGoToLineInvalid,
+        ).replaceAll('{lines}', '${widget.lineCount}');
+      });
+      return;
+    }
+    context.pop(input.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DialogFormFields(
+      initialValues: ['${widget.initialLine}'],
+      selectAll: true,
+      builder: (context, c) => AlertDialog(
+        title: Text(translateForWidget(ref, I18nKey.editorGoToLine)),
+        content: TextField(
+          controller: c[0],
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: InputDecoration(
+            hintText: translateForWidget(
+              ref,
+              I18nKey.editorGoToLineHint,
+            ).replaceAll('{lines}', '${widget.lineCount}'),
+            errorText: _errorText,
+          ),
+          onSubmitted: (_) => _submit(c[0]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(),
+            child: Text(translateForWidget(ref, I18nKey.commonCancel)),
+          ),
+          FilledButton(
+            onPressed: () => _submit(c[0]),
+            child: Text(
+              translateForWidget(ref, I18nKey.editorJumpGoToLocation),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One option button (Aa / ab / .*) in the find bar.
+///
+/// The hover fill, the active fill and the border are all painted by the same
+/// [BoxDecoration] on the same square, so no state can draw a rectangle offset
+/// from the others. The gap between neighbouring buttons comes from padding
+/// around that square rather than a margin on it.
+class _FindBarToggle extends StatefulWidget {
+  const _FindBarToggle({
+    required this.label,
+    required this.tooltip,
+    required this.active,
+    required this.foreground,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String tooltip;
+  final bool active;
+  final Color foreground;
+  final VoidCallback onPressed;
+
+  @override
+  State<_FindBarToggle> createState() => _FindBarToggleState();
+}
+
+class _FindBarToggleState extends State<_FindBarToggle> {
+  static const double _size = _EditorFindBar._buttonSize - 2;
+
+  /// Sibling toggles share the find bar's inset, so every button in the row has
+  /// the same corner radius.
+  static const double _inset = _EditorFindBar._inset;
+
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // `container: true` prevents adjacent toolbar buttons from merging this
+    // tooltip's semantics anchor into one shared node. See
+    // flutter/flutter#182444.
+    return Tooltip(
+      message: widget.tooltip,
+      child: Semantics(
+        container: true,
+        child: Padding(
+          // Separates adjacent toggles without shrinking the painted square.
+          padding: const EdgeInsets.only(left: 2),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hovered = true),
+            onExit: (_) => setState(() => _hovered = false),
+            child: GestureDetector(
+              onTap: widget.onPressed,
+              child: Container(
+                width: _size,
+                height: _size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: context.nestedCorners(_inset),
+                  color: widget.active
+                      ? widget.foreground.withAlpha(36)
+                      : _hovered
+                      ? widget.foreground.withAlpha(20)
+                      : Colors.transparent,
+                  // Hover reuses the border slot so it can never paint a
+                  // second, offset rectangle next to the active one.
+                  border: Border.all(
+                    color: widget.active
+                        ? widget.foreground.withAlpha(130)
+                        : _hovered
+                        ? widget.foreground.withAlpha(90)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: widget.foreground.withAlpha(
+                      widget.active ? 255 : 150,
+                    ),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// VSCode-style floating find widget: a compact rounded panel that hovers over
 /// the top-right corner of the editor viewport instead of pushing content down.
 class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
@@ -850,7 +1212,40 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
 
   static const double _rowHeight = 32;
   static const double _buttonSize = 28;
-  static const double _radius = 8;
+
+  /// Horizontal inset between the find bar surface and its children. Nested
+  /// surfaces derive their radius from this so their arcs stay concentric
+  /// with the bar.
+  static const double _inset = 8;
+
+  /// Minimum width of the match counter, used while it shows a result.
+  static const double _matchCounterMinWidth = 34;
+
+  /// Horizontal breathing room around the match counter text.
+  static const double _matchCounterPadding = 6;
+
+  /// Size of the leading search/replace icon in both rows.
+  static const double _leadingIconSize = 16;
+
+  /// Gap between the leading button and the leading icon.
+  static const double _gapAfterLeadingButton = 4;
+
+  /// Gap between the leading icon and the input, and between the input and
+  /// whatever follows it.
+  static const double _gapAroundField = 6;
+
+  /// Leading offset of both input rows: the leading button plus its gap, the
+  /// leading icon and the gap that separates it from the input. The replace
+  /// row has no leading button, so it pads that slot instead, which keeps both
+  /// inputs starting at the same x position.
+  static const double _leadingWidth =
+      _buttonSize + _gapAfterLeadingButton + _leadingIconSize + _gapAroundField;
+
+  /// Width of everything between the find input and the right edge except the
+  /// match counter: the gap in front of it plus the six trailing buttons
+  /// (three option toggles and three nav buttons). The counter's measured
+  /// width is added at build time.
+  static const double _trailingWidth = _gapAroundField + _buttonSize * 6;
 
   @override
   Size get preferredSize => Size.fromHeight(controller.isReplaceMode ? 80 : 44);
@@ -890,114 +1285,153 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         shadowColor: Colors.black.withAlpha(90),
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_radius),
+          borderRadius: context.outerCorners,
           side: BorderSide(color: foreground.withAlpha(38)),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: _rowHeight,
-                child: Row(
-                  children: [
-                    _iconButton(
-                      icon: controller.isReplaceMode
-                          ? Icons.expand_more
-                          : Icons.chevron_right,
-                      tooltip: tr(
-                        controller.isReplaceMode
-                            ? I18nKey.editorFindHideReplace
-                            : I18nKey.editorFindShowReplace,
-                      ),
-                      onPressed: controller.toggleReplaceMode,
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.search, size: 16, color: foreground),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _textField(
-                        controller: controller.findInputController,
-                        focusNode: controller.findInputFocusNode,
-                        hintText: tr(I18nKey.editorFindHint),
-                        onSubmitted: (_) => _shiftHeld
-                            ? controller.previous()
-                            : controller.next(),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    _matchCounter(tr),
-                    _toggle(
-                      label: 'Aa',
-                      tooltip: tr(I18nKey.editorFindCaseSensitive),
-                      active: controller.caseSensitive,
-                      onPressed: controller.toggleCaseSensitive,
-                    ),
-                    _toggle(
-                      label: 'ab',
-                      tooltip: tr(I18nKey.editorFindWholeWord),
-                      active: controller.matchWholeWord,
-                      onPressed: controller.toggleMatchWholeWord,
-                    ),
-                    _toggle(
-                      label: '.*',
-                      tooltip: tr(I18nKey.editorFindRegex),
-                      active: controller.isRegex,
-                      onPressed: controller.toggleRegex,
-                    ),
-                    _navButton(
-                      icon: Icons.keyboard_arrow_up,
-                      tooltip: tr(I18nKey.editorFindPrevious),
-                      onPressed: controller.previous,
-                    ),
-                    _navButton(
-                      icon: Icons.keyboard_arrow_down,
-                      tooltip: tr(I18nKey.editorFindNext),
-                      onPressed: controller.next,
-                    ),
-                    _navButton(
-                      icon: Icons.close,
-                      tooltip: tr(I18nKey.editorFindClose),
-                      onPressed: () => controller.isActive = false,
-                    ),
-                  ],
-                ),
-              ),
-              if (controller.isReplaceMode)
-                SizedBox(
-                  height: _rowHeight,
-                  child: Row(
-                    children: [
-                      Icon(Icons.find_replace, size: 16, color: foreground),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _textField(
-                          controller: controller.replaceInputController,
-                          focusNode: controller.replaceInputFocusNode,
-                          hintText: tr(I18nKey.editorReplaceHint),
-                          onSubmitted: (_) => controller.replace(),
+          padding: const EdgeInsets.symmetric(
+            horizontal: _EditorFindBar._inset,
+            vertical: 6,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final counter = _matchCounter(tr);
+              // Both inputs get the same width so their left and right edges
+              // line up, independent of how wide the trailing buttons are. The
+              // counter only reserves the width its text needs, so both inputs
+              // grow into the space it leaves free.
+              final fieldWidth = max(
+                0.0,
+                constraints.maxWidth -
+                    _leadingWidth -
+                    counter.width -
+                    _trailingWidth,
+              );
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: _rowHeight,
+                    child: Row(
+                      children: [
+                        _iconButton(
+                          icon: controller.isReplaceMode
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          tooltip: tr(
+                            controller.isReplaceMode
+                                ? I18nKey.editorFindHideReplace
+                                : I18nKey.editorFindShowReplace,
+                          ),
+                          onPressed: controller.toggleReplaceMode,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      _iconButton(
-                        icon: Icons.check,
-                        tooltip: tr(I18nKey.editorReplaceApply),
-                        onPressed: controller.matchCount > 0
-                            ? controller.replace
-                            : null,
-                      ),
-                      _iconButton(
-                        icon: Icons.done_all,
-                        tooltip: tr(I18nKey.editorReplaceAll),
-                        onPressed: controller.matchCount > 0
-                            ? controller.replaceAll
-                            : null,
-                      ),
-                    ],
+                        const SizedBox(width: _gapAfterLeadingButton),
+                        Icon(
+                          Icons.search,
+                          size: _leadingIconSize,
+                          color: foreground,
+                        ),
+                        const SizedBox(width: _gapAroundField),
+                        SizedBox(
+                          width: fieldWidth,
+                          child: _textField(
+                            context,
+                            controller: controller.findInputController,
+                            focusNode: controller.findInputFocusNode,
+                            hintText: tr(I18nKey.editorFindHint),
+                            onSubmitted: (_) => _shiftHeld
+                                ? controller.previous()
+                                : controller.next(),
+                          ),
+                        ),
+                        const SizedBox(width: _gapAroundField),
+                        counter.widget,
+                        _toggle(
+                          label: 'Aa',
+                          tooltip: tr(I18nKey.editorFindCaseSensitive),
+                          active: controller.caseSensitive,
+                          onPressed: controller.toggleCaseSensitive,
+                        ),
+                        _toggle(
+                          label: 'ab',
+                          tooltip: tr(I18nKey.editorFindWholeWord),
+                          active: controller.matchWholeWord,
+                          onPressed: controller.toggleMatchWholeWord,
+                        ),
+                        _toggle(
+                          label: '.*',
+                          tooltip: tr(I18nKey.editorFindRegex),
+                          active: controller.isRegex,
+                          onPressed: controller.toggleRegex,
+                        ),
+                        _navButton(
+                          icon: Icons.keyboard_arrow_up,
+                          tooltip: tr(I18nKey.editorFindPrevious),
+                          onPressed: controller.previous,
+                        ),
+                        _navButton(
+                          icon: Icons.keyboard_arrow_down,
+                          tooltip: tr(I18nKey.editorFindNext),
+                          onPressed: controller.next,
+                        ),
+                        _navButton(
+                          icon: Icons.close,
+                          tooltip: tr(I18nKey.editorFindClose),
+                          onPressed: () => controller.isActive = false,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+                  if (controller.isReplaceMode)
+                    SizedBox(
+                      height: _rowHeight,
+                      child: Row(
+                        children: [
+                          // Pads the slot the find row's leading button uses so
+                          // the two inputs share the same left edge.
+                          const SizedBox(
+                            width: _buttonSize + _gapAfterLeadingButton,
+                          ),
+                          Icon(
+                            Icons.find_replace,
+                            size: _leadingIconSize,
+                            color: foreground,
+                          ),
+                          const SizedBox(width: _gapAroundField),
+                          SizedBox(
+                            width: fieldWidth,
+                            child: _textField(
+                              context,
+                              controller: controller.replaceInputController,
+                              focusNode: controller.replaceInputFocusNode,
+                              hintText: tr(I18nKey.editorReplaceHint),
+                              onSubmitted: (_) => controller.replace(),
+                            ),
+                          ),
+                          // The replace row has fewer trailing buttons, so the
+                          // leftover width is left blank.
+                          const Spacer(),
+                          const SizedBox(width: _gapAroundField),
+                          _iconButton(
+                            icon: Icons.check,
+                            tooltip: tr(I18nKey.editorReplaceApply),
+                            onPressed: controller.matchCount > 0
+                                ? controller.replace
+                                : null,
+                          ),
+                          _iconButton(
+                            icon: Icons.done_all,
+                            tooltip: tr(I18nKey.editorReplaceAll),
+                            onPressed: controller.matchCount > 0
+                                ? controller.replaceAll
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -1006,7 +1440,8 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
 
   static bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
-  Widget _textField({
+  Widget _textField(
+    BuildContext context, {
     required TextEditingController controller,
     required FocusNode focusNode,
     required String hintText,
@@ -1028,18 +1463,20 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         hintStyle: TextStyle(color: foreground.withAlpha(110), fontSize: 13),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: context.nestedCorners(_EditorFindBar._inset),
           borderSide: BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: context.nestedCorners(_EditorFindBar._inset),
           borderSide: BorderSide(color: foreground.withAlpha(160)),
         ),
       ),
     );
   }
 
-  Widget _matchCounter(String Function(I18nKey) tr) {
+  /// Builds the match counter together with the width it occupies so the
+  /// caller can size the find input against it.
+  ({double width, Widget widget}) _matchCounter(String Function(I18nKey) tr) {
     final hasQuery = controller.findInputController.text.isNotEmpty;
     final noResults = hasQuery && controller.matchCount == 0;
     final text = !hasQuery
@@ -1047,18 +1484,29 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         : noResults
         ? tr(I18nKey.editorFindNoResults)
         : '${controller.currentMatchIndex + 1}/${controller.matchCount}';
-    return Container(
-      constraints: const BoxConstraints(minWidth: 44),
-      alignment: Alignment.center,
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: noResults
-              ? Colors.redAccent.withAlpha(220)
-              : foreground.withAlpha(200),
-          fontSize: 11,
-        ),
+    final color = noResults
+        ? Colors.redAccent.withAlpha(220)
+        : foreground.withAlpha(200);
+    final textStyle = TextStyle(color: color, fontSize: 11);
+    if (text.isEmpty) {
+      return (width: 0, widget: const SizedBox.shrink());
+    }
+    // Measure the label so the counter never reserves more room than it uses.
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final width = max(
+      _matchCounterMinWidth,
+      painter.width + _matchCounterPadding,
+    );
+    painter.dispose();
+    return (
+      width: width,
+      widget: Container(
+        width: width,
+        alignment: Alignment.center,
+        child: Text(text, textAlign: TextAlign.center, style: textStyle),
       ),
     );
   }
@@ -1070,34 +1518,12 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
     required bool active,
     required VoidCallback onPressed,
   }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(5),
-        child: Container(
-          width: _buttonSize - 2,
-          height: _buttonSize - 2,
-          margin: const EdgeInsets.only(left: 2),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-            color: active ? foreground.withAlpha(36) : Colors.transparent,
-            border: Border.all(
-              color: active ? foreground.withAlpha(130) : Colors.transparent,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: foreground.withAlpha(active ? 255 : 150),
-              fontSize: 10.5,
-              fontWeight: FontWeight.w600,
-              height: 1,
-            ),
-          ),
-        ),
-      ),
+    return _FindBarToggle(
+      label: label,
+      tooltip: tooltip,
+      active: active,
+      foreground: foreground,
+      onPressed: onPressed,
     );
   }
 
@@ -1129,282 +1555,6 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
         width: _buttonSize,
         height: _buttonSize,
       ),
-    );
-  }
-}
-
-/// A parsed `textDocument/references` entry for [_ReferencesDialog].
-class _ReferenceLocation {
-  const _ReferenceLocation({
-    required this.path,
-    required this.rangeStart,
-    this.line,
-    this.character,
-  });
-
-  final String path;
-
-  /// Raw LSP `range.start` map, forwarded verbatim when jumping.
-  final dynamic rangeStart;
-  final int? line;
-  final int? character;
-}
-
-_ReferenceLocation? _parseReferenceLocation(Map<dynamic, dynamic> location) {
-  final uri = (location['uri'] ?? location['targetUri'])?.toString();
-  final parsed = uri == null ? null : Uri.tryParse(uri);
-  if (parsed == null || parsed.scheme != 'file') return null;
-  final range = location['range'] ?? location['targetSelectionRange'];
-  final start = range is Map ? range['start'] : null;
-  return _ReferenceLocation(
-    path: parsed.toFilePath(),
-    rangeStart: start,
-    line: start is Map ? (start['line'] as num?)?.toInt() : null,
-    character: start is Map ? (start['character'] as num?)?.toInt() : null,
-  );
-}
-
-/// Find-all-references results: a read-only editor preview (the exact same
-/// themed [CodeForge] as the main editor) on the left and the reference list
-/// on the right.
-///
-/// Single click previews the reference line's context; double click jumps to
-/// it in the real editor. The first reference is previewed by default.
-class _ReferencesDialog extends ConsumerStatefulWidget {
-  const _ReferencesDialog({
-    required this.symbol,
-    required this.locations,
-    required this.onOpen,
-  });
-
-  final String symbol;
-  final List<Map<dynamic, dynamic>> locations;
-  final Future<void> Function(String path, dynamic rangeStart) onOpen;
-
-  @override
-  ConsumerState<_ReferencesDialog> createState() => _ReferencesDialogState();
-}
-
-class _ReferencesDialogState extends ConsumerState<_ReferencesDialog> {
-  late final CodeForgeController _previewController;
-  final Map<String, String?> _contentCache = {};
-  late final List<_ReferenceLocation> _items;
-  var _selectedIndex = 0;
-  var _loadingContent = false;
-  String? _failedPath;
-
-  @override
-  void initState() {
-    super.initState();
-    _previewController = CodeForgeController();
-    _items = [
-      for (final location in widget.locations)
-        ?_parseReferenceLocation(location),
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _items.isNotEmpty) unawaited(_select(0));
-    });
-  }
-
-  @override
-  void dispose() {
-    _previewController.dispose();
-    super.dispose();
-  }
-
-  /// Returns the referenced file's content, preferring the live buffer of an
-  /// open tab (so unsaved edits preview correctly) and caching disk reads.
-  Future<String?> _loadContent(String path) async {
-    if (_contentCache.containsKey(path)) return _contentCache[path];
-    final liveBuffer = ref.read(editorControllerMapProvider)[path];
-    if (liveBuffer != null) {
-      return _contentCache[path] = liveBuffer.text;
-    }
-    try {
-      final file = File(path);
-      if (!await file.exists()) return _contentCache[path] = null;
-      return _contentCache[path] = await file.readAsString();
-    } catch (_) {
-      return _contentCache[path] = null;
-    }
-  }
-
-  Future<void> _select(int index) async {
-    if (index < 0 || index >= _items.length) return;
-    final item = _items[index];
-    setState(() {
-      _selectedIndex = index;
-      _loadingContent = true;
-    });
-    final content = await _loadContent(item.path);
-    if (!mounted) return;
-    if (content == null) {
-      setState(() {
-        _loadingContent = false;
-        _failedPath = item.path;
-      });
-      return;
-    }
-    if (_previewController.text != content) {
-      _previewController.text = content;
-    }
-    // Highlight the referenced line and place the caret there.
-    _previewController.clearLineDecorations();
-    final targetLine = item.line ?? 0;
-    try {
-      _previewController.addLineDecoration(
-        LineDecoration(
-          id: 'references-highlight',
-          startLine: targetLine,
-          endLine: targetLine,
-          type: LineDecorationType.background,
-          color: Theme.of(context).colorScheme.primary.withAlpha(45),
-        ),
-      );
-    } catch (_) {}
-    var offset = _previewController.getLineStartOffset(targetLine);
-    offset = (offset + (item.character ?? 0))
-        .clamp(0, _previewController.text.length)
-        .toInt();
-    _previewController.selection = TextSelection.collapsed(offset: offset);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        _previewController.scrollToLine(targetLine);
-      } on StateError {
-        // Preview not mounted yet.
-      }
-    });
-    setState(() {
-      _loadingContent = false;
-      _failedPath = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.sizeOf(context);
-    // Portrait stacks preview above the list; landscape puts them side by side.
-    final isPortrait = screenSize.height > screenSize.width;
-    return AlertDialog(
-      title: Text(
-        translateForWidget(ref, I18nKey.editorReferencesResultTitle)
-            .replaceAll('{symbol}', widget.symbol.isEmpty ? '?' : widget.symbol)
-            .replaceAll('{count}', widget.locations.length.toString()),
-      ),
-      content: SizedBox(
-        width: min(920.0, screenSize.width * 0.92),
-        height: min(isPortrait ? 620.0 : 540.0, screenSize.height * 0.8),
-        child: _items.isEmpty
-            ? Center(
-                child: Text(
-                  translateForWidget(ref, I18nKey.editorReferencesEmpty),
-                ),
-              )
-            : isPortrait
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _buildPreview(context)),
-                  const Divider(height: 24),
-                  SizedBox(height: 220, child: _buildReferenceList(context)),
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _buildPreview(context)),
-                  const VerticalDivider(width: 20),
-                  SizedBox(width: 300, child: _buildReferenceList(context)),
-                ],
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => context.pop(),
-          child: Text(translateForWidget(ref, I18nKey.commonCancel)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPreview(BuildContext context) {
-    final item = _items[_selectedIndex.clamp(0, _items.length - 1)];
-    final failedToLoad = _failedPath == item.path;
-    return Container(
-      // Clip the editor to the rounded shape; the border is drawn via
-      // foregroundDecoration so it paints ON TOP of the opaque editor
-      // background. A `decoration` border would be painted first and then
-      // covered by the child on straight edges, leaving only the corner
-      // arcs visible — which looked like a notched corner.
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-      child: failedToLoad
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  translateForWidget(
-                    ref,
-                    I18nKey.editorReferencesPreviewUnavailable,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          : Stack(
-              children: [
-                buildThemedCodeForge(
-                  context,
-                  ref,
-                  controller: _previewController,
-                  filePath: item.path,
-                  rebuildKey: 'references-preview:${item.path}',
-                  readOnly: true,
-                ),
-                if (_loadingContent)
-                  const Center(child: CircularProgressIndicator()),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildReferenceList(BuildContext context) {
-    return ListView.builder(
-      itemCount: _items.length,
-      itemBuilder: (context, index) {
-        final item = _items[index];
-        final lineLabel = item.line == null ? '?' : '${item.line! + 1}';
-        final charLabel = item.character == null ? '?' : '${item.character}';
-        return GestureDetector(
-          onTap: () => unawaited(_select(index)),
-          // Double click closes the dialog and reveals the reference in the
-          // real editor ([widget.onOpen] pops the dialog first).
-          onDoubleTap: () =>
-              unawaited(widget.onOpen(item.path, item.rangeStart)),
-          child: ListTile(
-            dense: true,
-            selected: index == _selectedIndex,
-            selectedTileColor: Theme.of(
-              context,
-            ).colorScheme.primary.withAlpha(30),
-            leading: const Icon(Icons.description_outlined, size: 18),
-            title: Text(
-              item.path.split(RegExp(r'[\\/]')).last,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              'line $lineLabel:$charLabel',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        );
-      },
     );
   }
 }
@@ -1532,11 +1682,18 @@ Future<void> saveFile(
 /// Returns true when formatting was applied. With [quiet] (format-on-save)
 /// success feedback and "no formatter available" notices are suppressed so
 /// saving stays silent; only hard failures surface as error messages.
+///
+/// With [selectionOnly] and a non-collapsed selection, the selection is sent
+/// as a range instead of the whole document — the VSCode behaviour, where
+/// formatting a whole file because four lines are selected is a surprise. It
+/// is deliberately off for format-on-save: a save should normalise the file the
+/// user is actually keeping, not just the part they happened to have selected.
 Future<bool> formatEditorDocument(
   BuildContext context,
   WidgetRef ref,
   CodeForgeController controller, {
   bool quiet = false,
+  bool selectionOnly = false,
 }) async {
   final config = controller.lspConfig;
   final filePath = controller.openedFile;
@@ -1548,8 +1705,35 @@ Future<bool> formatEditorDocument(
     }
     return false;
   }
+  // The formatter is told the user's own settings rather than a hardcoded
+  // width, so formatting does not reindent the file against their preference.
+  final tabSize = ref.read(editorTabSize);
+  final insertSpaces = ref.read(editorUseSpaceAsTab);
   try {
-    final edits = await config.formatDocument(filePath);
+    final selection = controller.selection;
+    final useRange =
+        selectionOnly && !selection.isCollapsed && controller.lineCount > 0;
+    final List<dynamic> edits;
+    if (useRange) {
+      final startLine = controller.getLineAtOffset(selection.start);
+      final endLine = controller.getLineAtOffset(selection.end);
+      edits = await config.formatRange(
+        filePath: filePath,
+        startLine: startLine,
+        startCharacter:
+            selection.start - controller.getLineStartOffset(startLine),
+        endLine: endLine,
+        endCharacter: selection.end - controller.getLineStartOffset(endLine),
+        tabSize: tabSize,
+        insertSpaces: insertSpaces,
+      );
+    } else {
+      edits = await config.formatDocument(
+        filePath,
+        tabSize: tabSize,
+        insertSpaces: insertSpaces,
+      );
+    }
     if (edits.isEmpty) {
       if (!quiet && context.mounted) {
         ref
@@ -1668,7 +1852,7 @@ class _EditorContextMenu extends ConsumerWidget {
     return Material(
       elevation: 8,
       color: colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: context.outerCorners,
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(

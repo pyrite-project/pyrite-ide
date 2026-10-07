@@ -217,6 +217,14 @@ class SettingsRegistry {
           ref.read(editorGutterDivider.notifier).state = v == true,
     ),
     _SettingEntry(
+      name: 'editor.smooth_cursor',
+      type: 'bool',
+      provider: editorSmoothCursor,
+      getter: (ref) => ref.read(editorSmoothCursor),
+      setter: (ref, v) =>
+          ref.read(editorSmoothCursor.notifier).state = v == true,
+    ),
+    _SettingEntry(
       name: 'lsp.enabled',
       type: 'bool',
       provider: useLsp,
@@ -240,14 +248,6 @@ class SettingsRegistry {
       getter: (ref) => ref.read(lspWebSocketPath),
       setter: (ref, v) =>
           ref.read(lspWebSocketPath.notifier).state = v.toString(),
-    ),
-    _SettingEntry(
-      name: 'lsp.language_id',
-      type: 'string',
-      provider: lspLanguageId,
-      getter: (ref) => ref.read(lspLanguageId),
-      setter: (ref, v) =>
-          ref.read(lspLanguageId.notifier).state = v.toString().trim(),
     ),
     _SettingEntry(
       name: 'lsp.stdio_executable',

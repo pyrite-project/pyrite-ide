@@ -1,7 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-BuildContext? get appContext => _appContext;
+/// The root navigator, so [appContext] can hand out a context that can push
+/// routes.
+///
+/// The app shell's `MaterialApp.router` builder context cannot do that: the
+/// builder sits *above* the Navigator, so `Navigator.of` on it throws
+/// "Navigator operation requested with a context that does not include a
+/// Navigator". Attaching this key to the `GoRouter` in `routes.dart` gives us
+/// the Navigator's own context instead, which does resolve a Navigator.
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'appRootNavigator',
+);
+
+/// A context that non-widget code can show dialogs on.
+///
+/// Prefers the root Navigator and only falls back to the shell's builder
+/// context, which is useless for navigation -- see [appNavigatorKey]. The
+/// fallback still carries a Theme and a Directionality, so it is worth having
+/// for the window between startup and the router's first frame.
+BuildContext? get appContext => appNavigatorKey.currentContext ?? _appContext;
+
 BuildContext? _appContext;
 
 void setAppContext(BuildContext context) {

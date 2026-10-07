@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 int indentationBackspaceCount(String beforeCaret, {required int tabSize}) {
   final spaces = RegExp(r' +$').firstMatch(beforeCaret)?.group(0)!.length ?? 0;
-  if (spaces > 0) return spaces % tabSize == 0 ? tabSize : spaces % tabSize;
+  if (spaces > 0) return spaces % tabSize == 0 ? tabSize : 1;
   final tabs = RegExp(r'\t+$').firstMatch(beforeCaret)?.group(0)!.length ?? 1;
   return tabs.clamp(1, tabSize);
 }

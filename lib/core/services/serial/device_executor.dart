@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
@@ -1078,7 +1079,7 @@ Future<T> _runTransaction<T>(
     read(runningOperationsProvider.notifier).start(
       RunningOperation(
         id: runningOperationId,
-        label: '运行中',
+        labelKey: I18nKey.statusRunning,
         icon: Icons.play_arrow,
         canInterrupt: true,
         canForceReset:

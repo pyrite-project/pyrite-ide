@@ -1,6 +1,42 @@
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 
+/// A folded region captured for a session, keyed by document lines.
+///
+/// [children] are nested ranges that were folded before their parent
+/// collapsed; restoring them lets the editor re-collapse those children when
+/// the parent is unfolded again.
+class PersistedFoldRange {
+  final int startLine;
+  final int endLine;
+  final List<PersistedFoldRange> children;
+
+  const PersistedFoldRange({
+    required this.startLine,
+    required this.endLine,
+    this.children = const [],
+  });
+
+  Map<String, dynamic> toJson() => {
+    'startLine': startLine,
+    'endLine': endLine,
+    'children': children.map((c) => c.toJson()).toList(),
+  };
+
+  factory PersistedFoldRange.fromJson(Map<String, dynamic> json) {
+    return PersistedFoldRange(
+      startLine: (json['startLine'] as num?)?.toInt() ?? 0,
+      endLine: (json['endLine'] as num?)?.toInt() ?? 0,
+      children:
+          (json['children'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(PersistedFoldRange.fromJson)
+              .toList() ??
+          const [],
+    );
+  }
+}
+
 class PersistedTab {
   final String filePath;
   final bool isBoardFile;
@@ -8,12 +44,32 @@ class PersistedTab {
   final bool isSaved;
   final String? unsavedContent;
 
+  /// Caret offset captured at save time so a reopened tab resumes where the
+  /// user left off. Null for sessions written before this field existed, and
+  /// clamped on restore when the file shrank while the app was closed.
+  final int? cursorOffset;
+
+  /// Zero-based index of the topmost visible line at save time.
+  ///
+  /// Restoring the viewport by line (not by pixel offset) survives font size
+  /// changes and window resizes between sessions. Null for sessions written
+  /// before this field existed, and clamped on restore when the file shrank.
+  final int? scrollLine;
+
+  /// Folded regions at save time, so a reopened tab collapses the same
+  /// regions. Empty for sessions written before this field existed; ranges
+  /// that no longer match the restored document are applied best-effort.
+  final List<PersistedFoldRange> foldedRanges;
+
   PersistedTab({
     required this.filePath,
     this.isBoardFile = false,
     this.boardFilePath,
     this.isSaved = true,
     this.unsavedContent,
+    this.cursorOffset,
+    this.scrollLine,
+    this.foldedRanges = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +78,9 @@ class PersistedTab {
     'boardFilePath': boardFilePath,
     'isSaved': isSaved,
     'unsavedContent': unsavedContent,
+    'cursorOffset': cursorOffset,
+    'scrollLine': scrollLine,
+    'foldedRanges': foldedRanges.map((f) => f.toJson()).toList(),
   };
 
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
@@ -30,6 +89,14 @@ class PersistedTab {
     boardFilePath: json['boardFilePath'] as String?,
     isSaved: json['isSaved'] as bool? ?? true,
     unsavedContent: json['unsavedContent'] as String?,
+    cursorOffset: (json['cursorOffset'] as num?)?.toInt(),
+    scrollLine: (json['scrollLine'] as num?)?.toInt(),
+    foldedRanges:
+        (json['foldedRanges'] as List<dynamic>?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(PersistedFoldRange.fromJson)
+            .toList() ??
+        const [],
   );
 }
 
@@ -37,6 +104,11 @@ class PersistedData {
   final String? projectPath;
   final List<PersistedTab> tabs;
   final int selectedTabIndex;
+
+  /// File path of the tab that was selected, preferred over [selectedTabIndex]
+  /// when restoring because the rebuilt tab list does not share the saved
+  /// index space. See `TabsPersistedData.selectedTabPath`.
+  final String? selectedTabPath;
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
@@ -56,11 +128,12 @@ class PersistedData {
   final bool editorUseSpaceAsTab;
   final int editorTabSize;
   final bool editorGutterDivider;
+  final bool editorSmoothCursor;
+  final bool editorMinimap;
   final bool editorFormatOnSave;
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
-  final String lspLanguageId;
   final String lspStdioExecutable;
   final String lspStdioArgs;
   final String lspVirtualEnvironment;
@@ -119,6 +192,7 @@ class PersistedData {
     this.projectPath,
     this.tabs = const [],
     this.selectedTabIndex = 0,
+    this.selectedTabPath,
     this.themeMode = 'system',
     this.themeStyle = 'standard',
     this.themeColorValue,
@@ -138,26 +212,27 @@ class PersistedData {
     this.editorUseSpaceAsTab = true,
     this.editorTabSize = 4,
     this.editorGutterDivider = false,
+    this.editorSmoothCursor = false,
+    this.editorMinimap = true,
     this.editorFormatOnSave = false,
     this.useLsp = true,
     this.lspType = 'web_socket',
     this.lspWebSocketPath = '127.0.0.1:2026',
-    this.lspLanguageId = 'python',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
     this.lspVirtualEnvironment = '',
     this.lspBasedPyrightTypeCheckingMode = 'standard',
     this.disableWarning = false,
     this.disableError = false,
-    this.lspSemanticHighlighting = false,
+    this.lspSemanticHighlighting = true,
     this.lspCodeCompletion = true,
     this.lspHoverInfo = true,
     this.lspCodeAction = true,
     this.lspSignatureHelp = true,
-    this.lspDocumentColor = false,
+    this.lspDocumentColor = true,
     this.lspDocumentHighlight = true,
-    this.lspCodeFolding = false,
-    this.lspShowInlayHints = false,
+    this.lspCodeFolding = true,
+    this.lspShowInlayHints = true,
     this.lspGoToDefinition = true,
     this.lspRename = true,
     this.lspAlwaysStart = false,

@@ -41,6 +41,36 @@ String replaceShortcutLabel() => usesCommandShortcut ? 'Cmd+Alt+H' : 'Ctrl+H';
 
 String toggleCommentShortcutLabel() => usesCommandShortcut ? 'Cmd+/' : 'Ctrl+/';
 
+/// Labels for the editor shortcuts that are registered inline in
+/// `EditCore.build` rather than through [CodeForgeKeyboardShortcuts].
+///
+/// The editor context menu shows these in the description column, so keeping
+/// them here means a binding and its label change together. Items with no
+/// keyboard shortcut pass an empty description rather than a placeholder, which
+/// used to render the literal text "LSP" where a key should be.
+///
+/// The keys themselves live in [CodeForgeKeyboardShortcuts] inside code_forge
+/// so the editor widget owns its own bindings; these are the human-readable
+/// spellings of those defaults, and the two must be changed together.
+String goToDefinitionShortcutLabel() => 'F12';
+
+String goToImplementationShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+F12' : 'Ctrl+F12';
+
+String findReferencesShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+F12' : 'Shift+F12';
+
+String renameShortcutLabel() => 'F2';
+
+String toggleBlockCommentShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+/' : 'Ctrl+Shift+/';
+
+String formatDocumentShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+F' : 'Shift+Alt+F';
+
+String addCursorShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Alt+Down' : 'Ctrl+Alt+Down';
+
 String activatorToString(SingleActivator activator) {
   final parts = <String>[];
   if (activator.control) parts.add('Ctrl');
@@ -51,7 +81,13 @@ String activatorToString(SingleActivator activator) {
   return parts.join('+');
 }
 
-SingleActivator stringToActivator(String str) {
+/// Parses a recorded shortcut string such as `Ctrl+Shift+S`.
+///
+/// Returns null when the key name is not recognised. This used to fall back to
+/// [LogicalKeyboardKey.enter] silently, which meant a shortcut recorded on a
+/// key outside the hardcoded list below (F13, an arrow key, a media key)
+/// quietly became Enter and fired on every confirm.
+SingleActivator? stringToActivator(String str) {
   final parts = str.split('+').map((s) => s.trim()).toList();
   final control = parts.remove('Ctrl') || parts.remove('ctrl');
   final shift = parts.remove('Shift') || parts.remove('shift');
@@ -63,8 +99,20 @@ SingleActivator stringToActivator(String str) {
       parts.remove('cmd') ||
       parts.remove('Command') ||
       parts.remove('command');
-  final keyLabel = parts.isNotEmpty ? parts.last : 'enter';
-  final key = _resolveKey(keyLabel);
+  if (parts.isEmpty) {
+    debugPrint(
+      'shortcut_utils: ignored shortcut "$str" because it names no key',
+    );
+    return null;
+  }
+  final key = _resolveKey(parts.last);
+  if (key == null) {
+    debugPrint(
+      'shortcut_utils: ignored shortcut "$str" because '
+      '"${parts.last}" is not a known key name',
+    );
+    return null;
+  }
   return SingleActivator(
     key,
     control: control,
@@ -74,32 +122,51 @@ SingleActivator stringToActivator(String str) {
   );
 }
 
-String _keyLabel(LogicalKeyboardKey key) {
-  if (key == LogicalKeyboardKey.enter) return 'Enter';
-  if (key == LogicalKeyboardKey.escape) return 'Esc';
-  if (key == LogicalKeyboardKey.space) return 'Space';
-  if (key == LogicalKeyboardKey.tab) return 'Tab';
-  if (key == LogicalKeyboardKey.backspace) return 'Backspace';
-  if (key == LogicalKeyboardKey.delete) return 'Delete';
-  return key.keyLabel;
-}
+/// Display names for the keys whose Flutter `keyLabel` is not the name this
+/// module uses: either a symbol that cannot be parsed back ("↑", "Page Up"),
+/// or a spelling worth pinning down instead of inheriting Flutter's.
+///
+/// Both directions of the shortcut round-trip read this one table —
+/// [_keyLabel] prints these names and [_resolveKey] parses their lowercase
+/// form — so the two lists can never drift apart and a recorded shortcut
+/// always round-trips.
+/// The map is `final`, not `const`: `LogicalKeyboardKey` overrides `==`, which
+/// a const map key may not.
+final Map<LogicalKeyboardKey, String> _namedKeys = {
+  LogicalKeyboardKey.enter: 'Enter',
+  LogicalKeyboardKey.escape: 'Esc',
+  LogicalKeyboardKey.space: 'Space',
+  LogicalKeyboardKey.tab: 'Tab',
+  LogicalKeyboardKey.backspace: 'Backspace',
+  LogicalKeyboardKey.delete: 'Delete',
+  LogicalKeyboardKey.arrowUp: 'ArrowUp',
+  LogicalKeyboardKey.arrowDown: 'ArrowDown',
+  LogicalKeyboardKey.arrowLeft: 'ArrowLeft',
+  LogicalKeyboardKey.arrowRight: 'ArrowRight',
+  LogicalKeyboardKey.home: 'Home',
+  LogicalKeyboardKey.end: 'End',
+  LogicalKeyboardKey.pageUp: 'PageUp',
+  LogicalKeyboardKey.pageDown: 'PageDown',
+  LogicalKeyboardKey.insert: 'Insert',
+};
 
-LogicalKeyboardKey _resolveKey(String label) {
-  switch (label.toLowerCase()) {
-    case 'enter':
-      return LogicalKeyboardKey.enter;
-    case 'escape':
-    case 'esc':
-      return LogicalKeyboardKey.escape;
-    case 'space':
-      return LogicalKeyboardKey.space;
-    case 'tab':
-      return LogicalKeyboardKey.tab;
-    case 'backspace':
-      return LogicalKeyboardKey.backspace;
-    case 'delete':
-    case 'del':
-      return LogicalKeyboardKey.delete;
+/// Spellings [_resolveKey] accepts beyond the lowercase canonical names in
+/// [_namedKeys], so shortcuts persisted by older builds keep parsing.
+const Map<String, LogicalKeyboardKey> _keyNameAliases = {
+  'escape': LogicalKeyboardKey.escape,
+  'del': LogicalKeyboardKey.delete,
+};
+
+String _keyLabel(LogicalKeyboardKey key) => _namedKeys[key] ?? key.keyLabel;
+
+LogicalKeyboardKey? _resolveKey(String label) {
+  final name = label.toLowerCase();
+  final alias = _keyNameAliases[name];
+  if (alias != null) return alias;
+  for (final entry in _namedKeys.entries) {
+    if (entry.value.toLowerCase() == name) return entry.key;
+  }
+  switch (name) {
     case 'a':
       return LogicalKeyboardKey.keyA;
     case 'b':
@@ -197,6 +264,6 @@ LogicalKeyboardKey _resolveKey(String label) {
     case 'f12':
       return LogicalKeyboardKey.f12;
     default:
-      return LogicalKeyboardKey.enter;
+      return null;
   }
 }

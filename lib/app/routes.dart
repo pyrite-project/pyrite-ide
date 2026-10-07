@@ -36,6 +36,9 @@ CustomTransitionPage topCustomTransitionPage({
 }
 
 GoRouter routes = GoRouter(
+  // Pinned so appContext can reach a context that can actually push routes;
+  // go_router would otherwise create this key privately.
+  navigatorKey: appNavigatorKey,
   observers: [routeObserver],
   redirect: (context, state) {
     final isDesktop = ResponsiveBreakpoints.of(context).isDesktop;
@@ -116,7 +119,10 @@ GoRouter routes = GoRouter(
                 pluginId.isEmpty ||
                 containerId == null ||
                 containerId.isEmpty) {
-              return topCustomTransitionPage(child: Scaffold(body: Center(child: Text('插件视图不可用'))), state: state);
+              return topCustomTransitionPage(
+                child: Scaffold(body: Center(child: Text('插件视图不可用'))),
+                state: state,
+              );
             }
             return topCustomTransitionPage(
               child: PluginViewHost(
@@ -124,7 +130,7 @@ GoRouter routes = GoRouter(
                 containerId: containerId,
                 viewId: state.uri.queryParameters['view'],
               ),
-              state: state
+              state: state,
             );
           },
         ),

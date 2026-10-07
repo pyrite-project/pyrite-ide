@@ -17,11 +17,12 @@ class SettingsPersistedData {
   final bool editorUseSpaceAsTab;
   final int editorTabSize;
   final bool editorGutterDivider;
+  final bool editorSmoothCursor;
+  final bool editorMinimap;
   final bool editorFormatOnSave;
   final bool useLsp;
   final String lspType;
   final String lspWebSocketPath;
-  final String lspLanguageId;
   final String lspStdioExecutable;
   final String lspStdioArgs;
   final String lspVirtualEnvironment;
@@ -81,26 +82,27 @@ class SettingsPersistedData {
     this.editorUseSpaceAsTab = true,
     this.editorTabSize = 4,
     this.editorGutterDivider = false,
+    this.editorSmoothCursor = false,
+    this.editorMinimap = true,
     this.editorFormatOnSave = false,
     required this.useLsp,
     this.lspType = 'web_socket',
     required this.lspWebSocketPath,
-    this.lspLanguageId = 'python',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
     this.lspVirtualEnvironment = '',
     this.lspBasedPyrightTypeCheckingMode = 'standard',
     required this.disableWarning,
     required this.disableError,
-    this.lspSemanticHighlighting = false,
+    this.lspSemanticHighlighting = true,
     this.lspCodeCompletion = true,
     this.lspHoverInfo = true,
     this.lspCodeAction = true,
     this.lspSignatureHelp = true,
-    this.lspDocumentColor = false,
+    this.lspDocumentColor = true,
     this.lspDocumentHighlight = true,
-    this.lspCodeFolding = false,
-    this.lspShowInlayHints = false,
+    this.lspCodeFolding = true,
+    this.lspShowInlayHints = true,
     this.lspGoToDefinition = true,
     this.lspRename = true,
     this.lspAlwaysStart = false,
@@ -146,11 +148,12 @@ class SettingsPersistedData {
     'editorUseSpaceAsTab': editorUseSpaceAsTab,
     'editorTabSize': editorTabSize,
     'editorGutterDivider': editorGutterDivider,
+    'editorSmoothCursor': editorSmoothCursor,
+    'editorMinimap': editorMinimap,
     'editorFormatOnSave': editorFormatOnSave,
     'useLsp': useLsp,
     'lspType': lspType,
     'lspWebSocketPath': lspWebSocketPath,
-    'lspLanguageId': lspLanguageId,
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
     'lspVirtualEnvironment': lspVirtualEnvironment,
@@ -216,11 +219,12 @@ class SettingsPersistedData {
     editorUseSpaceAsTab: json['editorUseSpaceAsTab'] as bool? ?? true,
     editorTabSize: json['editorTabSize'] as int? ?? 4,
     editorGutterDivider: json['editorGutterDivider'] as bool? ?? false,
+    editorSmoothCursor: json['editorSmoothCursor'] as bool? ?? false,
+    editorMinimap: json['editorMinimap'] as bool? ?? true,
     editorFormatOnSave: json['editorFormatOnSave'] as bool? ?? false,
     useLsp: json['useLsp'] as bool? ?? true,
     lspType: json['lspType'] as String? ?? 'web_socket',
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
-    lspLanguageId: json['lspLanguageId'] as String? ?? 'python',
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
     lspStdioArgs: json['lspStdioArgs'] as String? ?? '',
     lspVirtualEnvironment:
@@ -232,15 +236,15 @@ class SettingsPersistedData {
         json['lspBasedPyrightTypeCheckingMode'] as String? ?? 'standard',
     disableWarning: json['disableWarning'] as bool? ?? false,
     disableError: json['disableError'] as bool? ?? false,
-    lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? false,
+    lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? true,
     lspCodeCompletion: json['lspCodeCompletion'] as bool? ?? true,
     lspHoverInfo: json['lspHoverInfo'] as bool? ?? true,
     lspCodeAction: json['lspCodeAction'] as bool? ?? true,
     lspSignatureHelp: json['lspSignatureHelp'] as bool? ?? true,
-    lspDocumentColor: json['lspDocumentColor'] as bool? ?? false,
+    lspDocumentColor: json['lspDocumentColor'] as bool? ?? true,
     lspDocumentHighlight: json['lspDocumentHighlight'] as bool? ?? true,
-    lspCodeFolding: json['lspCodeFolding'] as bool? ?? false,
-    lspShowInlayHints: json['lspShowInlayHints'] as bool? ?? false,
+    lspCodeFolding: json['lspCodeFolding'] as bool? ?? true,
+    lspShowInlayHints: json['lspShowInlayHints'] as bool? ?? true,
     lspGoToDefinition: json['lspGoToDefinition'] as bool? ?? true,
     lspRename: json['lspRename'] as bool? ?? true,
     lspAlwaysStart: json['lspAlwaysStart'] as bool? ?? false,
@@ -332,7 +336,12 @@ class SettingsPersistence {
   Future<void> save(SettingsPersistedData data) async {
     try {
       final file = await _file;
-      await file.writeAsString(jsonEncode(data.toJson()));
+      // Temp file + rename, matching TabsPersistence and PluginPersistence.
+      // A partial write here used to produce truncated JSON that `load` then
+      // swallowed into `null`, silently resetting every user setting.
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.rename(file.path);
     } catch (e) {
       debugPrint('SettingsPersistence: Failed to save: $e');
     }

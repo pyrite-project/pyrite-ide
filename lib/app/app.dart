@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/sdk/environment_broadcaster.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
@@ -20,45 +21,55 @@ import 'package:dynamic_color/dynamic_color.dart';
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
 
+  /// Builds the Material sub-theme radii for [style].
+  ///
+  /// Every entry is the *outer* radius, so all top-level rounded surfaces share
+  /// one value. Surfaces nested inside another rounded surface use
+  /// [AppCornerRadii.inner] instead, which is `outer - gap`; see
+  /// [AppCornerRadii]. Full-round shapes (pills, avatars, dots) keep their own
+  /// radius and are not part of the nesting scale.
   FlexSubThemesData _subThemes(ThemeStyle style) {
-    switch (style) {
-      case ThemeStyle.compact:
-        return const FlexSubThemesData(
-          defaultRadius: 2,
-          inputDecoratorRadius: 2,
-          cardRadius: 2,
-          chipRadius: 2,
-          textButtonRadius: 2,
-          elevatedButtonRadius: 2,
-          outlinedButtonRadius: 2,
-          filledButtonRadius: 2,
-          segmentedButtonRadius: 2,
-          toggleButtonsRadius: 2,
-          popupMenuRadius: 2,
-          menuRadius: 2,
-          menuBarRadius: 2,
-          searchBarRadius: 2,
-          searchViewRadius: 2,
-          fabRadius: 16,
-          useM2StyleDividerInM3: true,
-          blendOnLevel: 20,
-          blendOnColors: false,
-          inputDecoratorBorderType: FlexInputBorderType.outline,
-          cardBorderWidth: 1,
-          cardElevation: 0,
-        );
-      case ThemeStyle.comfortable:
-        return const FlexSubThemesData(
-          defaultRadius: 4,
-          inputDecoratorRadius: 4,
-          cardRadius: 8,
-          chipRadius: 6,
-          blendOnLevel: 10,
-          blendOnColors: true,
-        );
-      default: // standard
-        return const FlexSubThemesData();
-    }
+    final AppCornerRadii corners = AppCornerRadii.forStyle(style);
+    final double outer = corners.outer;
+    // Every value here is the shared outer radius, so panels, cards, dialogs,
+    // menus, fields and buttons all agree on one corner shape.
+    return FlexSubThemesData(
+      defaultRadius: outer,
+      inputDecoratorRadius: outer,
+      cardRadius: outer,
+      chipRadius: outer,
+      textButtonRadius: outer,
+      elevatedButtonRadius: outer,
+      outlinedButtonRadius: outer,
+      filledButtonRadius: outer,
+      segmentedButtonRadius: outer,
+      toggleButtonsRadius: outer,
+      popupMenuRadius: outer,
+      menuRadius: outer,
+      menuBarRadius: outer,
+      menuIndicatorRadius: outer,
+      searchBarRadius: outer,
+      searchViewRadius: outer,
+      fabRadius: outer,
+      dialogRadius: outer,
+      datePickerDialogRadius: outer,
+      timePickerDialogRadius: outer,
+      timePickerElementRadius: outer,
+      snackBarRadius: outer,
+      drawerRadius: outer,
+      drawerIndicatorRadius: outer,
+      bottomSheetRadius: outer,
+      tooltipRadius: outer,
+      navigationBarIndicatorRadius: outer,
+      navigationRailIndicatorRadius: outer,
+      // `compact` is the only tier that changes non-radius behavior.
+      useM2StyleDividerInM3: style == ThemeStyle.compact,
+      blendOnLevel: style == ThemeStyle.compact ? 20 : 10,
+      blendOnColors: style != ThemeStyle.compact,
+      inputDecoratorBorderType: FlexInputBorderType.outline,
+      cardBorderWidth: style == ThemeStyle.compact ? 1 : null,
+      cardElevation: style == ThemeStyle.compact ? 0 : null,
+    );
   }
 
   ColorScheme _resolveColorScheme({
@@ -137,7 +148,13 @@ class PyriteIDE extends ConsumerWidget {
           );
     }
 
-    return _applyDensityTokens(baseTheme, tokens);
+    return _applyDensityTokens(baseTheme, tokens).copyWith(
+      extensions: <ThemeExtension<dynamic>>[
+        // Single source of truth for corner radii, shared by the built-in theme
+        // and by plugin-provided themes.
+        AppCornerRadii.forStyle(style),
+      ],
+    );
   }
 
   /// Applies the desktop density/typography overlay on top of any base theme

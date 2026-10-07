@@ -224,7 +224,9 @@ class Editor extends ConsumerWidget {
           <int, Color>{},
         ),
       ),
-      child: TabbedView(controller: ref.watch(tabbedViewControllerProvider)),
+      child: TabbedView(
+        controller: ref.watch(tabbedViewControllerProvider),
+      ),
     );
   }
 }

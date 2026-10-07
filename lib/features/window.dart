@@ -6,27 +6,45 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
+import 'package:tabbed_view/src/tab_data.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 
 class UseWindow with WindowListener {
   ProviderContainer? _container;
   bool _closing = false;
+
+  /// Guards the unsaved-changes prompt against a second close request
+  /// arriving while the first one is still showing its dialog.
+  bool _confirmingUnsaved = false;
 
   void init() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       WidgetsFlutterBinding.ensureInitialized();
       await windowManager.ensureInitialized();
       await windowManager.setPreventClose(true);
-      await windowManager.setAlwaysOnTop(_container?.read(alwaysOnTopProvider) ?? false);
+      await windowManager.setAlwaysOnTop(
+        _container?.read(alwaysOnTopProvider) ?? false,
+      );
+      // window_manager's focus callbacks only exist on macOS and Linux; the
+      // Windows embedder never handles WM_ACTIVATE, so `onWindowFocus` below
+      // is dead code there. Handing the editor a real focus probe is what
+      // actually recovers a modifier held across an Alt+Tab on Windows.
+      editorModifierKeys.windowFocusProbe = windowManager.isFocused;
       windowManager.addListener(this);
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
@@ -42,6 +60,21 @@ class UseWindow with WindowListener {
   @override
   void onWindowClose() async {
     if (_closing) return;
+
+    // The unsaved-changes prompt is a courtesy, not a gate. If it fails for
+    // any reason -- no Navigator to push onto, a provider that throws while
+    // being read -- the window must still close. Reporting a close request and
+    // then doing nothing leaves the user with an app they cannot quit, which is
+    // strictly worse than losing a buffer they were warned about.
+    var mayClose = true;
+    try {
+      mayClose = await _confirmDiscardUnsavedTabs();
+    } catch (error) {
+      debugPrint(
+        '[window] unsaved-changes prompt failed, closing anyway: $error',
+      );
+    }
+    if (!mayClose) return;
     _closing = true;
 
     try {
@@ -55,6 +88,140 @@ class UseWindow with WindowListener {
       await windowManager.destroy();
       exit(0);
     }
+  }
+
+  /// Offers to write out dirty editors before the window goes away.
+  ///
+  /// Returns false when the user cancels, in which case closing is abandoned
+  /// and the next close request starts over. `onWindowClose` runs without a
+  /// BuildContext of its own, so the dialog rides on [appContext], which the
+  /// app shell installs at startup.
+  Future<bool> _confirmDiscardUnsavedTabs() async {
+    final container = _container;
+    final context = appContext;
+    if (container == null || context == null || !context.mounted) return true;
+    if (_confirmingUnsaved) return false;
+
+    final unsaved = _collectUnsavedTabs(container);
+    if (unsaved.isEmpty) return true;
+
+    _confirmingUnsaved = true;
+    try {
+      return await _showUnsavedExitDialog(container, context, unsaved);
+    } finally {
+      _confirmingUnsaved = false;
+    }
+  }
+
+  Future<bool> _showUnsavedExitDialog(
+    ProviderContainer container,
+    BuildContext context,
+    List<TabData> unsaved,
+  ) async {
+    final registry = container.read(dataRegistryProvider);
+    final locale = container.read(activeLocaleProvider);
+    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateFromRegistry(registry, locale, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
+
+    final choice = await showDialog<_ExitChoice>(
+      context: context,
+      // A close request must not slip through on a barrier tap.
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(tr(I18nKey.appExitUnsavedTitle)),
+        content: Text(
+          tr(I18nKey.appExitUnsavedContent, {'count': '${unsaved.length}'}),
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_ExitChoice.discard),
+            child: Text(tr(I18nKey.appExitUnsavedDiscardAll)),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_ExitChoice.saveAll),
+            child: Text(tr(I18nKey.appExitUnsavedSaveAll)),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_ExitChoice.cancel),
+            child: Text(tr(I18nKey.tabUnsavedDialogCancel)),
+          ),
+        ],
+      ),
+    );
+
+    switch (choice) {
+      case _ExitChoice.saveAll:
+        final notifier = container.read(fileProvider.notifier);
+        for (final tab in unsaved) {
+          // One unreadable file must not strand the rest of the saves, and it
+          // must not keep the window open either -- the buffer is already
+          // persisted for the next session.
+          try {
+            await notifier.saveTab(tab);
+          } catch (_) {}
+        }
+        container
+            .read(ideMessageProvider.notifier)
+            .success(tr(I18nKey.tabSavedCurrentFile));
+        return true;
+      case _ExitChoice.discard:
+        return true;
+      case _ExitChoice.cancel:
+      case null:
+        return false;
+    }
+  }
+
+  List<TabData> _collectUnsavedTabs(ProviderContainer container) {
+    final tabs = <TabData>[
+      ...container.read(tabbedViewControllerProvider).tabs,
+      ...container.read(expansionViewController).tabs,
+    ];
+    return tabs.where(isTabUnsaved).toList();
+  }
+
+  @override
+  void onWindowFocus() {
+    // A modifier held while the window lost focus never produces a key-up,
+    // which leaves the framework key cache claiming Alt is still down.
+    // Re-read the engine's view before the user can click. Only macOS and
+    // Linux reach here; Windows relies on `windowFocusProbe` instead, which
+    // this class supplies in `init`.
+    editorModifierKeys.onWindowFocus();
+    // Focus is when a file this window had open is most likely to have been
+    // changed elsewhere: a git checkout, another editor, or a command line
+    // tool. Reconcile before the user can type over it or save past it.
+    unawaited(_checkExternalFileChanges());
+  }
+
+  Future<void> _checkExternalFileChanges() async {
+    final container = _container;
+    final context = appContext;
+    if (container == null || context == null || !context.mounted) return;
+    try {
+      await container
+          .read(tabbedViewControllerProvider.notifier)
+          .checkExternalChanges(context);
+    } catch (error) {
+      debugPrint('[window] external file check failed: $error');
+    }
+  }
+
+  @override
+  void onWindowBlur() {
+    editorModifierKeys.onWindowBlur();
   }
 
   Future<void> _closeDesktopTerminals() async {
@@ -78,6 +245,8 @@ class UseWindow with WindowListener {
   }
 }
 
+enum _ExitChoice { discard, saveAll, cancel }
+
 class UseTitleBar extends ConsumerWidget {
   const UseTitleBar({super.key});
 
@@ -88,7 +257,7 @@ class UseTitleBar extends ConsumerWidget {
     final double leftPadding = Platform.isMacOS
         ? 80
         : ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth / 2 -
-            appIconSize / 2;
+              appIconSize / 2;
     return GestureDetector(
       onPanStart: (details) => windowManager.startDragging(),
       child: Container(
@@ -312,9 +481,13 @@ class WindowActionBar extends ConsumerWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         IconButton(
-          icon: (ref.watch(alwaysOnTopProvider)) ? Icon(Icons.push_pin, size: 18) : Icon(Icons.push_pin_outlined, size: 18),
+          icon: (ref.watch(alwaysOnTopProvider))
+              ? Icon(Icons.push_pin, size: 18)
+              : Icon(Icons.push_pin_outlined, size: 18),
           onPressed: () async {
-            ref.read(alwaysOnTopProvider.notifier).state = !ref.read(alwaysOnTopProvider);
+            ref.read(alwaysOnTopProvider.notifier).state = !ref.read(
+              alwaysOnTopProvider,
+            );
             await windowManager.setAlwaysOnTop(ref.read(alwaysOnTopProvider));
           },
         ),

@@ -1,25 +1,49 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_lsp_completion_source.dart';
+import 'package:pyrite_ide/core/services/editor/repl_traceback_frames.dart';
 import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
+
+/// Input history is bucketed per device: the label of the attached board, or
+/// empty when nothing is attached.
+final replDeviceBucketProvider = Provider<String>((ref) {
+  return ref.watch(activeDeviceLabelProvider) ?? '';
+});
 
 final replInputControllerProvider = Provider<ReplInputController>((ref) {
-  final controller = ReplInputController();
+  final controller = ReplInputController(
+    deviceBucket: ref.read(replDeviceBucketProvider),
+  );
+  // The bucket is swapped inside the controller rather than by rebuilding it.
+  // The REPL surface reads this provider once and keeps the controller in a
+  // field, and it survives a device switch — a new instance here would leave
+  // the console holding a disposed notifier.
+  ref.listen(replDeviceBucketProvider, (_, next) {
+    unawaited(controller.useDeviceBucket(next));
+  });
   ref.onDispose(controller.dispose);
   return controller;
 });
@@ -54,6 +78,10 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   final _selectionKey = GlobalKey<SelectionAreaState>();
   final _inputBlockKey = GlobalKey();
   final _editableTextKey = GlobalKey<EditableTextState>();
+
+  /// The transcript's [Text.rich], so a tap can be mapped back to a text
+  /// offset through its [RenderParagraph].
+  final _transcriptTextKey = GlobalKey();
   final _completionLayerLink = LayerLink();
 
   late final ReplInputController _input;
@@ -201,6 +229,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   Widget _buildTranscript(BuildContext context) {
     final outputStyle = _outputStyle();
     final promptStyle = _promptStyle(context);
+    final scheme = Theme.of(context).colorScheme;
     return SelectionArea(
       key: _selectionKey,
       onSelectionChanged: (content) {
@@ -208,11 +237,90 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
         if (!mounted || value == _selectedOutput) return;
         setState(() => _selectedOutput = value);
       },
-      child: Text.rich(
-        _buildTranscriptSpan(outputStyle, promptStyle),
-        softWrap: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapUp: _handleTranscriptTap,
+        child: Text.rich(
+          _buildTranscriptSpan(
+            outputStyle,
+            promptStyle,
+            TextStyle(
+              // A link-coloured, underlined file:line is the affordance that
+              // says this is clickable, and a traceback is exactly where the
+              // user is looking when they want to go there.
+              color: scheme.primary,
+              decoration: TextDecoration.underline,
+              decorationColor: scheme.primary.withValues(alpha: .5),
+            ),
+          ),
+          key: _transcriptTextKey,
+          softWrap: true,
+        ),
       ),
     );
+  }
+
+  /// Resolves a tap in the transcript to a traceback frame, if it landed on
+  /// one.
+  ///
+  /// Position is mapped back to a text offset through the paragraph rather than
+  /// through a per-span recognizer, because a recognizer would be rebuilt on
+  /// every transcript append and would have to be disposed each time. With
+  /// wrapping on, a tap can land at the same vertical position on any of the
+  /// visual lines, so the paragraph — not the widget — is the authority.
+  void _handleTranscriptTap(TapUpDetails details) {
+    final renderObject = _transcriptTextKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderParagraph) return;
+    final position = renderObject.getPositionForOffset(details.localPosition);
+    final offset = position.offset;
+    for (final range in tracebackFrameRanges(_transcript.text)) {
+      if (offset < range.start || offset > range.end) continue;
+      _openTracebackFrame(range.frame);
+      return;
+    }
+  }
+
+  /// Opens the editor at the frame the user tapped.
+  ///
+  /// A path that no longer exists is left alone rather than reported: a
+  /// traceback can name a file that has since been renamed or deleted, and
+  /// telling the user their own traceback is unopenable is less useful than
+  /// leaving the console exactly as it was.
+  void _openTracebackFrame(TracebackFrame frame) {
+    final resolved = _resolveReplSourcePath(frame.file);
+    if (resolved == null) return;
+    unawaited(revealLspLocation(context, ref, resolved, frame.line, 0));
+  }
+
+  /// Maps a traceback's file name onto a path on this machine.
+  ///
+  /// The device reports a bare name like `main.py`, relative to wherever the
+  /// firmware's cwd was. The workspace root is the only anchor the IDE has, so
+  /// the name is resolved against it; if that does not exist, the bare name is
+  /// tried against the cwd, which covers a project opened from inside its own
+  /// directory.
+  String? _resolveReplSourcePath(String file) {
+    final candidates = <String>[file];
+    if (!file.contains('/') && !file.contains(r'\')) {
+      final workspaceRoot = _currentWorkspaceRoot();
+      if (workspaceRoot != null) {
+        candidates.insert(0, '$workspaceRoot${Platform.pathSeparator}$file');
+      }
+    }
+    for (final candidate in candidates) {
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return null;
+  }
+
+  String? _currentWorkspaceRoot() {
+    for (final tab in ref.read(tabbedViewControllerProvider).tabs) {
+      final value = tab.value;
+      if (value is! TabDataValue) continue;
+      final parent = path.dirname(value.filePath);
+      if (Directory(parent).existsSync()) return parent;
+    }
+    return null;
   }
 
   Widget _buildInputBlock(BuildContext context, {required bool visible}) {
@@ -293,12 +401,53 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     );
   }
 
-  TextSpan _buildTranscriptSpan(TextStyle outputStyle, TextStyle promptStyle) {
+  /// Builds the transcript's inline spans, highlighting prompts and styling
+  /// traceback frames as links.
+  ///
+  /// Prompts and frames are matched in a single pass and the matches are sorted,
+  /// because two separate passes would emit whichever came last in the text
+  /// rather than the earlier one. Frames get link styling but no recognizer:
+  /// a [TapGestureRecognizer] built here would have to be disposed, and a
+  /// recognizer rebuilt on every transcript append is exactly how those leak.
+  /// The tap is resolved from the tap position against these same offsets by
+  /// [\_ReplSurfaceState._handleTranscriptTap].
+  TextSpan _buildTranscriptSpan(
+    TextStyle outputStyle,
+    TextStyle promptStyle,
+    TextStyle frameStyle,
+  ) {
     final text = _transcript.text;
     final spans = <InlineSpan>[];
+    final matches = <({int start, int end, InlineSpan span})>[];
+
     final promptPattern = RegExp(r'^(>>> |\.\.\. )', multiLine: true);
-    var offset = 0;
     for (final match in promptPattern.allMatches(text)) {
+      matches.add((
+        start: match.start,
+        end: match.end,
+        span: TextSpan(text: match.group(0), style: promptStyle),
+      ));
+    }
+
+    for (final range in tracebackFrameRanges(text)) {
+      matches.add((
+        start: range.start,
+        end: range.end,
+        span: TextSpan(
+          text: text.substring(range.start, range.end),
+          style: frameStyle,
+        ),
+      ));
+    }
+
+    matches.sort((a, b) => a.start.compareTo(b.start));
+
+    var offset = 0;
+    for (final match in matches) {
+      // A prompt and a frame cannot overlap, but a malformed frame line could
+      // still collide with a neighbouring match; skipping keeps the spans
+      // monotonic rather than emitting a backwards range.
+      if (match.start < offset) continue;
       if (match.start > offset) {
         spans.add(
           TextSpan(
@@ -307,7 +456,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
           ),
         );
       }
-      spans.add(TextSpan(text: match.group(0), style: promptStyle));
+      spans.add(match.span);
       offset = match.end;
     }
     if (offset < text.length) {
@@ -1236,7 +1385,7 @@ class _ReplSignaturePopup extends StatelessWidget {
             key: const ValueKey('repl-signature-popup'),
             elevation: 6,
             color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: context.outerCorners,
             clipBehavior: Clip.antiAlias,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1291,69 +1440,96 @@ class _ReplCompletionPopup extends StatelessWidget {
       builder: (context, _) {
         final items = controller.items;
         if (items.isEmpty) return const SizedBox.shrink();
+        final selectedIndex = controller.selectedIndex;
+        final documentation = selectedIndex >= 0 && selectedIndex < items.length
+            ? items[selectedIndex].documentation
+            : null;
         return TapRegion(
           onTapOutside: (_) => controller.dismiss(),
           child: Material(
             key: const ValueKey('repl-completion-popup'),
             elevation: 8,
             color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: context.outerCorners,
             clipBehavior: Clip.antiAlias,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final selected = index == controller.selectedIndex;
-                return InkWell(
-                  onTap: () => onSelected(index),
-                  child: Container(
-                    height: 34,
-                    color: selected
-                        ? scheme.primary.withValues(alpha: .14)
-                        : Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _completionIcon(item.kind),
-                          size: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Flexible(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    shrinkWrap: true,
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final selected = index == selectedIndex;
+                      return InkWell(
+                        onTap: () => onSelected(index),
+                        child: Container(
+                          height: 34,
                           color: selected
-                              ? scheme.primary
-                              : scheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            item.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: scheme.onSurface,
-                              fontWeight: selected
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                        if (item.detail != null)
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 130),
-                            child: Text(
-                              item.detail!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontSize: 11,
+                              ? scheme.primary.withValues(alpha: .14)
+                              : Colors.transparent,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _completionIcon(item.kind),
+                                size: 16,
+                                color: selected
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: scheme.onSurface,
+                                    fontWeight: selected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                              if (item.detail != null)
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 130,
+                                  ),
+                                  child: Text(
+                                    item.detail!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
-                      ],
-                    ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+                // The docstring pane is what makes the list usable for
+                // MicroPython, where `help()` is often the only documentation
+                // there is: the label says what a name is called and the
+                // signature says how many arguments it takes, but neither says
+                // what it does. It follows the selection, so arrowing down
+                // through the list previews each entry.
+                if (documentation != null && documentation.trim().isNotEmpty)
+                  _CompletionDocumentationPane(
+                    text: documentation,
+                    separatorColor: scheme.outlineVariant,
+                    textColor: scheme.onSurfaceVariant,
+                  ),
+              ],
             ),
           ),
         );
@@ -1373,6 +1549,47 @@ IconData _completionIcon(ReplCompletionKind kind) => switch (kind) {
   ReplCompletionKind.constant => Icons.pin,
   ReplCompletionKind.text => Icons.text_fields,
 };
+
+/// Docstring pane under the completion list.
+///
+/// Bounded so a long docstring cannot push the list off screen: the list is the
+/// part the user navigates, and a pane tall enough to do that would make the
+/// popup useless.
+class _CompletionDocumentationPane extends StatelessWidget {
+  const _CompletionDocumentationPane({
+    required this.text,
+    required this.separatorColor,
+    required this.textColor,
+  });
+
+  final String text;
+  final Color separatorColor;
+  final Color textColor;
+
+  /// Enough for a signature and a couple of wrapped lines of prose, which is
+  /// what most MicroPython docstrings open with.
+  static const double _maxHeight = 96;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: _maxHeight),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: separatorColor)),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      child: SingleChildScrollView(
+        child: Text(
+          text,
+          // A docstring is prose with its own line structure; keeping the
+          // signature apart from the description the way `help()` shows it is
+          // the point of displaying it at all.
+          style: TextStyle(color: textColor, fontSize: 11.5, height: 1.35),
+        ),
+      ),
+    );
+  }
+}
 
 class _InlineReplEditor extends StatelessWidget {
   const _InlineReplEditor({

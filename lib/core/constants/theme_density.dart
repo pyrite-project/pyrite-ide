@@ -72,9 +72,9 @@ class ThemeDensityTokens {
           style: ButtonStyle(
             iconSize: WidgetStatePropertyAll(18),
             minimumSize: WidgetStatePropertyAll(Size(32, 32)),
-            padding: WidgetStatePropertyAll(EdgeInsets.symmetric(
-              horizontal: 6,
-            )),
+            padding: WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 6),
+            ),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ),

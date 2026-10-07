@@ -1,9 +1,14 @@
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:tabbed_view/tabbed_view.dart';
+
+/// A stand-in for the editor controller that only provides what the reseed
+/// reads (`text`). The real controller builds a Rust-backed rope, which is
+/// not initialized in plain unit tests.
 
 void main() {
   test('matches an open board tab by logical board path', () {
@@ -135,6 +140,63 @@ void main() {
     expect((tab.value as TabDataValue).isSaved, isFalse);
   });
 
+  test('reseeds an overwritten board tab baseline under its tab path', () {
+    final cachePath = path.join('cache', 'lib', 'main.py');
+    final tab = _fileTab(
+      filePath: cachePath,
+      boardFilePath: '/lib/main.py',
+      controller: _FakeEditorController('buffer'),
+    );
+
+    final baselines = reseedOpenFileTransferBaselines(
+      [tab],
+      boardFiles: true,
+      affectedPaths: {'/lib/main.py'},
+    );
+
+    // The unsaved listener diffs under the tab's `filePath`, not the board
+    // path, so the reseed has to land there to have any effect.
+    expect(baselines, {cachePath: 'buffer'});
+  });
+
+  test('reseeds an overwritten local tab baseline under its path', () {
+    final filePath = path.join('workspace', 'main.py');
+    final tab = _fileTab(
+      filePath: filePath,
+      controller: _FakeEditorController('buffer'),
+    );
+
+    final baselines = reseedOpenFileTransferBaselines(
+      [tab],
+      boardFiles: false,
+      affectedPaths: {filePath},
+    );
+
+    expect(baselines, {filePath: 'buffer'});
+  });
+
+  test(
+    'skips tabs the transfer did not touch and tabs without controllers',
+    () {
+      final affected = _fileTab(
+        filePath: path.join('workspace', 'hit.py'),
+        controller: _FakeEditorController('buffer'),
+      );
+      final unrelated = _fileTab(
+        filePath: path.join('workspace', 'miss.py'),
+        controller: _FakeEditorController('buffer'),
+      );
+
+      final baselines = reseedOpenFileTransferBaselines(
+        [affected, unrelated],
+        boardFiles: false,
+        affectedPaths: {path.join('workspace', 'hit.py')},
+      );
+
+      expect(baselines.keys, [path.join('workspace', 'hit.py')]);
+    },
+  );
+
   testWidgets('saving an unsaved file tab restores its file icon', (
     tester,
   ) async {
@@ -163,7 +225,11 @@ void main() {
   });
 }
 
-TabData _fileTab({required String filePath, String? boardFilePath}) {
+TabData _fileTab({
+  required String filePath,
+  String? boardFilePath,
+  CodeForgeController? controller,
+}) {
   return TabData(
     text: path.basename(filePath),
     value: TabDataValue(
@@ -171,6 +237,19 @@ TabData _fileTab({required String filePath, String? boardFilePath}) {
       filePath: filePath,
       isBoardFile: boardFilePath != null,
       boardFilePath: boardFilePath,
+      editorController: controller,
     ),
   );
+}
+
+class _FakeEditorController implements CodeForgeController {
+  _FakeEditorController(this.bufferText);
+
+  final String bufferText;
+
+  @override
+  String get text => bufferText;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

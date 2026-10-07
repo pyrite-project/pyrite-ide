@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -634,7 +635,7 @@ Future<bool> showDeviceNotReadyDialog(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: Theme.of(ctx).colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: context.innerCorners,
               ),
               child: UseText(
                 I18nKey.dialogDeviceNotReadyReason,
@@ -710,7 +711,7 @@ Future<bool> showDiffConfirmDialog(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: context.innerCorners,
                 ),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,

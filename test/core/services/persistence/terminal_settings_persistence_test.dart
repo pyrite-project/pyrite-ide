@@ -48,18 +48,23 @@ void main() {
     expect(data.toJson().containsKey('lspPythonInterpreter'), isFalse);
   });
 
-  test('LSP language ID and stdio arguments use generic defaults', () {
+  test('LSP stdio arguments use generic defaults', () {
     final defaults = SettingsPersistedData.fromJson(const {});
-    expect(defaults.lspLanguageId, 'python');
     expect(defaults.lspStdioArgs, isEmpty);
 
     final data = SettingsPersistedData.fromJson({
-      'lspLanguageId': 'custom-language',
       'lspStdioArgs': 'serve --stdio',
     });
 
-    expect(data.toJson()['lspLanguageId'], 'custom-language');
     expect(data.toJson()['lspStdioArgs'], 'serve --stdio');
+  });
+
+  test('no longer persists the removed LSP language id', () {
+    final data = SettingsPersistedData.fromJson({
+      'lspLanguageId': 'custom-language',
+    });
+
+    expect(data.toJson().containsKey('lspLanguageId'), isFalse);
   });
 
   test('migrates an old LSP Python interpreter path to its environment', () {
@@ -90,11 +95,29 @@ void main() {
   );
 
   test('inlay hint display setting round-trips with a compatible default', () {
-    expect(SettingsPersistedData.fromJson(const {}).lspShowInlayHints, isFalse);
+    expect(SettingsPersistedData.fromJson(const {}).lspShowInlayHints, isTrue);
 
-    final data = SettingsPersistedData.fromJson({'lspShowInlayHints': true});
+    final data = SettingsPersistedData.fromJson({'lspShowInlayHints': false});
 
+    expect(data.lspShowInlayHints, isFalse);
+    expect(data.toJson()['lspShowInlayHints'], isFalse);
+  });
+
+  test('every LSP capability defaults to on', () {
+    final data = SettingsPersistedData.fromJson(const {});
+
+    expect(data.lspSemanticHighlighting, isTrue);
+    expect(data.lspCodeCompletion, isTrue);
+    expect(data.lspHoverInfo, isTrue);
+    expect(data.lspCodeAction, isTrue);
+    expect(data.lspSignatureHelp, isTrue);
+    expect(data.lspDocumentColor, isTrue);
+    expect(data.lspDocumentHighlight, isTrue);
+    expect(data.lspCodeFolding, isTrue);
     expect(data.lspShowInlayHints, isTrue);
-    expect(data.toJson()['lspShowInlayHints'], isTrue);
+    expect(data.lspGoToDefinition, isTrue);
+    expect(data.lspRename, isTrue);
+    // Scope, not a capability: the server stays off for non-Python files.
+    expect(data.lspAlwaysStart, isFalse);
   });
 }

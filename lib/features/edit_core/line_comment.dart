@@ -1,11 +1,11 @@
-// Pure logic for toggling Python-style line comments in the editor.
+// Pure logic for toggling line comments in the editor.
 //
 // Kept free of Flutter dependencies so it can be unit tested directly.
 
-/// Matches an optional `#` comment marker directly after a line's leading
-/// whitespace. The first group captures the whitespace so it can be
-/// preserved when the marker is removed.
-final RegExp _commentMarker = RegExp(r'^(\s*)# ?');
+/// Matches an optional comment marker directly after a line's leading
+/// whitespace. The first group captures the whitespace so it can be preserved
+/// when the marker is removed.
+final RegExp _leadingWhitespace = RegExp(r'^(\s*)');
 
 /// Result of toggling line comments over a block of lines.
 class LineCommentToggleResult {
@@ -19,23 +19,28 @@ class LineCommentToggleResult {
   final List<int> deltas;
 }
 
-/// Toggles Python-style `#` comments over [lines].
+/// Toggles line comments over [lines] using the [marker] prefix (for example
+/// `#`, `//` or `--`).
 ///
 /// Lines are uncommented (marker plus one optional space removed, keeping
-/// indentation) when every non-blank line already carries a marker;
-/// otherwise each non-blank line gains one right after its indentation.
-/// Whitespace-only lines are left untouched.
+/// indentation) when every non-blank line already carries a marker; otherwise
+/// each non-blank line gains one right after its indentation. Whitespace-only
+/// lines are left untouched.
 ///
 /// Returns null when there is nothing to change.
-LineCommentToggleResult? toggleLineComments(List<String> lines) {
+LineCommentToggleResult? toggleLineComments(
+  List<String> lines, {
+  String marker = '#',
+}) {
   if (lines.isEmpty) return null;
+  final markerRegExp = RegExp(r'^(\s*)' + RegExp.escape(marker) + r' ?');
 
   var contentCount = 0;
   var commentedCount = 0;
   for (final line in lines) {
     if (line.trim().isEmpty) continue;
     contentCount++;
-    if (_commentMarker.hasMatch(line)) commentedCount++;
+    if (markerRegExp.hasMatch(line)) commentedCount++;
   }
   final uncomment = contentCount > 0 && commentedCount == contentCount;
 
@@ -46,15 +51,15 @@ LineCommentToggleResult? toggleLineComments(List<String> lines) {
     String newLine;
     if (uncomment) {
       newLine = line.replaceFirstMapped(
-        _commentMarker,
+        markerRegExp,
         (match) => match.group(1)!,
       );
     } else if (line.trim().isEmpty) {
       newLine = line;
     } else {
       newLine = line.replaceFirstMapped(
-        RegExp(r'^\s*'),
-        (match) => '${match.group(0)}# ',
+        _leadingWhitespace,
+        (match) => '${match.group(0)}$marker ',
       );
     }
     changed |= newLine != line;
@@ -65,7 +70,7 @@ LineCommentToggleResult? toggleLineComments(List<String> lines) {
   // A lone blank current line still gains a fresh marker so Ctrl+/ starts a
   // comment instead of doing nothing.
   if (!changed && !uncomment && lines.length == 1) {
-    final newLine = '${lines.first}# ';
+    final newLine = '${lines.first}$marker ';
     return LineCommentToggleResult(
       [newLine],
       [newLine.length - lines.first.length],

@@ -4,6 +4,8 @@
 *.pyc
 *.swp
 .DS_Store
+.zcode/
+/temp_todo.txt
 .atom/
 .build/
 .buildlog/

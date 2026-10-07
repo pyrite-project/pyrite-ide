@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 class EditorSettings extends ConsumerWidget {
   const EditorSettings({super.key});
@@ -153,6 +154,24 @@ class EditorSettings extends ConsumerWidget {
               value: ref.watch(editorGutterDivider),
               onChanged: (value) =>
                   ref.read(editorGutterDivider.notifier).state = value,
+            ),
+
+            SwitchListTile(
+              title: const UseText(I18nKey.settingsEditorSmoothCursor),
+              subtitle: const UseText(
+                I18nKey.settingsEditorSmoothCursorSubtitle,
+              ),
+              value: ref.watch(editorSmoothCursor),
+              onChanged: (value) =>
+                  ref.read(editorSmoothCursor.notifier).state = value,
+            ),
+
+            SwitchListTile(
+              title: const UseText(I18nKey.settingsEditorMinimap),
+              subtitle: const UseText(I18nKey.settingsEditorMinimapSubtitle),
+              value: ref.watch(editorMinimap),
+              onChanged: (value) =>
+                  ref.read(editorMinimap.notifier).state = value,
             ),
 
             SwitchListTile(
@@ -382,7 +401,7 @@ class EditorSettings extends ConsumerWidget {
                   height: 32,
                   decoration: BoxDecoration(
                     color: bgColor,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: context.innerCorners,
                     border: Border.all(
                       color: Theme.of(context).colorScheme.outlineVariant,
                     ),

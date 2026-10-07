@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:code_forge/code_forge.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
+import 'package:pyrite_ide/core/services/editor/repl_snippet.dart';
 
 class ReplLspCompletionSource {
   ReplLspCompletionSource({required this.currentController});
@@ -111,7 +112,8 @@ class ReplLspCompletionSource {
     ReplCompletionContext context,
   ) {
     final raw = completion.completionItem;
-    final insertText = _completionText(raw, completion.label);
+    final resolved = _completionText(raw, completion.label);
+    final insertText = resolved.text;
     if (insertText.isEmpty || !completion.label.startsWith(context.token)) {
       return null;
     }
@@ -124,22 +126,41 @@ class ReplLspCompletionSource {
       source: ReplCompletionSource.lsp,
       detail: raw['detail']?.toString(),
       documentation: _documentationText(raw['documentation']),
+      snippetSelectionStart: resolved.selectionStart,
+      snippetSelectionEnd: resolved.selectionEnd,
     );
   }
 
-  String _completionText(Map<String, dynamic> raw, String fallback) {
+  /// The text to insert, and the range to select inside it once inserted.
+  ///
+  /// `insertTextFormat: 2` marks the text as a snippet, carrying `${1:...}`
+  /// placeholders. The engine advertises `snippetSupport: false`, but servers
+  /// send snippets anyway, and inserting them literally would put `${1:host}`
+  /// into a MicroPython console. So they are expanded here, and the first
+  /// placeholder's default text is marked for selection so the user types over
+  /// the argument rather than after it.
+  ({String text, int? selectionStart, int? selectionEnd}) _completionText(
+    Map<String, dynamic> raw,
+    String fallback,
+  ) {
     final textEdit = raw['textEdit'];
-    if (textEdit is Map && textEdit['newText'] != null) {
-      return _plainInsertText(textEdit['newText'].toString(), raw);
+    final rawText = textEdit is Map && textEdit['newText'] != null
+        ? textEdit['newText'].toString()
+        : raw['insertText']?.toString() ?? fallback;
+    if (raw['insertTextFormat'] != 2) {
+      return (text: rawText, selectionStart: null, selectionEnd: null);
     }
-    return _plainInsertText(raw['insertText']?.toString() ?? fallback, raw);
-  }
-
-  String _plainInsertText(String value, Map<String, dynamic> raw) {
-    if (raw['insertTextFormat'] == 2) {
-      return raw['label']?.toString() ?? value;
+    final expanded = expandLspSnippet(rawText);
+    // A snippet with no placeholder at all is still a snippet, so expanding it
+    // may return null; in that case the text is already plain and usable.
+    if (expanded == null) {
+      return (text: rawText, selectionStart: null, selectionEnd: null);
     }
-    return value;
+    return (
+      text: expanded.text,
+      selectionStart: expanded.selectionStart,
+      selectionEnd: expanded.selectionEnd,
+    );
   }
 
   String? _documentationText(Object? value) {

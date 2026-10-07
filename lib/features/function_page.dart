@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:code_forge/code_forge.dart' show CodeForgeController;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +34,8 @@ import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.d
 import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
 import 'package:pyrite_ide/core/sdk/command_service.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/editor_document_host.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
 import 'package:pyrite_ide/core/sdk/menu_resolver.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
@@ -41,9 +44,13 @@ import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
+import 'package:pyrite_ide/features/function_page/problems_view.dart';
+import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:xterm/xterm.dart';
@@ -67,6 +74,11 @@ class ConsolePage extends ConsumerWidget {
     final useWebRepl =
         webReplConnected || webReplState.state == WebReplState.waitingPassword;
     final selectedTab = ref.watch(bottomPanelTabProvider);
+    final problems = ref.watch(problemsProvider);
+    var problemCount = 0;
+    for (final file in problems) {
+      problemCount += file.errorCount + file.warningCount;
+    }
     final actions = _buildConsoleActions(
       ref,
       selectedTab,
@@ -77,7 +89,15 @@ class ConsolePage extends ConsumerWidget {
 
     return Column(
       children: [
-        _BottomPanelTabs(selectedIndex: selectedTab, actions: actions),
+        _BottomPanelTabs(
+          selectedIndex: selectedTab,
+          actions: actions,
+          // The count rides on the translated label so a locale switch
+          // re-renders it together with the tab text.
+          problemsLabel: problemCount > 0
+              ? '${translateForWidget(ref, I18nKey.bottomPanelProblemsTab)} ($problemCount)'
+              : translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
+        ),
         Expanded(
           child: IndexedStack(
             index: selectedTab,
@@ -85,6 +105,7 @@ class ConsolePage extends ConsumerWidget {
               ReplView(),
               OutputLogView(),
               DesktopTerminalView(),
+              ProblemsView(),
             ],
           ),
         ),
@@ -110,6 +131,8 @@ class ConsolePage extends ConsumerWidget {
         ];
       case 2:
         return const [];
+      case 3:
+        return [_buildProblemsCollapseAction(ref)];
       default:
         return [
           if (!isConnected && !useWebRepl)
@@ -183,13 +206,50 @@ class ConsolePage extends ConsumerWidget {
         ];
     }
   }
+
+  /// Collapse-all / expand-all toggle for the Problems panel, shown while
+  /// that tab is selected. "All" covers every file that currently has rows;
+  /// stale paths from closed files are ignored.
+  Widget _buildProblemsCollapseAction(WidgetRef ref) {
+    final problems = ref.watch(problemsProvider);
+    final collapsed = ref.watch(collapsedProblemFilesProvider);
+    final groupPaths = [
+      for (final file in problems)
+        if (file.diagnostics.isNotEmpty) file.path,
+    ];
+    final allCollapsed =
+        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
+    return IconButton(
+      tooltip: translateForWidget(
+        ref,
+        allCollapsed
+            ? I18nKey.problemsPanelExpandAll
+            : I18nKey.problemsPanelCollapseAll,
+      ),
+      onPressed: () {
+        ref.read(collapsedProblemFilesProvider.notifier).state = allCollapsed
+            ? <String>{}
+            : Set<String>.from(groupPaths);
+      },
+      icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
+    );
+  }
 }
 
 class _BottomPanelTabs extends ConsumerWidget {
-  const _BottomPanelTabs({required this.selectedIndex, required this.actions});
+  const _BottomPanelTabs({
+    required this.selectedIndex,
+    required this.actions,
+    this.problemsLabel,
+  });
 
   final int selectedIndex;
   final List<Widget> actions;
+
+  /// Pre-translated Problems tab label; carries the open-problem count when
+  /// there is one, so the tab reads like VS Code's badge without adding a
+  /// badge slot to [_BottomPanelTab].
+  final String? problemsLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -221,6 +281,13 @@ class _BottomPanelTabs extends ConsumerWidget {
             index: 2,
             selectedIndex: selectedIndex,
           ),
+          if (problemsLabel != null)
+            _BottomPanelTab(
+              label: problemsLabel!,
+              icon: Icons.report_problem_outlined,
+              index: 3,
+              selectedIndex: selectedIndex,
+            ),
           const Spacer(),
           if (actions.isNotEmpty) ...[
             SizedBox(
@@ -768,7 +835,7 @@ Widget _selectedRailIcon(BuildContext context, Widget icon) {
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
       color: scheme.secondaryContainer,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: context.innerCorners,
     ),
     child: icon,
   );
@@ -782,10 +849,19 @@ NavigationRailDestination _tooltippedDestination(
   final tooltip = _destinationTooltip(ref, destination.label);
   if (tooltip == null) return destination;
   return NavigationRailDestination(
-    icon: Tooltip(message: tooltip, child: destination.icon),
+    // `container: true` keeps each rail destination its own semantics node so
+    // adjacent destinations cannot absorb one another's tooltip anchor and
+    // orphan its overlay node. See flutter/flutter#182444.
+    icon: Tooltip(
+      message: tooltip,
+      child: Semantics(container: true, child: destination.icon),
+    ),
     selectedIcon: Tooltip(
       message: tooltip,
-      child: _selectedRailIcon(context, destination.selectedIcon),
+      child: Semantics(
+        container: true,
+        child: _selectedRailIcon(context, destination.selectedIcon),
+      ),
     ),
     label: destination.label,
     padding: destination.padding ?? const EdgeInsets.symmetric(vertical: 3),
@@ -1790,6 +1866,7 @@ class EditorToolsBar extends ConsumerWidget {
                 entry.builder(context),
                 const SizedBox(width: 4),
               ],
+              buildEditorState(context, ref),
             ],
           ),
         ),
@@ -1998,6 +2075,36 @@ class EditorToolsBar extends ConsumerWidget {
     );
   }
 
+  /// Caret position, selection size and the LSP error/warning counts for the
+  /// selected file tab.
+  ///
+  /// Renders nothing when the active tab has no editor (welcome page, git diff
+  /// tab, plugin view) so the status bar does not show a stale position from
+  /// whatever file was open before.
+  ///
+  /// Subscribes to [CodeForgeController.displayChanges] only. That signal is
+  /// frame-safe by construction, which matters here because this widget sits
+  /// outside the editor's subtree while the editor notifies from inside its own
+  /// `initState` and build. Subscribing to the controller itself, or to its
+  /// `diagnosticsNotifier`, delivers callbacks during the build phase.
+  Widget buildEditorState(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
+    if (value is! TabDataValue || value.type != "file") {
+      return const SizedBox.shrink();
+    }
+    final controller = value.editorController;
+    if (controller == null) return const SizedBox.shrink();
+    return _EditorStateLabel(
+      // Stable key: the children list around this one has no keys and its
+      // length changes with transfer progress, running operations and registry
+      // items, so an unkeyed widget here can be re-matched to a different
+      // sibling.
+      key: const ValueKey('status-editor-state'),
+      controller: controller,
+      compact: ref.watch(themeStyle) == ThemeStyle.compact,
+    );
+  }
+
   Widget buildConsoleState(BuildContext context, WidgetRef ref) {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final visible = ref.watch(consolePageShow);
@@ -2057,7 +2164,11 @@ class EditorToolsBar extends ConsumerWidget {
             ),
           SizedBox(width: compact ? 4 : 6),
           Text(
-            op.label,
+            // Registry items can carry a raw label or an i18n key; the key is
+            // resolved at build time so a locale switch re-renders the chip.
+            op.labelKey != null
+                ? translateForWidget(ref, op.labelKey!)
+                : op.label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: scheme.onSurfaceVariant,
               fontSize: compact ? 12 : null,
@@ -2112,4 +2223,330 @@ class MobileNavigationDrawerButton extends ConsumerWidget {
       icon: const Icon(Icons.menu, size: 20),
     );
   }
+}
+
+/// LSP `DiagnosticSeverity` values the status bar counts and the diagnostic
+/// picker lists. Information and Hint are intentionally left out: for a board
+/// script they are noise, and counting them would make the number look
+/// alarming for correct code. Sharing one pair of constants is what keeps the
+/// status bar count and the picker list from ever disagreeing.
+const int _lspSeverityError = 1;
+const int _lspSeverityWarning = 2;
+
+/// Trailing status bar segment: caret position, selection size and the
+/// current file's LSP error/warning counts.
+///
+/// Listens to [CodeForgeController.displayChanges], the controller's
+/// frame-safe signal, and to nothing else. It must not subscribe to the
+/// controller directly: the editor notifies from inside its own `initState` and
+/// build, and this widget lives outside the editor's subtree, so a direct
+/// subscription would call back during the build phase.
+///
+/// The caret readout is a [TextButton] (clicking it scrolls the caret line
+/// back into view) and the problem count is one as well, so the segment does
+/// introduce button semantics nodes. Beyond those two, labels stay plain
+/// [Text] rather than [Semantics] wrappers: this app has no accessibility
+/// infrastructure today, and reshaping the engine's accessibility tree for
+/// the whole window is a separate piece of work, not something to smuggle in
+/// with a status bar readout.
+class _EditorStateLabel extends ConsumerWidget {
+  const _EditorStateLabel({
+    super.key,
+    required this.controller,
+    required this.compact,
+  });
+
+  final CodeForgeController controller;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListenableBuilder(
+      listenable: controller.displayChanges,
+      builder: (context, _) {
+        final scheme = Theme.of(context).colorScheme;
+        final textStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+          fontSize: compact ? 12 : null,
+        );
+
+        var errors = 0;
+        var warnings = 0;
+        for (final diagnostic in controller.diagnostics) {
+          if (diagnostic.severity == _lspSeverityError) {
+            errors++;
+          } else if (diagnostic.severity == _lspSeverityWarning) {
+            warnings++;
+          }
+        }
+
+        final position = _positionText(ref, controller);
+        final problems = errors > 0
+            ? _problemText(ref, errors, warnings)
+            : null;
+
+        return Padding(
+          padding: const EdgeInsetsDirectional.only(start: 4, end: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (position.isNotEmpty)
+                // Clicking the line/column readout scrolls the caret line
+                // back into view after scrolling (or a find jump) has left
+                // it off-screen.
+                TextButton(
+                  onPressed: () => _revealCaret(controller, ref),
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.onSurfaceVariant,
+                    minimumSize: const Size(0, 32),
+                    // Same pill shape, height and padding as
+                    // [_ProblemButton], so the readout stays one segment of
+                    // the status bar instead of a differently shaped chip.
+                    padding: const EdgeInsetsDirectional.only(
+                      start: 10,
+                      end: 12,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: context.effectiveRadius,
+                    ),
+                  ),
+                  child: Text(position, style: textStyle),
+                ),
+              if (problems != null) ...[
+                const SizedBox(width: 8),
+                // Clicking the error/warning count opens the shared jump
+                // window listing every diagnostic of this file.
+                _ProblemButton(
+                  text: problems,
+                  textStyle: textStyle,
+                  iconSize: compact ? 14 : 16,
+                  onPressed: () =>
+                      showEditorDiagnosticsPicker(context, ref, controller),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// The line the caret sits on, with the offset clamped to the document so a
+  /// caret that outlived its text (the file shrank underneath it) still
+  /// resolves instead of throwing.
+  int _caretLine(CodeForgeController controller) {
+    final offset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    return controller.getLineAtOffset(offset);
+  }
+
+  /// Caret line/column, plus the selection size when there is a selection.
+  ///
+  /// A WidgetRef cannot use `translateWithReplacements` (it takes a `Ref`), so
+  /// the placeholders are substituted directly.
+  String _positionText(WidgetRef ref, CodeForgeController controller) {
+    final offset = controller.selection.extentOffset.clamp(
+      0,
+      controller.length,
+    );
+    // Columns are 1-based and counted in characters, matching the LSP and
+    // matching what a board traceback points at. An empty document has no
+    // line to query, so fall through with column 1.
+    final hasLines = controller.lineCount > 0;
+    final line = hasLines ? _caretLine(controller) : 0;
+    final column = hasLines
+        ? offset - controller.getLineStartOffset(line) + 1
+        : offset + 1;
+    final caret = translateForWidget(
+      ref,
+      I18nKey.statusCursorPosition,
+    ).replaceAll('{line}', '${line + 1}').replaceAll('{column}', '$column');
+    final selection = controller.selection;
+    if (selection.isCollapsed) return caret;
+    final selected = translateForWidget(
+      ref,
+      I18nKey.statusSelectionCount,
+    ).replaceAll('{count}', '${selection.end - selection.start}');
+    return '$caret · $selected';
+  }
+
+  /// Scrolls the editor so the caret's line is visible again.
+  ///
+  /// The caret can end up far off-screen after the user scrolls away or a
+  /// find jump moves the view, and the line/column readout is then the only
+  /// visible hint of where editing continues.
+  ///
+  /// Compact layouts unmount the editor while another page is visible while
+  /// the status bar keeps showing this readout, so a click can land on an
+  /// unmounted editor. That follows the same policy as plugin reveals: switch
+  /// to the dedicated editor route and retry until the editor mounts.
+  Future<void> _revealCaret(
+    CodeForgeController controller,
+    WidgetRef ref,
+  ) async {
+    if (controller.lineCount == 0) return;
+    final line = _caretLine(controller);
+    try {
+      await retryEditorReveal(
+        reveal: () {
+          controller.scrollToLine(line);
+          // Hand focus back so the caret blinks at the revealed position —
+          // the flash alone is easy to miss on a long file.
+          controller.focusNode?.requestFocus();
+        },
+        onEditorUnavailable: () => _goToEditorPage(ref),
+      );
+    } on StateError catch (error) {
+      // The editor never mounted within the retry budget (its tab was just
+      // closed, for example).
+      debugPrint('status bar reveal: editor not mounted: $error');
+    } on RangeError catch (error) {
+      // The caret outlived the document (the file shrank underneath it).
+      debugPrint('status bar reveal: caret out of range: $error');
+    }
+  }
+
+  /// Opens the editor page when the layout hosts the editor on its own route;
+  /// the desktop workspace keeps the editor mounted on every route.
+  void _goToEditorPage(WidgetRef ref) {
+    final layoutMode = ref
+        .read(environmentNotifierProvider)
+        .snapshot
+        .layoutMode;
+    if (layoutNeedsDedicatedEditorRoute(layoutMode) &&
+        !routes.state.matchedLocation.startsWith(edit)) {
+      routes.go(edit);
+    }
+  }
+
+  String _problemText(WidgetRef ref, int errors, int warnings) {
+    final I18nKey key = switch ((errors, warnings)) {
+      (_, 0) => I18nKey.statusProblemsErrorsOnly,
+      (0, _) => I18nKey.statusProblemsWarningsOnly,
+      _ => I18nKey.statusProblems,
+    };
+    return translateForWidget(
+      ref,
+      key,
+    ).replaceAll('{errors}', '$errors').replaceAll('{warnings}', '$warnings');
+  }
+}
+
+/// Clickable form of the status bar's error/warning count.
+///
+/// A [TextButton] rather than an [InkWell] wrapped around the readout so the
+/// whole segment is one real hover/focus target. The child is still a plain
+/// [Row] of an icon and a [Text], so the segment renders and measures
+/// exactly like the previous non-interactive readout.
+class _ProblemButton extends StatelessWidget {
+  const _ProblemButton({
+    required this.text,
+    required this.textStyle,
+    required this.onPressed,
+    this.iconSize = 16,
+  });
+
+  final String text;
+  final TextStyle? textStyle;
+  final VoidCallback onPressed;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: scheme.error,
+        minimumSize: const Size(0, 32),
+        // Same pill shape, height and padding as [StatusBarButton], so the
+        // error count reads as one more segment of the status bar instead of
+        // a differently shaped chip.
+        padding: const EdgeInsetsDirectional.only(start: 10, end: 12),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: context.effectiveRadius),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, size: iconSize, color: scheme.error),
+          const SizedBox(width: 3),
+          Text(text, style: textStyle?.copyWith(color: scheme.error)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens the shared jump window over every diagnostic reported for
+/// [controller]'s file, so the status bar's error count navigates exactly
+/// like find-references does.
+///
+/// The file comes from the controller rather than an argument so the window
+/// always describes the file whose count was just clicked.
+Future<void> showEditorDiagnosticsPicker(
+  BuildContext context,
+  WidgetRef ref,
+  CodeForgeController controller,
+) async {
+  final filePath = controller.openedFile;
+  if (filePath == null) return;
+  final scheme = Theme.of(context).colorScheme;
+  final entries = <LspLocationEntry>[];
+  for (final diagnostic in controller.diagnostics) {
+    if (diagnostic.severity != _lspSeverityError &&
+        diagnostic.severity != _lspSeverityWarning) {
+      continue;
+    }
+    final start = diagnostic.range['start'];
+    if (start is! Map) continue;
+    final isError = diagnostic.severity == _lspSeverityError;
+    entries.add(
+      LspLocationEntry(
+        path: filePath,
+        line: (start['line'] as num?)?.toInt(),
+        character: (start['character'] as num?)?.toInt(),
+        // The diagnostic message is the useful label here: every row is the
+        // same file, so repeating the file name as the title would waste the
+        // one line that actually says something. The subtitle falls back to
+        // the dialog's default "file line:column" rendering.
+        title: diagnostic.message,
+        icon: isError ? Icons.error_outline : Icons.warning_amber_rounded,
+        iconColor: isError ? scheme.error : Colors.yellow.shade700,
+        severityRank: isError ? 0 : 1,
+      ),
+    );
+  }
+  if (entries.isEmpty) {
+    ref
+        .read(ideMessageProvider.notifier)
+        .show(translateForWidget(ref, I18nKey.editorDiagnosticsEmpty));
+    return;
+  }
+  // Errors first, then in document order, so the list reads like the file.
+  entries.sort((a, b) {
+    final bySeverity = a.severityRank.compareTo(b.severityRank);
+    if (bySeverity != 0) return bySeverity;
+    return (a.line ?? 0).compareTo(b.line ?? 0);
+  });
+  await showLspLocationDialog(
+    context,
+    ref,
+    titleBuilder: (ref) => translateForWidget(
+      ref,
+      I18nKey.editorDiagnosticsTitle,
+    ).replaceAll('{count}', entries.length.toString()),
+    entries: entries,
+    emptyKey: I18nKey.editorDiagnosticsEmpty,
+    onOpen: (entry) => revealLspLocation(
+      context,
+      ref,
+      entry.path,
+      entry.line,
+      entry.character,
+    ),
+  );
 }

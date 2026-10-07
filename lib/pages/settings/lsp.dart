@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
@@ -33,14 +34,7 @@ class LspSettings extends ConsumerWidget {
               },
             ),
 
-            ListTile(
-              title: const UseText(I18nKey.settingsLspConnectionType),
-              subtitle: Text(
-                ref.watch(lspType) == LspType.webSocket
-                    ? "WebSocket"
-                    : I18nKey.settingsLspStdioLocal.fallback,
-              ),
-            ),
+            ListTile(title: const UseText(I18nKey.settingsLspConnectionType)),
             RadioGroup<LspType>(
               groupValue: ref.watch(lspType),
               onChanged: (value) {
@@ -66,30 +60,6 @@ class LspSettings extends ConsumerWidget {
                     ),
                   ],
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: TextFormField(
-                initialValue: ref.read(lspLanguageId),
-                decoration: const InputDecoration(
-                  label: UseText(I18nKey.settingsLspLanguageId),
-                  helper: UseText(I18nKey.settingsLspLanguageIdHint),
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (value) {
-                  ref.read(lspLanguageId.notifier).state = value;
-                },
-                onFieldSubmitted: (value) {
-                  ref.read(lspLanguageId.notifier).state = value.trim();
-                  showIdeSuccess(
-                    context,
-                    translateForWidget(
-                      ref,
-                      I18nKey.settingsLspLanguageIdUpdated,
-                    ),
-                  );
-                },
               ),
             ),
             if (ref.watch(lspType) == LspType.webSocket) ...[
@@ -264,66 +234,78 @@ class LspSettings extends ConsumerWidget {
           children: [
             _CapabilitySwitch(
               title: I18nKey.settingsLspSemanticHighlighting,
+              description: I18nKey.settingsLspSemanticHighlightingDescription,
               provider: lspSemanticHighlighting,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeCompletion,
+              description: I18nKey.settingsLspCodeCompletionDescription,
               provider: lspCodeCompletion,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspHoverInfo,
+              description: I18nKey.settingsLspHoverInfoDescription,
               provider: lspHoverInfo,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeAction,
+              description: I18nKey.settingsLspCodeActionDescription,
               provider: lspCodeAction,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspSignatureHelp,
+              description: I18nKey.settingsLspSignatureHelpDescription,
               provider: lspSignatureHelp,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspDocumentColor,
+              description: I18nKey.settingsLspDocumentColorDescription,
               provider: lspDocumentColor,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspDocumentHighlight,
+              description: I18nKey.settingsLspDocumentHighlightDescription,
               provider: lspDocumentHighlight,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeFolding,
+              description: I18nKey.settingsLspCodeFoldingDescription,
               provider: lspCodeFolding,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspShowInlayHints,
+              description: I18nKey.settingsLspShowInlayHintsDescription,
               provider: lspShowInlayHints,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspGoToDefinition,
+              description: I18nKey.settingsLspGoToDefinitionDescription,
               provider: lspGoToDefinition,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspRename,
+              description: I18nKey.settingsLspRenameDescription,
               provider: lspRename,
             ),
           ],
         ),
         SettingsSection(
           title: I18nKey.settingsLspScope,
-          description: I18nKey.settingsLspServiceDescription,
+          description: I18nKey.settingsLspScopeDescription,
           children: [
             _CapabilitySwitch(
               title: I18nKey.settingsLspAlwaysStart,
+              description: I18nKey.settingsLspAlwaysStartDescription,
               provider: lspAlwaysStart,
             ),
           ],
@@ -537,162 +519,164 @@ class LspSettings extends ConsumerWidget {
   }
 
   void _showExtraPathsDialog(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(
-      text: ref.read(microPythonStubsExtraPaths).join('\n'),
-    );
+    final initial = ref.read(microPythonStubsExtraPaths).join('\n');
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsLspExtraPathsDialog),
-        content: SizedBox(
-          width: 460,
-          child: TextField(
-            controller: controller,
-            minLines: 6,
-            maxLines: 12,
-            decoration: const InputDecoration(
-              helper: UseText(I18nKey.settingsLspExtraPathsHelper),
-              border: OutlineInputBorder(),
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspExtraPathsDialog),
+          content: SizedBox(
+            width: 460,
+            child: TextField(
+              controller: c[0],
+              minLines: 6,
+              maxLines: 12,
+              decoration: const InputDecoration(
+                helper: UseText(I18nKey.settingsLspExtraPathsHelper),
+                border: OutlineInputBorder(),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                ref.read(microPythonStubsExtraPaths.notifier).state = c[0].text
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .where((line) => line.isNotEmpty)
+                    .toList();
+                context.pop();
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(microPythonStubsExtraPaths.notifier).state = controller
-                  .text
-                  .split('\n')
-                  .map((line) => line.trim())
-                  .where((line) => line.isNotEmpty)
-                  .toList();
-              context.pop();
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
       ),
     );
   }
 
   void showPathDialog(BuildContext context, WidgetRef ref) async {
-    final TextEditingController controller = TextEditingController();
-    controller.text = ref.read(lspWebSocketPath);
+    final initial = ref.read(lspWebSocketPath);
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsLspWebSocketAddress),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            label: UseText(I18nKey.settingsLspAddress),
-            helper: UseText(I18nKey.settingsLspAddressHint),
-            prefixText: "ws://",
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspWebSocketAddress),
+          content: TextField(
+            controller: c[0],
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              label: UseText(I18nKey.settingsLspAddress),
+              helper: UseText(I18nKey.settingsLspAddressHint),
+              prefixText: "ws://",
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim().replaceFirst(
-                RegExp(r'^ws://'),
-                '',
-              );
-              if (value.isEmpty) return;
-              final Uri? uri;
-              try {
-                uri = Uri.tryParse("ws://$value");
-                if (uri == null ||
-                    uri.host.isEmpty ||
-                    !uri.hasPort ||
-                    uri.port <= 0 ||
-                    uri.port > 65535) {
-                  throw const FormatException("Invalid WebSocket address");
-                }
-              } on FormatException {
-                showIdeError(
-                  context,
-                  translateForWidget(ref, I18nKey.settingsLspInvalidAddress),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = c[0].text.trim().replaceFirst(
+                  RegExp(r'^ws://'),
+                  '',
                 );
-                return;
-              }
-              ref.read(lspWebSocketPath.notifier).state = value;
-              context.pop();
-              showIdeSuccess(
-                context,
-                translateForWidget(ref, I18nKey.settingsLspAddressUpdated),
-              );
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
+                if (value.isEmpty) return;
+                final Uri? uri;
+                try {
+                  uri = Uri.tryParse("ws://$value");
+                  if (uri == null ||
+                      uri.host.isEmpty ||
+                      !uri.hasPort ||
+                      uri.port <= 0 ||
+                      uri.port > 65535) {
+                    throw const FormatException("Invalid WebSocket address");
+                  }
+                } on FormatException {
+                  showIdeError(
+                    context,
+                    translateForWidget(ref, I18nKey.settingsLspInvalidAddress),
+                  );
+                  return;
+                }
+                ref.read(lspWebSocketPath.notifier).state = value;
+                context.pop();
+                showIdeSuccess(
+                  context,
+                  translateForWidget(ref, I18nKey.settingsLspAddressUpdated),
+                );
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   void showVirtualEnvironmentDialog(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(
-      text: ref.read(lspVirtualEnvironment),
-    );
+    final initial = ref.read(lspVirtualEnvironment);
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const UseText(I18nKey.settingsLspVirtualEnvironment),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            label: const UseText(I18nKey.settingsLspVirtualEnvironment),
-            helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
-            suffixIcon: IconButton(
-              tooltip: '选择虚拟环境目录',
-              icon: const Icon(Icons.folder_open_outlined),
-              onPressed: () async {
-                final directoryPath = await getDirectoryPath();
-                if (directoryPath != null) controller.text = directoryPath;
-              },
+      builder: (context) => DialogFormFields(
+        initialValues: [initial],
+        builder: (context, c) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspVirtualEnvironment),
+          content: TextField(
+            controller: c[0],
+            decoration: InputDecoration(
+              label: const UseText(I18nKey.settingsLspVirtualEnvironment),
+              helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
+              suffixIcon: IconButton(
+                tooltip: '选择虚拟环境目录',
+                icon: const Icon(Icons.folder_open_outlined),
+                onPressed: () async {
+                  final directoryPath = await getDirectoryPath();
+                  if (directoryPath != null) c[0].text = directoryPath;
+                },
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const UseText(I18nKey.commonCancel),
+            ),
+            TextButton(
+              onPressed: () {
+                ref.read(lspVirtualEnvironment.notifier).state = '';
+                refreshOpenLspConfiguration(ref.read);
+                context.pop();
+              },
+              child: const Text('清空'),
+            ),
+            FilledButton(
+              onPressed: () {
+                ref.read(lspVirtualEnvironment.notifier).state = c[0].text
+                    .trim();
+                refreshOpenLspConfiguration(ref.read);
+                context.pop();
+                showIdeSuccess(
+                  context,
+                  translateForWidget(
+                    ref,
+                    I18nKey.settingsLspVirtualEnvironmentUpdated,
+                  ),
+                );
+              },
+              child: const UseText(I18nKey.commonSave),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const UseText(I18nKey.commonCancel),
-          ),
-          TextButton(
-            onPressed: () {
-              ref.read(lspVirtualEnvironment.notifier).state = '';
-              refreshOpenLspConfiguration(ref.read);
-              context.pop();
-            },
-            child: const Text('清空'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(lspVirtualEnvironment.notifier).state = controller.text
-                  .trim();
-              refreshOpenLspConfiguration(ref.read);
-              context.pop();
-              showIdeSuccess(
-                context,
-                translateForWidget(
-                  ref,
-                  I18nKey.settingsLspVirtualEnvironmentUpdated,
-                ),
-              );
-            },
-            child: const UseText(I18nKey.commonSave),
-          ),
-        ],
       ),
     );
-    controller.dispose();
   }
 
   void _showBasedPyrightTypeCheckingModeDialog(
@@ -738,16 +722,27 @@ class LspSettings extends ConsumerWidget {
   };
 }
 
+/// A labelled on/off switch backed by one settings provider.
+///
+/// [description] spells out what the switch actually changes in the editor, so
+/// the settings page does not leave the reader guessing which layer a given
+/// protocol capability ends up affecting.
 class _CapabilitySwitch extends ConsumerWidget {
-  const _CapabilitySwitch({required this.title, required this.provider});
+  const _CapabilitySwitch({
+    required this.title,
+    required this.description,
+    required this.provider,
+  });
 
   final Object title;
+  final Object description;
   final StateProvider<bool> provider;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SwitchListTile(
       title: UseText(title),
+      subtitle: UseText(description),
       value: ref.watch(provider),
       onChanged: (value) => ref.read(provider.notifier).state = value,
     );

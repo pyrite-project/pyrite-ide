@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_context_menu/src/scaffold/desktop/menu_widget_builder.dart';
 
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class PyriteContextMenuWidget extends ConsumerWidget {
@@ -38,8 +39,13 @@ class PyriteContextMenuWidget extends ConsumerWidget {
 }
 
 class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
-  static const double _radius = 8;
-  static const double _itemRadius = 6;
+  /// Inset of each menu item inside the menu surface. The item radius is
+  /// derived from it as `outer - inset`, so the item's corner arcs stay
+  /// concentric with the menu's.
+  ///
+  /// The container's vertical padding and every item's own padding use this
+  /// same value, so the radius can never drift away from the real spacing.
+  static const double _itemInset = 5;
 
   @override
   Widget buildMenuContainer(
@@ -48,10 +54,11 @@ class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
     Widget child,
   ) {
     final scheme = Theme.of(context).colorScheme;
+    final corners = context.outerCorners;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(_radius),
+        borderRadius: corners,
         border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -64,11 +71,11 @@ class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(_radius),
+        borderRadius: corners,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 160, maxWidth: 320),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: _itemInset),
             child: DefaultTextStyle(
               style: Theme.of(context).textTheme.bodySmall!.copyWith(
                 color: scheme.onSurface,
@@ -124,7 +131,12 @@ class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
     final submenu = element is Menu;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      padding: const EdgeInsets.symmetric(
+        horizontal: _itemInset,
+        // Vertical gaps come from the container padding, so an item is inset
+        // by the same amount on every side.
+        vertical: 0,
+      ),
       child: Container(
         key: innerKey,
         constraints: const BoxConstraints(minHeight: 30),
@@ -136,7 +148,7 @@ class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
         ),
         decoration: BoxDecoration(
           color: selected ? scheme.secondaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(_itemRadius),
+          borderRadius: context.nestedCorners(_itemInset),
         ),
         child: Row(
           children: [

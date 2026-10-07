@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 class DeviceStatusPanel extends ConsumerWidget {
   const DeviceStatusPanel({super.key});
@@ -222,7 +223,7 @@ class DeviceStatusPanel extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         ClipRRect(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: context.innerCorners,
           child: LinearProgressIndicator(
             value: clamped,
             minHeight: 8,

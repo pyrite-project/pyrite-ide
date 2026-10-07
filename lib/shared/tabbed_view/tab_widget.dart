@@ -6,10 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
 
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:tabbed_view/src/draggable_config.dart';
@@ -63,6 +66,7 @@ class TabWidget extends ConsumerWidget {
       onClose: onClose,
       status: status,
       sideTabsLayout: theme.tabsArea.sideTabsLayout,
+      problems: _problemsForTab(ref, tab),
     );
     widget = _TabHeaderProxy(sizeHolder: sizeHolder, child: widget);
 
@@ -193,43 +197,58 @@ class TabWidget extends ConsumerWidget {
     return widget;
   }
 
+  /// Diagnostics for the file this tab shows, or null when it shows no file.
+  ///
+  /// Watching the per-path family keeps a tab out of the rebuild fan-out of
+  /// every other file's diagnostics: editing a.py must not rebuild the tab for
+  /// b.py.
+  TabProblemCounts? _problemsForTab(WidgetRef ref, TabData tab) {
+    final value = tab.value;
+    if (value is! TabDataValue) return null;
+    return ref.watch(tabProblemCountsProvider(value.filePath));
+  }
+
   Menu _buildContextMenu(BuildContext context, int index) {
     final container = ProviderScope.containerOf(context);
     final registry = container.read(dataRegistryProvider);
     final locale = container.read(activeLocaleProvider);
-    final title = translateFromRegistry(
-      registry,
-      locale,
-      I18nKey.tabContextMenuClose,
-    );
+    String tr(I18nKey key) => translateFromRegistry(registry, locale, key);
+
+    final tabs = provider.controller.tabs;
+    final tab = tabs[index];
+    final toRight = tabsToTheRightOf(tabs, index);
+    MenuActionAttributes disabledWhen(bool isDisabled) =>
+        MenuActionAttributes(disabled: isDisabled);
+
     return Menu(
       children: [
-        MenuAction(title: title, callback: () => _closeTab(context, index)),
+        MenuAction(
+          title: tr(I18nKey.tabContextMenuClose),
+          callback: () => _closeTab(context, index),
+        ),
+        MenuAction(
+          title: tr(I18nKey.tabContextMenuCloseOthers),
+          // Enabled whenever another tab exists, even if it is clean: the
+          // affordance is "close the rest", not "close the rest if dirty".
+          attributes: disabledWhen(tabs.length <= 1),
+          callback: () => closeTabs(context, provider, otherTabs(tabs, tab)),
+        ),
+        MenuAction(
+          title: tr(I18nKey.tabContextMenuCloseToRight),
+          attributes: disabledWhen(toRight.isEmpty),
+          callback: () => closeTabs(context, provider, toRight),
+        ),
+        MenuAction(
+          title: tr(I18nKey.tabContextMenuCloseAll),
+          callback: () => closeTabs(context, provider, tabs),
+        ),
       ],
     );
   }
 
   Future<void> _closeTab(BuildContext context, int index) async {
     final tabData = provider.controller.getTabByIndex(index);
-    if (provider.tabRemoveInterceptor != null &&
-        !await provider.tabRemoveInterceptor!(context, index, tabData)) {
-      return;
-    }
-
-    onClose();
-    if (!context.mounted) return;
-    final currentIndex = provider.controller.tabs.indexOf(tabData);
-    if (currentIndex == -1) return;
-    provider.controller.removeTab(currentIndex);
-    final container = ProviderScope.containerOf(context);
-    if (identical(
-      provider.controller,
-      container.read(tabbedViewControllerProvider),
-    )) {
-      container
-          .read(tabbedViewControllerProvider.notifier)
-          .afterTabClose(currentIndex, tabData);
-    }
+    await closeTabs(context, provider, [tabData], onClosed: () => onClose());
   }
 }
 

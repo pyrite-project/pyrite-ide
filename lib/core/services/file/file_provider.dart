@@ -9,7 +9,11 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/file/canonical_path.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
@@ -98,7 +102,34 @@ class FileNotifier extends StateNotifier<Directory?> {
             .writeFile(value.boardFilePath!, value.editorController!.text);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } else {
-        await value.file!.writeAsString(value.editorController!.text);
+        // Writing here would silently discard whatever another program put in
+        // the file while it was open. Ask first, and honour a cancel by not
+        // writing at all.
+        final context = appContext;
+        if (context != null &&
+            context.mounted &&
+            !await ref
+                .read(tabbedViewControllerProvider.notifier)
+                .confirmSaveOverwritesExternalChange(context, tab!)) {
+          return;
+        }
+        final file = value.file!;
+        final text = value.editorController!.text;
+        // Write the encoding the file was opened with. Dart's default UTF-8
+        // writer would transcode a GBK buffer and drop a UTF-16 byte order
+        // mark, turning a save into silent data corruption.
+        if (value.encoding == null && !value.byteOrderMark) {
+          await file.writeAsString(text);
+        } else {
+          await file.writeAsBytes(
+            encodeFileText(
+              text,
+              encoding: value.encoding,
+              byteOrderMark: value.byteOrderMark,
+            ),
+            flush: true,
+          );
+        }
       }
       ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!);
     }
@@ -106,12 +137,28 @@ class FileNotifier extends StateNotifier<Directory?> {
 
   void saveCurrentFileAs() async {
     final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
-    if (nowTab != null && nowTab.value.type == "file") {
-      final bool state = await utils.sysSaveAs(
-        nowTab.value.editorController!.text,
+    final value = nowTab?.value;
+    if (value is TabDataValue && value.type == "file") {
+      final savedPath = await utils.sysSaveAs(
+        value.editorController!.text,
+        encoding: value.encoding,
+        byteOrderMark: value.byteOrderMark,
       );
-      if (state) {
-        ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab);
+      if (savedPath == null) return;
+      // Only clear the tab when the copy landed back on the file the tab is
+      // editing. "Save as" to a new path leaves the original file untouched,
+      // so marking it clean here would drop the user's edits on close.
+      if (canonicalLocalPath(savedPath) == value.filePath) {
+        ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
+      } else {
+        ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+        ref
+            .read(ideMessageProvider.notifier)
+            .success(
+              translateWithReplacements(ref, I18nKey.editorFileSavedAs, {
+                'path': savedPath,
+              }),
+            );
       }
     }
   }
@@ -184,6 +231,17 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
     }
     return folderPath;
+  }
+
+  /// Creates [folderPath] and starts an inline rename so the user can name
+  /// the new folder right away instead of renaming it from the context menu
+  /// later.
+  Future<String> createFolderAndStartRename(String folderPath) async {
+    final createdPath = await createFolder(folderPath);
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    controller.setSelectedNodeId(createdPath);
+    controller.setRenamingNodeId(createdPath);
+    return createdPath;
   }
 
   TreeNode<FileSystemItem>? getFocusFileNode() {
