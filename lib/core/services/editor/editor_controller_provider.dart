@@ -88,6 +88,7 @@ class EditorControllerMapNotifier
       WorkspaceLspConfigPool<LspConfig>(
         create: _createWorkspaceLspConfig,
         onEvict: (config) => config.dispose(),
+        isAlive: (config) => config.isUsable,
       );
 
   Future<CodeForgeController?> createNewEditorController(

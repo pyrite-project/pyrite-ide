@@ -15,11 +15,21 @@ class WorkspaceLspConfigPool<T> {
   WorkspaceLspConfigPool({
     required Future<T?> Function(String workspacePath) create,
     void Function(T config)? onEvict,
+    bool Function(T config)? isAlive,
   }) : _create = create,
-       _onEvict = onEvict;
+       _onEvict = onEvict,
+       _isAlive = isAlive;
 
   final Future<T?> Function(String workspacePath) _create;
   final void Function(T config)? _onEvict;
+
+  /// Reports whether a pooled config can still serve requests.
+  ///
+  /// A language server process that exited (crash, protocol violation, bad
+  /// launch) can never initialize, so its config is evicted on the next
+  /// [acquire] instead of being handed to every later editor until the
+  /// workspace's last tab closes.
+  final bool Function(T config)? _isAlive;
 
   final Map<String, T> _configs = {};
   final Map<String, int> _users = {};
@@ -44,8 +54,15 @@ class WorkspaceLspConfigPool<T> {
   Future<({T? config, bool created})> acquire(String workspacePath) async {
     final existing = _configs[workspacePath];
     if (existing != null) {
-      _users[workspacePath] = (_users[workspacePath] ?? 0) + 1;
-      return (config: existing, created: false);
+      if (_isAlive?.call(existing) ?? true) {
+        _users[workspacePath] = (_users[workspacePath] ?? 0) + 1;
+        return (config: existing, created: false);
+      }
+      // The server behind the config is gone; evict it and fall through to
+      // the bootstrap below, which starts a fresh one.
+      _configs.remove(workspacePath);
+      _users.remove(workspacePath);
+      _onEvict?.call(existing);
     }
     final pending = _bootstraps[workspacePath];
     if (pending != null) {
