@@ -12,7 +12,7 @@ PODS:
   - flutter_pty (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
-  - git2dart_binaries (1.11.2):
+  - git2dart_binaries (1.14.0):
     - FlutterMacOS
   - irondash_engine_context (0.0.1):
     - FlutterMacOS
@@ -24,7 +24,7 @@ PODS:
     - FlutterMacOS
   - screen_retriever_macos (0.0.1):
     - FlutterMacOS
-  - serious_python_darwin (4.3.2):
+  - serious_python_darwin (5.0.0):
     - Flutter
     - FlutterMacOS
   - super_native_extensions (0.0.1):
@@ -108,13 +108,13 @@ SPEC CHECKSUMS:
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   flutter_pty: 1e360feaf8b1a213d2d50da3c076005b8eef1eee
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  git2dart_binaries: ce40f0f9b064d25651410d394274ff87b6aad208
+  git2dart_binaries: c8733f83ad865cba1dd4aaa383866b399d4274af
   irondash_engine_context: 893c7d96d20ce361d7e996f39d360c4c2f9869ba
   media_kit_video: 28d7d27611c7769a2464eb7621c37386a61dcc9a
   open_file_mac: 76f06c8597551249bdb5e8fd8827a98eae0f4585
   package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   screen_retriever_macos: c5508cc3c66ff0d4db650480cf0ab691e220d933
-  serious_python_darwin: 836d14a5c18636eb31d2dfdbf2fd52dd3978998c
+  serious_python_darwin: 75f5d9e101420bf57fb3bef7410bc824a54c72db
   super_native_extensions: c2795d6d9aedf4a79fae25cb6160b71b50549189
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
   video_player_avfoundation: 3453f792138786248960ca029747fcd9f318ef52
