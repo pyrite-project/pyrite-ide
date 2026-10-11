@@ -5,6 +5,9 @@ import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/git/diff_display.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/features/edit_core/editor_language.dart';
+import 'package:pyrite_ide/features/edit_core/editor_minimap.dart';
+import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 
 const _gitDiffAddedColor = Color(0xFF2E7D32);
 const _gitDiffRemovedColor = Color(0xFFC62828);
@@ -47,23 +50,37 @@ class GitDiffEditor extends ConsumerWidget {
       resolveEditorTheme(entry, brightness),
       surface,
     );
+    final colors = editorSurfaceColors(context, resolvedTheme);
+    final fontSize = ref.watch(editorFontSize);
+    final fontFamily = editorTextFonts[ref.watch(editorTextFontProvider)];
 
     return DecoratedBox(
       decoration: BoxDecoration(color: surface),
-      child: CodeForge(
-        key: ValueKey('git-diff_${themeKey}_${brightness.name}'),
-        editorTheme: resolvedTheme,
+      // The diff pane is a text editor like any other, so it wraps its own
+      // minimap: the map reads the same read-only buffer the diff shows, and
+      // the code area is laid out in the width the column leaves free.
+      child: MinimapEditorShell(
         controller: controller,
-        textStyle: TextStyle(
-          fontSize: ref.watch(editorFontSize),
-          fontFamily: editorTextFonts[ref.watch(editorTextFontProvider)],
-        ),
+        enabled: ref.watch(editorMinimap),
         lineWrap: ref.watch(editorWordWrap),
-        useSpaceAsTab: true,
-        tabSize: 4,
-        gutterBuilder: GutterBuilder(
-          builder: (lineNumber, lineText) => '$lineNumber',
-          includeReplacedIndex: false,
+        foreground: colors.foreground,
+        background: colors.background,
+        editorTheme: resolvedTheme,
+        language: resolveEditorLanguage(filePath).mode,
+        baseTextStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+        estimatedLineHeight: fontSize * 1.2,
+        child: CodeForge(
+          key: ValueKey('git-diff_${themeKey}_${brightness.name}'),
+          editorTheme: resolvedTheme,
+          controller: controller,
+          textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+          lineWrap: ref.watch(editorWordWrap),
+          useSpaceAsTab: true,
+          tabSize: 4,
+          gutterBuilder: GutterBuilder(
+            builder: (lineNumber, lineText) => '$lineNumber',
+            includeReplacedIndex: false,
+          ),
         ),
       ),
     );

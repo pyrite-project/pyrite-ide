@@ -10,21 +10,8 @@ import 'package:pyrite_ide/features/edit_core/minimap_geometry.dart';
 import 'package:pyrite_ide/features/edit_core/minimap_highlight.dart';
 import 'package:re_highlight/re_highlight.dart' show Mode;
 
-/// Width of the minimap column.
+/// Width of the minimap column the shell carves out of the editor's width.
 const double kMinimapWidth = 76;
-
-/// Width kept clear at the editor's right edge so the editor's own scrollbar
-/// stays uncovered (default [ScrollbarDecoration] thickness is 8). Hovering
-/// the minimap reveals that scrollbar there through
-/// [CodeForgeController.scrollbarForcedVisible].
-const double _scrollbarStripReserve = 12;
-
-/// Backdrop opacity (alpha, 0-255) of the floating minimap; the name follows
-/// [Color.withAlpha]. Higher values make the overlay **more opaque**: at 0
-/// the backdrop disappears entirely, at 255 it would fully cover the code
-/// underneath. The minimap floats over the editor's right edge, so pick a
-/// value well below full opacity to let that code ghost through.
-const int _overlayBackgroundAlpha = 200;
 
 /// Alpha of a bar segment outside the viewport and inside it.
 ///
@@ -53,7 +40,14 @@ const int _bandFillAlpha = 30;
 /// Left inset of every bar, so nothing touches the minimap's edge.
 const double _barInset = 2;
 
-/// Code minimap shown over the editor it wraps.
+/// Code minimap shown beside the editor it wraps, in a column of its own on
+/// the editor's right edge.
+///
+/// The shell lays the editor out in the width that remains after the map's
+/// column ([kMinimapWidth]) is carved out of the incoming constraints, so the
+/// map never covers the code it summarizes and every editor instance wraps its
+/// own independent map — two editors side by side each get the column at *their*
+/// right edge, not one shared one.
 ///
 /// The map scales at a **fixed** per-line pitch and scrolls, the way VS Code's
 /// `proportional` minimap does: a document taller than the panel is a window
@@ -86,14 +80,14 @@ const double _barInset = 2;
 /// the editor and re-reads the viewport's line range off the renderer when
 /// they arrive — the range the viewport highlight is drawn from. The editor
 /// keeps its own scroll controller and scrollbar exactly as without the
-/// minimap.
+/// minimap; the scrollbar stays attached to the editor's right edge, which the
+/// column layout keeps clear of the map.
 ///
 /// Interaction model: the minimap is interactive (tap centers the clicked
 /// region, dragging scrubs scrollbar-style) but its own look never changes on
-/// hover. Hovering instead raises
-/// [CodeForgeController.scrollbarForcedVisible], so the editor's **native**
-/// scrollbar — original decoration, original behavior — appears in the strip
-/// to the right of the map that the shell leaves uncovered for it.
+/// hover. Because the map sits beside the editor rather than over it, the
+/// editor's native scrollbar is revealed by hovering the editor itself, as it
+/// would be without the map.
 ///
 /// The viewport is marked the way VS Code marks it with the slider drawn as
 /// the highlight rather than as a separate widget: the bars of the lines
@@ -260,17 +254,18 @@ class _MinimapEditorShellState extends State<MinimapEditorShell> {
           child: widget.child,
         );
         if (!showMinimap) return editor;
-        // The minimap overlays the editor's right edge but leaves the
-        // scrollbar strip uncovered, so the native scrollbar can appear there
-        // (forced visible while the pointer hovers the map) in its own style.
-        return Stack(
+        // The minimap is a column of its own on the right, and the editor is
+        // laid out in the width that remains: the map's width never overlaps
+        // the code it summarizes. Stretch keeps both children full-height, as
+        // the `Positioned(top: 0, bottom: 0)` the overlay layout used to use
+        // did. The explicit text direction pins the column to the visual
+        // right edge whatever the ambient direction is.
+        return Row(
           textDirection: TextDirection.ltr,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Positioned.fill(child: editor),
-            Positioned(
-              top: 0,
-              right: _scrollbarStripReserve,
-              bottom: 0,
+            Expanded(child: editor),
+            SizedBox(
               width: kMinimapWidth,
               child: _MinimapView(
                 controller: widget.controller,
@@ -1026,8 +1021,6 @@ class _MinimapViewState extends State<_MinimapView> {
       onVerticalDragCancel: () => _dragGrabOffset = null,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        onEnter: (_) => widget.controller.scrollbarForcedVisible.value = true,
-        onExit: (_) => widget.controller.scrollbarForcedVisible.value = false,
         child: SizedBox(
           width: kMinimapWidth,
           child: LayoutBuilder(
@@ -1101,10 +1094,11 @@ class _MinimapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = background.withAlpha(_overlayBackgroundAlpha),
-    );
+    // The column is the map's own surface, next to the editor rather than
+    // over it, so the background is fully opaque: there is no code underneath
+    // to ghost through, and a translucent fill would instead blend with
+    // whatever the host paints behind the shell.
+    canvas.drawRect(Offset.zero & size, Paint()..color = background);
 
     final dim = dimPicture;
     final bright = brightPicture;
