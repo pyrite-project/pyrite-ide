@@ -316,4 +316,5 @@ class DataContributionKeys {
   static const theme = 'theme';
   static const i18n = 'i18n';
   static const stubs = 'stubs';
+  static const lspServer = 'lsp_server';
 }

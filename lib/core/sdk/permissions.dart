@@ -165,6 +165,11 @@ abstract class Permissions {
     'sdk.stubs.resolve_layers': 'data:read',
     'sdk.theme.revoke': 'data:write',
     'sdk.i18n.revoke': 'data:write',
+    'sdk.lsp.contribute': 'data:write',
+    'sdk.lsp.register_runtime': 'data:write',
+    'sdk.lsp.revoke': 'data:write',
+    'sdk.lsp.get': 'data:read',
+    'sdk.lsp.list': 'data:read',
 
     // dialog
     'sdk.dialog.open_folder': 'dialog:show',

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/zuban_lsp_server.dart';
 import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
@@ -128,6 +130,136 @@ void main() {
     expect(config.workspaceConfiguration['basedpyright'], {
       'analysis': {'typeCheckingMode': 'strict'},
     });
+  });
+
+  test('translates BasedPyright strictness levels for Zuban', () {
+    expect(zubanTypeCheckingMode(BasedPyrightTypeCheckingMode.off), 'off');
+    for (final mode in [
+      BasedPyrightTypeCheckingMode.basic,
+      BasedPyrightTypeCheckingMode.standard,
+      BasedPyrightTypeCheckingMode.strict,
+      BasedPyrightTypeCheckingMode.all,
+    ]) {
+      expect(zubanTypeCheckingMode(mode), 'default', reason: mode.name);
+    }
+  });
+
+  test('sends Zuban a supported type checking mode', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'zuban';
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.workspaceConfiguration, {'typeCheckingMode': 'default'});
+  });
+
+  test('keeps Zuban type checking off when disabled', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'zuban';
+    container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
+        BasedPyrightTypeCheckingMode.off;
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.workspaceConfiguration, {'typeCheckingMode': 'off'});
+  });
+
+  test('uses a data-plugin LSP server profile that matches the launch', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            label: 'MyLSP',
+            match: LspServerMatchRules(executables: ['mylsp', 'mylsp.exe']),
+            configuration: LspServerConfigurationSpec(
+              mode: LspServerConfigurationSpec.sectionedMode,
+              section: 'mylsp',
+              stubsPathsKey: 'extraPaths',
+              pythonExecutableKey: 'pythonInterpreter',
+              typeCheckingModeKey: 'typeCheckingMode',
+            ),
+            environment: {'MYPYPATH': '{stubsPaths}'},
+          ),
+        );
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
+    container.read(microPythonStubsEnabled.notifier).state = true;
+    container.read(microPythonStubsExtraPaths.notifier).state = const [
+      '/stubs/shared',
+    ];
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.workspaceConfiguration, {
+      'mylsp': {
+        'extraPaths': ['/stubs/shared'],
+        'typeCheckingMode': 'standard',
+      },
+    });
+    expect(config.environment['MYPYPATH'], '/stubs/shared');
+  });
+
+  test('falls back to the built-in servers when no profile matches', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            match: LspServerMatchRules(executables: ['mylsp']),
+            configuration: LspServerConfigurationSpec(),
+          ),
+        );
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.workspaceConfiguration.containsKey('mylsp'), isFalse);
+    expect(config.workspaceConfiguration.containsKey('basedpyright'), isTrue);
+  });
+
+  test('rejects a second plugin registering the same LSP server id', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final registry = container.read(dataRegistryProvider);
+    const entry = LspServerProfileEntry(
+      pluginId: 'plugin-a',
+      serverId: 'mylsp',
+      match: LspServerMatchRules(executables: ['mylsp']),
+      configuration: LspServerConfigurationSpec(),
+    );
+    registry.registerLspServer(entry);
+
+    expect(
+      () => registry.registerLspServer(
+        const LspServerProfileEntry(
+          pluginId: 'plugin-b',
+          serverId: 'mylsp',
+          match: LspServerMatchRules(executables: ['mylsp']),
+          configuration: LspServerConfigurationSpec(),
+        ),
+      ),
+      throwsStateError,
+    );
   });
 
   test('does not discover a virtual environment above the workspace root', () {
