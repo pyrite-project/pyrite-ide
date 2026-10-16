@@ -99,8 +99,7 @@ void main() {
     expect(retried.config, 'config');
   });
 
-  test('evicts a config that is no longer alive on the next acquire',
-      () async {
+  test('evicts a config that is no longer alive on the next acquire', () async {
     final evicted = <String>[];
     var creations = 0;
     var alive = true;
@@ -125,24 +124,26 @@ void main() {
     expect(second.config, 'config:2');
   });
 
-  test('an alive config is served from the pool even with an isAlive hook',
-      () async {
-    var creations = 0;
-    final pool = WorkspaceLspConfigPool<String>(
-      create: (_) async {
-        creations++;
-        return 'config:$creations';
-      },
-      isAlive: (_) => true,
-    );
+  test(
+    'an alive config is served from the pool even with an isAlive hook',
+    () async {
+      var creations = 0;
+      final pool = WorkspaceLspConfigPool<String>(
+        create: (_) async {
+          creations++;
+          return 'config:$creations';
+        },
+        isAlive: (_) => true,
+      );
 
-    final first = await pool.acquire('/ws');
-    final second = await pool.acquire('/ws');
+      final first = await pool.acquire('/ws');
+      final second = await pool.acquire('/ws');
 
-    expect(creations, 1);
-    expect(second.created, isFalse);
-    expect(second.config, same(first.config));
-  });
+      expect(creations, 1);
+      expect(second.created, isFalse);
+      expect(second.config, same(first.config));
+    },
+  );
 
   test('releasing an unknown or null config is a no-op', () async {
     final evicted = <String>[];
