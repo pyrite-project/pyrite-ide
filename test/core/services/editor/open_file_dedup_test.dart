@@ -44,6 +44,7 @@ void main() {
     primary.addTab(other);
     splitEditorGroup(
       container,
+      from: primary,
       target: primary,
       tab: other,
       where: EditorSplit.right,

@@ -12,23 +12,29 @@ const double _splitEdgeExtent = 96;
 /// the whole pane and every drop would hit one.
 const Size _splitMinimumArea = Size(360, 240);
 
-/// Drop target of one editor group.
+/// Drop target of one group.
 ///
 /// Dropping near an edge splits *this* group — which is what makes splits nest:
 /// the new group is a leaf of the same tree, so it can be split again. Dropping
 /// in the middle moves the tab into this group, the way VS Code does.
 ///
-/// [target] is the layout node, not a controller: the primary group resolves
-/// its controller per read because the tab controller is swapped underneath it.
+/// A group that lives outside the editor layout — the docked console panel —
+/// passes [edgeTarget], the editor group its edge drops split instead.
 class EditorSplitDropRegion extends ConsumerStatefulWidget {
   const EditorSplitDropRegion({
     super.key,
-    required this.target,
+    required this.controller,
     required this.child,
+    this.edgeTarget,
   });
 
-  final EditorLayout target;
+  /// The group this region stands for.
+  final TabbedViewController controller;
+
   final Widget child;
+
+  /// The group an edge drop splits when [controller] is not in the editor tree.
+  final TabbedViewController? edgeTarget;
 
   @override
   ConsumerState<EditorSplitDropRegion> createState() =>
@@ -37,6 +43,19 @@ class EditorSplitDropRegion extends ConsumerStatefulWidget {
 
 class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
   EditorSplit? _pending;
+
+  /// The group an edge drop splits.
+  ///
+  /// The console panel is a group that is not a node of the editor layout, so
+  /// splitting it in place would strand the new group outside the tree: its
+  /// edge drops split the editor area instead.
+  TabbedViewController? get _splitTarget {
+    final container = ProviderScope.containerOf(context);
+    if (allEditorControllers(container).contains(widget.controller)) {
+      return widget.controller;
+    }
+    return widget.edgeTarget;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +89,7 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
     }
     // Only preview a split the drop can actually honour.
     final split = _resolveSplit(event.position.local);
-    _setPending(split != null && _canSplit(source.tab) ? split : null);
+    _setPending(split != null && _canSplit(source) ? split : null);
     // Accept anywhere in the pane: outside the edge bands the tab just moves
     // into this group, the way VS Code treats a drop on an editor's body.
     return DropOperation.move;
@@ -88,33 +107,34 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
     // Claim the session so the strip's trend fallback does not also move it.
     registration!.dropHandled = true;
     final container = ProviderScope.containerOf(context);
-    if (split == null) {
+    final splitTarget = split == null ? null : _splitTarget;
+    if (splitTarget == null || split == null) {
       moveTabToEditorGroup(
         container,
         from: source.controller,
         tab: source.tab,
-        into: _targetController,
+        into: widget.controller,
       );
       return;
     }
     splitEditorGroup(
       container,
-      target: _targetController,
+      from: source.controller,
+      target: splitTarget,
       tab: source.tab,
       where: split,
     );
   }
 
-  bool _canSplit(TabData tab) {
+  bool _canSplit(NativeTabDragSource source) {
+    final splitTarget = _splitTarget;
+    if (splitTarget == null) return false;
     return canSplitEditorGroup(
-      ProviderScope.containerOf(context),
-      target: _targetController,
-      tab: tab,
+      from: source.controller,
+      target: splitTarget,
+      tab: source.tab,
     );
   }
-
-  TabbedViewController get _targetController =>
-      groupController(ProviderScope.containerOf(context), widget.target);
 
   /// Which edge [local] falls on, or null when it is not near one.
   EditorSplit? _resolveSplit(Offset local) {

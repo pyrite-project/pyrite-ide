@@ -183,32 +183,19 @@ bool moveTabToEditorGroup(
   return true;
 }
 
-/// The group currently holding [tab], or null when it is not in the layout.
-///
-/// A tab does not have to be dragged within its own group: dropping it on
-/// another group's edge has to know where it comes from to move it out.
-TabbedViewController? holdingEditorGroup(
-  ProviderContainer container,
-  TabData tab,
-) {
-  for (final controller in allEditorControllers(container)) {
-    if (controller.tabs.contains(tab)) return controller;
-  }
-  return null;
-}
-
 /// Whether dropping [tab] on [target]'s edge would really split.
 ///
 /// Asked twice: once to decide whether to show the drop preview, and once
 /// again on the drop itself. Showing a preview the drop cannot honour is what
 /// used to make a split look accepted and then silently do nothing.
-bool canSplitEditorGroup(
-  ProviderContainer container, {
+///
+/// [from] is wherever the tab currently lives -- a console tab comes from the
+/// docked panel, which is a group the editor layout does not contain.
+bool canSplitEditorGroup({
+  required TabbedViewController from,
   required TabbedViewController target,
   required TabData tab,
 }) {
-  final from = holdingEditorGroup(container, tab);
-  if (from == null) return false;
   // Splitting a group's own last tab would empty it, and pruning would then
   // undo the split -- refuse it rather than pretend it happened.
   return !identical(from, target) || from.tabs.length >= 2;
@@ -216,16 +203,16 @@ bool canSplitEditorGroup(
 
 /// Splits the group [target] towards [where] and moves [tab] into the new one.
 ///
-/// [tab] comes from wherever it currently is, which need not be [target]:
-/// dragging across groups onto an edge is the usual way to open a new group.
+/// [tab] comes from [from], which need not be [target]: dragging across groups
+/// onto an edge is the usual way to open a new group, and the docked console
+/// panel is a group too even though it is not a node of the editor layout.
 bool splitEditorGroup(
   ProviderContainer container, {
+  required TabbedViewController from,
   required TabbedViewController target,
   required TabData tab,
   required EditorSplit where,
 }) {
-  final from = holdingEditorGroup(container, tab);
-  if (from == null) return false;
   if (identical(from, target) && from.tabs.length < 2) return false;
 
   final created = TabbedViewController([tab]);

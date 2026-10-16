@@ -263,11 +263,13 @@ class _EditorState extends ConsumerState<Editor> {
     if (node is! SplitLayout) {
       // One drop region per group: its edges split this group, its middle
       // accepts a tab from another one.
+      final controller = groupController(
+        ProviderScope.containerOf(context),
+        node,
+      );
       return EditorSplitDropRegion(
-        target: node,
-        child: EditorGroup(
-          controller: groupController(ProviderScope.containerOf(context), node),
-        ),
+        controller: controller,
+        child: EditorGroup(controller: controller),
       );
     }
     final split = node;

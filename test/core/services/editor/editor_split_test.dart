@@ -35,6 +35,7 @@ void main() {
 
       final split = splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: second,
         where: EditorSplit.right,
@@ -65,6 +66,7 @@ void main() {
       primary.addTab(TabData(text: 'second'));
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: primary.tabs[1],
         where: EditorSplit.right,
@@ -92,6 +94,7 @@ void main() {
       primary.addTab(TabData(text: 'second'));
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: primary.tabs[1],
         where: EditorSplit.right,
@@ -107,6 +110,7 @@ void main() {
       // split appear inside the first.
       final split = splitEditorGroup(
         container,
+        from: nested,
         target: nested,
         tab: nested.tabs.last,
         where: EditorSplit.bottom,
@@ -128,6 +132,7 @@ void main() {
       primary.addTab(TabData(text: 'second'));
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: primary.tabs[1],
         where: EditorSplit.right,
@@ -142,6 +147,7 @@ void main() {
       // no-op after the preview promised a split.
       final split = splitEditorGroup(
         container,
+        from: primary,
         target: nested,
         tab: primary.tabs.last,
         where: EditorSplit.bottom,
@@ -164,14 +170,14 @@ void main() {
       final only = primary.tabs.single;
 
       expect(
-        canSplitEditorGroup(container, target: primary, tab: only),
+        canSplitEditorGroup(from: primary, target: primary, tab: only),
         isFalse,
         reason: 'splitting a group\'s own last tab would be undone by pruning',
       );
 
       primary.addTab(TabData(text: 'second'));
       expect(
-        canSplitEditorGroup(container, target: primary, tab: only),
+        canSplitEditorGroup(from: primary, target: primary, tab: only),
         isTrue,
       );
     });
@@ -180,31 +186,28 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        target: primary,
-        tab: primary.tabs[1],
-        where: EditorSplit.right,
+      // The primary can no longer be emptied -- the welcome page is pinned --
+      // so this state is reached by a group the primary is not part of.
+      container.read(editorLayoutProvider.notifier).state = GroupLayout(
+        TabbedViewController([TabData(text: 'other')]),
       );
-      // Empty the primary by moving its last tab into the other group.
-      final other = allEditorControllers(container)[1];
-      moveTabToEditorGroup(
-        container,
-        from: primary,
-        tab: primary.tabs.single,
-        into: other,
-      );
-      expect(allEditorControllers(container).contains(primary), isFalse);
 
       // A new file opens in the primary, so the primary has to come back into
       // the tree or the file would open in a strip nothing renders.
       primary.addTab(TabData(text: 'new'));
       expect(needsEditorLayoutRefresh(container), isTrue);
 
-      final layout = refreshEditorLayout(container) as SplitLayout;
-      expect(layout.axis, Axis.horizontal);
+      final layout = refreshEditorLayout(container);
+      container.read(editorLayoutProvider.notifier).state = layout;
+      expect(layout, isA<SplitLayout>());
+      expect((layout as SplitLayout).axis, Axis.horizontal);
       expect(layout.children.first, isA<PrimaryGroupLayout>());
+      expect(
+        allEditorControllers(container).contains(primary),
+        isTrue,
+        reason: 'exactly one leaf is bound to the primary controller',
+      );
+      expect(allEditorControllers(container), hasLength(2));
     });
 
     test('closes the group whose last tab was closed', () {
@@ -215,6 +218,7 @@ void main() {
       primary.addTab(moved);
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: moved,
         where: EditorSplit.right,
@@ -241,6 +245,7 @@ void main() {
 
       final split = splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: only,
         where: EditorSplit.bottom,
@@ -259,6 +264,7 @@ void main() {
       primary.addTab(moved);
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: moved,
         where: EditorSplit.right,
@@ -287,6 +293,7 @@ void main() {
       primary.addTab(TabData(text: 'second'));
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: primary.tabs[1],
         where: EditorSplit.right,
@@ -355,6 +362,7 @@ void main() {
       primary.addTab(TabData(text: 'second'));
       splitEditorGroup(
         container,
+        from: primary,
         target: primary,
         tab: primary.tabs[1],
         where: EditorSplit.right,
