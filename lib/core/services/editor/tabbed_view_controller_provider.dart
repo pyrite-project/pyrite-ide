@@ -11,12 +11,12 @@ import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart'
 import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
 import 'package:pyrite_ide/core/services/editor/external_file_change.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
@@ -31,6 +31,14 @@ import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/editor/welcome.dart';
+
+/// A tab that is already open, together with the group holding it.
+class _OpenTab {
+  const _OpenTab({required this.controller, required this.tab});
+
+  final TabbedViewController controller;
+  final TabData tab;
+}
 
 class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   final Ref ref;
@@ -253,6 +261,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       refreshFileTabTitles(state.tabs);
       state = TabbedViewController(List.from(state.tabs));
       state.selectTab(newTab);
+      // The tab was built on the primary group; a split editor wants it in the
+      // group the user is looking at.
+      moveTabToFocusedGroup(ref.container, from: state, tab: newTab);
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
   }
@@ -275,22 +286,17 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       // casings of one Windows directory) looking like different files, so the
       // duplicate check compares resolved identities as well.
       final identity = openFileIdentity(file.path);
-      for (TabData tab in state.tabs) {
-        final value = tab.value as TabDataValue;
-        final sameLocalFile =
-            value.filePath == file.path ||
+      final openPath = file.path;
+      final open = _findOpenTab(
+        (value) =>
+            value.filePath == openPath ||
             (value.isBoardFile != true &&
-                openFileIdentity(value.filePath) == identity);
-        final sameBoardFile =
-            boardFilePath != null && value.boardFilePath == boardFilePath;
-        if (sameLocalFile || sameBoardFile) {
-          TabbedViewController newController = TabbedViewController(
-            List.from(state.tabs),
-          );
-          newController.selectTab(tab);
-          state = newController;
-          return;
-        }
+                openFileIdentity(value.filePath) == identity) ||
+            (boardFilePath != null && value.boardFilePath == boardFilePath),
+      );
+      if (open != null) {
+        _focusOpenTab(open);
+        return;
       }
 
       // Fresh file: classify its bytes before anything reaches a tab. Binary
@@ -367,6 +373,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
       newController.selectTab(newTab);
       state = newController;
+      // The tab was built on the primary group; a split editor wants it in the
+      // group the user is looking at.
+      moveTabToFocusedGroup(ref.container, from: state, tab: newTab);
       if (context.mounted) {
         if (ResponsiveBreakpoints.of(context).isMobile) {
           ref.read(mobileSelectedIndex.notifier).state = 3;
@@ -610,21 +619,17 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     final tabId = 'git-diff:${staged ? 'staged' : 'unstaged'}:$filePath';
     final tabTitle = _gitDiffTabTitle(ref, filePath, staged);
 
-    for (final tab in state.tabs) {
-      final value = tab.value;
-      if (value is! TabDataValue ||
-          value.type != 'git_diff' ||
-          value.filePath != tabId) {
-        continue;
-      }
-      final controller = value.editorController;
+    final open = _findOpenTab(
+      (value) => value.type == 'git_diff' && value.filePath == tabId,
+    );
+    if (open != null) {
+      final value = editorTabValueOf(open.tab);
+      final controller = value?.editorController;
       if (controller != null) {
         setGitDiffPatch(controller, patch);
       }
-      tab.text = tabTitle;
-      final newController = TabbedViewController(List.from(state.tabs));
-      newController.selectTab(tab);
-      state = newController;
+      open.tab.text = tabTitle;
+      _focusOpenTab(open);
       return;
     }
 
@@ -666,7 +671,6 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     required String viewId,
     required String renderer,
     String? title,
-    bool expansion = false,
   }) {
     final manager = ref
         .read(pluginRunManagerProvider)
@@ -713,20 +717,45 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       ),
     );
 
-    if (expansion) {
-      final controller = ref.read(expansionViewController);
-      controller.addTab(tab);
-      final newController = TabbedViewController(List.from(controller.tabs));
-      newController.selectTab(tab);
-      ref.read(expansionViewController.notifier).state = newController;
-      return instance;
-    }
-
     state.addTab(tab);
     final newController = TabbedViewController(List.from(state.tabs));
     newController.selectTab(tab);
     state = newController;
     return instance;
+  }
+
+  /// The tab already hosting what [match] accepts, and the group holding it.
+  ///
+  /// The editor area can be split into several groups, so an open tab is not
+  /// necessarily in the primary group: searching only the primary is what used
+  /// to open the same file a second time.
+  _OpenTab? _findOpenTab(bool Function(TabDataValue) match) {
+    for (final controller in allEditorControllers(ref.container)) {
+      for (final tab in controller.tabs) {
+        // A console surface can be dragged into this strip; it has no path to
+        // compare against, so it simply cannot be the tab being reopened.
+        final value = editorTabValueOf(tab);
+        if (value == null) continue;
+        if (match(value)) return _OpenTab(controller: controller, tab: tab);
+      }
+    }
+    return null;
+  }
+
+  /// Focuses a tab that is already open, in whichever group holds it.
+  void _focusOpenTab(_OpenTab open) {
+    // The shared editing commands follow the focused group, so the group that
+    // already has the tab has to become the focused one.
+    ref.read(focusedEditorGroupProvider.notifier).state = open.controller;
+    if (identical(open.controller, state)) {
+      final newController = TabbedViewController(List.from(state.tabs));
+      newController.selectTab(open.tab);
+      state = newController;
+      return;
+    }
+    // Another group's controller lives inside the layout tree; selecting in
+    // place notifies it, and the strip follows through its own listener.
+    open.controller.selectTab(open.tab);
   }
 
   void onTabTap(TabData tabData, int newTabIndex) async {

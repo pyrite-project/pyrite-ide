@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
@@ -96,9 +97,9 @@ Future<void> revealLspLocation(
       .read(tabbedViewControllerProvider.notifier)
       .openFile(context, file: File(path));
   if (!context.mounted) return;
-  final targetController =
-      ref.read(tabbedViewControllerProvider).selectedTab?.value.editorController
-          as CodeForgeController?;
+  final targetController = editorTabValueOf(
+    ref.read(tabbedViewControllerProvider).selectedTab,
+  )?.editorController;
   if (targetController == null) return;
   final offset = (targetController.getLineStartOffset(line) + character).clamp(
     0,

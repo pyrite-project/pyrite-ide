@@ -4,6 +4,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
@@ -88,7 +89,7 @@ class PersistenceManager {
       tabletSelectedIndex: functionPage?.tabletSelectedIndex ?? 0,
       functionPageShow: functionPage?.functionPageShow ?? true,
       consolePageShow: functionPage?.consolePageShow ?? true,
-      expansionPageShow: functionPage?.expansionPageShow ?? true,
+      consoleDockSide: functionPage?.consoleDockSide ?? 'bottom',
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
@@ -234,7 +235,7 @@ class PersistenceManager {
           tabletSelectedIndex: container.read(tabletSelectedIndex),
           functionPageShow: container.read(functionPageShow),
           consolePageShow: container.read(consolePageShow),
-          expansionPageShow: container.read(expansionPageShow),
+          consoleDockSide: container.read(consoleDockSideProvider).name,
         ),
       ),
       _saveProject(container),
@@ -252,9 +253,15 @@ class PersistenceManager {
 
   Future<void> _saveTabs(ProviderContainer container) async {
     final tabController = container.read(tabbedViewControllerProvider);
+    // A split editor keeps a second group. Persist both so no open file is
+    // lost; the split itself is not persisted, so both restore into the
+    // primary group.
     final List<PersistedTab> tabs = [];
     String? selectedTabPath;
-    for (final tab in tabController.tabs) {
+    for (final tab in [
+      for (final controller in allEditorControllers(container))
+        ...controller.tabs,
+    ]) {
       final value = tab.value;
       if (value is TabDataValue && value.type == "file") {
         tabs.add(

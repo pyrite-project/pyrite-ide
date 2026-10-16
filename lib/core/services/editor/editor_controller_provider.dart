@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -116,10 +118,7 @@ class EditorControllerMapNotifier
         // malformed-tolerant decode and block editing so garbage is never
         // written back over the file.
         openedReadOnly = true;
-        text = utf8.decode(
-          await file.readAsBytes(),
-          allowMalformed: true,
-        );
+        text = utf8.decode(await file.readAsBytes(), allowMalformed: true);
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
@@ -326,67 +325,50 @@ class EditorControllerMapNotifier
     state = Map<String, CodeForgeController>.from(state)..remove(filePath);
   }
 
+  /// The value of the tab the editor is acting on.
+  ///
+  /// Null for tabs that are not documents -- a console surface dragged into the
+  /// editor strip, or the welcome page -- which is what keeps the shared
+  /// editing commands from reading document members off them.
+  TabDataValue? get selectedEditorValue =>
+      editorTabValueOf(ref.read(activeEditorControllerProvider).selectedTab);
+
   void redo() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedUndoRedoController()?.redo();
     }
   }
 
   void undo() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedUndoRedoController()?.undo();
     }
   }
 
   void cut() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedController()?.cut();
     }
   }
 
   void copy() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedController()?.copy();
     }
   }
 
   void paste() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedController()?.paste();
     }
   }
 
   CodeForgeController? getSelectedController() {
-    return ref
-        .read(tabbedViewControllerProvider)
-        .selectedTab
-        ?.value
-        .editorController;
+    return selectedEditorValue?.editorController;
   }
 
   UndoRedoController? getSelectedUndoRedoController() {
-    debugPrint(
-      ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab
-          ?.value
-          .undoRedoController,
-    );
-    return ref
-        .read(tabbedViewControllerProvider)
-        .selectedTab
-        ?.value
-        .undoRedoController;
+    return selectedEditorValue?.undoRedoController;
   }
 }
 

@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -84,7 +85,11 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   Future<void> saveCurrentFile() async {
-    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
+    // Follows the focused group so a split editor saves the tab the user is
+    // looking at rather than whichever group happens to be the primary one.
+    final TabData? nowTab = ref
+        .read(activeEditorControllerProvider)
+        .selectedTab;
     await saveTab(nowTab);
   }
 
@@ -136,7 +141,9 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   void saveCurrentFileAs() async {
-    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
+    final TabData? nowTab = ref
+        .read(activeEditorControllerProvider)
+        .selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
       final savedPath = await utils.sysSaveAs(
