@@ -1,11 +1,8 @@
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_status.dart';
@@ -29,48 +26,13 @@ class TabsArea extends StatefulWidget {
   State<StatefulWidget> createState() => _TabsAreaState();
 }
 
-/// The [TabsArea] state.
-const double _autoScrollEdgeExtent = 56;
-const double _autoScrollMaxVelocity = 480;
-
-@visibleForTesting
-double nativeTabAutoScrollVelocity({
-  required double coordinate,
-  required double viewportExtent,
-}) {
-  if (viewportExtent <= 0) return 0;
-
-  final edgeExtent = math.min(_autoScrollEdgeExtent, viewportExtent / 3);
-  final double direction;
-  final double depth;
-  if (coordinate < edgeExtent) {
-    direction = -1;
-    depth = ((edgeExtent - coordinate) / edgeExtent).clamp(0.0, 1.0);
-  } else if (coordinate > viewportExtent - edgeExtent) {
-    direction = 1;
-    depth = ((coordinate - (viewportExtent - edgeExtent)) / edgeExtent).clamp(
-      0.0,
-      1.0,
-    );
-  } else {
-    return 0;
-  }
-
-  final easedDepth = depth * depth * (3 - 2 * depth);
-  return direction * _autoScrollMaxVelocity * easedDepth;
-}
-
-class _TabsAreaState extends State<TabsArea>
-    with SingleTickerProviderStateMixin {
+class _TabsAreaState extends State<TabsArea> {
   int? _hoveredIndex;
   int? _lastSelectedTabIndex;
   bool _tabDragWasActive = false;
 
   final ScrollController _scrollController = ScrollController();
   final Map<Key, BuildContext> _tabContexts = {};
-  late final Ticker _autoScrollTicker;
-  Duration? _lastAutoScrollTick;
-  double _autoScrollVelocity = 0;
   NativeTabDragRegistration? _trackedDragRegistration;
   Offset? _trackedDragGlobalPosition;
   TabBarPosition? _trackedDragTabBarPosition;
@@ -80,13 +42,10 @@ class _TabsAreaState extends State<TabsArea>
   @override
   void initState() {
     super.initState();
-    _autoScrollTicker = createTicker(_handleAutoScrollTick);
   }
 
   @override
   void dispose() {
-    _stopAutoScroll();
-    _autoScrollTicker.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -263,8 +222,7 @@ class _TabsAreaState extends State<TabsArea>
     return DropMonitor(
       formats: const [],
       hitTestBehavior: HitTestBehavior.opaque,
-      onDropOver: (event) =>
-          _updateAutoScroll(event, scrollDirection, tabsAreaTheme.position),
+      onDropOver: (event) => _trackNativeTabDrag(event, tabsAreaTheme.position),
       onDropLeave: (_) => _clearTrackedDrag(),
       onDropEnded: (_) => _clearTrackedDrag(),
       child: scrollView,
@@ -352,9 +310,14 @@ class _TabsAreaState extends State<TabsArea>
     _scrollController.jumpTo(target);
   }
 
-  void _updateAutoScroll(
+  /// Tracks the drag that is currently over this strip.
+  ///
+  /// Deliberately does not scroll: dragging a tab toward an edge is how a tab
+  /// is taken out of its group, so the strip used to jump under a drag that
+  /// was heading somewhere else entirely. Reaching an overflowed tab mid-drag
+  /// stays available through the wheel, which works while dragging.
+  void _trackNativeTabDrag(
     MonitorDropOverEvent event,
-    Axis axis,
     TabBarPosition tabBarPosition,
   ) {
     final registration = NativeTabDragRegistry.registrationForSession(
@@ -369,60 +332,6 @@ class _TabsAreaState extends State<TabsArea>
     _trackedDragGlobalPosition = event.position.global;
     _trackedDragTabBarPosition = tabBarPosition;
     _updateTrackedDragIntent();
-
-    if (!_scrollController.hasClients) {
-      _stopAutoScroll();
-      return;
-    }
-
-    final double viewportExtent = _scrollController.position.viewportDimension;
-    final double coordinate = axis == Axis.horizontal
-        ? event.position.local.dx
-        : event.position.local.dy;
-    _setAutoScrollVelocity(
-      nativeTabAutoScrollVelocity(
-        coordinate: coordinate,
-        viewportExtent: viewportExtent,
-      ),
-    );
-  }
-
-  void _setAutoScrollVelocity(double velocity) {
-    if (velocity == 0) {
-      _stopAutoScroll();
-      return;
-    }
-
-    _autoScrollVelocity = velocity;
-    if (!_autoScrollTicker.isActive) {
-      _lastAutoScrollTick = null;
-      _autoScrollTicker.start();
-    }
-  }
-
-  void _handleAutoScrollTick(Duration elapsed) {
-    if (!mounted || !_scrollController.hasClients) {
-      _stopAutoScroll();
-      return;
-    }
-
-    final previousTick = _lastAutoScrollTick;
-    _lastAutoScrollTick = elapsed;
-    if (previousTick == null) return;
-
-    final elapsedSeconds = ((elapsed - previousTick).inMicroseconds / 1000000)
-        .clamp(0.0, 0.05);
-    final position = _scrollController.position;
-    final target = (position.pixels + _autoScrollVelocity * elapsedSeconds)
-        .clamp(position.minScrollExtent, position.maxScrollExtent);
-    if (target == position.pixels) {
-      _stopAutoScroll();
-      return;
-    }
-    _scrollController.jumpTo(target);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateTrackedDragIntent();
-    });
   }
 
   void _updateTrackedDragIntent() {
@@ -451,16 +360,9 @@ class _TabsAreaState extends State<TabsArea>
   }
 
   void _clearTrackedDrag() {
-    _stopAutoScroll();
     _trackedDragRegistration = null;
     _trackedDragGlobalPosition = null;
     _trackedDragTabBarPosition = null;
-  }
-
-  void _stopAutoScroll() {
-    _autoScrollTicker.stop();
-    _lastAutoScrollTick = null;
-    _autoScrollVelocity = 0;
   }
 
   void _scheduleSelectedTabReveal(

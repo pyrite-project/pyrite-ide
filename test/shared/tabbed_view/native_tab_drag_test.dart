@@ -6,54 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart' as pyrite;
-import 'package:pyrite_ide/shared/tabbed_view/tabs_area.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
 void main() {
-  group('native tab edge auto-scroll', () {
-    test('uses mirrored velocities at both edges', () {
-      final leading = nativeTabAutoScrollVelocity(
-        coordinate: 14,
-        viewportExtent: 300,
-      );
-      final trailing = nativeTabAutoScrollVelocity(
-        coordinate: 286,
-        viewportExtent: 300,
-      );
-
-      expect(leading, lessThan(0));
-      expect(trailing, greaterThan(0));
-      expect(leading.abs(), closeTo(trailing.abs(), 0.0001));
-      expect(
-        nativeTabAutoScrollVelocity(coordinate: -20, viewportExtent: 300),
-        -480,
-      );
-      expect(
-        nativeTabAutoScrollVelocity(coordinate: 320, viewportExtent: 300),
-        480,
-      );
-    });
-
-    test('accelerates toward an edge and stops outside the edge zones', () {
-      final shallow = nativeTabAutoScrollVelocity(
-        coordinate: 48,
-        viewportExtent: 300,
-      );
-      final deep = nativeTabAutoScrollVelocity(
-        coordinate: 8,
-        viewportExtent: 300,
-      );
-
-      expect(deep.abs(), greaterThan(shallow.abs()));
-      expect(
-        nativeTabAutoScrollVelocity(coordinate: 150, viewportExtent: 300),
-        0,
-      );
-    });
-  });
-
   test('native tab drag data resolves to its in-memory source', () {
     final tab = TabData(text: 'first');
     final controller = TabbedViewController([tab]);
@@ -768,6 +725,63 @@ void main() {
       isTrue,
     );
     expect(controller.tabs, orderedEquals([first, sourceTab, second, third]));
+  });
+
+  testWidgets('a drag toward the edge does not scroll the strip', (
+    tester,
+  ) async {
+    // The tabs are wider than the strip, so the strip can scroll at all.
+    final tabs = [
+      for (var i = 0; i < 6; i++) TabData(text: 'tab $i', textSize: 100),
+    ];
+    final controller = TabbedViewController(tabs);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: SizedBox(
+            width: 300,
+            height: 200,
+            child: pyrite.TabbedView(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = tester.widget<SingleChildScrollView>(
+      find.byType(SingleChildScrollView).first,
+    );
+    final position = scrollable.controller!.position;
+    expect(position.maxScrollExtent, greaterThan(0));
+
+    final registration = NativeTabDragRegistry.register(
+      controller: controller,
+      tab: tabs.first,
+      dragScope: 'editor',
+    );
+    addTearDown(registration.dispose);
+    final session = _FakeDropSession(registration.localData);
+    final monitor = tester.widget<DropMonitor>(find.byType(DropMonitor));
+
+    // Held against the trailing edge, which is where a tab is dragged out of
+    // its group: the strip used to scroll as if the drag wanted to reorder.
+    for (final coordinate in [1.0, 150.0, position.viewportDimension - 1]) {
+      monitor.onDropOver?.call(
+        MonitorDropOverEvent(
+          session: session,
+          position: DropPosition(
+            local: Offset(coordinate, 10),
+            global: Offset(coordinate, 10),
+          ),
+          isInside: true,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(position.pixels, 0);
   });
 
   testWidgets('a console tab drops onto the editor strip', (tester) async {
