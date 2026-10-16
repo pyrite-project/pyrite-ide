@@ -261,12 +261,19 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
-      refreshFileTabTitles(state.tabs);
-      state = TabbedViewController(List.from(state.tabs));
-      state.selectTab(newTab);
+      refreshFileTabTitles(allEditorTabs(ref.container));
+      // Republishing has to carry the selection over: a freshly built
+      // controller selects its first tab, which would move the focus of a
+      // group the file is not even being opened in.
+      _publishTabsPreservingSelection();
       // The tab was built on the primary group; a split editor wants it in the
-      // group the user is looking at.
-      moveTabToFocusedGroup(ref.container, from: state, tab: newTab);
+      // group the user is looking at, and that group selects it. The root is
+      // only selected into when the tab actually stays here: selecting first
+      // would park the root's focus on a tab that is about to leave, and the
+      // root would keep that stale index after the move.
+      if (!moveTabToFocusedGroup(ref.container, from: state, tab: newTab)) {
+        state.selectTab(newTab);
+      }
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
   }
@@ -369,16 +376,20 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       state.addTab(newTab);
-      refreshFileTabTitles(state.tabs);
+      refreshFileTabTitles(allEditorTabs(ref.container));
 
-      TabbedViewController newController = TabbedViewController(
-        List.from(state.tabs),
-      );
-      newController.selectTab(newTab);
-      state = newController;
+      // Republishing has to carry the selection over: a freshly built
+      // controller selects its first tab, which would move the focus of a
+      // group the file is not even being opened in.
+      _publishTabsPreservingSelection();
       // The tab was built on the primary group; a split editor wants it in the
-      // group the user is looking at.
-      moveTabToFocusedGroup(ref.container, from: state, tab: newTab);
+      // group the user is looking at, and that group selects it. Select only
+      // when the tab stays here -- selecting first would leave the root's focus
+      // on a tab that is about to leave, and the root would hold an index past
+      // its end that reads as its last tab.
+      if (!moveTabToFocusedGroup(ref.container, from: state, tab: newTab)) {
+        state.selectTab(newTab);
+      }
       if (context.mounted) {
         if (ResponsiveBreakpoints.of(context).isMobile) {
           ref.read(mobileSelectedIndex.notifier).state = 3;
@@ -589,7 +600,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void _publishRenamedTabs() {
     final selectedIndex = state.selectedIndex;
-    refreshFileTabTitles(state.tabs);
+    refreshFileTabTitles(allEditorTabs(ref.container));
     final newController = TabbedViewController(List.from(state.tabs));
     if (selectedIndex != null && selectedIndex < newController.tabs.length) {
       newController.selectedIndex = selectedIndex;
@@ -797,7 +808,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   void afterTabClose(int index, TabData tabData) async {
     final value = tabData.value;
-    refreshFileTabTitles(state.tabs);
+    refreshFileTabTitles(allEditorTabs(ref.container));
     TabbedViewController newController = TabbedViewController(
       List.from(state.tabs),
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
@@ -131,6 +132,20 @@ List<TabbedViewController> allEditorControllers(ProviderContainer container) {
       .toList();
 }
 
+/// Every tab of every group, in layout order.
+///
+/// Titles are disambiguated across the whole editor area, because a name that
+/// is unique inside its own group can still collide with a tab in another one.
+/// Refreshing a single group's tabs is what left two identical titles on
+/// screen -- and a tab dragged out of a group stuck with the long title it had
+/// been given there, since nothing ever shortened it back.
+List<TabData> allEditorTabs(ProviderContainer container) {
+  return [
+    for (final controller in allEditorControllers(container))
+      ...controller.tabs,
+  ];
+}
+
 /// Whether [tab] may leave its group.
 ///
 /// The welcome page is pinned -- `draggable: false` -- because it is the
@@ -161,11 +176,17 @@ bool moveTabToFocusedGroup(
 
   // The tab the user was looking at in [from] must survive the move.
   final selected = from.selectedTab;
+  final selectedIndex = from.selectedIndex;
   from.removeTab(index);
   focused.insertTab(focused.tabs.length, tab);
   focused.selectTab(tab);
   if (selected != null && from.tabs.contains(selected)) {
     from.selectTab(selected);
+  } else if (from.selectedIndex == null && from.tabs.isNotEmpty) {
+    // [selected] left together with the move, and [from] had no other tab to
+    // fall back to, so it is left with nothing selected. `removeTab` only
+    // restores a selection when one existed.
+    from.selectedIndex = (selectedIndex ?? 0).clamp(0, from.tabs.length - 1);
   }
   return true;
 }
@@ -289,6 +310,10 @@ void _refreshLayout(ProviderContainer container) {
   container.read(editorLayoutProvider.notifier).state = refreshEditorLayout(
     container,
   );
+  // Group membership changed, so which names collide changed with it: a tab
+  // that carried a long disambiguating title into a group with no rival has to
+  // drop back to its basename, and vice versa.
+  refreshFileTabTitles(allEditorTabs(container));
 }
 
 /// The layout as it should be: empty groups dropped, primary brought back.

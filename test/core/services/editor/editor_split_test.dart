@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
@@ -455,4 +456,39 @@ void main() {
       expect(find.byType(EditorGroup), findsOneWidget);
     });
   });
+
+  test('same-named files in different groups are disambiguated', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final primary = container.read(tabbedViewControllerProvider);
+    final parked = TabData(text: 'parked');
+    primary.addTab(parked);
+    splitEditorGroup(
+      container,
+      from: primary,
+      target: primary,
+      tab: parked,
+      where: EditorSplit.right,
+    );
+    final second = allEditorControllers(container)[1];
+
+    // Same basename, different directories -- one tab per group. Refreshing a
+    // single group's tabs is what left both of these reading `README.md`.
+    final client = TabData(
+      text: 'README.md',
+      value: TabDataValue(type: 'file', filePath: '/proj/client/README.md'),
+    );
+    final server = TabData(
+      text: 'README.md',
+      value: TabDataValue(type: 'file', filePath: '/proj/server/README.md'),
+    );
+    primary.addTab(client);
+    second.addTab(server);
+
+    refreshFileTabTitles(allEditorTabs(container));
+
+    expect(client.text, 'client/README.md');
+    expect(server.text, 'server/README.md');
+  });
+
 }
