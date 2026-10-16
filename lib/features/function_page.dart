@@ -44,6 +44,7 @@ import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
+import 'package:pyrite_ide/features/function_page/console_surface_actions.dart';
 import 'package:pyrite_ide/features/function_page/console_dock.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
@@ -108,187 +109,14 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
       (_, count) => updateConsoleProblemsLabel(ref, count),
     );
 
-    final isConnected = ref.watch(deviceConnectedProvider);
-    final webReplState = ref.watch(webReplProvider);
-    final webReplConnected = webReplState.state == WebReplState.connected;
-    final useWebRepl =
-        webReplConnected || webReplState.state == WebReplState.waitingPassword;
-    final selectedValue = controller.selectedTab?.value;
-    final actions = _buildConsoleActions(
-      ref,
-      selectedValue is ConsoleTabValue ? selectedValue.id : ConsoleTabId.repl,
-      isConnected,
-      webReplConnected,
-      useWebRepl,
-    );
-
+    // No trailing area: each surface carries its own actions, so the strip's
+    // corner stays for the panel-level controls alone.
     return TabbedViewTheme(
       data: buildTabStripTheme(context),
       child: TabbedView(
         controller: controller,
         onTabSecondaryTap: (index, tab, details) =>
             showConsoleDockMenu(context, ref, details),
-        trailing: _ConsoleTrailingActions(actions: actions),
-      ),
-    );
-  }
-
-  List<Widget> _buildConsoleActions(
-    WidgetRef ref,
-    ConsoleTabId selectedTab,
-    bool isConnected,
-    bool webReplConnected,
-    bool useWebRepl,
-  ) {
-    switch (selectedTab) {
-      case ConsoleTabId.log:
-        return [
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
-            onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
-            icon: const Icon(Icons.cleaning_services_outlined),
-          ),
-        ];
-      case ConsoleTabId.terminal:
-        return const [];
-      case ConsoleTabId.problems:
-        return [_buildProblemsCollapseAction(ref)];
-      case ConsoleTabId.repl:
-        return [
-          if (!isConnected && !useWebRepl)
-            IconButton(
-              tooltip: translateForWidget(
-                ref,
-                I18nKey.bottomPanelConnectWebRepl,
-              ),
-              onPressed: () {
-                ref.read(webReplProvider.notifier).connect();
-              },
-              icon: const Icon(Icons.wifi),
-            ),
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
-            onPressed: () {
-              replController.clearSelection();
-              repl.clear();
-              replClearSink?.call();
-              final input = ref.read(replInputControllerProvider);
-              if (replClearSink == null) {
-                if (input.mode == ReplInteractionMode.prompt) {
-                  repl.write('>>> ');
-                } else if (input.mode == ReplInteractionMode.continuation) {
-                  repl.write('... ');
-                }
-              }
-            },
-            icon: const Icon(Icons.cleaning_services_outlined),
-          ),
-          IconButton(
-            tooltip: useWebRepl
-                ? translateForWidget(ref, I18nKey.editorToolbarInterruptDevice)
-                : translateForWidget(
-                    ref,
-                    isConnected
-                        ? I18nKey.editorToolbarInterruptDevice
-                        : I18nKey.editorToolbarInterruptNeedsDevice,
-                  ),
-            onPressed: (useWebRepl || isConnected)
-                ? () {
-                    if (useWebRepl) {
-                      ref.read(webReplProvider.notifier).sendCommand("\x03");
-                    } else {
-                      ref.read(serialProvider.notifier).sendCommand("\x03");
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.stop_circle_outlined),
-          ),
-          IconButton(
-            tooltip: useWebRepl
-                ? translateForWidget(ref, I18nKey.editorToolbarSoftReboot)
-                : translateForWidget(
-                    ref,
-                    isConnected
-                        ? I18nKey.editorToolbarSoftReboot
-                        : I18nKey.editorToolbarSoftRebootNeedsDevice,
-                  ),
-            onPressed: (useWebRepl || isConnected)
-                ? () {
-                    if (useWebRepl) {
-                      ref.read(webReplProvider.notifier).sendCommand("\x04");
-                    } else {
-                      ref.read(serialProvider.notifier).sendCommand("\x04");
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.restart_alt),
-          ),
-        ];
-    }
-  }
-
-  /// Collapse-all / expand-all toggle for the Problems panel, shown while
-  /// that tab is selected. "All" covers every file that currently has rows;
-  /// stale paths from closed files are ignored.
-  Widget _buildProblemsCollapseAction(WidgetRef ref) {
-    final problems = ref.watch(problemsProvider);
-    final collapsed = ref.watch(collapsedProblemFilesProvider);
-    final groupPaths = [
-      for (final file in problems)
-        if (file.diagnostics.isNotEmpty) file.path,
-    ];
-    final allCollapsed =
-        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
-    return IconButton(
-      tooltip: translateForWidget(
-        ref,
-        allCollapsed
-            ? I18nKey.problemsPanelExpandAll
-            : I18nKey.problemsPanelCollapseAll,
-      ),
-      onPressed: () {
-        ref.read(collapsedProblemFilesProvider.notifier).state = allCollapsed
-            ? <String>{}
-            : Set<String>.from(groupPaths);
-      },
-      icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
-    );
-  }
-}
-
-/// Panel position menu plus whatever the selected surface offers.
-///
-/// Lives in [TabbedView.trailing] so the strip keeps its own layout and scroll
-/// behaviour, exactly like the editor strip's corner widgets.
-class _ConsoleTrailingActions extends ConsumerWidget {
-  const _ConsoleTrailingActions({required this.actions});
-
-  final List<Widget> actions;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [for (final action in actions) _actionSlot(action, compact)],
-    );
-  }
-
-  /// Matches the button footprint the previous tab strip used, so the trailing
-  /// edge keeps its size at every density tier.
-  Widget _actionSlot(Widget child, bool compact) {
-    return SizedBox.square(
-      dimension: compact ? 26 : 30,
-      child: IconButtonTheme(
-        data: IconButtonThemeData(
-          style: ButtonStyle(
-            iconSize: WidgetStatePropertyAll(compact ? 15 : 17),
-            padding: WidgetStatePropertyAll(EdgeInsets.zero),
-            minimumSize: WidgetStatePropertyAll(Size.square(compact ? 26 : 30)),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-        child: child,
       ),
     );
   }
@@ -1170,10 +998,19 @@ class ReplView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final terminalTheme = buildTerminalTheme(context, ref);
     final terminalStyle = buildTerminalStyle(ref);
-    return ReplSurface(
-      backgroundColor: terminalTheme.background,
-      foregroundColor: terminalTheme.foreground,
-      textStyle: terminalStyle.toTextStyle(),
+    // The REPL's buttons are the tab's own, so they stay with it when the tab
+    // is dragged into an editor group.
+    return Column(
+      children: [
+        const ReplSurfaceActions(),
+        Expanded(
+          child: ReplSurface(
+            backgroundColor: terminalTheme.background,
+            foregroundColor: terminalTheme.foreground,
+            textStyle: terminalStyle.toTextStyle(),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1184,12 +1021,19 @@ class OutputLogView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final surface = Theme.of(context).colorScheme.surface;
-    return TerminalView(
-      ideOutputTerminal,
-      controller: ideOutputController,
-      theme: buildTerminalTheme(context, ref),
-      textStyle: buildTerminalStyle(ref),
-      key: ValueKey('output_${surface.toARGB32()}'),
+    return Column(
+      children: [
+        const LogSurfaceActions(),
+        Expanded(
+          child: TerminalView(
+            ideOutputTerminal,
+            controller: ideOutputController,
+            theme: buildTerminalTheme(context, ref),
+            textStyle: buildTerminalStyle(ref),
+            key: ValueKey('output_${surface.toARGB32()}'),
+          ),
+        ),
+      ],
     );
   }
 }

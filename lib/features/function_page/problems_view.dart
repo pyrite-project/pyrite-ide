@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
+import 'package:pyrite_ide/features/function_page/console_surface_actions.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
@@ -102,11 +103,31 @@ class ProblemsView extends ConsumerWidget {
       }
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
-      ),
+    final groupPaths = [
+      for (final file in problems)
+        if (file.diagnostics.isNotEmpty) file.path,
+    ];
+    final allCollapsed =
+        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // The panel's own collapse-all toggle belongs to this tab, so it moves
+        // with it when the tab is dragged into an editor group.
+        _ProblemsCollapseAction(
+          groupPaths: groupPaths,
+          allCollapsed: allCollapsed,
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -114,6 +135,41 @@ class ProblemsView extends ConsumerWidget {
     final start = diagnostic.range['start'];
     if (start is! Map) return 0;
     return (start['line'] as num?)?.toInt() ?? 0;
+  }
+}
+
+/// Collapse-all / expand-all toggle for the Problems panel.
+///
+/// "All" covers every file that currently has rows; stale paths from closed
+/// files are ignored.
+class _ProblemsCollapseAction extends ConsumerWidget {
+  const _ProblemsCollapseAction({
+    required this.groupPaths,
+    required this.allCollapsed,
+  });
+
+  final List<String> groupPaths;
+  final bool allCollapsed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ConsoleSurfaceActions(
+      actions: [
+        IconButton(
+          tooltip: translateForWidget(
+            ref,
+            allCollapsed
+                ? I18nKey.problemsPanelExpandAll
+                : I18nKey.problemsPanelCollapseAll,
+          ),
+          onPressed: () {
+            ref.read(collapsedProblemFilesProvider.notifier).state =
+                allCollapsed ? <String>{} : Set<String>.from(groupPaths);
+          },
+          icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
+        ),
+      ],
+    );
   }
 }
 
