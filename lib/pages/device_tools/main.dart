@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/serial_port_filter.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/serial/serial_port_filter_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
+import 'package:pyrite_ide/pages/device_tools/serial_port_list.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/search_field.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
 class Tools extends ConsumerStatefulWidget {
@@ -20,6 +24,27 @@ class Tools extends ConsumerStatefulWidget {
 
 class _ToolsState extends ConsumerState<Tools> {
   bool _showDeviceStatus = false;
+
+  late final TextEditingController _searchController = TextEditingController(
+    text: ref.read(serialPortFilterProvider).query,
+  );
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _updateFilter(SerialPortFilter Function(SerialPortFilter) update) {
+    final notifier = ref.read(serialPortFilterProvider.notifier);
+    notifier.state = update(notifier.state);
+  }
+
+  void _clearFilter() {
+    _searchController.clear();
+    ref.read(serialPortFilterProvider.notifier).state =
+        const SerialPortFilter();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +64,8 @@ class _ToolsState extends ConsumerState<Tools> {
         webReplState == WebReplState.connected;
     final compact =
         widget.compact || ref.watch(themeStyle) == ThemeStyle.compact;
+    final filter = ref.watch(serialPortFilterProvider);
+    final result = filter.apply(state.ports);
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -66,9 +93,35 @@ class _ToolsState extends ConsumerState<Tools> {
             subtitle: I18nKey.devicesAvailableSerialSubtitle,
             leadingIcon: Icons.usb,
             compact: compact,
+            actions: [
+              IconButton(
+                tooltip: translateForWidget(ref, I18nKey.devicesRefreshSerial),
+                onPressed: () => ref.read(serialProvider.notifier).refresh(),
+                icon: const Icon(Icons.refresh),
+              ),
+              buildFilterMenu(filter),
+            ],
           ),
         ),
-        if (state.portNames.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 12, 8),
+            child: OptionsSearchField(
+              controller: _searchController,
+              options: filter.options,
+              hintText: translateForWidget(
+                ref,
+                I18nKey.devicesSerialFilterHint,
+              ),
+              hasError: result.regexError != null,
+              onChanged: (query) =>
+                  _updateFilter((filter) => filter.copyWith(query: query)),
+              onOptionsChanged: (options) =>
+                  _updateFilter((filter) => filter.copyWith(options: options)),
+            ),
+          ),
+        ),
+        if (result.total == 0)
           SliverFillRemaining(
             hasScrollBody: false,
             child: WorkspaceEmptyState(
@@ -79,46 +132,45 @@ class _ToolsState extends ConsumerState<Tools> {
               onAction: () => ref.read(serialProvider.notifier).refresh(),
             ),
           )
-        else
-          SliverList.builder(
-            itemCount: state.portNames.length,
-            itemBuilder: (context, index) {
-              final portInfo = state.portInfos[index];
-              return ExpansionTile(
-                visualDensity: compact ? VisualDensity.compact : null,
-                leading: const Icon(Icons.developer_board_outlined),
-                title: Text(portInfo.path),
-                subtitle: Text(portInfo.description),
-                childrenPadding: EdgeInsetsDirectional.fromSTEB(
-                  16,
-                  0,
-                  16,
-                  compact ? 8 : 12,
-                ),
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: webReplActive
-                          ? null
-                          : () {
-                              ref
-                                  .read(serialProvider.notifier)
-                                  .connectPort(portInfo.path);
-                            },
-                      icon: const Icon(Icons.power_settings_new),
-                      label: const UseText(I18nKey.devicesConnectSerial),
-                    ),
-                  ),
-                  buildDetailListTile(
-                    context,
-                    'Description',
-                    portInfo.description,
-                  ),
-                ],
-              );
-            },
+        else if (result.regexError case final regexError?)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: WorkspaceEmptyState(
+              icon: Icons.error_outline,
+              title: I18nKey.devicesSerialFilterInvalidRegex,
+              message: regexError,
+              actionLabel: I18nKey.devicesSerialFilterClear,
+              onAction: _clearFilter,
+            ),
+          )
+        else if (result.visible.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: WorkspaceEmptyState(
+              icon: Icons.filter_alt_off_outlined,
+              title: I18nKey.devicesSerialFilterNoMatchTitle,
+              message: I18nKey.devicesSerialFilterNoMatchMessage,
+              actionLabel: I18nKey.devicesSerialFilterClear,
+              onAction: _clearFilter,
+            ),
+          )
+        else ...[
+          if (filter.isActive)
+            SliverToBoxAdapter(
+              child: buildFilterSummary(
+                context,
+                shown: result.visible.length,
+                total: result.total,
+              ),
+            ),
+          SerialPortList(
+            ports: result.visible,
+            compact: compact,
+            onConnect: webReplActive
+                ? null
+                : (path) => ref.read(serialProvider.notifier).connectPort(path),
           ),
+        ],
       ],
     );
   }
@@ -219,12 +271,60 @@ class _ToolsState extends ConsumerState<Tools> {
     );
   }
 
-  Widget buildDetailListTile(BuildContext context, String name, String? value) {
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: UseText(value ?? I18nKey.devicesUnknown),
-      subtitle: Text(name),
+  Widget buildFilterMenu(SerialPortFilter filter) {
+    return MenuAnchor(
+      menuChildren: [
+        CheckboxMenuButton(
+          value: filter.usbOnly,
+          onChanged: (value) => _updateFilter(
+            (filter) => filter.copyWith(usbOnly: value ?? false),
+          ),
+          child: const UseText(I18nKey.devicesSerialFilterUsbOnly),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+          onPressed: filter.isActive ? _clearFilter : null,
+          child: const UseText(I18nKey.devicesSerialFilterClear),
+        ),
+      ],
+      builder: (context, controller, _) => IconButton(
+        tooltip: translateForWidget(ref, I18nKey.devicesSerialFilterMenu),
+        isSelected: filter.usbOnly,
+        onPressed: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+        icon: const Icon(Icons.filter_list),
+        selectedIcon: const Icon(Icons.filter_alt),
+      ),
+    );
+  }
+
+  Widget buildFilterSummary(
+    BuildContext context, {
+    required int shown,
+    required int total,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              translateForWidget(
+                ref,
+                I18nKey.devicesSerialFilterCount,
+              ).replaceAll('{shown}', '$shown').replaceAll('{total}', '$total'),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          TextButton(
+            onPressed: _clearFilter,
+            child: const UseText(I18nKey.devicesSerialFilterClear),
+          ),
+        ],
+      ),
     );
   }
 }

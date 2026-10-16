@@ -35,6 +35,35 @@ List<SingleActivator> toggleCommentActivators() => [
   const SingleActivator(LogicalKeyboardKey.slash, meta: true),
 ];
 
+/// Activators for the find options, VS Code style: Alt+C / Alt+W / Alt+R.
+///
+/// Apple platforms add Cmd because Option+letter types a character there
+/// (Option+C is "ç"), which is also VS Code's macOS binding.
+List<SingleActivator> _findOptionActivators(LogicalKeyboardKey key) => [
+  if (usesCommandShortcut)
+    SingleActivator(key, meta: true, alt: true)
+  else
+    SingleActivator(key, alt: true),
+];
+
+List<SingleActivator> findCaseSensitiveActivators() =>
+    _findOptionActivators(LogicalKeyboardKey.keyC);
+
+List<SingleActivator> findWholeWordActivators() =>
+    _findOptionActivators(LogicalKeyboardKey.keyW);
+
+List<SingleActivator> findRegexActivators() =>
+    _findOptionActivators(LogicalKeyboardKey.keyR);
+
+String _findOptionShortcutLabel(String key) =>
+    usesCommandShortcut ? 'Cmd+Alt+$key' : 'Alt+$key';
+
+String findCaseSensitiveShortcutLabel() => _findOptionShortcutLabel('C');
+
+String findWholeWordShortcutLabel() => _findOptionShortcutLabel('W');
+
+String findRegexShortcutLabel() => _findOptionShortcutLabel('R');
+
 String findShortcutLabel() => usesCommandShortcut ? 'Cmd+F' : 'Ctrl+F';
 
 String replaceShortcutLabel() => usesCommandShortcut ? 'Cmd+Alt+H' : 'Ctrl+H';
