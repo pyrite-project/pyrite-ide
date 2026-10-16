@@ -63,6 +63,7 @@ dependencies:
   archive: 4.0.9
   path_provider: 2.1.6
   path: 1.9.1
+  xml: 6.5.0
   ffi: 2.2.0
   m3_floating_toolbar: 0.1.0
   flserial:
