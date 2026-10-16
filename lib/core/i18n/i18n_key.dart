@@ -414,6 +414,17 @@ enum I18nKey {
   devicesDisconnected('devices.connection.disconnected', '暂未连接设备'),
   devicesSerialConnected('devices.connection.serial_connected', '已建立串口连接'),
   devicesConnectionHint('devices.connection.hint', '选择下方串口后，REPL 与文件同步会使用该设备。'),
+  devicesOpenPermissionDenied(
+    'devices.error.open_permission_denied',
+    '没有权限打开 {port}',
+  ),
+  devicesOpenBusy('devices.error.open_busy', '{port} 被其他程序占用'),
+  devicesOpenNotFound('devices.error.open_not_found', '找不到 {port}'),
+  devicesOpenUnsupportedDevice(
+    'devices.error.open_unsupported_device',
+    '不支持 {port} 的 USB 串口芯片',
+  ),
+  devicesOpenFailed('devices.error.open_failed', '无法打开 {port}（{detail}）'),
   devicesShowStatus('devices.action.show_status', '查看设备状态'),
   devicesHideStatus('devices.action.hide_status', '收起设备状态'),
   devicesDisconnect('devices.action.disconnect', '断开'),
