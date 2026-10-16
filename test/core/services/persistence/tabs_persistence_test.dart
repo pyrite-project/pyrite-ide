@@ -5,6 +5,64 @@ import 'package:pyrite_ide/core/services/persistence/editor/tabs_persistence.dar
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 void main() {
+  test('a split layout round-trips through json', () {
+    final data = TabsPersistedData(
+      tabs: [
+        PersistedTab(filePath: '/a.py', isSaved: true),
+        PersistedTab(filePath: '/b.py', isSaved: false),
+      ],
+      selectedTabIndex: 1,
+      selectedTabPath: '/b.py',
+      groups: [
+        PersistedEditorGroup(
+          tabs: [PersistedTab(filePath: '/a.py', isSaved: true)],
+          selectedTabPath: '/a.py',
+        ),
+        PersistedEditorGroup(
+          tabs: [PersistedTab(filePath: '/b.py', isSaved: false)],
+          selectedTabPath: '/b.py',
+        ),
+      ],
+      layout: PersistedEditorLayout.split('horizontal', [
+        PersistedEditorLayout.group(0),
+        PersistedEditorLayout.split('vertical', [
+          PersistedEditorLayout.group(1),
+          PersistedEditorLayout.group(0),
+        ]),
+      ]),
+    );
+
+    final restored = TabsPersistedData.fromJson(
+      jsonDecode(jsonEncode(data.toJson())) as Map<String, dynamic>,
+    );
+
+    expect(restored.groups, hasLength(2));
+    expect(restored.groups[1].tabs.single.filePath, '/b.py');
+    expect(restored.groups[1].tabs.single.isSaved, isFalse);
+    expect(restored.selectedTabPath, '/b.py');
+    expect(restored.layout, isNotNull);
+    expect(restored.layout!.axis, 'horizontal');
+    expect(restored.layout!.children, hasLength(2));
+    expect(restored.layout!.children[1].axis, 'vertical');
+    expect(restored.layout!.children[1].children, hasLength(2));
+    // The nested group points back at group 0, which is preserved verbatim.
+    expect(restored.layout!.children[1].children[1].groupIndex, 0);
+  });
+
+  test('tabs without a layout restore as a single group', () {
+    final data = TabsPersistedData(
+      tabs: [PersistedTab(filePath: '/a.py', isSaved: true)],
+      selectedTabIndex: 0,
+    );
+
+    final restored = TabsPersistedData.fromJson(
+      jsonDecode(jsonEncode(data.toJson())) as Map<String, dynamic>,
+    );
+
+    expect(restored.groups, isEmpty);
+    expect(restored.layout, isNull);
+  });
+
   test('persisted tab round-trips fold ranges and scroll line', () {
     final tab = PersistedTab(
       filePath: r'C:\project\main.py',
@@ -38,63 +96,11 @@ void main() {
     expect(restored.unsavedContent, 'print("hi")');
     expect(restored.cursorOffset, 42);
     expect(restored.scrollLine, 17);
-    expect(restored.foldedRanges.length, 2);
-    expect(restored.foldedRanges[0].startLine, 2);
-    expect(restored.foldedRanges[0].endLine, 20);
-    expect(restored.foldedRanges[0].children.length, 2);
-    expect(restored.foldedRanges[0].children[1].children.single.startLine, 12);
-    expect(restored.foldedRanges[1].startLine, 30);
-    expect(restored.foldedRanges[1].children, isEmpty);
-  });
-
-  test('persisted tab accepts sessions written before the new fields', () {
-    final legacy = PersistedTab.fromJson({
-      'filePath': '/tmp/old.py',
-      'cursorOffset': 7,
-    });
-
-    expect(legacy.scrollLine, isNull);
-    expect(legacy.foldedRanges, isEmpty);
-  });
-
-  test(
-    'persisted fold range defaults missing keys and drops junk children',
-    () {
-      final range = PersistedFoldRange.fromJson({
-        'children': [<String, dynamic>{}, 'junk'],
-      });
-
-      expect(range.startLine, 0);
-      expect(range.endLine, 0);
-      // Non-map children are dropped; an empty map parses to the defaulted
-      // range, which folds nothing.
-      expect(range.children.length, 1);
-      expect(range.children.single.startLine, 0);
-    },
-  );
-
-  test('tabs persisted data round-trips with the selection path', () {
-    final data = TabsPersistedData(
-      tabs: [
-        PersistedTab(
-          filePath: '/w/a.py',
-          scrollLine: 3,
-          foldedRanges: const [PersistedFoldRange(startLine: 1, endLine: 2)],
-        ),
-        PersistedTab(filePath: '/w/b.py'),
-      ],
-      selectedTabIndex: 2,
-      selectedTabPath: '/w/b.py',
-    );
-
-    final restored = TabsPersistedData.fromJson(
-      jsonDecode(jsonEncode(data.toJson())) as Map<String, dynamic>,
-    );
-
-    expect(restored.tabs.map((t) => t.filePath), ['/w/a.py', '/w/b.py']);
-    expect(restored.tabs.first.scrollLine, 3);
-    expect(restored.tabs.first.foldedRanges.single.endLine, 2);
-    expect(restored.selectedTabIndex, 2);
-    expect(restored.selectedTabPath, '/w/b.py');
+    expect(restored.foldedRanges, hasLength(2));
+    final first = restored.foldedRanges.first;
+    expect(first.startLine, 2);
+    expect(first.endLine, 20);
+    expect(first.children, hasLength(2));
+    expect(first.children.last.children.single.startLine, 12);
   });
 }

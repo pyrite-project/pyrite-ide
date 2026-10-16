@@ -92,6 +92,8 @@ class PersistenceManager {
       consoleDockSide: functionPage?.consoleDockSide ?? 'bottom',
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
+      tabGroups: tabsData?.groups ?? const [],
+      tabLayout: tabsData?.layout,
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       selectedTabPath: tabsData?.selectedTabPath,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
@@ -253,34 +255,27 @@ class PersistenceManager {
 
   Future<void> _saveTabs(ProviderContainer container) async {
     final tabController = container.read(tabbedViewControllerProvider);
-    // A split editor keeps a second group. Persist both so no open file is
-    // lost; the split itself is not persisted, so both restore into the
-    // primary group.
-    final List<PersistedTab> tabs = [];
-    String? selectedTabPath;
-    for (final tab in [
-      for (final controller in allEditorControllers(container))
-        ...controller.tabs,
-    ]) {
-      final value = tab.value;
-      if (value is TabDataValue && value.type == "file") {
-        tabs.add(
-          PersistedTab(
-            filePath: value.filePath,
-            isBoardFile: value.isBoardFile ?? false,
-            boardFilePath: value.boardFilePath,
-            isSaved: value.isSaved,
-            unsavedContent: (!value.isSaved && value.editorController != null)
-                ? value.editorController!.text
-                : null,
-            cursorOffset: value.editorController?.selection.extentOffset,
-            scrollLine: value.editorController?.firstVisibleLine,
-            foldedRanges: _persistFoldedRanges(value.editorController),
-          ),
-        );
-      }
-    }
+    // The layout tree is persisted as it stands, so a session saved with any
+    // number of nested groups reopens exactly as it was left. The flat list is
+    // still written: sessions saved before groups existed restore from it, and
+    // anything that only needs "every open file" keeps working.
+    final persisted = persistEditorLayout(
+      container,
+      (controller) => PersistedEditorGroup(
+        tabs: [
+          for (final tab in controller.tabs)
+            if (editorTabValueOf(tab)?.type == "file")
+              _persistTab(editorTabValueOf(tab)!),
+        ],
+        selectedTabPath: () {
+          final selected = controller.selectedTab;
+          return selected == null ? null : editorTabValueOf(selected)?.filePath;
+        }(),
+      ),
+    );
+    final tabs = [for (final group in persisted.groups) ...group.tabs];
     final selectedIndex = tabController.selectedIndex;
+    String? selectedTabPath;
     if (selectedIndex != null &&
         selectedIndex >= 0 &&
         selectedIndex < tabController.tabs.length) {
@@ -294,7 +289,27 @@ class PersistenceManager {
         tabs: tabs,
         selectedTabIndex: selectedIndex ?? 0,
         selectedTabPath: selectedTabPath,
+        groups: persisted.groups,
+        // Only persist the tree when it actually splits: a single group is
+        // written as a plain group leaf, so it restores through the legacy
+        // single-group path rather than rebuilding a tree for nothing.
+        layout: persisted.node.isSplit ? persisted.node : null,
       ),
+    );
+  }
+
+  PersistedTab _persistTab(TabDataValue value) {
+    return PersistedTab(
+      filePath: value.filePath,
+      isBoardFile: value.isBoardFile ?? false,
+      boardFilePath: value.boardFilePath,
+      isSaved: value.isSaved,
+      unsavedContent: (!value.isSaved && value.editorController != null)
+          ? value.editorController!.text
+          : null,
+      cursorOffset: value.editorController?.selection.extentOffset,
+      scrollLine: value.editorController?.firstVisibleLine,
+      foldedRanges: _persistFoldedRanges(value.editorController),
     );
   }
 }

@@ -1078,7 +1078,30 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     final List<TabData> tabs = [];
 
     tabs.addAll(_buildTabbedViewController(ref).tabs);
+    tabs.addAll(await _restoreGroupTabs(persistedTabs));
 
+    refreshFileTabTitles(tabs);
+    final newController = TabbedViewController(tabs);
+    final restoredIndex = _resolveRestoredSelection(
+      tabs,
+      selectedTabPath,
+      selectedIndex,
+    );
+    if (restoredIndex != null) {
+      newController.selectedIndex = restoredIndex;
+    }
+    state = newController;
+  }
+
+  /// Builds the tabs for one persisted group, skipping files that vanished.
+  ///
+  /// The welcome tab is not part of this: it is the primary group's floor and
+  /// comes from [_buildTabbedViewController], so a restored group never carries
+  /// a second one.
+  Future<List<TabData>> _restoreGroupTabs(
+    List<PersistedTab> persistedTabs,
+  ) async {
+    final List<TabData> tabs = [];
     for (final persisted in persistedTabs) {
       final file = File(persisted.filePath);
       final exists = await file.exists();
@@ -1152,18 +1175,51 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         tabs.add(tab);
       }
     }
+    return tabs;
+  }
 
-    refreshFileTabTitles(tabs);
-    final newController = TabbedViewController(tabs);
-    final restoredIndex = _resolveRestoredSelection(
-      tabs,
-      selectedTabPath,
-      selectedIndex,
-    );
-    if (restoredIndex != null) {
-      newController.selectedIndex = restoredIndex;
+  /// Restores every group of the layout tree, one controller each.
+  ///
+  /// The tree decides how many groups exist; a group whose files all vanished
+  /// still exists, because the user split it and may split it again. Group 0 is
+  /// this notifier's own controller, so it keeps the welcome tab in front and
+  /// stays where new files open.
+  Future<void> restoreEditorGroups(
+    List<PersistedEditorGroup> groups,
+    PersistedEditorLayout? node,
+  ) async {
+    // [restoreEditorLayout] builds the tree and creates one controller per
+    // group — index 0 is this notifier's own, the rest fresh. Seed those exact
+    // instances; the tree already wires them in, so the tabs and the layout can
+    // never drift apart.
+    final result = restoreEditorLayout(ref.container, groups, node);
+    final controllers = result.controllers;
+    for (var i = 0; i < controllers.length; i++) {
+      final restored = await _restoreGroupTabs(groups[i].tabs);
+      // Group 0 is the root and is this notifier's own controller, which the
+      // initializer already seeded with the welcome page. The root is reused
+      // rather than rebuilt, and no group is given a welcome page of its own,
+      // so a restore can never pin a second one.
+      for (final tab in restored) {
+        controllers[i].addTab(tab);
+      }
+      final selectedPath = groups[i].selectedTabPath;
+      final index = selectedPath == null
+          ? -1
+          : controllers[i].tabs.indexWhere(
+              (tab) => editorTabValueOf(tab)?.filePath == selectedPath,
+            );
+      if (index >= 0) controllers[i].selectedIndex = index;
     }
-    state = newController;
+
+    ref.read(editorLayoutProvider.notifier).state = result.node;
+    // Titles are disambiguated across every group, which is only visible once
+    // the tree is in place: two same-named files in different groups would
+    // otherwise both keep the bare basename they were created with.
+    refreshFileTabTitles(allEditorTabs(ref.container));
+    // The primary controller is this notifier's state, so it has to be
+    // republished for every watcher of the provider to see the restored tabs.
+    state = controllers.first;
   }
 
   /// Puts the caret and viewport back where they were.

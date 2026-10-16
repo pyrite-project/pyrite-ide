@@ -100,9 +100,95 @@ class PersistedTab {
   );
 }
 
+/// One editor group as persisted: its tabs and which of them was selected.
+class PersistedEditorGroup {
+  final List<PersistedTab> tabs;
+
+  /// File path of the tab selected in this group at save time, resolved the
+  /// same way [PersistedTab] selection is: by path, never by index.
+  final String? selectedTabPath;
+
+  PersistedEditorGroup({required this.tabs, this.selectedTabPath});
+
+  Map<String, dynamic> toJson() => {
+    'tabs': tabs.map((t) => t.toJson()).toList(),
+    'selectedTabPath': selectedTabPath,
+  };
+
+  factory PersistedEditorGroup.fromJson(Map<String, dynamic> json) =>
+      PersistedEditorGroup(
+        tabs:
+            (json['tabs'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(PersistedTab.fromJson)
+                .toList() ??
+            const [],
+        selectedTabPath: json['selectedTabPath'] as String?,
+      );
+}
+
+/// The editor area's layout as persisted.
+///
+/// A group is a leaf, a split holds an axis and its children. The whole tree is
+/// written flat, so a session saved with any number of nested splits restores
+/// exactly as it was; `null` means the single group [TabsPersistedData.groups]
+/// already describes.
+class PersistedEditorLayout {
+  /// Axis of a split node: `horizontal` or `vertical`. Null for a group leaf.
+  final String? axis;
+
+  /// Index into [TabsPersistedData.groups] for a group leaf.
+  final int? groupIndex;
+
+  /// Children of a split node, empty for a group leaf.
+  final List<PersistedEditorLayout> children;
+
+  PersistedEditorLayout.split(this.axis, this.children) : groupIndex = null;
+
+  PersistedEditorLayout.group(this.groupIndex)
+    : axis = null,
+      children = const [];
+
+  bool get isSplit => axis != null;
+
+  Map<String, dynamic> toJson() => {
+    if (axis != null) 'axis': axis,
+    if (groupIndex != null) 'groupIndex': groupIndex,
+    'children': children.map((c) => c.toJson()).toList(),
+  };
+
+  factory PersistedEditorLayout.fromJson(Map<String, dynamic> json) {
+    final axis = json['axis'] as String?;
+    // A split node carries `axis`; a group leaf carries `groupIndex`. The group
+    // index is absent on splits, so the axis is the only reliable discriminant.
+    if (axis != null) {
+      return PersistedEditorLayout.split(
+        axis,
+        (json['children'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(PersistedEditorLayout.fromJson)
+            .toList(),
+      );
+    }
+    final groupIndex = (json['groupIndex'] as num?)?.toInt() ?? 0;
+    return PersistedEditorLayout.group(groupIndex);
+  }
+}
+
 class PersistedData {
   final String? projectPath;
+
+  /// Every group's tabs, flattened in layout order.
+  ///
+  /// Kept flat so anything that only needs "every open file" keeps working; a
+  /// session saved before the editor area could be split has only this.
   final List<PersistedTab> tabs;
+
+  /// One entry per editor group, empty when the area was never split.
+  final List<PersistedEditorGroup> tabGroups;
+
+  /// The editor area's layout tree, or null for a single group.
+  final PersistedEditorLayout? tabLayout;
   final int selectedTabIndex;
 
   /// File path of the tab that was selected, preferred over [selectedTabIndex]
@@ -191,6 +277,8 @@ class PersistedData {
   PersistedData({
     this.projectPath,
     this.tabs = const [],
+    this.tabGroups = const [],
+    this.tabLayout,
     this.selectedTabIndex = 0,
     this.selectedTabPath,
     this.themeMode = 'system',

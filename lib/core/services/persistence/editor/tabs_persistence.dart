@@ -5,7 +5,21 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 class TabsPersistedData {
+  /// Every group's tabs, flattened in layout order.
+  ///
+  /// Kept as the flat list so a session saved before groups existed still
+  /// restores, and so anything that only needs "every open file" keeps working.
   final List<PersistedTab> tabs;
+
+  /// One entry per group, in the same order as [tabs] groups them.
+  ///
+  /// Empty for sessions saved before the editor area could be split; those
+  /// restore as the single group [layout] describes when it is null.
+  final List<PersistedEditorGroup> groups;
+
+  /// The layout tree, or null for a single group.
+  final PersistedEditorLayout? layout;
+
   final int selectedTabIndex;
 
   /// File path of the tab that was selected at save time.
@@ -23,12 +37,16 @@ class TabsPersistedData {
     required this.tabs,
     required this.selectedTabIndex,
     this.selectedTabPath,
+    this.groups = const [],
+    this.layout,
   });
 
   Map<String, dynamic> toJson() => {
     'tabs': tabs.map((t) => t.toJson()).toList(),
     'selectedTabIndex': selectedTabIndex,
     'selectedTabPath': selectedTabPath,
+    if (groups.isNotEmpty) 'groups': groups.map((g) => g.toJson()).toList(),
+    if (layout != null) 'layout': layout!.toJson(),
   };
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -40,6 +58,17 @@ class TabsPersistedData {
             [],
         selectedTabIndex: json['selectedTabIndex'] as int? ?? 0,
         selectedTabPath: json['selectedTabPath'] as String?,
+        groups:
+            (json['groups'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(PersistedEditorGroup.fromJson)
+                .toList() ??
+            const [],
+        layout: json['layout'] is Map<String, dynamic>
+            ? PersistedEditorLayout.fromJson(
+                json['layout'] as Map<String, dynamic>,
+              )
+            : null,
       );
 }
 

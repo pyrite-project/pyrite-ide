@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
@@ -517,4 +519,208 @@ void main() {
     expect(server.text, 'server/README.md');
   });
 
+  group('layout persistence', () {
+    test('a split tree round-trips through its persisted shape', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      final a = TabData(text: 'a');
+      final b = TabData(text: 'b');
+      final c = TabData(text: 'c');
+      primary.addTab(a);
+      primary.addTab(b);
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: a,
+        where: EditorSplit.right,
+      );
+      final nested =
+          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
+                  as GroupLayout)
+              .controller;
+      nested.addTab(c);
+      splitEditorGroup(
+        container,
+        from: nested,
+        target: nested,
+        tab: c,
+        where: EditorSplit.bottom,
+      );
+
+      final persisted = persistEditorLayout(
+        container,
+        (controller) =>
+            PersistedEditorGroup(tabs: const [], selectedTabPath: null),
+      );
+      expect(persisted.groups, hasLength(3));
+      final node = persisted.node;
+      expect(node.isSplit, isTrue);
+      expect(node.axis, 'horizontal');
+      // The right-hand child is itself a split, so the nesting survives.
+      expect(node.children[1].isSplit, isTrue);
+      expect(node.children[1].axis, 'vertical');
+      expect(node.children[1].children, hasLength(2));
+
+      // And it rebuilds into the same shape, with group 0 staying primary.
+      final restored = restoreEditorLayout(container, persisted.groups, node);
+      final restoredSplit = restored.node as SplitLayout;
+      expect(restoredSplit.axis, Axis.horizontal);
+      expect(restoredSplit.children.first, isA<PrimaryGroupLayout>());
+      final inner = restoredSplit.children[1] as SplitLayout;
+      expect(inner.axis, Axis.vertical);
+      expect(inner.children, hasLength(2));
+      // Wire the tree in so the controller instances are observable.
+      container.read(editorLayoutProvider.notifier).state = restored.node;
+      expect(allEditorControllers(container), hasLength(3));
+      expect(allEditorControllers(container).first, same(primary));
+    });
+
+    test('a single group persists without a tree', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final persisted = persistEditorLayout(
+        container,
+        (controller) => PersistedEditorGroup(tabs: []),
+      );
+
+      expect(persisted.groups, hasLength(1));
+      expect(persisted.node.isSplit, isFalse);
+      final restored = restoreEditorLayout(
+        container,
+        persisted.groups,
+        persisted.node,
+      );
+      expect(restored.node, isA<PrimaryGroupLayout>());
+    });
+
+    test('opening a new file leaves the other group untouched', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      final stay = TabData(text: 'stay');
+      final parked = TabData(text: 'parked');
+      primary.addTab(stay);
+      primary.addTab(parked);
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: parked,
+        where: EditorSplit.right,
+      );
+      final second = allEditorControllers(container)[1];
+      container.read(focusedEditorGroupProvider.notifier).state = second;
+
+      // Deliberately not the root's first tab, so a selection reset to index 0
+      // is visible too -- not just a jump to the last one.
+      primary.selectedIndex = 1;
+      final incoming = TabData(text: 'incoming');
+      primary.addTab(incoming);
+
+      // What `openFile` does: republish carrying the selection over (a freshly
+      // built controller selects its first tab), then hand the tab to the
+      // focused group and select it here only when it stays.
+      final selection = primary.selectedIndex;
+      final republished = TabbedViewController(List.from(primary.tabs));
+      republished.selectedIndex = selection;
+      container.read(tabbedViewControllerProvider.notifier).state = republished;
+      if (!moveTabToFocusedGroup(container, from: republished, tab: incoming)) {
+        republished.selectTab(incoming);
+      }
+
+      // The root has exactly the tabs it had, and is still showing `stay`.
+      expect(republished.tabs, hasLength(2));
+      expect(republished.tabs.last, same(stay));
+      expect(republished.selectedIndex, 1);
+      expect(republished.selectedTab, same(stay));
+      expect(second.tabs.last, same(incoming));
+      expect(second.selectedTab, same(incoming));
+    });
+
+    test('a node pointing past the surviving groups is dropped', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final groups = [
+        PersistedEditorGroup(tabs: []),
+        PersistedEditorGroup(tabs: []),
+      ];
+      // Group 2 no longer exists -- its files were deleted while closed.
+      final node = PersistedEditorLayout.split('horizontal', [
+        PersistedEditorLayout.group(0),
+        PersistedEditorLayout.split('vertical', [
+          PersistedEditorLayout.group(2),
+          PersistedEditorLayout.group(1),
+        ]),
+      ]);
+
+      final restored = restoreEditorLayout(container, groups, node);
+      final restoredNode = restored.node as SplitLayout;
+      container.read(editorLayoutProvider.notifier).state = restoredNode;
+
+      expect(restoredNode.children, hasLength(2));
+      expect(restoredNode.children.first, isA<PrimaryGroupLayout>());
+      // The dangling child is gone, so the inner split collapses into its one
+      // surviving leaf rather than leaving an empty pane behind.
+      expect(restoredNode.children[1], isA<GroupLayout>());
+      expect(allEditorControllers(container), hasLength(2));
+    });
+
+    test(
+      'restoreEditorGroups seeds the controllers the tree points at',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final node = PersistedEditorLayout.split('horizontal', [
+          PersistedEditorLayout.group(0),
+          PersistedEditorLayout.group(1),
+        ]);
+
+        await container
+            .read(tabbedViewControllerProvider.notifier)
+            .restoreEditorGroups([
+              PersistedEditorGroup(tabs: []),
+              PersistedEditorGroup(tabs: []),
+            ], node);
+
+        // The split is rebuilt and every group controller is live, not a second
+        // throwaway set the layout never references.
+        expect(container.read(editorLayoutProvider), isA<SplitLayout>());
+        expect(allEditorControllers(container), hasLength(2));
+      },
+    );
+
+    test(
+      'restoring reuses the root group instead of seeding a second welcome',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final root = container.read(tabbedViewControllerProvider);
+        final node = PersistedEditorLayout.split('horizontal', [
+          PersistedEditorLayout.group(0),
+          PersistedEditorLayout.group(1),
+        ]);
+
+        // Neither group has a file that still exists, so both restore empty.
+        await container
+            .read(tabbedViewControllerProvider.notifier)
+            .restoreEditorGroups([
+              PersistedEditorGroup(tabs: []),
+              PersistedEditorGroup(tabs: []),
+            ], node);
+
+        // The root is the controller the app was built with, not a rebuilt one.
+        expect(allEditorControllers(container).first, same(root));
+        // Only the welcome page the initializer pinned -- a restore never adds
+        // another, which is what used to leave two of them on screen.
+        final welcomeCount = allEditorControllers(container)
+            .expand((controller) => controller.tabs)
+            .where((tab) => editorTabValueOf(tab)?.type == 'page')
+            .length;
+        expect(welcomeCount, 1);
+      },
+    );
+  });
 }

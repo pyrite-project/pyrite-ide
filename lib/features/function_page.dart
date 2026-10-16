@@ -694,7 +694,12 @@ class MobileView extends ConsumerWidget {
         drawer: mobileNavigationDrawer(context, ref),
         body: Column(
           children: [
-            Expanded(child: child),
+            // Wrapped like the desktop and tablet workspaces are: the editor
+            // area lays its groups out with `shadcn.ResizablePanel`, whose
+            // default divider is a shadcn `VerticalDivider` that asserts when
+            // no shadcn theme is in scope. A restored split reaches this branch
+            // on a narrow window, where the layout is no longer a single group.
+            Expanded(child: buildShadcnLayer(context, child)),
             EditorToolsBar(showNavigationDrawerButton: true),
           ],
         ),

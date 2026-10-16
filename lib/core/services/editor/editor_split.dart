@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
 /// Where a dropped tab splits the group it landed on.
@@ -387,4 +388,89 @@ bool hasPrimaryGroupNode(EditorLayout node) {
   if (node is PrimaryGroupLayout) return true;
   if (node is GroupLayout) return false;
   return (node as SplitLayout).children.any(hasPrimaryGroupNode);
+}
+
+/// The layout tree as persisted groups plus a [PersistedEditorLayout] node.
+///
+/// [convert] is called once per group in layout order and the results are
+/// numbered in that same order, so the flat list and the tree always agree.
+/// Converting a group's tabs is the caller's job: it owns the file model, and
+/// the tree only owns the shape.
+({List<PersistedEditorGroup> groups, PersistedEditorLayout node})
+persistEditorLayout(
+  ProviderContainer container,
+  PersistedEditorGroup Function(TabbedViewController controller) convert,
+) {
+  final groups = <PersistedEditorGroup>[];
+  final node = _persistNode(
+    container,
+    container.read(editorLayoutProvider),
+    groups,
+    convert,
+  );
+  return (groups: groups, node: node);
+}
+
+PersistedEditorLayout _persistNode(
+  ProviderContainer container,
+  EditorLayout node,
+  List<PersistedEditorGroup> groups,
+  PersistedEditorGroup Function(TabbedViewController controller) convert,
+) {
+  if (node is! SplitLayout) {
+    final index = groups.length;
+    groups.add(convert(groupController(container, node)));
+    return PersistedEditorLayout.group(index);
+  }
+  return PersistedEditorLayout.split(node.axis.name, [
+    for (final child in node.children)
+      _persistNode(container, child, groups, convert),
+  ]);
+}
+
+/// Rebuilds the layout tree from [groups] and [node].
+///
+/// The primary provider owns group 0 so it stays where new files open; every
+/// other group gets a fresh, empty controller. The callers seed those
+/// controllers (the seeding is async, so it cannot happen here); the returned
+/// [controllers] are the exact instances wired into [node], so the two stay in
+/// sync. A node pointing past the groups that survived the restore is dropped,
+/// so a session saved with tabs that have since been deleted still opens.
+({EditorLayout node, List<TabbedViewController> controllers})
+restoreEditorLayout(
+  ProviderContainer container,
+  List<PersistedEditorGroup> groups,
+  PersistedEditorLayout? node,
+) {
+  final primary = container.read(tabbedViewControllerProvider);
+  if (node == null || !node.isSplit || groups.isEmpty) {
+    return (node: const PrimaryGroupLayout(), controllers: [primary]);
+  }
+
+  final controllers = <TabbedViewController>[primary];
+  for (var i = 1; i < groups.length; i++) {
+    controllers.add(TabbedViewController([]));
+  }
+
+  EditorLayout build(PersistedEditorLayout n) {
+    if (!n.isSplit) {
+      final index = (n.groupIndex ?? 0).clamp(0, controllers.length - 1);
+      return index == 0
+          ? const PrimaryGroupLayout()
+          : GroupLayout(controllers[index]);
+    }
+    final children = <EditorLayout>[];
+    for (final child in n.children) {
+      if ((child.groupIndex ?? 0) >= controllers.length) continue;
+      children.add(build(child));
+    }
+    if (children.isEmpty) return const PrimaryGroupLayout();
+    if (children.length == 1) return children.single;
+    return SplitLayout(
+      n.axis == 'vertical' ? Axis.vertical : Axis.horizontal,
+      children,
+    );
+  }
+
+  return (node: build(node), controllers: controllers);
 }
