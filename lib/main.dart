@@ -164,7 +164,9 @@ void _applyData(PersistedData data) {
   container.read(tabletSelectedIndex.notifier).state = data.tabletSelectedIndex;
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
-  container.read(expansionPageShow.notifier).state = data.expansionPageShow;
+  container.read(consoleDockSideProvider.notifier).state =
+      ConsoleDockSide.values.asNameMap()[data.consoleDockSide] ??
+      ConsoleDockSide.bottom;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
   container.read(ensureBoardFilesystemOnConnect.notifier).state =

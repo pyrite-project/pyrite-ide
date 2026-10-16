@@ -11,8 +11,8 @@ import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
@@ -186,8 +186,8 @@ class UseWindow with WindowListener {
 
   List<TabData> _collectUnsavedTabs(ProviderContainer container) {
     final tabs = <TabData>[
-      ...container.read(tabbedViewControllerProvider).tabs,
-      ...container.read(expansionViewController).tabs,
+      for (final controller in allEditorControllers(container))
+        ...controller.tabs,
     ];
     return tabs.where(isTabUnsaved).toList();
   }
@@ -416,18 +416,6 @@ class AppActionBar extends ConsumerWidget {
                     !ref.read(consolePageShow),
               ),
               child: const UseText(I18nKey.menuConsolePanel),
-            ),
-            MenuItemButton(
-              onPressed: () {},
-              leadingIcon: Icon(Icons.expand),
-              trailingIcon: Checkbox(
-                value: ref.watch(expansionPageShow),
-                onChanged: (value) =>
-                    ref.read(expansionPageShow.notifier).state = !ref.read(
-                      expansionPageShow,
-                    ),
-              ),
-              child: const UseText(I18nKey.menuExpansionPanel),
             ),
           ],
           child: const UseText(I18nKey.menuView),

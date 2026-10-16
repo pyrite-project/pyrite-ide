@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/function_page.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
 const _workspaceKey = ValueKey<String>('test-console-workspace');
 const _primaryContentKey = ValueKey<String>('test-primary-content');
@@ -72,11 +74,92 @@ void main() {
       greaterThan(240),
     );
   });
+
+  testWidgets('the console docks to the right of the editor', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpWorkspace(tester, container);
+
+    container.read(consoleDockSideProvider.notifier).state =
+        ConsoleDockSide.right;
+    await tester.pump();
+
+    final workspace = tester.getRect(find.byKey(_workspaceKey));
+    final primary = tester.getRect(find.byKey(_primaryContentKey));
+    final console = tester.getRect(find.byKey(_consoleContentKey));
+    // Side by side: both panes span the full height and the console owns the
+    // trailing edge, separated from the editor only by the resize dragger.
+    expect(primary.height, closeTo(workspace.height, 0.01));
+    expect(console.height, closeTo(workspace.height, 0.01));
+    expect(primary.left, closeTo(workspace.left, 0.01));
+    expect(console.right, closeTo(workspace.right, 0.01));
+    expect(console.left, greaterThanOrEqualTo(primary.right));
+    expect(console.left - primary.right, lessThan(20));
+  });
+
+  testWidgets('the console docks above the editor', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpWorkspace(tester, container);
+
+    container.read(consoleDockSideProvider.notifier).state =
+        ConsoleDockSide.top;
+    await tester.pump();
+
+    final workspace = tester.getRect(find.byKey(_workspaceKey));
+    final primary = tester.getRect(find.byKey(_primaryContentKey));
+    final console = tester.getRect(find.byKey(_consoleContentKey));
+    // Stacked with the console on top: it owns the leading edge and spans the
+    // full width, mirroring how the bottom dock owns the trailing edge.
+    expect(console.width, closeTo(workspace.width, 0.01));
+    expect(console.top, closeTo(workspace.top, 0.01));
+    expect(primary.bottom, closeTo(workspace.bottom, 0.01));
+    expect(console.bottom, lessThanOrEqualTo(primary.top));
+    expect(primary.top - console.bottom, lessThan(20));
+  });
+
+  testWidgets('the console strip hosts the same tabs as a tabbed view', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpDockableWorkspace(tester, container);
+
+    final controller = container.read(consoleTabbedViewControllerProvider);
+    expect(controller.tabs.length, 4);
+    expect(
+      controller.tabs.map((tab) => (tab.value! as ConsoleTabValue).id),
+      orderedEquals(ConsoleTabId.values),
+    );
+    // A fresh strip selects its first tab, so the panel is never blank.
+    expect(controller.selectedIndex, 0);
+  });
 }
 
 Future<void> _pumpWorkspace(
   WidgetTester tester,
   ProviderContainer container,
+) async {
+  await _pump(
+    tester,
+    container,
+    const ColoredBox(key: _consoleContentKey, color: Colors.green),
+  );
+}
+
+Future<void> _pumpDockableWorkspace(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
+  // No `console`, so the workspace builds the real console page and with it
+  // the dock handle.
+  await _pump(tester, container, null);
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  ProviderContainer container,
+  Widget? console,
 ) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(800, 600);
@@ -91,18 +174,15 @@ Future<void> _pumpWorkspace(
           body: Builder(
             builder: (context) => buildShadcnLayer(
               context,
-              const SizedBox.expand(
+              SizedBox.expand(
                 key: _workspaceKey,
                 child: ConsoleWorkspace(
                   collapsedPrimarySize: 44,
-                  primary: ColoredBox(
+                  primary: const ColoredBox(
                     key: _primaryContentKey,
                     color: Colors.blue,
                   ),
-                  console: ColoredBox(
-                    key: _consoleContentKey,
-                    color: Colors.green,
-                  ),
+                  console: console,
                 ),
               ),
             ),

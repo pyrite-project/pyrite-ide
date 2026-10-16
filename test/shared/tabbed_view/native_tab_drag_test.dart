@@ -770,6 +770,63 @@ void main() {
     expect(controller.tabs, orderedEquals([first, sourceTab, second, third]));
   });
 
+  testWidgets('a console tab drops onto the editor strip', (tester) async {
+    // The console and the editor are two separate controllers, which is what
+    // lets a panel tab be dragged into the editor area.
+    final consoleTab = TabData(text: 'REPL');
+    final consoleController = TabbedViewController([consoleTab]);
+    addTearDown(consoleController.dispose);
+    final editorTab = TabData(text: 'editor');
+    final editorController = TabbedViewController([editorTab]);
+    addTearDown(editorController.dispose);
+
+    final registration = NativeTabDragRegistry.register(
+      controller: consoleController,
+      tab: consoleTab,
+      dragScope: null,
+    );
+    addTearDown(registration.dispose);
+    final session = _FakeDropSession(registration.localData);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 100,
+            height: 40,
+            child: NativeTabDropRegion(
+              provider: _crossStripProvider(editorController),
+              position: TabBarPosition.top,
+              targetTab: editorTab,
+              child: const ColoredBox(color: Colors.black),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final region = tester.widget<DropRegion>(find.byType(DropRegion));
+    final position = DropPosition(
+      local: const Offset(90, 20),
+      global: tester.getCenter(find.byType(NativeTabDropRegion)),
+    );
+    final operation = await Future<DropOperation>.value(
+      region.onDropOver(DropOverEvent(session: session, position: position)),
+    );
+    expect(operation, DropOperation.move);
+
+    await region.onPerformDrop(
+      PerformDropEvent(
+        session: session,
+        position: position,
+        acceptedOperation: operation,
+      ),
+    );
+
+    expect(consoleController.tabs, isEmpty);
+    expect(editorController.tabs, orderedEquals([editorTab, consoleTab]));
+  });
+
   test('only successful native operations count as accepted', () {
     expect(nativeTabDragWasAccepted(DropOperation.move), isTrue);
     expect(nativeTabDragWasAccepted(DropOperation.copy), isTrue);
@@ -778,6 +835,29 @@ void main() {
     expect(nativeTabDragWasAccepted(DropOperation.userCancelled), isFalse);
     expect(nativeTabDragWasAccepted(DropOperation.forbidden), isFalse);
   });
+}
+
+/// A drop region belonging to a strip whose controller is not the drag source.
+TabbedViewProvider _crossStripProvider(TabbedViewController controller) {
+  return TabbedViewProvider(
+    controller: controller,
+    contentBuilder: null,
+    tabReorderEnabled: true,
+    contentClip: true,
+    unselectedTabButtonsBehavior: UnselectedTabButtonsBehavior.allDisabled,
+    closeButtonTooltip: null,
+    tabsAreaButtonsBuilder: null,
+    tabRemoveInterceptor: null,
+    onTabSecondaryTap: null,
+    onTabDrag: (_) {},
+    draggingTabIndex: null,
+    onDraggableBuild: null,
+    canDrop: null,
+    onBeforeDropAccept: null,
+    // No scope on either side, so the shared drag treats them as one system.
+    dragScope: null,
+    trailing: null,
+  );
 }
 
 TabbedViewProvider _provider(

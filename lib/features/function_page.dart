@@ -44,7 +44,8 @@ import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
-import 'package:pyrite_ide/features/function_page/problems_view.dart';
+import 'package:pyrite_ide/features/function_page/console_dock.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
@@ -53,75 +54,94 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_strip_theme.dart';
 import 'package:xterm/xterm.dart';
-
-final StateProvider<int> bottomPanelTabProvider = StateProvider<int>(
-  (ref) => 0,
-);
 
 Widget consolePage() {
   return const ConsolePage();
 }
 
-class ConsolePage extends ConsumerWidget {
+/// The console panel.
+///
+/// It renders the same [TabbedView] as the editor and owns the same kind of
+/// controller, which is what lets a tab be dragged from here into the editor
+/// strip and back without a dedicated drag widget: the shared drag already
+/// moves tabs across controllers.
+class ConsolePage extends ConsumerStatefulWidget {
   const ConsolePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConsolePage> createState() => _ConsolePageState();
+}
+
+class _ConsolePageState extends ConsumerState<ConsolePage> {
+  TabbedViewController? _listenedController;
+
+  @override
+  void dispose() {
+    _listenedController?.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Selecting a tab notifies through the controller while the provider keeps
+  /// its value, so the trailing actions need the controller's own listener to
+  /// follow the selection.
+  void _listen(TabbedViewController controller) {
+    if (_listenedController == controller) return;
+    _listenedController?.removeListener(_onControllerChanged);
+    _listenedController = controller;
+    controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = ref.watch(consoleTabbedViewControllerProvider);
+    _listen(controller);
+    ref.listen<int>(
+      consoleProblemCountProvider,
+      (_, count) => updateConsoleProblemsLabel(ref, count),
+    );
+
     final isConnected = ref.watch(deviceConnectedProvider);
     final webReplState = ref.watch(webReplProvider);
     final webReplConnected = webReplState.state == WebReplState.connected;
     final useWebRepl =
         webReplConnected || webReplState.state == WebReplState.waitingPassword;
-    final selectedTab = ref.watch(bottomPanelTabProvider);
-    final problems = ref.watch(problemsProvider);
-    var problemCount = 0;
-    for (final file in problems) {
-      problemCount += file.errorCount + file.warningCount;
-    }
+    final selectedValue = controller.selectedTab?.value;
     final actions = _buildConsoleActions(
       ref,
-      selectedTab,
+      selectedValue is ConsoleTabValue ? selectedValue.id : ConsoleTabId.repl,
       isConnected,
       webReplConnected,
       useWebRepl,
     );
 
-    return Column(
-      children: [
-        _BottomPanelTabs(
-          selectedIndex: selectedTab,
-          actions: actions,
-          // The count rides on the translated label so a locale switch
-          // re-renders it together with the tab text.
-          problemsLabel: problemCount > 0
-              ? '${translateForWidget(ref, I18nKey.bottomPanelProblemsTab)} ($problemCount)'
-              : translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
-        ),
-        Expanded(
-          child: IndexedStack(
-            index: selectedTab,
-            children: const [
-              ReplView(),
-              OutputLogView(),
-              DesktopTerminalView(),
-              ProblemsView(),
-            ],
-          ),
-        ),
-      ],
+    return TabbedViewTheme(
+      data: buildTabStripTheme(context),
+      child: TabbedView(
+        controller: controller,
+        onTabSecondaryTap: (index, tab, details) =>
+            showConsoleDockMenu(context, ref, details),
+        trailing: _ConsoleTrailingActions(actions: actions),
+      ),
     );
   }
 
   List<Widget> _buildConsoleActions(
     WidgetRef ref,
-    int selectedTab,
+    ConsoleTabId selectedTab,
     bool isConnected,
     bool webReplConnected,
     bool useWebRepl,
   ) {
     switch (selectedTab) {
-      case 1:
+      case ConsoleTabId.log:
         return [
           IconButton(
             tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
@@ -129,11 +149,11 @@ class ConsolePage extends ConsumerWidget {
             icon: const Icon(Icons.cleaning_services_outlined),
           ),
         ];
-      case 2:
+      case ConsoleTabId.terminal:
         return const [];
-      case 3:
+      case ConsoleTabId.problems:
         return [_buildProblemsCollapseAction(ref)];
-      default:
+      case ConsoleTabId.repl:
         return [
           if (!isConnected && !useWebRepl)
             IconButton(
@@ -236,132 +256,39 @@ class ConsolePage extends ConsumerWidget {
   }
 }
 
-class _BottomPanelTabs extends ConsumerWidget {
-  const _BottomPanelTabs({
-    required this.selectedIndex,
-    required this.actions,
-    this.problemsLabel,
-  });
+/// Panel position menu plus whatever the selected surface offers.
+///
+/// Lives in [TabbedView.trailing] so the strip keeps its own layout and scroll
+/// behaviour, exactly like the editor strip's corner widgets.
+class _ConsoleTrailingActions extends ConsumerWidget {
+  const _ConsoleTrailingActions({required this.actions});
 
-  final int selectedIndex;
   final List<Widget> actions;
 
-  /// Pre-translated Problems tab label; carries the open-problem count when
-  /// there is one, so the tab reads like VS Code's badge without adding a
-  /// badge slot to [_BottomPanelTab].
-  final String? problemsLabel;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final statusBarHeight = ThemeDensityTokens.forStyle(
-      ref.watch(themeStyle),
-    ).statusBarHeight;
     final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return Container(
-      height: statusBarHeight,
-      decoration: BoxDecoration(color: scheme.surface),
-      child: Row(
-        children: [
-          _BottomPanelTab(
-            label: 'REPL',
-            icon: Icons.terminal,
-            index: 0,
-            selectedIndex: selectedIndex,
-          ),
-          _BottomPanelTab(
-            label: I18nKey.bottomPanelLogTab,
-            icon: Icons.article_outlined,
-            index: 1,
-            selectedIndex: selectedIndex,
-          ),
-          _BottomPanelTab(
-            label: I18nKey.bottomPanelTerminalTab,
-            icon: Icons.terminal_outlined,
-            index: 2,
-            selectedIndex: selectedIndex,
-          ),
-          if (problemsLabel != null)
-            _BottomPanelTab(
-              label: problemsLabel!,
-              icon: Icons.report_problem_outlined,
-              index: 3,
-              selectedIndex: selectedIndex,
-            ),
-          const Spacer(),
-          if (actions.isNotEmpty) ...[
-            SizedBox(
-              height: 18,
-              child: VerticalDivider(width: 1, color: scheme.outlineVariant),
-            ),
-            const SizedBox(width: 4),
-            for (final action in actions)
-              SizedBox.square(
-                dimension: compact ? 26 : 30,
-                child: IconButtonTheme(
-                  data: IconButtonThemeData(
-                    style: ButtonStyle(
-                      iconSize: WidgetStatePropertyAll(compact ? 15 : 17),
-                      padding: WidgetStatePropertyAll(EdgeInsets.zero),
-                      minimumSize: WidgetStatePropertyAll(
-                        Size.square(compact ? 26 : 30),
-                      ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                  child: action,
-                ),
-              ),
-            const SizedBox(width: 4),
-          ],
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [for (final action in actions) _actionSlot(action, compact)],
     );
   }
-}
 
-class _BottomPanelTab extends ConsumerWidget {
-  const _BottomPanelTab({
-    required this.label,
-    required this.icon,
-    required this.index,
-    required this.selectedIndex,
-  });
-
-  final Object label;
-  final IconData icon;
-  final int index;
-  final int selectedIndex;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selected = index == selectedIndex;
-    final scheme = Theme.of(context).colorScheme;
-    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return InkWell(
-      onTap: () => ref.read(bottomPanelTabProvider.notifier).state = index,
-      child: Container(
-        height: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: compact ? 14 : 16,
-              color: selected ? scheme.primary : scheme.onSurfaceVariant,
-            ),
-            SizedBox(width: compact ? 4 : 6),
-            UseText(
-              label,
-              style: TextStyle(
-                color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                fontSize: compact ? 12 : null,
-              ),
-            ),
-          ],
+  /// Matches the button footprint the previous tab strip used, so the trailing
+  /// edge keeps its size at every density tier.
+  Widget _actionSlot(Widget child, bool compact) {
+    return SizedBox.square(
+      dimension: compact ? 26 : 30,
+      child: IconButtonTheme(
+        data: IconButtonThemeData(
+          style: ButtonStyle(
+            iconSize: WidgetStatePropertyAll(compact ? 15 : 17),
+            padding: WidgetStatePropertyAll(EdgeInsets.zero),
+            minimumSize: WidgetStatePropertyAll(Size.square(compact ? 26 : 30)),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
         ),
+        child: child,
       ),
     );
   }
@@ -406,6 +333,10 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
     _primaryController = shadcn.FlexibleResizablePaneController(_primaryFlex);
     _consoleController = shadcn.FlexibleResizablePaneController(_consoleFlex);
     ref.listenManual<bool>(consolePageShow, (_, _) => _resetPaneSizes());
+    ref.listenManual<ConsoleDockSide>(
+      consoleDockSideProvider,
+      (_, _) => _resetPaneSizes(),
+    );
   }
 
   @override
@@ -435,31 +366,42 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
   @override
   Widget build(BuildContext context) {
     final showConsole = widget.allowConsole && ref.watch(consolePageShow);
-    return shadcn.ResizablePanel.vertical(
+    final dockSide = ref.watch(consoleDockSideProvider);
+    final splitsVertically = dockSide.axis == Axis.vertical;
+
+    final primaryPane = shadcn.ResizablePane.controlled(
+      key: ConsoleWorkspace.primaryPaneKey,
+      controller: _primaryController,
+      minSize: _primaryMinSize,
+      collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
+      child: widget.primary,
+    );
+    final consolePane = shadcn.ResizablePane.controlled(
+      key: ConsoleWorkspace.consolePaneKey,
+      controller: _consoleController,
+      minSize: 160,
+      child: widget.console ?? consolePage(),
+    );
+
+    return shadcn.ResizablePanel(
+      direction: dockSide.axis,
       optionalDivider: false,
       draggerBuilder: (context) {
         return Semantics(
           label: translateForWidget(ref, I18nKey.bottomPanelResize),
-          child: const shadcn.HorizontalResizableDragger(
-            key: ConsoleWorkspace.draggerKey,
-          ),
+          child: splitsVertically
+              ? const shadcn.HorizontalResizableDragger(
+                  key: ConsoleWorkspace.draggerKey,
+                )
+              : const shadcn.VerticalResizableDragger(
+                  key: ConsoleWorkspace.draggerKey,
+                ),
         );
       },
       children: [
-        shadcn.ResizablePane.controlled(
-          key: ConsoleWorkspace.primaryPaneKey,
-          controller: _primaryController,
-          minSize: _primaryMinSize,
-          collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
-          child: widget.primary,
-        ),
-        if (showConsole)
-          shadcn.ResizablePane.controlled(
-            key: ConsoleWorkspace.consolePaneKey,
-            controller: _consoleController,
-            minSize: 160,
-            child: widget.console ?? consolePage(),
-          ),
+        if (dockSide.consoleFirst && showConsole) consolePane,
+        primaryPane,
+        if (!dockSide.consoleFirst && showConsole) consolePane,
       ],
     );
   }
@@ -561,29 +503,6 @@ class FunctionPaneToggle extends ConsumerWidget {
   }
 }
 
-class ExpansionPaneToggle extends ConsumerWidget {
-  const ExpansionPaneToggle({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final visible = ref.watch(expansionPageShow);
-    return IconButton(
-      tooltip: translateForWidget(
-        ref,
-        visible
-            ? I18nKey.bottomPanelHideExpansionPanel
-            : I18nKey.bottomPanelShowExpansionPanel,
-      ),
-      onPressed: () {
-        ref.read(expansionPageShow.notifier).state = !visible;
-      },
-      icon: Icon(
-        visible ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_left,
-      ),
-    );
-  }
-}
-
 class RailTrailingActions extends StatelessWidget {
   const RailTrailingActions({super.key});
 
@@ -596,11 +515,7 @@ class RailTrailingActions extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              FunctionPaneToggle(),
-              ExpansionPaneToggle(),
-              ConsoleToggle(),
-            ],
+            children: [FunctionPaneToggle(), ConsoleToggle()],
           ),
         ),
       ),
@@ -1188,7 +1103,6 @@ class DesktopView extends ConsumerWidget {
     final List<shadcn.ResizablePane> children = [];
     final isEditorRoute = state.matchedLocation.startsWith('/editor');
     final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
-    final showExpansionPanel = ref.watch(expansionPageShow);
     final isGitRoute = state.matchedLocation.startsWith('/git');
 
     // The desktop workspace already owns the central editor pane. Mounting the
@@ -1214,15 +1128,6 @@ class DesktopView extends ConsumerWidget {
         ),
       ),
     );
-    if (showExpansionPanel) {
-      children.add(
-        shadcn.ResizablePane.flex(
-          initialFlex: 2,
-          minSize: 200,
-          child: ExpansionPage(),
-        ),
-      );
-    }
     return children;
   }
 

@@ -2,8 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
 abstract class SdkTabCommands {
@@ -95,7 +95,6 @@ class SdkTab {
         ? payload['renderer'].toString()
         : contribution.value.renderer;
     final title = payload['title']?.toString() ?? contribution.value.title;
-    final expansion = payload['expansion'] == true;
 
     final instance = ref
         .read(tabbedViewControllerProvider.notifier)
@@ -104,7 +103,6 @@ class SdkTab {
           viewId: viewId,
           renderer: renderer,
           title: title,
-          expansion: expansion,
         );
     if (instance == null) {
       _respondError(envelope, respond, '插件未运行，无法创建视图标签页');
@@ -142,19 +140,6 @@ class SdkTab {
       return;
     }
 
-    final expansionTabs = ref.read(expansionViewController).tabs;
-    for (int i = 0; i < expansionTabs.length; i++) {
-      final value = expansionTabs[i].value;
-      if (value is! TabDataValue || value.tabId != tabId) continue;
-      ref.read(expansionViewController).removeTab(i);
-      ref.read(tabbedViewControllerProvider.notifier).closePluginView(value);
-      final next = TabbedViewController(
-        List<TabData>.from(ref.read(expansionViewController).tabs),
-      );
-      ref.read(expansionViewController.notifier).state = next;
-      _respondOk(envelope, respond, data: true);
-      return;
-    }
     _respondError(envelope, respond, '未找到标签页: $tabId');
   }
 
@@ -187,8 +172,9 @@ class SdkTab {
       }
     }
 
-    append(ref.read(tabbedViewControllerProvider).tabs, 'editor');
-    append(ref.read(expansionViewController).tabs, 'expansion');
+    for (final controller in allEditorControllers(ref.container)) {
+      append(controller.tabs, 'editor');
+    }
     _respondOk(envelope, respond, data: result);
   }
 
@@ -213,16 +199,6 @@ class SdkTab {
       return;
     }
 
-    final expansion = ref.read(expansionViewController);
-    for (int i = 0; i < expansion.tabs.length; i++) {
-      final value = expansion.tabs[i].value;
-      if (value is! TabDataValue || value.tabId != tabId) continue;
-      final next = TabbedViewController(List<TabData>.from(expansion.tabs));
-      next.selectTab(expansion.tabs[i]);
-      ref.read(expansionViewController.notifier).state = next;
-      _respondOk(envelope, respond, data: true);
-      return;
-    }
     _respondError(envelope, respond, '未找到标签页: $tabId');
   }
 }
