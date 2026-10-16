@@ -157,7 +157,7 @@ class PersistedData {
   final int tabletSelectedIndex;
   final bool functionPageShow;
   final bool consolePageShow;
-  final bool expansionPageShow;
+  final String consoleDockSide;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
@@ -241,7 +241,7 @@ class PersistedData {
     this.tabletSelectedIndex = 0,
     this.functionPageShow = true,
     this.consolePageShow = true,
-    this.expansionPageShow = true,
+    this.consoleDockSide = 'bottom',
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,

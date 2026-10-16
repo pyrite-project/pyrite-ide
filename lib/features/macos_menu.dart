@@ -135,11 +135,6 @@ class MacOSMenu extends ConsumerWidget {
             onSelected: () => ref.read(consolePageShow.notifier).state = !ref
                 .read(consolePageShow),
           ),
-          PlatformMenuItem(
-            label: t(I18nKey.menuToggleExpansionPanel),
-            onSelected: () => ref.read(expansionPageShow.notifier).state = !ref
-                .read(expansionPageShow),
-          ),
         ],
       ),
       PlatformMenu(

@@ -12,7 +12,6 @@ import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 
 const _pluginId = 'outline-plugin';
@@ -150,21 +149,6 @@ void main() {
     expect(instance, isNull);
     // Only the welcome tab remains.
     expect(stopped.read(tabbedViewControllerProvider).tabs.length, 1);
-  });
-
-  test('the expansion placement opens in the expansion controller', () {
-    final instance = container
-        .read(tabbedViewControllerProvider.notifier)
-        .openPluginView(
-          pluginId: _pluginId,
-          viewId: _viewId,
-          renderer: RendererTokens.outline,
-          expansion: true,
-        );
-
-    expect(instance, isNotNull);
-    expect(container.read(tabbedViewControllerProvider).tabs.length, 1);
-    expect(container.read(expansionViewController).tabs.length, 2);
   });
 
   test(
