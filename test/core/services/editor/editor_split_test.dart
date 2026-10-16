@@ -391,6 +391,32 @@ void main() {
       expect(container.read(editorLayoutProvider), isA<SplitLayout>());
     });
 
+    test('a tab from a group outside the tree can split an editor group', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      // The docked console panel is a group the editor layout does not
+      // contain, which is where a dragged-out tab comes from.
+      final console = TabbedViewController([TabData(text: 'REPL')]);
+      addTearDown(console.dispose);
+
+      final split = splitEditorGroup(
+        container,
+        from: console,
+        target: primary,
+        tab: console.tabs.single,
+        where: EditorSplit.right,
+      );
+
+      expect(split, isTrue);
+      expect(console.tabs, isEmpty);
+      expect(container.read(focusedEditorGroupProvider), isNotNull);
+      final layout = container.read(editorLayoutProvider) as SplitLayout;
+      expect(layout.axis, Axis.horizontal);
+      final created = layout.children[1] as GroupLayout;
+      expect(created.controller.tabs.single.text, 'REPL');
+    });
+
     test('the last group survives empty, so the editor always has a strip', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);

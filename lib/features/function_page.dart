@@ -47,6 +47,7 @@ import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 import 'package:pyrite_ide/features/function_page/console_surface_actions.dart';
 import 'package:pyrite_ide/features/function_page/console_dock.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
@@ -155,16 +156,49 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
   late final shadcn.FlexibleResizablePaneController _primaryController;
   late final shadcn.FlexibleResizablePaneController _consoleController;
 
+  /// Whether the console held at least one tab on the previous notification.
+  ///
+  /// A console whose tabs have all been dragged out is not a group any more, so
+  /// the pane goes away — and the panel comes back at its default ratio when a
+  /// tab is dragged back in.
+  bool _consoleWasEmpty = false;
+
+  /// The console controller currently being followed.
+  ///
+  /// Its tabs change without the provider's value changing, so the workspace
+  /// has to listen to the controller itself to notice a group emptying.
+  TabbedViewController? _followedConsole;
+
   @override
   void initState() {
     super.initState();
     _primaryController = shadcn.FlexibleResizablePaneController(_primaryFlex);
     _consoleController = shadcn.FlexibleResizablePaneController(_consoleFlex);
+    _followConsole(ref.read(consoleTabbedViewControllerProvider));
     ref.listenManual<bool>(consolePageShow, (_, _) => _resetPaneSizes());
     ref.listenManual<ConsoleDockSide>(
       consoleDockSideProvider,
       (_, _) => _resetPaneSizes(),
     );
+  }
+
+  void _followConsole(TabbedViewController controller) {
+    if (identical(_followedConsole, controller)) return;
+    _followedConsole?.removeListener(_onConsoleTabsChanged);
+    _followedConsole = controller;
+    controller.addListener(_onConsoleTabsChanged);
+  }
+
+  void _onConsoleTabsChanged() {
+    if (!mounted) return;
+    final empty = ref.read(consoleTabbedViewControllerProvider).tabs.isEmpty;
+    if (empty != _consoleWasEmpty) {
+      _consoleWasEmpty = empty;
+      // Reset before the rebuild that drops the pane: the panel keeps the
+      // ratio it resolved while both panes existed otherwise.
+      _resetPaneSizes();
+    }
+    setState(() {});
   }
 
   @override
@@ -186,6 +220,7 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   void dispose() {
+    _followedConsole?.removeListener(_onConsoleTabsChanged);
     _primaryController.dispose();
     _consoleController.dispose();
     super.dispose();
@@ -193,7 +228,14 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   Widget build(BuildContext context) {
-    final showConsole = widget.allowConsole && ref.watch(consolePageShow);
+    // The console is a group like any other, so it only occupies a pane while
+    // it still holds tabs: drag them all out and the group — and its pane —
+    // goes away.
+    final consoleController = ref.watch(consoleTabbedViewControllerProvider);
+    _followConsole(consoleController);
+    final consoleEmpty = consoleController.tabs.isEmpty;
+    final showConsole =
+        widget.allowConsole && ref.watch(consolePageShow) && !consoleEmpty;
     final dockSide = ref.watch(consoleDockSideProvider);
     final splitsVertically = dockSide.axis == Axis.vertical;
 
@@ -208,7 +250,15 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
       key: ConsoleWorkspace.consolePaneKey,
       controller: _consoleController,
       minSize: 160,
-      child: widget.console ?? consolePage(),
+      child:
+          widget.console ??
+          EditorSplitDropRegion(
+            // The panel is a group too, so its edges accept a tab like any
+            // other group's: the new group lands in the editor area.
+            controller: ref.read(consoleTabbedViewControllerProvider),
+            edgeTarget: ref.read(tabbedViewControllerProvider),
+            child: consolePage(),
+          ),
     );
 
     return shadcn.ResizablePanel(

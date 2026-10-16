@@ -134,6 +134,32 @@ void main() {
     // A fresh strip selects its first tab, so the panel is never blank.
     expect(controller.selectedIndex, 0);
   });
+
+  testWidgets('the console pane goes away once its last tab is dragged out', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpDockableWorkspace(tester, container);
+
+    final console = container.read(consoleTabbedViewControllerProvider);
+    expect(find.byType(ConsoleWorkspace), findsOneWidget);
+    expect(console.tabs, hasLength(4));
+
+    // Dragging every tab out empties the group, and a group with no tabs is not
+    // a group: the pane disappears instead of leaving an empty strip behind.
+    for (final tab in console.tabs.toList()) {
+      console.removeTab(console.tabs.indexOf(tab));
+    }
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(console.tabs, isEmpty);
+    // The primary pane now owns the whole workspace.
+    final primary = tester.getRect(find.byKey(_primaryContentKey));
+    final workspace = tester.getRect(find.byKey(_workspaceKey));
+    expect(primary.height, closeTo(workspace.height, 0.01));
+  });
 }
 
 Future<void> _pumpWorkspace(
