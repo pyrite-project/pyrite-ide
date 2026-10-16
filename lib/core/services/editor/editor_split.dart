@@ -131,6 +131,13 @@ List<TabbedViewController> allEditorControllers(ProviderContainer container) {
       .toList();
 }
 
+/// Whether [tab] may leave its group.
+///
+/// The welcome page is pinned -- `draggable: false` -- because it is the
+/// editor's floor: it can be neither closed nor moved, and a group holding
+/// nothing else keeps it rather than being pruned away.
+bool canTabLeaveGroup(TabData tab) => tab.draggable;
+
 /// Moves [tab] into the group that has focus, if that is not [from].
 ///
 /// Tabs are built on the primary controller because that is the provider the
@@ -149,6 +156,8 @@ bool moveTabToFocusedGroup(
 
   final index = from.tabs.indexOf(tab);
   if (index < 0) return false;
+  // A pinned tab never moves, whatever asked for it.
+  if (!canTabLeaveGroup(tab)) return false;
 
   // The tab the user was looking at in [from] must survive the move.
   final selected = from.selectedTab;
@@ -174,6 +183,8 @@ bool moveTabToEditorGroup(
   if (identical(from, into)) return false;
   final index = from.tabs.indexOf(tab);
   if (index < 0) return false;
+  // A pinned tab never moves, whatever asked for it.
+  if (!canTabLeaveGroup(tab)) return false;
 
   from.removeTab(index);
   into.insertTab(into.tabs.length, tab);
@@ -214,6 +225,8 @@ bool splitEditorGroup(
   required EditorSplit where,
 }) {
   if (identical(from, target) && from.tabs.length < 2) return false;
+  // A pinned tab never moves, so it is never split out either.
+  if (!canTabLeaveGroup(tab)) return false;
 
   final created = TabbedViewController([tab]);
   from.removeTab(from.tabs.indexOf(tab));

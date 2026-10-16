@@ -95,6 +95,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     return TabbedViewController([
       TabData(
         closable: false,
+        // Pinned as well as unclosable: the welcome page is the editor's
+        // floor, so it can be neither closed nor dragged into another group.
+        draggable: false,
         value: TabDataValue(type: "page", filePath: "welcome"),
         text: "${translate(ref, I18nKey.editorWelcomeTab)}   ",
         content: EditorWelcome(),

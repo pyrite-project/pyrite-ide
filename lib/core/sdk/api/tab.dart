@@ -134,6 +134,12 @@ class SdkTab {
       final value = mainTabs[i].value;
       if (value is! TabDataValue || value.tabId != tabId) continue;
       final tab = mainTabs[i];
+      // A pinned tab -- the welcome page -- can be neither closed nor moved,
+      // whatever asked for it.
+      if (!tab.closable) {
+        _respondError(envelope, respond, '该标签页不允许关闭: $tabId');
+        return;
+      }
       ref.read(tabbedViewControllerProvider).removeTab(i);
       ref.read(tabbedViewControllerProvider.notifier).afterTabClose(i, tab);
       _respondOk(envelope, respond, data: true);

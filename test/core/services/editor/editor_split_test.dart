@@ -141,6 +141,10 @@ void main() {
           ((container.read(editorLayoutProvider) as SplitLayout).children[1]
                   as GroupLayout)
               .controller;
+      // The primary now holds only the welcome page, so it needs a file tab to
+      // drag across.
+      final dragged = TabData(text: 'third');
+      primary.addTab(dragged);
 
       // Dragging a tab that lives in the *root* group onto the nested group's
       // edge: the tab is not in the target, which used to make the drop a
@@ -149,18 +153,24 @@ void main() {
         container,
         from: primary,
         target: nested,
-        tab: primary.tabs.last,
+        tab: dragged,
         where: EditorSplit.bottom,
       );
 
       expect(split, isTrue);
-      expect(primary.tabs, isEmpty);
-      expect((nested.tabs.single.text), 'second');
-      // The root group emptied and was pruned, leaving the nested split --
-      // which is now the whole layout -- instead of an empty strip beside it.
-      expect(container.read(editorLayoutProvider), isA<SplitLayout>());
-      expect(allEditorControllers(container), hasLength(2));
-      expect(allEditorControllers(container).contains(primary), isFalse);
+      expect(primary.tabs.any((tab) => tab.text == 'third'), isFalse);
+      // The welcome page stays: it is the editor's floor, so the primary group
+      // is never emptied and never pruned.
+      expect(primary.tabs.single.draggable, isFalse);
+      expect(nested.tabs.single.text, 'second');
+
+      final layout = container.read(editorLayoutProvider) as SplitLayout;
+      expect(layout.axis, Axis.horizontal);
+      // The nested split is now the root's second child, so it can be split
+      // again inside itself.
+      expect((layout.children[1] as SplitLayout).axis, Axis.vertical);
+      expect(allEditorControllers(container), hasLength(3));
+      expect(allEditorControllers(container).contains(primary), isTrue);
     });
 
     test('the preview is only promised when the drop can honour it', () {
@@ -333,6 +343,51 @@ void main() {
 
       expect(moved, isFalse);
       expect(primary.tabs.contains(created), isTrue);
+    });
+
+    test('the welcome page is pinned: it can never be moved or split', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      final welcome = primary.tabs.first;
+      // The editor's floor is unclosable and, now, undraggable.
+      expect(welcome.closable, isFalse);
+      expect(welcome.draggable, isFalse);
+      expect(canTabLeaveGroup(welcome), isFalse);
+
+      final other = TabData(text: 'other');
+      primary.addTab(other);
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: other,
+        where: EditorSplit.right,
+      );
+      final second = allEditorControllers(container)[1];
+
+      // Neither a split nor a move will take it out of the primary group.
+      expect(
+        splitEditorGroup(
+          container,
+          from: primary,
+          target: primary,
+          tab: welcome,
+          where: EditorSplit.bottom,
+        ),
+        isFalse,
+      );
+      expect(
+        moveTabToEditorGroup(
+          container,
+          from: primary,
+          tab: welcome,
+          into: second,
+        ),
+        isFalse,
+      );
+      expect(primary.tabs.first, same(welcome));
+      expect(container.read(editorLayoutProvider), isA<SplitLayout>());
     });
 
     test('the last group survives empty, so the editor always has a strip', () {
