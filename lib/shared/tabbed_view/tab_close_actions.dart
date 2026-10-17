@@ -41,6 +41,10 @@ Future<void> closeTabs(
   );
 
   for (final tab in targets.toList()) {
+    // A pinned tab -- the welcome page -- is the editor's floor and must
+    // survive every bulk close, so "close others" and "close all" skip it
+    // rather than removing it.
+    if (!tab.closable) continue;
     if (!context.mounted) return;
     final controller = usesEditorController
         ? container.read(tabbedViewControllerProvider)
