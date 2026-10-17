@@ -487,7 +487,10 @@ void main() async {
   await RustLib.init();
   await PlatformSpecific.initialize();
 
-  if (data.tabGroups.length > 1 || data.tabLayout != null) {
+  // The tree is what carries more than one group. Without it the flat list is
+  // the only reliable source: restoring the groups alone would drop every
+  // group past the first, since the tree is what builds their controllers.
+  if (data.tabLayout != null && data.tabGroups.isNotEmpty) {
     // A session saved with a split editor area: every group comes back, and the
     // tree puts them where the user left them.
     await container
