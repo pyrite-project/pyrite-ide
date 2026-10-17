@@ -126,7 +126,7 @@ class EditorDocumentHost implements DocumentHost {
       emit: (topic, payload) =>
           _ref.read(pluginEventBusProvider).emit(topic, payload),
     );
-    _tabChanges = _ref.read(editorLayoutProvider.notifier).tabChanges
+    _areaChanges = _ref.read(editorLayoutProvider.notifier).changes
       ..addListener(_sync);
     // The active document follows the focused group, which can change without
     // any tab changing.
@@ -139,7 +139,7 @@ class EditorDocumentHost implements DocumentHost {
 
   final Ref _ref;
   late final PluginDocumentService _service;
-  late final Listenable _tabChanges;
+  late final Listenable _areaChanges;
   late final ProviderSubscription<TabbedViewController> _activeSubscription;
 
   /// Per-controller listeners, so we can detach on close.
@@ -298,7 +298,7 @@ class EditorDocumentHost implements DocumentHost {
     _lastVersion.clear();
     _handles.clear();
     _service.clear();
-    _tabChanges.removeListener(_sync);
+    _areaChanges.removeListener(_sync);
     _activeSubscription.close();
   }
 }

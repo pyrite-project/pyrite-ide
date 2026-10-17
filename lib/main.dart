@@ -286,12 +286,12 @@ void _startAutoSave() {
 ///
 /// Tabs join and leave groups through their own controllers -- the close
 /// button, a drag, the SDK -- so the layout state alone would miss most of it.
-/// [EditorLayoutNotifier.tabChanges] reports every change in any group, and a
+/// [EditorLayoutNotifier.changes] reports every change in any group, and a
 /// save is only scheduled when the persisted shape actually differs, so a
 /// title refresh or re-selecting the selected tab writes nothing.
 void _watchEditorArea() {
   var last = persistedEditorAreaKey(container);
-  container.read(editorLayoutProvider.notifier).tabChanges.addListener(() {
+  container.read(editorLayoutProvider.notifier).changes.addListener(() {
     final next = persistedEditorAreaKey(container);
     if (next == last) return;
     last = next;

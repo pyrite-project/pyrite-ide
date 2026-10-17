@@ -52,4 +52,32 @@ void main() {
     editorTabValueOf(a)!.isSaved = false;
     expect(persistedEditorAreaKey(container), isNot(key));
   });
+
+  test('a divider drag is reported, and its sizes are persisted', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final primary = container.read(tabbedViewControllerProvider);
+    final moved = fileTab('/proj/b.py');
+    primary.addTab(moved);
+    final layout = container.read(editorLayoutProvider.notifier);
+    layout.splitGroup(
+      from: primary,
+      target: primary,
+      tab: moved,
+      where: PaneEdge.right,
+    );
+    final key = persistedEditorAreaKey(container);
+    var changes = 0;
+    layout.changes.addListener(() => changes++);
+
+    layout.resizeSplit(container.read(editorLayoutProvider) as SplitLayout, [
+      800,
+      200,
+    ]);
+
+    // The auto-save listens to these changes; without one the new sizes would
+    // wait for some unrelated edit to be written.
+    expect(changes, 1);
+    expect(persistedEditorAreaKey(container), isNot(key));
+  });
 }

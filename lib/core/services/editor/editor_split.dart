@@ -172,17 +172,18 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
 
   final Ref _ref;
   final Set<TabbedViewController> _followed = {};
-  final _Signal _tabChanges = _Signal();
+  final _Signal _changes = _Signal();
 
   /// Above zero while this notifier is changing groups itself; the group
   /// listeners stay quiet then, and the change commits once, at the end.
   int _muted = 0;
 
-  /// Fires whenever a tab of any group changes, or the set of groups does.
+  /// Fires whenever anything in the editor area changes: a tab of any group,
+  /// the set of groups, or their sizes.
   ///
-  /// For whatever has to see every open tab -- persistence, the plugin
+  /// For whatever has to see the whole area -- persistence, the plugin
   /// document registry -- so it does not have to follow each group itself.
-  Listenable get tabChanges => _tabChanges;
+  Listenable get changes => _changes;
 
   /// The group the welcome page lives in, and the one new tabs fall back to
   /// while no group has focus.
@@ -294,7 +295,9 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
     if (weights.length != split.children.length) return;
     if (weights.any((weight) => !(weight > 0) || weight.isInfinite)) return;
     final resized = _resized(state, split, weights);
-    if (resized != null) state = resized;
+    if (resized == null) return;
+    state = resized;
+    _changes.notify();
   }
 
   @override
@@ -303,7 +306,7 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
       group.removeListener(_onGroupChanged);
     }
     _followed.clear();
-    _tabChanges.dispose();
+    _changes.dispose();
     super.dispose();
   }
 
@@ -339,7 +342,7 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
     } finally {
       _muted--;
     }
-    _tabChanges.notify();
+    _changes.notify();
   }
 
   /// Whether the tree already satisfies what [_commit] establishes.
@@ -354,7 +357,7 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
   void _onGroupChanged() {
     if (_muted > 0) return;
     if (_isNormalized) {
-      _tabChanges.notify();
+      _changes.notify();
     } else {
       _commit(state);
     }
