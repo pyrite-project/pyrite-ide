@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
-import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
 const _workspaceKey = ValueKey<String>('test-console-workspace');
 const _primaryContentKey = ValueKey<String>('test-primary-content');
@@ -159,6 +158,41 @@ void main() {
     final primary = tester.getRect(find.byKey(_primaryContentKey));
     final workspace = tester.getRect(find.byKey(_workspaceKey));
     expect(primary.height, closeTo(workspace.height, 0.01));
+  });
+
+  testWidgets('an emptied console is brought back by the reset entry', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpDockableWorkspace(tester, container);
+
+    // The pane -- and with it the menu that resets it -- is gone once the last
+    // tab has been dragged out, so the way back has to exist independently.
+    final console = container.read(consoleTabbedViewControllerProvider);
+    console.removeTabs();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(console.tabs, isEmpty);
+
+    resetConsoleTabs(
+      tester
+          .state<ConsumerState<ConsoleWorkspace>>(find.byType(ConsoleWorkspace))
+          .ref,
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+    // The default surfaces are back, and so is the pane that shows them.
+    expect(container.read(consoleTabbedViewControllerProvider).tabs.length, 4);
+    expect(
+      container.read(consoleTabbedViewControllerProvider).selectedIndex,
+      0,
+    );
+    expect(
+      tester.getSize(find.byKey(_primaryContentKey)).height,
+      lessThan(tester.getSize(find.byKey(_workspaceKey)).height),
+    );
   });
 }
 

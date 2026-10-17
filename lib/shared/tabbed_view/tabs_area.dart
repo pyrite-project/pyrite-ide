@@ -3,6 +3,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_status.dart';
@@ -18,9 +19,10 @@ import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
 /// Widget for the tabs and buttons.
 class TabsArea extends StatefulWidget {
-  const TabsArea({super.key, required this.provider});
+  const TabsArea({super.key, required this.provider, this.menuBuilder});
 
   final TabbedViewProvider provider;
+  final Menu? Function(BuildContext context, int index)? menuBuilder;
 
   @override
   State<StatefulWidget> createState() => _TabsAreaState();
@@ -77,6 +79,7 @@ class _TabsAreaState extends State<TabsArea> {
               sizeHolder: sizeHolder,
               updateHoveredIndex: _updateHoveredIndex,
               onClose: _onTabClose,
+              menuBuilder: widget.menuBuilder,
             );
           },
         ),

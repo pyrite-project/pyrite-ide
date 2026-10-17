@@ -14,14 +14,10 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
-import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
-import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
@@ -45,10 +41,8 @@ import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 import 'package:pyrite_ide/features/function_page/console_surface_actions.dart';
-import 'package:pyrite_ide/features/function_page/console_dock.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
-import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -111,13 +105,14 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
     );
 
     // No trailing area: each surface carries its own actions, so the strip's
-    // corner stays for the panel-level controls alone.
+    // corner stays for the panel-level controls alone. The strip's right-click
+    // menu is the terminal-layout one -- reset to the bottom -- shared with the
+    // editor tab's native styling.
     return TabbedViewTheme(
       data: buildTabStripTheme(context),
       child: TabbedView(
         controller: controller,
-        onTabSecondaryTap: (index, tab, details) =>
-            showConsoleDockMenu(context, ref, details),
+        menuBuilder: buildConsoleTabContextMenu,
       ),
     );
   }
@@ -257,6 +252,11 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
             // other group's: the new group lands in the editor area.
             controller: ref.read(consoleTabbedViewControllerProvider),
             edgeTarget: ref.read(tabbedViewControllerProvider),
+            // Only the panel's own surfaces come back here. A document dropped
+            // into this group would sit outside the layout tree, where
+            // persistence, the unsaved guard and the open-file dedup cannot
+            // see it at all.
+            accept: (tab) => tab.value is ConsoleTabValue,
             child: consolePage(),
           ),
     );
@@ -664,6 +664,37 @@ NavigationRailDestination _tooltippedDestination(
   );
 }
 
+/// Pulls any console surfaces out of the editor area while the window is narrow.
+///
+/// Grouping is a desktop-only feature: on mobile the terminal lives in its
+/// bottom popup, so a console group that survived a desktop-to-mobile resize has
+/// to leave the editor tree for the popup to show it. Runs once on mount, after
+/// the first frame, and is a no-op when nothing is docked in the area.
+class MobileConsoleEvacuator extends ConsumerStatefulWidget {
+  const MobileConsoleEvacuator({super.key});
+
+  @override
+  ConsumerState<MobileConsoleEvacuator> createState() =>
+      _MobileConsoleEvacuatorState();
+}
+
+class _MobileConsoleEvacuatorState
+    extends ConsumerState<MobileConsoleEvacuator> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(_evacuate);
+  }
+
+  void _evacuate(_) {
+    if (!mounted) return;
+    evacuateConsoleTabsToPanel(ProviderScope.containerOf(context));
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
 class MobileView extends ConsumerWidget {
   const MobileView({super.key, required this.child, required this.state});
 
@@ -700,6 +731,7 @@ class MobileView extends ConsumerWidget {
             // no shadcn theme is in scope. A restored split reaches this branch
             // on a narrow window, where the layout is no longer a single group.
             Expanded(child: buildShadcnLayer(context, child)),
+            const MobileConsoleEvacuator(),
             EditorToolsBar(showNavigationDrawerButton: true),
           ],
         ),

@@ -9,7 +9,6 @@ import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 
 /// The action row a console surface shows above its own content.

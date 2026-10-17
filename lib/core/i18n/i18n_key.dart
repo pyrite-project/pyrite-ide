@@ -1299,12 +1299,9 @@ enum I18nKey {
   problemsPanelCollapseAll('problems.panel.collapse_all', '全部折叠'),
   problemsPanelExpandAll('problems.panel.expand_all', '全部展开'),
   bottomPanelResize('bottom_panel.resize', '调整底部面板大小'),
+  consoleResetLayout('console.reset_layout', '重置终端布局'),
   bottomPanelShowFunctionPanel('bottom_panel.function.show', '显示功能面板'),
   bottomPanelHideFunctionPanel('bottom_panel.function.hide', '隐藏功能面板'),
-  consoleDockLeft('console.dock.left', '停靠到左侧'),
-  consoleDockTop('console.dock.top', '停靠到顶部'),
-  consoleDockRight('console.dock.right', '停靠到右侧'),
-  consoleDockBottom('console.dock.bottom', '停靠到底部'),
   bottomPanelAndroidTerminalUnsupported(
     'bottom_panel.terminal.android_unsupported',
     'Android 暂不支持桌面终端',
