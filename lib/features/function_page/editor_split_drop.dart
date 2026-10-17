@@ -249,7 +249,8 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
 ///
 /// Deliberately just a rectangle: VS Code shows where the split lands and
 /// nothing else. It is drawn over whatever the split will take -- a leaf's
-/// region for a leaf split, the editor area for a root-level one.
+/// region for a leaf split, the editor area for a root-level one -- at the
+/// [newEditorGroupShare] the new group then gets.
 class EditorSplitHint extends StatelessWidget {
   const EditorSplitHint({super.key, required this.split});
 
@@ -269,8 +270,8 @@ class EditorSplitHint extends StatelessWidget {
       child: Align(
         alignment: alignment,
         child: FractionallySizedBox(
-          widthFactor: split.axis == Axis.horizontal ? 0.4 : 1,
-          heightFactor: split.axis == Axis.vertical ? 0.4 : 1,
+          widthFactor: split.axis == Axis.horizontal ? newEditorGroupShare : 1,
+          heightFactor: split.axis == Axis.vertical ? newEditorGroupShare : 1,
           child: Container(
             margin: const EdgeInsets.all(4),
             decoration: BoxDecoration(

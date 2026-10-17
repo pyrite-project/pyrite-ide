@@ -1,8 +1,11 @@
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_status.dart';
@@ -16,6 +19,45 @@ import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/src/internal/tabs_area/hidden_tabs.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
+/// How far into the strip, from either end, a drag held still scrolls it.
+const double _autoScrollEdgeExtent = 56;
+const double _autoScrollMaxVelocity = 480;
+
+/// How long a drag has to rest in an edge zone before the strip scrolls.
+///
+/// A drag passing through on its way out of the strip -- which is how a tab is
+/// split off into a new group -- never waits that long, so the strip stays put
+/// under it. A drag that stops there is reaching for an overflowed tab.
+const Duration nativeTabAutoScrollDwell = Duration(milliseconds: 350);
+
+/// Signed scroll speed for a drag at [coordinate] along a strip whose visible
+/// extent is [viewportExtent]: zero away from the ends, easing up to
+/// [_autoScrollMaxVelocity] at the very edge.
+@visibleForTesting
+double nativeTabAutoScrollVelocity({
+  required double coordinate,
+  required double viewportExtent,
+}) {
+  if (viewportExtent <= 0) return 0;
+  final edgeExtent = math.min(_autoScrollEdgeExtent, viewportExtent / 3);
+  final double direction;
+  final double depth;
+  if (coordinate < edgeExtent) {
+    direction = -1;
+    depth = ((edgeExtent - coordinate) / edgeExtent).clamp(0.0, 1.0);
+  } else if (coordinate > viewportExtent - edgeExtent) {
+    direction = 1;
+    depth = ((coordinate - (viewportExtent - edgeExtent)) / edgeExtent).clamp(
+      0.0,
+      1.0,
+    );
+  } else {
+    return 0;
+  }
+  final easedDepth = depth * depth * (3 - 2 * depth);
+  return direction * _autoScrollMaxVelocity * easedDepth;
+}
+
 /// Widget for the tabs and buttons.
 class TabsArea extends StatefulWidget {
   const TabsArea({super.key, required this.provider});
@@ -26,7 +68,8 @@ class TabsArea extends StatefulWidget {
   State<StatefulWidget> createState() => _TabsAreaState();
 }
 
-class _TabsAreaState extends State<TabsArea> {
+class _TabsAreaState extends State<TabsArea>
+    with SingleTickerProviderStateMixin {
   int? _hoveredIndex;
   int? _lastSelectedTabIndex;
   bool _tabDragWasActive = false;
@@ -39,13 +82,22 @@ class _TabsAreaState extends State<TabsArea> {
 
   final HiddenTabs _hiddenTabs = HiddenTabs();
 
+  late final Ticker _autoScrollTicker;
+  Duration? _lastAutoScrollTick;
+  double _autoScrollVelocity = 0;
+
+  /// When the drag entered the edge zone it is resting in, or null outside it.
+  Duration? _edgeZoneEnteredAt;
+
   @override
   void initState() {
     super.initState();
+    _autoScrollTicker = createTicker(_onAutoScrollTick);
   }
 
   @override
   void dispose() {
+    _autoScrollTicker.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -222,7 +274,10 @@ class _TabsAreaState extends State<TabsArea> {
     return DropMonitor(
       formats: const [],
       hitTestBehavior: HitTestBehavior.opaque,
-      onDropOver: (event) => _trackNativeTabDrag(event, tabsAreaTheme.position),
+      onDropOver: (event) {
+        _trackNativeTabDrag(event, tabsAreaTheme.position);
+        _updateAutoScroll(event, scrollDirection);
+      },
       onDropLeave: (_) => _clearTrackedDrag(),
       onDropEnded: (_) => _clearTrackedDrag(),
       child: scrollView,
@@ -311,11 +366,6 @@ class _TabsAreaState extends State<TabsArea> {
   }
 
   /// Tracks the drag that is currently over this strip.
-  ///
-  /// Deliberately does not scroll: dragging a tab toward an edge is how a tab
-  /// is taken out of its group, so the strip used to jump under a drag that
-  /// was heading somewhere else entirely. Reaching an overflowed tab mid-drag
-  /// stays available through the wheel, which works while dragging.
   void _trackNativeTabDrag(
     MonitorDropOverEvent event,
     TabBarPosition tabBarPosition,
@@ -360,9 +410,74 @@ class _TabsAreaState extends State<TabsArea> {
   }
 
   void _clearTrackedDrag() {
+    _stopAutoScroll();
     _trackedDragRegistration = null;
     _trackedDragGlobalPosition = null;
     _trackedDragTabBarPosition = null;
+  }
+
+  /// Scrolls the strip while a drag rests near one of its ends.
+  ///
+  /// Only after [nativeTabAutoScrollDwell]: a drag crossing an end on its way
+  /// out of the strip must not drag the tabs along with it.
+  void _updateAutoScroll(MonitorDropOverEvent event, Axis axis) {
+    if (!_scrollController.hasClients ||
+        NativeTabDragRegistry.registrationForSession(event.session) == null) {
+      _stopAutoScroll();
+      return;
+    }
+    final velocity = nativeTabAutoScrollVelocity(
+      coordinate: axis == Axis.horizontal
+          ? event.position.local.dx
+          : event.position.local.dy,
+      viewportExtent: _scrollController.position.viewportDimension,
+    );
+    if (velocity == 0) {
+      _stopAutoScroll();
+      return;
+    }
+    _autoScrollVelocity = velocity;
+    if (!_autoScrollTicker.isActive) {
+      _lastAutoScrollTick = null;
+      _edgeZoneEnteredAt = null;
+      _autoScrollTicker.start();
+    }
+  }
+
+  void _onAutoScrollTick(Duration elapsed) {
+    if (!mounted || !_scrollController.hasClients) {
+      _stopAutoScroll();
+      return;
+    }
+    final entered = _edgeZoneEnteredAt ??= elapsed;
+    final previous = _lastAutoScrollTick;
+    _lastAutoScrollTick = elapsed;
+    if (elapsed - entered < nativeTabAutoScrollDwell || previous == null) {
+      return;
+    }
+    final seconds = ((elapsed - previous).inMicroseconds / 1000000).clamp(
+      0.0,
+      0.05,
+    );
+    final position = _scrollController.position;
+    final target = (position.pixels + _autoScrollVelocity * seconds).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target == position.pixels) return;
+    _scrollController.jumpTo(target);
+    // The tabs moved under a pointer that did not, so the insertion point the
+    // drag resolves to has to be recomputed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateTrackedDragIntent();
+    });
+  }
+
+  void _stopAutoScroll() {
+    if (_autoScrollTicker.isActive) _autoScrollTicker.stop();
+    _lastAutoScrollTick = null;
+    _edgeZoneEnteredAt = null;
+    _autoScrollVelocity = 0;
   }
 
   void _scheduleSelectedTabReveal(

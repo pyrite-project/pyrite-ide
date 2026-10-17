@@ -784,6 +784,163 @@ void main() {
     });
   });
 
+  group('group sizes', () {
+    test('a split-off group takes the share its preview showed', () {
+      final editor = _editor();
+      final moved = TabData(text: 'moved');
+      editor.primary.addTab(moved);
+
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: moved,
+        where: PaneEdge.left,
+      );
+
+      final split = editor.container.read(editorLayoutProvider) as SplitLayout;
+      expect(split.weights, [newEditorGroupShare, 1 - newEditorGroupShare]);
+    });
+
+    test('a resize is kept through a reshape elsewhere in the tree', () {
+      final editor = _editor();
+      final a = TabData(text: 'a');
+      final b = TabData(text: 'b');
+      editor.primary
+        ..addTab(a)
+        ..addTab(b);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: a,
+        where: PaneEdge.right,
+      );
+      final root = editor.container.read(editorLayoutProvider) as SplitLayout;
+      editor.layout.resizeSplit(root, [700, 300]);
+
+      // Splitting the right-hand group nests a split there; the root keeps
+      // the size the user gave it.
+      final right = allEditorControllers(editor.container)[1];
+      right.addTab(TabData(text: 'c'));
+      editor.layout.splitGroup(
+        from: right,
+        target: right,
+        tab: right.tabs.last,
+        where: PaneEdge.bottom,
+      );
+
+      final after = editor.container.read(editorLayoutProvider) as SplitLayout;
+      expect(after.weights, [700, 300]);
+    });
+
+    test('closing a group shares its space out among the rest', () {
+      final editor = _editor();
+      final a = TabData(text: 'a');
+      final b = TabData(text: 'b');
+      editor.primary
+        ..addTab(a)
+        ..addTab(b);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: a,
+        where: PaneEdge.right,
+      );
+      editor.layout.splitArea(
+        from: editor.primary,
+        tab: b,
+        where: PaneEdge.right,
+      );
+      final outer = editor.container.read(editorLayoutProvider) as SplitLayout;
+      editor.layout.resizeSplit(outer, [3, 1]);
+
+      // Emptying the area-level group collapses the outer split back into
+      // the inner one, with the inner one's own weights intact.
+      final created = allEditorControllers(editor.container).last;
+      created.removeTab(0);
+
+      final after = editor.container.read(editorLayoutProvider) as SplitLayout;
+      expect(after.children, hasLength(2));
+      expect(after.weights, [1 - newEditorGroupShare, newEditorGroupShare]);
+    });
+  });
+
+  testWidgets('the panes are laid out at the shares the tree records', (
+    tester,
+  ) async {
+    final editor = _editor();
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final moved = TabData(text: 'moved');
+    editor.primary.addTab(moved);
+    editor.layout.splitGroup(
+      from: editor.primary,
+      target: editor.primary,
+      tab: moved,
+      where: PaneEdge.right,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: editor.container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => buildShadcnLayer(context, const Editor()),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    Finder group(TabbedViewController controller) => find.byWidgetPredicate(
+      (widget) =>
+          widget is EditorGroup && identical(widget.controller, controller),
+    );
+    final created = allEditorControllers(editor.container)[1];
+    final kept = tester.getSize(group(editor.primary)).width;
+    final split = tester.getSize(group(created)).width;
+    // The new group got the share the drop preview drew.
+    expect(split / (kept + split), closeTo(newEditorGroupShare, 0.02));
+
+    // Dragging the divider writes the new sizes back into the tree.
+    final divider = tester.getTopRight(group(editor.primary));
+    await tester.dragFrom(
+      Offset(divider.dx + 2, divider.dy + 300),
+      const Offset(-200, 0),
+    );
+    await tester.pump();
+    final resized = editor.container.read(editorLayoutProvider) as SplitLayout;
+    expect(
+      resized.weights.first / (resized.weights.first + resized.weights.last),
+      lessThan(1 - newEditorGroupShare - 0.1),
+    );
+  });
+
+  group('closing a tab in the primary group', () {
+    test('keeps the neighbouring tab selected, not the welcome page', () {
+      final editor = _editor();
+      final a = TabData(text: 'a');
+      final b = TabData(text: 'b');
+      final c = TabData(text: 'c');
+      editor.primary
+        ..addTab(a)
+        ..addTab(b)
+        ..addTab(c);
+      editor.primary.selectedIndex = editor.primary.tabs.indexOf(b);
+
+      editor.primary.removeTab(editor.primary.tabs.indexOf(b));
+      editor.container
+          .read(tabbedViewControllerProvider.notifier)
+          .afterTabClose(b);
+
+      // The tab that slid into the closed one's place, as in VS Code.
+      expect(editor.primary.selectedTab, same(c));
+    });
+  });
+
   group('layout persistence', () {
     test('a split tree round-trips through its persisted shape', () {
       final editor = _editor();
@@ -814,6 +971,10 @@ void main() {
       );
       expect(persisted.groups, hasLength(3));
       expect(persisted.primaryIndex, 0);
+      expect(persisted.node.weights, [
+        1 - newEditorGroupShare,
+        newEditorGroupShare,
+      ]);
       final node = persisted.node;
       expect(node.axis, 'horizontal');
       // The right-hand child is itself a split, so the nesting survives.
@@ -829,6 +990,10 @@ void main() {
       );
       final restoredSplit = restored.node as SplitLayout;
       expect(restoredSplit.axis, Axis.horizontal);
+      expect(restoredSplit.weights, [
+        1 - newEditorGroupShare,
+        newEditorGroupShare,
+      ]);
       expect(restoredSplit.children.first, GroupLayout(fresh));
       final inner = restoredSplit.children[1] as SplitLayout;
       expect(inner.axis, Axis.vertical);

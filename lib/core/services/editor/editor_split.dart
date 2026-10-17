@@ -46,10 +46,20 @@ class GroupLayout extends EditorLayout {
 
 /// A split whose [children] are laid out along [axis].
 class SplitLayout extends EditorLayout {
-  const SplitLayout(this.axis, this.children) : assert(children.length >= 2);
+  /// [weights] are the children's relative sizes, one per child; equal shares
+  /// when omitted.
+  SplitLayout(this.axis, this.children, [List<double>? weights])
+    : assert(children.length >= 2),
+      assert(weights == null || weights.length == children.length),
+      weights = List.unmodifiable(weights ?? List.filled(children.length, 1.0));
 
   final Axis axis;
   final List<EditorLayout> children;
+
+  /// The share of the split each child takes, relative to the others.
+  ///
+  /// Kept in the tree so a resize survives the next reshape and a restart.
+  final List<double> weights;
 
   @override
   Iterable<TabbedViewController> get controllers =>
@@ -59,11 +69,19 @@ class SplitLayout extends EditorLayout {
   bool operator ==(Object other) =>
       other is SplitLayout &&
       other.axis == axis &&
-      listEquals(other.children, children);
+      listEquals(other.children, children) &&
+      listEquals(other.weights, weights);
 
   @override
-  int get hashCode => Object.hash(axis, Object.hashAll(children));
+  int get hashCode =>
+      Object.hash(axis, Object.hashAll(children), Object.hashAll(weights));
 }
+
+/// The share a group split off by a drop takes of the space it splits.
+///
+/// [EditorSplitHint] previews exactly this share, so the drop lands where the
+/// preview promised.
+const double newEditorGroupShare = 0.4;
 
 /// The editor area's layout. One group until a tab is dropped on an edge.
 final StateNotifierProvider<EditorLayoutNotifier, EditorLayout>
@@ -268,6 +286,17 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
   /// Replaces the whole tree, as a session restore does.
   void replace(EditorLayout layout) => _commit(layout);
 
+  /// Records the shares a resize left [split]'s children with.
+  ///
+  /// [weights] are the children's sizes, in any unit. Without this, the next
+  /// reshape of the tree -- or a restart -- would split the space evenly again.
+  void resizeSplit(SplitLayout split, List<double> weights) {
+    if (weights.length != split.children.length) return;
+    if (weights.any((weight) => !(weight > 0) || weight.isInfinite)) return;
+    final resized = _resized(state, split, weights);
+    if (resized != null) state = resized;
+  }
+
   @override
   void dispose() {
     for (final group in _followed) {
@@ -353,7 +382,11 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
   EditorLayout _normalize(EditorLayout layout) {
     final pruned = _prune(layout, {}) ?? GroupLayout(primary);
     if (primary.tabs.isEmpty || pruned.contains(primary)) return pruned;
-    return SplitLayout(Axis.horizontal, [GroupLayout(primary), pruned]);
+    return SplitLayout(
+      Axis.horizontal,
+      [GroupLayout(primary), pruned],
+      const [newEditorGroupShare, 1 - newEditorGroupShare],
+    );
   }
 }
 
@@ -377,15 +410,27 @@ TabbedViewController _detachIntoNewGroup(
 }
 
 /// [existing] and a new leaf for [created], side by side along [where].
+///
+/// The new group takes [newEditorGroupShare] of the space, which is what the
+/// drop preview showed.
 SplitLayout _beside(
   EditorLayout existing,
   TabbedViewController created,
   PaneEdge where,
-) => SplitLayout(where.axis, [
-  if (where.isLeading) GroupLayout(created),
-  existing,
-  if (!where.isLeading) GroupLayout(created),
-]);
+) {
+  const share = newEditorGroupShare;
+  return where.isLeading
+      ? SplitLayout(
+          where.axis,
+          [GroupLayout(created), existing],
+          const [share, 1 - share],
+        )
+      : SplitLayout(
+          where.axis,
+          [existing, GroupLayout(created)],
+          const [1 - share, share],
+        );
+}
 
 /// [node] with the group [target] swapped for [replacement].
 EditorLayout _replaceGroup(
@@ -395,10 +440,33 @@ EditorLayout _replaceGroup(
 ) => switch (node) {
   GroupLayout(:final controller) =>
     identical(controller, target) ? replacement : node,
-  SplitLayout(:final axis, :final children) => SplitLayout(axis, [
-    for (final child in children) _replaceGroup(child, target, replacement),
-  ]),
+  SplitLayout(:final axis, :final children, :final weights) => SplitLayout(
+    axis,
+    [for (final child in children) _replaceGroup(child, target, replacement)],
+    weights,
+  ),
 };
+
+/// [node] with [split] given [weights], or null when [split] is not in it.
+EditorLayout? _resized(
+  EditorLayout node,
+  SplitLayout split,
+  List<double> weights,
+) {
+  if (identical(node, split)) {
+    return SplitLayout(split.axis, split.children, weights);
+  }
+  if (node is! SplitLayout) return null;
+  for (var i = 0; i < node.children.length; i++) {
+    final child = _resized(node.children[i], split, weights);
+    if (child == null) continue;
+    return SplitLayout(node.axis, [
+      for (var j = 0; j < node.children.length; j++)
+        j == i ? child : node.children[j],
+    ], node.weights);
+  }
+  return null;
+}
 
 bool _atAreaEdge(
   EditorLayout node,
@@ -427,15 +495,20 @@ EditorLayout? _prune(EditorLayout node, Set<TabbedViewController> seen) {
       // render one controller in two strips.
       if (controller.tabs.isEmpty || !seen.add(controller)) return null;
       return node;
-    case SplitLayout(:final axis, :final children):
+    case SplitLayout(:final axis, :final children, :final weights):
       final kept = <EditorLayout>[];
-      for (final child in children) {
-        final pruned = _prune(child, seen);
-        if (pruned != null) kept.add(pruned);
+      final keptWeights = <double>[];
+      for (var i = 0; i < children.length; i++) {
+        final pruned = _prune(children[i], seen);
+        if (pruned == null) continue;
+        kept.add(pruned);
+        keptWeights.add(weights[i]);
       }
       if (kept.isEmpty) return null;
       if (kept.length == 1) return kept.single;
-      return SplitLayout(axis, kept);
+      // The survivors keep their sizes relative to each other; the space the
+      // dropped children had is shared out in proportion.
+      return SplitLayout(axis, kept, keptWeights);
   }
 }
 
@@ -464,10 +537,10 @@ persistEditorLayout(
         if (identical(controller, primary)) primaryIndex = groups.length;
         groups.add(convert(controller));
         return PersistedEditorLayout.group(groups.length - 1);
-      case SplitLayout(:final axis, :final children):
+      case SplitLayout(:final axis, :final children, :final weights):
         return PersistedEditorLayout.split(axis.name, [
           for (final child in children) visit(child),
-        ]);
+        ], weights: weights);
     }
   }
 
@@ -510,14 +583,19 @@ restoreEditorLayout(
       }
       return GroupLayout(controllers[index]);
     }
+    final saved = n.weights;
     final children = <EditorLayout>[];
-    for (final child in n.children) {
-      final built = build(child);
-      if (built != null) children.add(built);
+    final weights = <double>[];
+    for (var i = 0; i < n.children.length; i++) {
+      final built = build(n.children[i]);
+      if (built == null) continue;
+      children.add(built);
+      final weight = saved != null && i < saved.length ? saved[i] : 1.0;
+      weights.add(weight > 0 && weight.isFinite ? weight : 1.0);
     }
     if (children.isEmpty) return null;
     if (children.length == 1) return children.single;
-    return SplitLayout(axes[n.axis] ?? Axis.horizontal, children);
+    return SplitLayout(axes[n.axis] ?? Axis.horizontal, children, weights);
   }
 
   return (node: build(node) ?? GroupLayout(primary), controllers: controllers);

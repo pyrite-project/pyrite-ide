@@ -71,23 +71,55 @@ class _EditorState extends ConsumerState<Editor> {
           child: EditorGroup(controller: controller),
         ),
       ),
-      SplitLayout(:final axis, :final children) => shadcn.ResizablePanel(
-        direction: axis,
-        optionalDivider: false,
-        draggerBuilder: (context) => switch (axis) {
-          Axis.horizontal => const shadcn.VerticalResizableDragger(),
-          Axis.vertical => const shadcn.HorizontalResizableDragger(),
-        },
-        children: [
-          for (final child in children)
-            shadcn.ResizablePane.flex(
-              initialFlex: 1,
-              minSize: 200,
-              child: _buildLayout(child),
-            ),
-        ],
-      ),
+      SplitLayout(:final axis, :final children, :final weights) =>
+        shadcn.ResizablePanel(
+          // A split is a new panel whenever the tree is reshaped, so its panes
+          // take the weights the tree records rather than stale flexes.
+          key: ObjectKey(node),
+          direction: axis,
+          optionalDivider: false,
+          draggerBuilder: (context) => switch (axis) {
+            Axis.horizontal => const shadcn.VerticalResizableDragger(),
+            Axis.vertical => const shadcn.HorizontalResizableDragger(),
+          },
+          children: [
+            for (var i = 0; i < children.length; i++)
+              shadcn.ResizablePane.flex(
+                initialFlex: weights[i],
+                minSize: 200,
+                onSizeChangeEnd: (size) => _onPaneResized(node, i, size),
+                child: _buildLayout(children[i]),
+              ),
+          ],
+        ),
     };
+  }
+
+  /// Sizes of the panes of the split a drag is resizing, as it reports them.
+  final Map<int, double> _resizedPanes = {};
+
+  /// Records a pane's size at the end of a divider drag.
+  ///
+  /// A drag reports the two panes beside the divider, one after the other; the
+  /// rest keep the shares they had, scaled to the same units.
+  void _onPaneResized(SplitLayout split, int index, double size) {
+    _resizedPanes[index] = size;
+    if (_resizedPanes.length < 2) return;
+    final resized = Map.of(_resizedPanes);
+    _resizedPanes.clear();
+    final total = split.weights.fold<double>(0, (sum, w) => sum + w);
+    final known = resized.keys.fold<double>(
+      0,
+      (sum, i) => sum + split.weights[i],
+    );
+    final measured = resized.values.fold<double>(0, (sum, size) => sum + size);
+    if (known <= 0 || measured <= 0 || total <= 0) return;
+    // The panes the drag did not touch keep their share of the whole.
+    final scale = measured / known;
+    ref.read(editorLayoutProvider.notifier).resizeSplit(split, [
+      for (var i = 0; i < split.children.length; i++)
+        resized[i] ?? split.weights[i] * scale,
+    ]);
   }
 }
 

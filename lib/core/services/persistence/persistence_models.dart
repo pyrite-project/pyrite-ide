@@ -142,11 +142,16 @@ class PersistedEditorLayout {
   /// Children of a split node, empty for a group leaf.
   final List<PersistedEditorLayout> children;
 
-  PersistedEditorLayout.split(this.axis, this.children) : groupIndex = null;
+  /// The children's relative sizes, or null for equal shares.
+  final List<double>? weights;
+
+  PersistedEditorLayout.split(this.axis, this.children, {this.weights})
+    : groupIndex = null;
 
   PersistedEditorLayout.group(this.groupIndex)
     : axis = null,
-      children = const [];
+      children = const [],
+      weights = null;
 
   bool get isSplit => axis != null;
 
@@ -154,6 +159,7 @@ class PersistedEditorLayout {
     if (axis != null) 'axis': axis,
     if (groupIndex != null) 'groupIndex': groupIndex,
     if (isSplit) 'children': children.map((c) => c.toJson()).toList(),
+    if (weights != null) 'weights': weights,
   };
 
   factory PersistedEditorLayout.fromJson(Map<String, dynamic> json) {
@@ -166,6 +172,10 @@ class PersistedEditorLayout {
         (json['children'] as List<dynamic>? ?? const [])
             .whereType<Map<String, dynamic>>()
             .map(PersistedEditorLayout.fromJson)
+            .toList(),
+        weights: (json['weights'] as List<dynamic>?)
+            ?.whereType<num>()
+            .map((weight) => weight.toDouble())
             .toList(),
       );
     }

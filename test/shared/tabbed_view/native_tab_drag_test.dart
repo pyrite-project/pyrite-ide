@@ -6,11 +6,54 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart' as pyrite;
+import 'package:pyrite_ide/shared/tabbed_view/tabs_area.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
 void main() {
+  group('native tab edge auto-scroll', () {
+    test('uses mirrored velocities at both edges', () {
+      final leading = nativeTabAutoScrollVelocity(
+        coordinate: 14,
+        viewportExtent: 300,
+      );
+      final trailing = nativeTabAutoScrollVelocity(
+        coordinate: 286,
+        viewportExtent: 300,
+      );
+
+      expect(leading, lessThan(0));
+      expect(trailing, greaterThan(0));
+      expect(leading.abs(), closeTo(trailing.abs(), 0.0001));
+      expect(
+        nativeTabAutoScrollVelocity(coordinate: -20, viewportExtent: 300),
+        -480,
+      );
+      expect(
+        nativeTabAutoScrollVelocity(coordinate: 320, viewportExtent: 300),
+        480,
+      );
+    });
+
+    test('accelerates toward an edge and stops outside the edge zones', () {
+      final shallow = nativeTabAutoScrollVelocity(
+        coordinate: 48,
+        viewportExtent: 300,
+      );
+      final deep = nativeTabAutoScrollVelocity(
+        coordinate: 8,
+        viewportExtent: 300,
+      );
+
+      expect(deep.abs(), greaterThan(shallow.abs()));
+      expect(
+        nativeTabAutoScrollVelocity(coordinate: 150, viewportExtent: 300),
+        0,
+      );
+    });
+  });
+
   test('native tab drag data resolves to its in-memory source', () {
     final tab = TabData(text: 'first');
     final controller = TabbedViewController([tab]);
@@ -727,9 +770,14 @@ void main() {
     expect(controller.tabs, orderedEquals([first, sourceTab, second, third]));
   });
 
-  testWidgets('a drag toward the edge does not scroll the strip', (
-    tester,
-  ) async {
+  Future<
+    ({
+      ScrollPosition position,
+      void Function(double coordinate) dragAt,
+      NativeTabDragRegistration registration,
+    })
+  >
+  pumpOverflowingStrip(WidgetTester tester) async {
     // The tabs are wider than the strip, so the strip can scroll at all.
     final tabs = [
       for (var i = 0; i < 6; i++) TabData(text: 'tab $i', textSize: 100),
@@ -764,24 +812,48 @@ void main() {
     addTearDown(registration.dispose);
     final session = _FakeDropSession(registration.localData);
     final monitor = tester.widget<DropMonitor>(find.byType(DropMonitor));
-
-    // Held against the trailing edge, which is where a tab is dragged out of
-    // its group: the strip used to scroll as if the drag wanted to reorder.
-    for (final coordinate in [1.0, 150.0, position.viewportDimension - 1]) {
-      monitor.onDropOver?.call(
-        MonitorDropOverEvent(
-          session: session,
-          position: DropPosition(
-            local: Offset(coordinate, 10),
-            global: Offset(coordinate, 10),
-          ),
-          isInside: true,
+    void dragAt(double coordinate) => monitor.onDropOver?.call(
+      MonitorDropOverEvent(
+        session: session,
+        position: DropPosition(
+          local: Offset(coordinate, 10),
+          global: Offset(coordinate, 10),
         ),
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+        isInside: true,
+      ),
+    );
+    return (position: position, dragAt: dragAt, registration: registration);
+  }
 
-    expect(position.pixels, 0);
+  testWidgets('a drag passing an edge on its way out does not scroll', (
+    tester,
+  ) async {
+    final strip = await pumpOverflowingStrip(tester);
+
+    // Crossing the trailing edge -- the way a tab is dragged out of its group
+    // -- spends less than the dwell there.
+    for (final coordinate in [150.0, 280.0, 299.0]) {
+      strip.dragAt(coordinate);
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    strip.dragAt(150);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(strip.position.pixels, 0);
+  });
+
+  testWidgets('a drag resting at an edge scrolls toward the hidden tabs', (
+    tester,
+  ) async {
+    final strip = await pumpOverflowingStrip(tester);
+
+    strip.dragAt(strip.position.viewportDimension - 1);
+    await tester.pump();
+    await tester.pump(nativeTabAutoScrollDwell);
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(strip.position.pixels, greaterThan(0));
   });
 
   testWidgets('a console tab drops onto the editor strip', (tester) async {
