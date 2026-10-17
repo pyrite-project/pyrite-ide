@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 
@@ -6,20 +7,23 @@ void main() {
   testWidgets('conflict dialog can return show diff action', (tester) async {
     FileConflictAction? action;
 
+    // The dialog translates its labels, which needs a ProviderScope.
     await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async {
-              action = await showFileConflictDialog(
-                context,
-                sourcePath: '/local/main.py',
-                targetPath: '/board/main.py',
-                isUpload: true,
-                canShowDiff: true,
-              );
-            },
-            child: const Text('open'),
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                action = await showFileConflictDialog(
+                  context,
+                  sourcePath: '/local/main.py',
+                  targetPath: '/board/main.py',
+                  isUpload: true,
+                  canShowDiff: true,
+                );
+              },
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
@@ -40,16 +44,18 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showFileConflictDialog(
-              context,
-              sourcePath: '/local/main.py',
-              targetPath: '/board/main.py',
-              isUpload: true,
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showFileConflictDialog(
+                context,
+                sourcePath: '/local/main.py',
+                targetPath: '/board/main.py',
+                isUpload: true,
+              ),
+              child: const Text('open'),
             ),
-            child: const Text('open'),
           ),
         ),
       ),

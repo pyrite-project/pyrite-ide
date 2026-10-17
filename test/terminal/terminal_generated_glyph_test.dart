@@ -167,11 +167,11 @@ void main() {
       () async {
         final image = await _paintGeneratedGlyph(painter, charCode);
 
+        // The tip touches the left edge at mid-height. The right edge is
+        // reached at mid-height only by the filled triangle; the thin chevron
+        // `<` reaches it with its two ends, near the top and the bottom.
         expect(await _hasPaintAt(image, x: 0, y: image.height ~/ 2), isTrue);
-        expect(
-          await _hasPaintAt(image, x: image.width - 2, y: image.height ~/ 2),
-          isTrue,
-        );
+        expect(await _hasPaintInColumn(image, image.width - 2), isTrue);
       },
     );
   }
@@ -196,6 +196,13 @@ Future<ui.Image> _paintGeneratedGlyph(
   painter.paintCellForeground(canvas, offset, cellData);
 
   return recorder.endRecording().toImage(imageWidth, imageHeight);
+}
+
+Future<bool> _hasPaintInColumn(ui.Image image, int x) async {
+  for (var y = 0; y < image.height; y++) {
+    if (await _hasPaintAt(image, x: x, y: y)) return true;
+  }
+  return false;
 }
 
 Future<bool> _hasPaintAt(

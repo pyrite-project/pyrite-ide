@@ -13,32 +13,35 @@ void main() {
       final writes = <List<int>>[];
       final payload = Uint8List.fromList(List<int>.generate(10, (i) => i));
       final progress = <int>[];
+      const ackEvery = 2;
 
       var scriptSubmitted = false;
-      var uploaded = 0;
-      var uploadChunks = 0;
+      final received = <int>[];
+      var chunks = 0;
 
+      // Plays the receiver script the upload runs on the board: it reads one
+      // base64 line per chunk, acknowledges every [ackEvery] chunks with `+`,
+      // and once the payload is complete ends the run the raw REPL way --
+      // DONE, end of stdout, (empty) stderr, prompt.
       void writeBytes(List<int> bytes) {
         writes.add(List<int>.from(bytes));
 
-        // CTRL-D from executeWithRawInput — code execution starts.
+        // CTRL-D from executeWithRawInput -- code execution starts.
         if (!scriptSubmitted && bytes.length == 1 && bytes[0] == 0x04) {
           scriptSubmitted = true;
-          // Device sends READY marker.
           queue.add(Uint8List.fromList(utf8.encode('READY')));
           return;
         }
+        if (!scriptSubmitted || received.length >= payload.length) return;
 
-        if (!scriptSubmitted || uploaded >= payload.length) return;
-
-        uploaded += bytes.length;
-        uploadChunks += 1;
-        if (uploadChunks == 2 && uploaded < payload.length) {
+        received.addAll(base64Decode(utf8.decode(bytes).trim()));
+        chunks += 1;
+        if (chunks % ackEvery == 0) {
           queue.add(Uint8List.fromList(utf8.encode('+')));
         }
-        if (uploaded >= payload.length) {
-          // Script done: DONE marker.
-          queue.add(Uint8List.fromList(utf8.encode('DONE')));
+        if (received.length >= payload.length) {
+          queue.add(Uint8List.fromList([...utf8.encode('DONE'), 0x04, 0x04]));
+          queue.add(Uint8List.fromList(utf8.encode('>')));
         }
       }
 
@@ -52,7 +55,7 @@ void main() {
         readyMarker: utf8.encode('READY'),
         doneMarker: utf8.encode('DONE'),
         chunkSize: 4,
-        ackEvery: 2,
+        ackEvery: ackEvery,
         onProgress: (sent, total) {
           expect(total, payload.length);
           progress.add(sent);
@@ -60,7 +63,8 @@ void main() {
       );
 
       expect(progress, [4, 8, 10]);
-      expect(uploaded, payload.length);
+      expect(received, payload);
+      expect(chunks, 3);
       expect(writes.any((bytes) => _endsWith(bytes, const [0x04])), isTrue);
     });
 

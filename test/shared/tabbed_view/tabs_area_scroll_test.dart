@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:tabbed_view/tabbed_view.dart' as tabbed;
@@ -25,12 +26,15 @@ void main() {
     );
     addTearDown(controller.dispose);
 
+    // The tab widgets read the problem counts, which needs a ProviderScope.
     await tester.pumpWidget(
-      MaterialApp(
-        home: SizedBox(
-          width: 360,
-          height: 220,
-          child: TabbedView(controller: controller),
+      ProviderScope(
+        child: MaterialApp(
+          home: SizedBox(
+            width: 360,
+            height: 220,
+            child: TabbedView(controller: controller),
+          ),
         ),
       ),
     );

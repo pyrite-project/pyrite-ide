@@ -8,9 +8,7 @@ import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 
 void main() {
   test('GitStatusSummary reads a branch from a normal git directory', () async {
-    final tempDir = Directory.systemTemp.createTempSync(
-      'pyrite_git_status_test_',
-    );
+    final tempDir = _realTempDir('pyrite_git_status_test_');
 
     try {
       final service = GitRepositoryService();
@@ -33,9 +31,7 @@ void main() {
   });
 
   test('GitStatusSummary reads a branch from a worktree gitdir file', () async {
-    final tempDir = Directory.systemTemp.createTempSync(
-      'pyrite_git_worktree_status_test_',
-    );
+    final tempDir = _realTempDir('pyrite_git_worktree_status_test_');
 
     try {
       final mainPath = p.join(tempDir.path, 'main');
@@ -98,3 +94,11 @@ Future<void> _commitFile(
     ),
   );
 }
+
+/// A new temporary directory, by its real path.
+///
+/// Git reports the repository root with symlinks resolved, and on macOS the
+/// system temp directory sits behind one (`/var` is `/private/var`).
+Directory _realTempDir(String prefix) => Directory(
+  Directory.systemTemp.createTempSync(prefix).resolveSymbolicLinksSync(),
+);
