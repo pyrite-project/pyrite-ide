@@ -14,7 +14,9 @@ const double _splitEdgeExtent = 96;
 ///
 /// Every ancestor group has its edges covered by its children's, so without
 /// this strip a second split above the top-level one has no gesture at all.
-const double _areaEdgeExtent = 24;
+/// Wide enough to find without aiming for it, while still leaving most of the
+/// [_splitEdgeExtent] band to the group's own split.
+const double _areaEdgeExtent = 40;
 
 /// Smallest area that still offers a split: below this the bands would cover
 /// the whole pane and every drop would hit one.

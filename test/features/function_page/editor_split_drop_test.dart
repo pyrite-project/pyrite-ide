@@ -263,6 +263,9 @@ void main() {
     // the area draws that preview -- the root has no pane to draw it in.
     await hover(10);
     expect(container.read(editorAreaSplitPreviewProvider), PaneEdge.left);
+    // The strip is wide enough to hit without aiming for the very edge.
+    await hover(36);
+    expect(container.read(editorAreaSplitPreviewProvider), PaneEdge.left);
 
     // Just inside the strip the promise falls back to the leaf, which draws
     // its own preview; nothing is published for the area any more.
