@@ -279,16 +279,21 @@ void _startAutoSave() {
   _watchEditorArea();
 }
 
-/// Saves the session whenever the editor area changes.
+/// Saves the session whenever what it records about the editor area changes.
 ///
 /// Tabs join and leave groups through their own controllers -- the close
 /// button, a drag, the SDK -- so the layout state alone would miss most of it.
-/// [EditorLayoutNotifier.tabChanges] reports every change in any group.
+/// [EditorLayoutNotifier.tabChanges] reports every change in any group, and a
+/// save is only scheduled when the persisted shape actually differs, so a
+/// title refresh or re-selecting the selected tab writes nothing.
 void _watchEditorArea() {
-  container
-      .read(editorLayoutProvider.notifier)
-      .tabChanges
-      .addListener(_triggerSave);
+  var last = persistedEditorAreaKey(container);
+  container.read(editorLayoutProvider.notifier).tabChanges.addListener(() {
+    final next = persistedEditorAreaKey(container);
+    if (next == last) return;
+    last = next;
+    _triggerSave();
+  });
 }
 
 /// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
@@ -467,7 +472,11 @@ void main() async {
     // tree puts them where the user left them.
     await container
         .read(tabbedViewControllerProvider.notifier)
-        .restoreEditorGroups(data.tabGroups, data.tabLayout);
+        .restoreEditorGroups(
+          data.tabGroups,
+          data.tabLayout,
+          primaryIndex: data.tabPrimaryGroupIndex,
+        );
   } else if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)

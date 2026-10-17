@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -20,6 +22,7 @@ import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:tabbed_view/tabbed_view.dart' show TabbedViewController;
 
 class PersistenceManager {
   final AppPersistence appPersistence = AppPersistence();
@@ -94,6 +97,7 @@ class PersistenceManager {
       tabs: tabsData?.tabs ?? [],
       tabGroups: tabsData?.groups ?? const [],
       tabLayout: tabsData?.layout,
+      tabPrimaryGroupIndex: tabsData?.primaryGroupIndex ?? 0,
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       selectedTabPath: tabsData?.selectedTabPath,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
@@ -254,44 +258,48 @@ class PersistenceManager {
   }
 
   Future<void> _saveTabs(ProviderContainer container) async {
-    final tabController = container.read(tabbedViewControllerProvider);
-    // The layout tree is persisted as it stands, so a session saved with any
-    // number of nested groups reopens exactly as it was left. The flat list is
-    // still written: sessions saved before groups existed restore from it.
-    final persisted = persistEditorLayout(
-      container.read(editorLayoutProvider),
-      primary: tabController,
-      convert: (controller) => PersistedEditorGroup(
-        tabs: [
-          for (final tab in controller.tabs)
-            if (editorTabValueOf(tab)?.type == "file")
-              _persistTab(editorTabValueOf(tab)!),
-        ],
-        selectedTabPath: editorTabValueOf(controller.selectedTab)?.filePath,
-      ),
-    );
-    final tabs = [for (final group in persisted.groups) ...group.tabs];
-    final selectedIndex = tabController.selectedIndex;
-    String? selectedTabPath;
-    if (selectedIndex != null &&
-        selectedIndex >= 0 &&
-        selectedIndex < tabController.tabs.length) {
-      final selectedValue = tabController.tabs[selectedIndex].value;
-      if (selectedValue is TabDataValue) {
-        selectedTabPath = selectedValue.filePath;
-      }
+    final primary = container.read(tabbedViewControllerProvider);
+    final layout = container.read(editorLayoutProvider);
+    if (layout is SplitLayout) {
+      // The tree is persisted as it stands, so any number of nested groups
+      // reopens exactly as it was left -- including which of them is the
+      // primary one.
+      final persisted = persistEditorLayout(
+        layout,
+        primary: primary,
+        convert: _persistGroup,
+      );
+      await tabsPersistence.save(
+        TabsPersistedData(
+          tabs: const [],
+          selectedTabIndex: 0,
+          groups: persisted.groups,
+          layout: persisted.node,
+          primaryGroupIndex: persisted.primaryIndex,
+        ),
+      );
+      return;
     }
+    // A single group needs no tree: the flat list restores it, and it is the
+    // only place its tabs are written, so no buffer is serialized twice.
+    final group = _persistGroup(primary);
     await tabsPersistence.save(
       TabsPersistedData(
-        tabs: tabs,
-        selectedTabIndex: selectedIndex ?? 0,
-        selectedTabPath: selectedTabPath,
-        groups: persisted.groups,
-        // Only persist the tree when it actually splits: a single group is
-        // written as a plain group leaf, so it restores through the legacy
-        // single-group path rather than rebuilding a tree for nothing.
-        layout: persisted.node.isSplit ? persisted.node : null,
+        tabs: group.tabs,
+        selectedTabIndex: primary.selectedIndex ?? 0,
+        selectedTabPath: group.selectedTabPath,
       ),
+    );
+  }
+
+  PersistedEditorGroup _persistGroup(TabbedViewController group) {
+    return PersistedEditorGroup(
+      tabs: [
+        for (final tab in group.tabs)
+          if (editorTabValueOf(tab) case final value? when value.type == 'file')
+            _persistTab(value),
+      ],
+      selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
     );
   }
 
@@ -309,6 +317,38 @@ class PersistenceManager {
       foldedRanges: _persistFoldedRanges(value.editorController),
     );
   }
+}
+
+/// A fingerprint of what [PersistenceManager] writes for the editor area,
+/// leaving out the buffers themselves.
+///
+/// Cheap enough to compute on every tab notification, so the session is only
+/// saved when this changes: re-selecting the selected tab or a title refresh
+/// writes nothing, while opening, closing, moving or selecting a tab, saving
+/// one or reshaping the groups does.
+String persistedEditorAreaKey(ProviderContainer container) {
+  final persisted = persistEditorLayout(
+    container.read(editorLayoutProvider),
+    primary: container.read(tabbedViewControllerProvider),
+    convert: (group) => PersistedEditorGroup(
+      tabs: [
+        for (final tab in group.tabs)
+          if (editorTabValueOf(tab) case final value? when value.type == 'file')
+            PersistedTab(
+              filePath: value.filePath,
+              isBoardFile: value.isBoardFile ?? false,
+              boardFilePath: value.boardFilePath,
+              isSaved: value.isSaved,
+            ),
+      ],
+      selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
+    ),
+  );
+  return jsonEncode({
+    'groups': [for (final group in persisted.groups) group.toJson()],
+    'layout': persisted.node.toJson(),
+    'primary': persisted.primaryIndex,
+  });
 }
 
 List<PersistedFoldRange> _persistFoldedRanges(CodeForgeController? controller) {

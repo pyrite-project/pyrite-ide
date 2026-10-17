@@ -30,12 +30,14 @@ void main() {
           PersistedEditorLayout.group(0),
         ]),
       ]),
+      primaryGroupIndex: 1,
     );
 
     final restored = TabsPersistedData.fromJson(
       jsonDecode(jsonEncode(data.toJson())) as Map<String, dynamic>,
     );
 
+    expect(restored.primaryGroupIndex, 1);
     expect(restored.groups, hasLength(2));
     expect(restored.groups[1].tabs.single.filePath, '/b.py');
     expect(restored.groups[1].tabs.single.isSaved, isFalse);
@@ -61,6 +63,11 @@ void main() {
 
     expect(restored.groups, isEmpty);
     expect(restored.layout, isNull);
+    expect(restored.primaryGroupIndex, 0);
+  });
+
+  test('a group leaf is written without an empty child list', () {
+    expect(PersistedEditorLayout.group(2).toJson(), {'groupIndex': 2});
   });
 
   test('persisted tab round-trips fold ranges and scroll line', () {

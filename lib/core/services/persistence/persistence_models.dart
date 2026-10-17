@@ -129,10 +129,9 @@ class PersistedEditorGroup {
 
 /// The editor area's layout as persisted.
 ///
-/// A group is a leaf, a split holds an axis and its children. The whole tree is
-/// written flat, so a session saved with any number of nested splits restores
-/// exactly as it was; `null` means the single group [TabsPersistedData.groups]
-/// already describes.
+/// A group is a leaf pointing into [TabsPersistedData.groups]; a split holds an
+/// axis and its children. The tree is written nested, exactly as it stands, so
+/// any number of nested splits restores as it was left.
 class PersistedEditorLayout {
   /// Axis of a split node: `horizontal` or `vertical`. Null for a group leaf.
   final String? axis;
@@ -154,7 +153,7 @@ class PersistedEditorLayout {
   Map<String, dynamic> toJson() => {
     if (axis != null) 'axis': axis,
     if (groupIndex != null) 'groupIndex': groupIndex,
-    'children': children.map((c) => c.toJson()).toList(),
+    if (isSplit) 'children': children.map((c) => c.toJson()).toList(),
   };
 
   factory PersistedEditorLayout.fromJson(Map<String, dynamic> json) {
@@ -178,17 +177,17 @@ class PersistedEditorLayout {
 class PersistedData {
   final String? projectPath;
 
-  /// Every group's tabs, flattened in layout order.
-  ///
-  /// Kept flat so anything that only needs "every open file" keeps working; a
-  /// session saved before the editor area could be split has only this.
+  /// The tabs of a session saved with a single editor group.
   final List<PersistedTab> tabs;
 
-  /// One entry per editor group, empty when the area was never split.
+  /// One entry per editor group of a split session, in layout order.
   final List<PersistedEditorGroup> tabGroups;
 
   /// The editor area's layout tree, or null for a single group.
   final PersistedEditorLayout? tabLayout;
+
+  /// Which of [tabGroups] is the primary group.
+  final int tabPrimaryGroupIndex;
   final int selectedTabIndex;
 
   /// File path of the tab that was selected, preferred over [selectedTabIndex]
@@ -279,6 +278,7 @@ class PersistedData {
     this.tabs = const [],
     this.tabGroups = const [],
     this.tabLayout,
+    this.tabPrimaryGroupIndex = 0,
     this.selectedTabIndex = 0,
     this.selectedTabPath,
     this.themeMode = 'system',

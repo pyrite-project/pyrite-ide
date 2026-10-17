@@ -5,20 +5,21 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 class TabsPersistedData {
-  /// Every group's tabs, flattened in layout order.
+  /// The tabs of a session saved with a single group.
   ///
-  /// Kept as the flat list so a session saved before groups existed still
-  /// restores, and so anything that only needs "every open file" keeps working.
+  /// Empty when the editor area was split: [groups] holds every tab then, so
+  /// no buffer is written twice.
   final List<PersistedTab> tabs;
 
-  /// One entry per group, in the same order as [tabs] groups them.
-  ///
-  /// Empty for sessions saved before the editor area could be split; those
-  /// restore as the single group [layout] describes when it is null.
+  /// One entry per group, in layout order; empty for a single group.
   final List<PersistedEditorGroup> groups;
 
-  /// The layout tree, or null for a single group.
+  /// The layout tree [groups] are placed by, or null for a single group.
   final PersistedEditorLayout? layout;
+
+  /// Which of [groups] is the primary group -- the one holding the welcome
+  /// page, where new tabs fall back to while no group has focus.
+  final int primaryGroupIndex;
 
   final int selectedTabIndex;
 
@@ -39,6 +40,7 @@ class TabsPersistedData {
     this.selectedTabPath,
     this.groups = const [],
     this.layout,
+    this.primaryGroupIndex = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -47,6 +49,7 @@ class TabsPersistedData {
     'selectedTabPath': selectedTabPath,
     if (groups.isNotEmpty) 'groups': groups.map((g) => g.toJson()).toList(),
     if (layout != null) 'layout': layout!.toJson(),
+    if (layout != null) 'primaryGroupIndex': primaryGroupIndex,
   };
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -69,6 +72,7 @@ class TabsPersistedData {
                 json['layout'] as Map<String, dynamic>,
               )
             : null,
+        primaryGroupIndex: (json['primaryGroupIndex'] as num?)?.toInt() ?? 0,
       );
 }
 
