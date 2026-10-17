@@ -195,6 +195,30 @@ void main() {
       );
     });
 
+    test('refuses a tab its source no longer holds', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      primary.addTab(TabData(text: 'second'));
+      final gone = TabData(text: 'gone');
+
+      // The drag captured the source when it started; the tab may have closed
+      // and the primary controller been republished since. `removeTab`
+      // validates its index, so a stale source must be refused, not thrown at.
+      expect(
+        splitEditorGroup(
+          container,
+          from: primary,
+          target: primary,
+          tab: gone,
+          where: EditorSplit.bottom,
+        ),
+        isFalse,
+      );
+      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
+      expect(primary.tabs, hasLength(2));
+    });
+
     test('brings the primary back when it gains a tab while away', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -417,6 +441,150 @@ void main() {
       expect(layout.axis, Axis.horizontal);
       final created = layout.children[1] as GroupLayout;
       expect(created.controller.tabs.single.text, 'REPL');
+    });
+
+    test('only a group on the area boundary offers a root-level split', () {
+      // The shape split nesting builds: root = [a1 | b1], a1 = [primary | a2].
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      primary.addTab(TabData(text: 'second'));
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: primary.tabs[1],
+        where: EditorSplit.right,
+      );
+      final b1 =
+          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
+                  as GroupLayout)
+              .controller;
+      primary.addTab(TabData(text: 'a2 tab'));
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: primary.tabs.last,
+        where: EditorSplit.bottom,
+      );
+      final a2 =
+          ((container.read(editorLayoutProvider) as SplitLayout).children[0]
+                      as SplitLayout)
+                  .children[1]
+              as GroupLayout;
+      final a2Controller = a2.controller;
+
+      // a2 sits on the area's left edge -- primary and a1 are both entered
+      // through their first child -- but not on its right or top edge.
+      expect(
+        groupAtAreaEdge(container, a2Controller, EditorSplit.left),
+        isTrue,
+      );
+      expect(
+        groupAtAreaEdge(container, a2Controller, EditorSplit.right),
+        isFalse,
+      );
+      expect(
+        groupAtAreaEdge(container, a2Controller, EditorSplit.top),
+        isFalse,
+      );
+      // b1 is on the right edge and, spanning the horizontal root's full
+      // height, on the top and bottom edges too.
+      expect(groupAtAreaEdge(container, b1, EditorSplit.right), isTrue);
+      expect(groupAtAreaEdge(container, b1, EditorSplit.left), isFalse);
+      expect(groupAtAreaEdge(container, b1, EditorSplit.top), isTrue);
+    });
+
+    test('a drop on the area boundary adds a group above the top split', () {
+      // root = [a1 | b1], a1 = [primary | a2]: the deepest group's tab, moved
+      // out through the area's own boundary, becomes the root's second split.
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      primary.addTab(TabData(text: 'second'));
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: primary.tabs[1],
+        where: EditorSplit.right,
+      );
+      final b1 =
+          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
+                  as GroupLayout)
+              .controller;
+      primary.addTab(TabData(text: 'a2 tab'));
+      splitEditorGroup(
+        container,
+        from: primary,
+        target: primary,
+        tab: primary.tabs.last,
+        where: EditorSplit.bottom,
+      );
+      final a2 =
+          ((container.read(editorLayoutProvider) as SplitLayout).children[0]
+                      as SplitLayout)
+                  .children[1]
+              as GroupLayout;
+      a2.controller.addTab(TabData(text: 'moved'));
+      final before = container.read(editorLayoutProvider);
+      expect(before, isA<SplitLayout>());
+
+      final moved = a2.controller.tabs.last;
+      final split = splitEditorArea(
+        container,
+        from: a2.controller,
+        tab: moved,
+        where: EditorSplit.left,
+      );
+
+      expect(split, isTrue);
+      final layout = container.read(editorLayoutProvider) as SplitLayout;
+      expect(layout.axis, Axis.horizontal);
+      // The new group wraps the whole previous tree instead of nesting inside
+      // the leaf it was dragged from.
+      expect(layout.children, hasLength(2));
+      final created = layout.children[0] as GroupLayout;
+      expect(created.controller.tabs.single.text, 'moved');
+      // The previous tree is kept whole, demoted to a child of the new split.
+      final kept = layout.children[1] as SplitLayout;
+      expect(kept.axis, Axis.horizontal);
+      expect(kept.children, hasLength(2));
+      // Four groups: primary, a2, b1 and the created one.
+      expect(allEditorControllers(container), hasLength(4));
+      // a2 only lost the tab that was dragged out.
+      expect(a2.controller.tabs.map((tab) => tab.text), ['a2 tab']);
+      // b1 is untouched by a root-level split beside the tree.
+      expect(b1.tabs, isNotEmpty);
+    });
+
+    test('the area split refuses what a group split refuses', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final primary = container.read(tabbedViewControllerProvider);
+      final welcome = primary.tabs.single;
+
+      // The welcome page is pinned: the area boundary is no way around that.
+      expect(canSplitEditorArea(from: primary, tab: welcome), isFalse);
+      expect(
+        splitEditorArea(
+          container,
+          from: primary,
+          tab: welcome,
+          where: EditorSplit.left,
+        ),
+        isFalse,
+      );
+      // A tab the source no longer holds is refused as well.
+      expect(
+        canSplitEditorArea(
+          from: primary,
+          tab: TabData(text: 'gone'),
+        ),
+        isFalse,
+      );
+      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
     });
 
     test('the last group survives empty, so the editor always has a strip', () {

@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
@@ -76,13 +77,27 @@ class _EditorState extends ConsumerState<Editor> {
     if (needsEditorLayoutRefresh(container)) {
       // Out of the build phase: the layout changed, so it has to be rewritten.
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         container.read(editorLayoutProvider.notifier).state =
             refreshEditorLayout(container);
+        // Which names collide changed with the pruning, so the titles have to
+        // be recomputed here as well: `_refreshLayout` does it for the drag
+        // paths, and a pruned group otherwise leaves a long title behind.
+        refreshFileTabTitles(allEditorTabs(container));
       });
     }
+    // A root-level split promises to take the whole area, and the root has no
+    // pane of its own to draw that in, so the area draws it.
+    final areaPreview = ref.watch(editorAreaSplitPreviewProvider);
     return Scaffold(
       appBar: _buildToolbar(context),
-      body: _buildLayout(context, layout),
+      body: Stack(
+        children: [
+          _buildLayout(context, layout),
+          if (areaPreview != null)
+            Positioned.fill(child: EditorSplitHint(split: areaPreview)),
+        ],
+      ),
     );
   }
 

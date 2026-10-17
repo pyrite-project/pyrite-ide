@@ -249,6 +249,10 @@ bool splitEditorGroup(
   if (identical(from, target) && from.tabs.length < 2) return false;
   // A pinned tab never moves, so it is never split out either.
   if (!canTabLeaveGroup(tab)) return false;
+  // The source controller was captured when the drag started, and the primary
+  // is republished by nearly every tab operation: the tab may have closed or
+  // the controller been swapped since. `removeTab` validates its index.
+  if (from.tabs.indexOf(tab) < 0) return false;
 
   final created = TabbedViewController([tab]);
   from.removeTab(from.tabs.indexOf(tab));
@@ -268,6 +272,89 @@ bool splitEditorGroup(
   // The tab may have been the last one where it came from; that group goes.
   _refreshLayout(container);
   return true;
+}
+
+/// Whether dropping [tab] on the editor area's boundary would really split it.
+bool canSplitEditorArea({
+  required TabbedViewController from,
+  required TabData tab,
+}) {
+  return canTabLeaveGroup(tab) && from.tabs.contains(tab);
+}
+
+/// Splits the editor area itself: [tab] moves into a new group placed beside
+/// the whole current tree along [where]'s axis.
+///
+/// A leaf's edge bands can only ever split the leaf they belong to, and every
+/// ancestor group has its edges covered by its children's, so without this a
+/// second split above the top-level one -- the root's own new child -- has no
+/// gesture at all. The outermost strip of a group that sits on the area's
+/// boundary is that gesture.
+bool splitEditorArea(
+  ProviderContainer container, {
+  required TabbedViewController from,
+  required TabData tab,
+  required EditorSplit where,
+}) {
+  if (!canTabLeaveGroup(tab)) return false;
+  if (from.tabs.indexOf(tab) < 0) return false;
+
+  final created = TabbedViewController([tab]);
+  from.removeTab(from.tabs.indexOf(tab));
+  final current = container.read(editorLayoutProvider);
+  container
+      .read(editorLayoutProvider.notifier)
+      .state = SplitLayout(where.axis, [
+    if (where.secondaryFirst) GroupLayout(created),
+    current,
+    if (!where.secondaryFirst) GroupLayout(created),
+  ]);
+  container.read(focusedEditorGroupProvider.notifier).state = created;
+  // The tab may have been the last one where it came from; that group goes.
+  // The primary always survives -- the welcome page is pinned -- so the split
+  // keeps both of its children.
+  _refreshLayout(container);
+  return true;
+}
+
+/// Whether [controller]'s edge on [where]'s side is the editor area's own
+/// boundary.
+///
+/// Walking up from the group, a split running along [where]'s axis keeps the
+/// boundary only while the group is entered through the child on that side,
+/// and a split running across it is spanned and leaves the answer to its
+/// parent. Groups the layout does not contain -- the docked console panel --
+/// are never on it.
+bool groupAtAreaEdge(
+  ProviderContainer container,
+  TabbedViewController controller,
+  EditorSplit where,
+) {
+  final primary = container.read(tabbedViewControllerProvider);
+  return _atAreaEdge(
+    container.read(editorLayoutProvider),
+    primary,
+    controller,
+    where,
+  );
+}
+
+bool _atAreaEdge(
+  EditorLayout node,
+  TabbedViewController primary,
+  TabbedViewController controller,
+  EditorSplit where,
+) {
+  if (node is GroupLayout) return identical(node.controller, controller);
+  if (node is PrimaryGroupLayout) return identical(primary, controller);
+  final split = node as SplitLayout;
+  for (var i = 0; i < split.children.length; i++) {
+    if (!_atAreaEdge(split.children[i], primary, controller, where)) continue;
+    // The group lives in this split.
+    if (split.axis != where.axis) return true;
+    return where.secondaryFirst ? i == 0 : i == split.children.length - 1;
+  }
+  return false;
 }
 
 /// The leaf that keeps rendering [controller] after this operation.
@@ -319,7 +406,6 @@ void _refreshLayout(ProviderContainer container) {
 
 /// The layout as it should be: empty groups dropped, primary brought back.
 EditorLayout refreshEditorLayout(ProviderContainer container) {
-  final primary = container.read(tabbedViewControllerProvider);
   return restoreEditorPrimary(
     container,
     pruneEditorGroups(container, container.read(editorLayoutProvider)),
