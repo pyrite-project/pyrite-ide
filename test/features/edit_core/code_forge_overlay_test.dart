@@ -150,8 +150,9 @@ void main() {
   test('the hover popup keeps a tight gap to the hovered line', () {
     // The hover popup is anchored to the line it documents, so a wide gap reads
     // as a detached popup. Guard against it silently creeping back up to the
-    // generic popup gap.
-    expect(kHoverAnchorGap, greaterThan(0));
+    // generic popup gap. Flush (0) is the current design: the popup hugs the
+    // line it documents.
+    expect(kHoverAnchorGap, greaterThanOrEqualTo(0));
     expect(kHoverAnchorGap, lessThan(8));
   });
 
