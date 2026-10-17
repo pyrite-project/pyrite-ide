@@ -9,7 +9,6 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
@@ -135,16 +134,7 @@ class TabWidget extends ConsumerWidget {
       onExit: (event) => updateHoveredIndex(null),
       child: provider.draggingTabIndex == null
           ? GestureDetector(
-              onTap: () {
-                final editorController = ref.read(tabbedViewControllerProvider);
-                if (identical(provider.controller, editorController)) {
-                  ref
-                      .read(tabbedViewControllerProvider.notifier)
-                      .onTabTap(tab, index);
-                } else {
-                  provider.controller.selectedIndex = index;
-                }
-              },
+              onTap: () => provider.controller.selectedIndex = index,
               onSecondaryTapDown: (details) {
                 if (provider.onTabSecondaryTap != null) {
                   TabData tab = provider.controller.tabs[index];

@@ -1,6 +1,5 @@
 import 'package:code_forge/code_forge/controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 
 final lspInitializationProvider =
@@ -11,14 +10,11 @@ final lspInitializationProvider =
     });
 
 final lspState = Provider<AsyncValue<bool>?>((ref) {
-  // Follows the focused group so the status bar reports the editor the user is
-  // looking at, not whichever group happens to be the primary one.
-  final tabManager = ref.watch(activeEditorControllerProvider);
-  // Tabs can be dragged in from the console strip, so a selected tab is not
-  // necessarily a document.
-  final value = editorTabValueOf(tabManager.selectedTab);
-  if (value?.type != 'file') return null;
-  final controller = value!.editorController;
+  // Follows the focused group's selected tab, so the status bar reports the
+  // editor the user is looking at -- and moves when they switch tabs inside a
+  // group, which changes the group in place.
+  final value = ref.watch(activeEditorTabProvider).value;
+  final controller = value?.type == 'file' ? value?.editorController : null;
   if (controller == null) return null;
   return ref.watch(lspInitializationProvider(controller));
 });

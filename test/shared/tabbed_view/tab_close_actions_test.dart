@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
@@ -112,6 +114,52 @@ void main() {
 
       expect(controller.tabs, isNot(contains(normal)));
       expect(controller.tabs, contains(welcome));
+    });
+
+    testWidgets('a document closed in a split group is released', (
+      tester,
+    ) async {
+      late BuildContext context;
+      await tester.pumpWidget(
+        ProviderScope(
+          child: Builder(
+            builder: (ctx) {
+              context = ctx;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      final container = ProviderScope.containerOf(context);
+      final primary = container.read(tabbedViewControllerProvider);
+      const path = '/nonexistent/split_group_close.py';
+      ensurePendingFileProviders(path);
+      addTearDown(() => releasePendingFileProviders(path));
+      final document = TabData(
+        text: 'split_group_close.py',
+        value: TabDataValue(type: 'file', filePath: path),
+      );
+      primary.addTab(document);
+      final keep = TabData(text: 'keep');
+      primary.addTab(keep);
+      container
+          .read(editorLayoutProvider.notifier)
+          .splitGroup(
+            from: primary,
+            target: primary,
+            tab: document,
+            where: EditorSplit.right,
+          );
+      final split = allEditorControllers(container)[1];
+      split.addTab(TabData(text: 'other'));
+
+      // Closed from the split group's own strip, not the primary's.
+      await closeTabs(context, _provider(split), [document]);
+
+      expect(split.tabs, isNot(contains(document)));
+      // The editor notifier saw the close: what it holds per path is gone.
+      expect(pendingUploadProviderMap.containsKey(path), isFalse);
+      expect(pendingDownloadProviderMap.containsKey(path), isFalse);
     });
   });
 }

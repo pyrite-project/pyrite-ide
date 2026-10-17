@@ -15,7 +15,6 @@ import 'package:pyrite_ide/core/services/editor/repl_traceback_frames.dart';
 import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
@@ -26,6 +25,7 @@ import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 
 /// Input history is bucketed per device: the label of the attached board, or
 /// empty when nothing is attached.
@@ -314,7 +314,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   }
 
   String? _currentWorkspaceRoot() {
-    for (final tab in ref.read(tabbedViewControllerProvider).tabs) {
+    for (final tab in ref.read(editorLayoutProvider).tabs) {
       final value = tab.value;
       if (value is! TabDataValue) continue;
       final parent = path.dirname(value.filePath);

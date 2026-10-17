@@ -82,8 +82,7 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
   /// splitting it in place would strand the new group outside the tree: its
   /// edge drops split the editor group it names instead.
   TabbedViewController? get _splitTarget {
-    final container = ProviderScope.containerOf(context);
-    if (allEditorControllers(container).contains(widget.controller)) {
+    if (ref.read(editorLayoutProvider).contains(widget.controller)) {
       return widget.controller;
     }
     return widget.edgeTarget;
@@ -146,10 +145,9 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
 
     // Claim the session so the strip's trend fallback does not also move it.
     registration!.dropHandled = true;
-    final container = ProviderScope.containerOf(context);
+    final layout = ref.read(editorLayoutProvider.notifier);
     if (split != null && split.root) {
-      splitEditorArea(
-        container,
+      layout.splitArea(
         from: source.controller,
         tab: source.tab,
         where: split.where,
@@ -158,16 +156,14 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
     }
     final splitTarget = split == null ? null : _splitTarget;
     if (splitTarget == null || split == null) {
-      moveTabToEditorGroup(
-        container,
+      layout.moveTab(
         from: source.controller,
         tab: source.tab,
         into: widget.controller,
       );
       return;
     }
-    splitEditorGroup(
-      container,
+    layout.splitGroup(
       from: source.controller,
       target: splitTarget,
       tab: source.tab,
@@ -176,12 +172,13 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
   }
 
   bool _canSplit(NativeTabDragSource source, _PendingSplit split) {
+    final layout = ref.read(editorLayoutProvider.notifier);
     if (split.root) {
-      return canSplitEditorArea(from: source.controller, tab: source.tab);
+      return layout.canSplitArea(from: source.controller, tab: source.tab);
     }
     final splitTarget = _splitTarget;
     if (splitTarget == null) return false;
-    return canSplitEditorGroup(
+    return layout.canSplitGroup(
       from: source.controller,
       target: splitTarget,
       tab: source.tab,
@@ -216,10 +213,11 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
   /// on the area's boundary and the drop is in the outermost strip, the group
   /// itself otherwise.
   _PendingSplit _pendingSplit(EditorSplit where, double depth) {
-    final container = ProviderScope.containerOf(context);
     final atBoundary =
         depth <= _areaEdgeExtent &&
-        groupAtAreaEdge(container, widget.controller, where);
+        ref
+            .read(editorLayoutProvider.notifier)
+            .isAtAreaEdge(widget.controller, where);
     return (where: where, root: atBoundary);
   }
 

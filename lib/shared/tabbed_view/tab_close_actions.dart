@@ -20,11 +20,10 @@ List<TabData> tabsToTheRightOf(List<TabData> tabs, int index) =>
 
 /// Closes [targets] one at a time, prompting for each unsaved tab on the way.
 ///
-/// Tabs are matched by identity rather than by index: closing a tab makes the
-/// editor controller publish a fresh tab list, so any index captured before the
-/// first removal points at the wrong tab afterwards — and the [provider] this
-/// function was handed is stale for the same reason, which is why the live
-/// controller is re-read from the container on every iteration.
+/// Tabs are matched by identity rather than by index: every removal shifts the
+/// tabs after it, so an index captured before the first one points at the
+/// wrong tab afterwards. Each closed tab is handed to the editor notifier,
+/// whichever group it was in, so the document's resources are released.
 ///
 /// A cancel from the unsaved prompt stops the batch. The user asked to keep that
 /// file, and the rest of the tabs were only collateral to the request.
@@ -35,10 +34,7 @@ Future<void> closeTabs(
   VoidCallback? onClosed,
 }) async {
   final container = ProviderScope.containerOf(context);
-  final usesEditorController = identical(
-    provider.controller,
-    container.read(tabbedViewControllerProvider),
-  );
+  final controller = provider.controller;
 
   for (final tab in targets.toList()) {
     // A pinned tab -- the welcome page -- is the editor's floor and must
@@ -46,9 +42,6 @@ Future<void> closeTabs(
     // rather than removing it.
     if (!tab.closable) continue;
     if (!context.mounted) return;
-    final controller = usesEditorController
-        ? container.read(tabbedViewControllerProvider)
-        : provider.controller;
     if (!controller.tabs.contains(tab)) continue;
     if (!await confirmCloseUnsavedTab(context, tab)) return;
     if (!context.mounted) return;
@@ -63,10 +56,8 @@ Future<void> closeTabs(
 
     controller.removeTab(current);
     onClosed?.call();
-    if (usesEditorController) {
-      container
-          .read(tabbedViewControllerProvider.notifier)
-          .afterTabClose(current, tab);
-    }
+    await container
+        .read(tabbedViewControllerProvider.notifier)
+        .afterTabClose(tab);
   }
 }

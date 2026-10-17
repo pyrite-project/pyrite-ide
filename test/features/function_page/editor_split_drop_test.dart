@@ -231,13 +231,16 @@ void main() {
     );
 
     // So the drop splits the leaf: the new group is nested inside the group it
-    // was dragged from, and the primary keeps its role in the tree.
+    // was dragged from, and the primary group stays in the tree.
     expect(container.read(editorAreaSplitPreviewProvider), isNull);
     final layout = container.read(editorLayoutProvider) as SplitLayout;
     expect(layout.children, hasLength(2));
     final created = layout.children[0] as GroupLayout;
     expect(created.controller.tabs.single.text, 'second');
-    expect(layout.children[1], isA<PrimaryGroupLayout>());
+    expect(
+      layout.children[1],
+      GroupLayout(container.read(tabbedViewControllerProvider)),
+    );
   });
 }
 

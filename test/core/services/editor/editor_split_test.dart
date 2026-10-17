@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -10,6 +9,27 @@ import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
+
+/// The layout notifier of a fresh container, and its primary group.
+({
+  ProviderContainer container,
+  EditorLayoutNotifier layout,
+  TabbedViewController primary,
+})
+_editor() {
+  final container = ProviderContainer();
+  addTearDown(container.dispose);
+  return (
+    container: container,
+    layout: container.read(editorLayoutProvider.notifier),
+    primary: container.read(tabbedViewControllerProvider),
+  );
+}
+
+TabData _fileTab(String path, {bool isSaved = true}) => TabData(
+  text: path.split('/').last,
+  value: TabDataValue(type: 'file', filePath: path, isSaved: isSaved),
+);
 
 void main() {
   group('editor split geometry', () {
@@ -30,89 +50,77 @@ void main() {
 
   group('splitting a group', () {
     test('moves the tab into a new group nested in the tree', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
+      final editor = _editor();
       final second = TabData(text: 'second');
-      primary.addTab(second);
+      editor.primary.addTab(second);
 
-      final split = splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
+      final split = editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
         tab: second,
         where: EditorSplit.right,
       );
 
       expect(split, isTrue);
-      expect(primary.tabs.any((tab) => tab.text == 'second'), isFalse);
-
-      final layout = container.read(editorLayoutProvider) as SplitLayout;
+      expect(editor.primary.tabs, isNot(contains(second)));
+      final layout = editor.container.read(editorLayoutProvider) as SplitLayout;
       expect(layout.axis, Axis.horizontal);
-      expect(layout.children, hasLength(2));
-      // The primary keeps its role, so the tab it still holds survives the
-      // controller swap the next tab operation performs.
-      expect(layout.children.first, isA<PrimaryGroupLayout>());
       // `right` puts the existing group first and the new one after it.
-      final created = layout.children[1] as GroupLayout;
-      expect(created.controller.tabs.single.text, 'second');
-      expect(
-        container.read(focusedEditorGroupProvider),
-        same(created.controller),
-      );
+      expect(layout.children.first, GroupLayout(editor.primary));
+      final created = (layout.children[1] as GroupLayout).controller;
+      expect(created.tabs.single, same(second));
+      expect(editor.container.read(focusedEditorGroupProvider), same(created));
     });
 
-    test('the primary strip follows the swapped tab controller', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+    test('every group keeps one controller for the whole session', () {
+      final editor = _editor();
+      final a = _fileTab('/proj/a.py');
+      final b = _fileTab('/proj/b.py');
+      editor.primary
+        ..addTab(a)
+        ..addTab(b);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: b,
         where: EditorSplit.right,
       );
+      final notifier = editor.container.read(
+        tabbedViewControllerProvider.notifier,
+      );
 
-      // Opening a file publishes a brand-new controller instance. The layout
-      // holds the primary by role, so it must resolve to that new instance
-      // instead of keeping a stale twin of the group alive.
-      final swapped = TabbedViewController(primary.tabs);
-      container.read(tabbedViewControllerProvider.notifier).state = swapped;
+      // Opening, focusing and closing tabs change the groups in place: the
+      // provider and the layout keep the very controllers they started with.
+      notifier.openTab(TabData(text: 'opened'));
+      notifier.focusTab(a);
+      editor.primary.removeTab(editor.primary.tabs.indexOf(a));
+      notifier.afterTabClose(a);
 
       expect(
-        groupController(container, const PrimaryGroupLayout()),
-        same(swapped),
+        editor.container.read(tabbedViewControllerProvider),
+        same(editor.primary),
       );
-      expect(allEditorControllers(container), hasLength(2));
-      expect(allEditorControllers(container).contains(primary), isFalse);
-      expect(needsEditorLayoutRefresh(container), isFalse);
+      expect(
+        allEditorControllers(editor.container).first,
+        same(editor.primary),
+      );
     });
 
     test('splits the group it landed on, so splits nest', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+      final editor = _editor();
+      editor.primary.addTab(TabData(text: 'second'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs[1],
         where: EditorSplit.right,
       );
-      // The group split off the right edge, now holding the moved tab.
-      final nested =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
-                  as GroupLayout)
-              .controller;
+      final nested = allEditorControllers(editor.container)[1];
       nested.addTab(TabData(text: 'nested'));
 
       // Splitting the *nested* group, not the root, is what makes a second
       // split appear inside the first.
-      final split = splitEditorGroup(
-        container,
+      final split = editor.layout.splitGroup(
         from: nested,
         target: nested,
         tab: nested.tabs.last,
@@ -121,130 +129,137 @@ void main() {
 
       expect(split, isTrue);
       final inner =
-          (container.read(editorLayoutProvider) as SplitLayout).children[1]
+          (editor.container.read(editorLayoutProvider) as SplitLayout)
+                  .children[1]
               as SplitLayout;
       expect(inner.axis, Axis.vertical);
       expect(inner.children, hasLength(2));
-      expect(allEditorControllers(container), hasLength(3));
+      expect(allEditorControllers(editor.container), hasLength(3));
     });
 
     test('splits when the tab is dragged in from another group', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+      final editor = _editor();
+      editor.primary.addTab(TabData(text: 'second'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs[1],
         where: EditorSplit.right,
       );
-      final nested =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
-                  as GroupLayout)
-              .controller;
-      // The primary now holds only the welcome page, so it needs a file tab to
-      // drag across.
+      final nested = allEditorControllers(editor.container)[1];
       final dragged = TabData(text: 'third');
-      primary.addTab(dragged);
+      editor.primary.addTab(dragged);
 
-      // Dragging a tab that lives in the *root* group onto the nested group's
-      // edge: the tab is not in the target, which used to make the drop a
-      // no-op after the preview promised a split.
-      final split = splitEditorGroup(
-        container,
-        from: primary,
+      // A tab from the root group dropped on the nested group's edge: the tab
+      // is not in the target, and the split still happens.
+      final split = editor.layout.splitGroup(
+        from: editor.primary,
         target: nested,
         tab: dragged,
         where: EditorSplit.bottom,
       );
 
       expect(split, isTrue);
-      expect(primary.tabs.any((tab) => tab.text == 'third'), isFalse);
+      expect(editor.primary.tabs, isNot(contains(dragged)));
       // The welcome page stays: it is the editor's floor, so the primary group
       // is never emptied and never pruned.
-      expect(primary.tabs.single.draggable, isFalse);
+      expect(editor.primary.tabs.single.draggable, isFalse);
       expect(nested.tabs.single.text, 'second');
-
-      final layout = container.read(editorLayoutProvider) as SplitLayout;
-      expect(layout.axis, Axis.horizontal);
-      // The nested split is now the root's second child, so it can be split
-      // again inside itself.
+      final layout = editor.container.read(editorLayoutProvider) as SplitLayout;
       expect((layout.children[1] as SplitLayout).axis, Axis.vertical);
-      expect(allEditorControllers(container), hasLength(3));
-      expect(allEditorControllers(container).contains(primary), isTrue);
+      expect(allEditorControllers(editor.container), hasLength(3));
     });
 
     test('the preview is only promised when the drop can honour it', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      final only = primary.tabs.single;
+      final editor = _editor();
+      final welcome = editor.primary.tabs.single;
+      final a = TabData(text: 'a');
+      editor.primary.addTab(a);
 
+      // The welcome page is pinned, however many tabs share its group.
       expect(
-        canSplitEditorGroup(from: primary, target: primary, tab: only),
+        editor.layout.canSplitGroup(
+          from: editor.primary,
+          target: editor.primary,
+          tab: welcome,
+        ),
+        isFalse,
+      );
+      expect(
+        editor.layout.canSplitGroup(
+          from: editor.primary,
+          target: editor.primary,
+          tab: a,
+        ),
+        isTrue,
+      );
+
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: a,
+        where: EditorSplit.right,
+      );
+      final created = allEditorControllers(editor.container)[1];
+      expect(
+        editor.layout.canSplitGroup(from: created, target: created, tab: a),
         isFalse,
         reason: 'splitting a group\'s own last tab would be undone by pruning',
       );
-
-      primary.addTab(TabData(text: 'second'));
+      created.addTab(TabData(text: 'b'));
       expect(
-        canSplitEditorGroup(from: primary, target: primary, tab: only),
+        editor.layout.canSplitGroup(from: created, target: created, tab: a),
         isTrue,
       );
     });
 
     test('refuses a tab its source no longer holds', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
+      final editor = _editor();
+      editor.primary.addTab(TabData(text: 'second'));
       final gone = TabData(text: 'gone');
 
       // The drag captured the source when it started; the tab may have closed
-      // and the primary controller been republished since. `removeTab`
-      // validates its index, so a stale source must be refused, not thrown at.
+      // since. `removeTab` validates its index, so a stale source must be
+      // refused, not thrown at.
       expect(
-        splitEditorGroup(
-          container,
-          from: primary,
-          target: primary,
+        editor.layout.splitGroup(
+          from: editor.primary,
+          target: editor.primary,
           tab: gone,
           where: EditorSplit.bottom,
         ),
         isFalse,
       );
-      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
-      expect(primary.tabs, hasLength(2));
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
+      expect(editor.primary.tabs, hasLength(2));
     });
 
     test('a tab split into a new group can be selected there', () {
       for (final splitArea in [false, true]) {
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-        final primary = container.read(tabbedViewControllerProvider);
+        final editor = _editor();
         final moved = TabData(text: 'moved');
-        primary.addTab(TabData(text: 'stays'));
-        primary.addTab(moved);
+        editor.primary
+          ..addTab(TabData(text: 'stays'))
+          ..addTab(moved);
 
         if (splitArea) {
-          splitEditorArea(
-            container,
-            from: primary,
+          editor.layout.splitArea(
+            from: editor.primary,
             tab: moved,
             where: EditorSplit.right,
           );
         } else {
-          splitEditorGroup(
-            container,
-            from: primary,
-            target: primary,
+          editor.layout.splitGroup(
+            from: editor.primary,
+            target: editor.primary,
             tab: moved,
             where: EditorSplit.right,
           );
         }
-        final created = container.read(activeEditorControllerProvider);
+        final created = editor.container.read(activeEditorControllerProvider);
 
         // Reopening the tab's file focuses it with `selectTab`, which reads the
         // index the tab stores: it must point into the new group, not be the
@@ -254,411 +269,364 @@ void main() {
       }
     });
 
-    test('brings the primary back when it gains a tab while away', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      // The primary can no longer be emptied -- the welcome page is pinned --
-      // so this state is reached by a group the primary is not part of.
-      container.read(editorLayoutProvider.notifier).state = GroupLayout(
-        TabbedViewController([TabData(text: 'other')]),
+    test('the primary group is never left out while it holds tabs', () {
+      final editor = _editor();
+      // A tree without the primary: only a damaged restore produces one.
+      editor.layout.replace(
+        GroupLayout(TabbedViewController([TabData(text: 'other')])),
       );
 
-      // A new file opens in the primary, so the primary has to come back into
-      // the tree or the file would open in a strip nothing renders.
-      primary.addTab(TabData(text: 'new'));
-      expect(needsEditorLayoutRefresh(container), isTrue);
-
-      final layout = refreshEditorLayout(container);
-      container.read(editorLayoutProvider.notifier).state = layout;
+      final layout = editor.container.read(editorLayoutProvider);
       expect(layout, isA<SplitLayout>());
-      expect((layout as SplitLayout).axis, Axis.horizontal);
-      expect(layout.children.first, isA<PrimaryGroupLayout>());
       expect(
-        allEditorControllers(container).contains(primary),
-        isTrue,
-        reason: 'exactly one leaf is bound to the primary controller',
+        (layout as SplitLayout).children.first,
+        GroupLayout(editor.primary),
       );
-      expect(allEditorControllers(container), hasLength(2));
+      expect(allEditorControllers(editor.container), hasLength(2));
     });
 
     test('closes the group whose last tab was closed', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
+      final editor = _editor();
       final moved = TabData(text: 'second');
-      primary.addTab(moved);
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
+      editor.primary.addTab(moved);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
         tab: moved,
         where: EditorSplit.right,
       );
-      final secondary = allEditorControllers(container)[1];
+      final secondary = allEditorControllers(editor.container)[1];
+      editor.container.read(focusedEditorGroupProvider.notifier).state =
+          secondary;
 
-      // Closing is not a move, so nothing pruned on its behalf. The frame hook
-      // in [Editor] catches it through this flag.
+      // Closing goes through the group's own controller, never through the
+      // layout -- the notifier follows the groups to notice.
       secondary.removeTab(0);
-      expect(needsEditorLayoutRefresh(container), isTrue);
-      // What the frame hook in [Editor] writes back after the build.
-      container.read(editorLayoutProvider.notifier).state = refreshEditorLayout(
-        container,
+
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
       );
-      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
-      expect(allEditorControllers(container), hasLength(1));
+      // The focus does not outlive the group.
+      expect(editor.container.read(focusedEditorGroupProvider), isNull);
+      expect(
+        editor.container.read(activeEditorControllerProvider),
+        same(editor.primary),
+      );
     });
 
     test('keeps the last tab of a group in place', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      final only = primary.tabs.single;
+      final editor = _editor();
+      final only = editor.primary.tabs.single;
 
-      final split = splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
+      final split = editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
         tab: only,
         where: EditorSplit.bottom,
       );
 
       expect(split, isFalse);
-      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
-      expect(primary.tabs, orderedEquals([only]));
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
+      expect(editor.primary.tabs, orderedEquals([only]));
     });
 
     test('prunes a group that lost its last tab', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
+      final editor = _editor();
       final moved = TabData(text: 'second');
-      primary.addTab(moved);
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
+      editor.primary.addTab(moved);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
         tab: moved,
         where: EditorSplit.right,
       );
-      expect(container.read(editorLayoutProvider), isA<SplitLayout>());
 
       // Dragging the only tab of the second group back empties it, and the
       // group goes away with it.
-      final secondary = allEditorControllers(container)[1];
-      final back = moveTabToEditorGroup(
-        container,
+      final secondary = allEditorControllers(editor.container)[1];
+      final back = editor.layout.moveTab(
         from: secondary,
-        tab: secondary.tabs.single,
-        into: primary,
+        tab: moved,
+        into: editor.primary,
       );
 
       expect(back, isTrue);
-      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
-      expect(allEditorControllers(container), hasLength(1));
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
+      expect(editor.primary.selectedTab, same(moved));
     });
 
-    test('a new file opens in the group that has focus', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+    test('a new tab opens in the group that has focus', () {
+      final editor = _editor();
+      final parked = TabData(text: 'parked');
+      editor.primary.addTab(parked);
+      editor.primary.selectedIndex = 1;
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: parked,
         where: EditorSplit.right,
       );
-      final focused = allEditorControllers(container)[1];
-      container.read(focusedEditorGroupProvider.notifier).state = focused;
+      final focused = allEditorControllers(editor.container)[1];
+      final primarySelection = editor.primary.selectedTab;
 
-      // What the tab notifier does after building a tab on the primary group.
       final created = TabData(text: 'new');
-      primary.addTab(created);
-      final moved = moveTabToFocusedGroup(
-        container,
-        from: primary,
-        tab: created,
-      );
+      editor.container
+          .read(tabbedViewControllerProvider.notifier)
+          .openTab(created);
 
-      expect(moved, isTrue);
-      expect(primary.tabs.contains(created), isFalse);
-      expect(focused.tabs.last.text, 'new');
+      expect(focused.tabs.last, same(created));
       expect(focused.selectedTab, same(created));
-      // The group the tab left keeps the tab it was showing.
-      expect(primary.selectedTab, isNotNull);
+      // The group the tab did not open in keeps what it was showing.
+      expect(editor.primary.tabs, isNot(contains(created)));
+      expect(editor.primary.selectedTab, same(primarySelection));
     });
 
-    test('a new file opens in the primary group when nothing is focused', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
+    test('a new tab opens in the primary group when nothing is focused', () {
+      final editor = _editor();
       final created = TabData(text: 'new');
-      primary.addTab(created);
 
-      final moved = moveTabToFocusedGroup(
-        container,
-        from: primary,
-        tab: created,
+      editor.container
+          .read(tabbedViewControllerProvider.notifier)
+          .openTab(created);
+
+      expect(editor.primary.tabs.last, same(created));
+      expect(editor.primary.selectedTab, same(created));
+    });
+
+    test('focusing a tab focuses the group holding it', () {
+      final editor = _editor();
+      final a = TabData(text: 'a');
+      final b = TabData(text: 'b');
+      editor.primary
+        ..addTab(a)
+        ..addTab(b);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: b,
+        where: EditorSplit.right,
+      );
+      final notifier = editor.container.read(
+        tabbedViewControllerProvider.notifier,
       );
 
-      expect(moved, isFalse);
-      expect(primary.tabs.contains(created), isTrue);
+      expect(notifier.focusTab(a), isTrue);
+      expect(editor.primary.selectedTab, same(a));
+      expect(
+        editor.container.read(activeEditorControllerProvider),
+        same(editor.primary),
+      );
+      expect(notifier.focusTab(TabData(text: 'closed')), isFalse);
     });
 
     test('the welcome page is pinned: it can never be moved or split', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      final welcome = primary.tabs.first;
-      // The editor's floor is unclosable and, now, undraggable.
+      final editor = _editor();
+      final welcome = editor.primary.tabs.first;
       expect(welcome.closable, isFalse);
       expect(welcome.draggable, isFalse);
       expect(canTabLeaveGroup(welcome), isFalse);
 
       final other = TabData(text: 'other');
-      primary.addTab(other);
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
+      editor.primary.addTab(other);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
         tab: other,
         where: EditorSplit.right,
       );
-      final second = allEditorControllers(container)[1];
+      final second = allEditorControllers(editor.container)[1];
 
-      // Neither a split nor a move will take it out of the primary group.
       expect(
-        splitEditorGroup(
-          container,
-          from: primary,
-          target: primary,
+        editor.layout.splitGroup(
+          from: editor.primary,
+          target: editor.primary,
           tab: welcome,
           where: EditorSplit.bottom,
         ),
         isFalse,
       );
       expect(
-        moveTabToEditorGroup(
-          container,
-          from: primary,
-          tab: welcome,
-          into: second,
-        ),
+        editor.layout.moveTab(from: editor.primary, tab: welcome, into: second),
         isFalse,
       );
-      expect(primary.tabs.first, same(welcome));
-      expect(container.read(editorLayoutProvider), isA<SplitLayout>());
+      expect(editor.primary.tabs.first, same(welcome));
     });
 
     test('a tab from a group outside the tree can split an editor group', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
+      final editor = _editor();
       // The docked console panel is a group the editor layout does not
       // contain, which is where a dragged-out tab comes from.
       final console = TabbedViewController([TabData(text: 'REPL')]);
       addTearDown(console.dispose);
 
-      final split = splitEditorGroup(
-        container,
+      final split = editor.layout.splitGroup(
         from: console,
-        target: primary,
+        target: editor.primary,
         tab: console.tabs.single,
         where: EditorSplit.right,
       );
 
       expect(split, isTrue);
       expect(console.tabs, isEmpty);
-      expect(container.read(focusedEditorGroupProvider), isNotNull);
-      final layout = container.read(editorLayoutProvider) as SplitLayout;
-      expect(layout.axis, Axis.horizontal);
-      final created = layout.children[1] as GroupLayout;
-      expect(created.controller.tabs.single.text, 'REPL');
+      final layout = editor.container.read(editorLayoutProvider) as SplitLayout;
+      final created = (layout.children[1] as GroupLayout).controller;
+      expect(created.tabs.single.text, 'REPL');
+      expect(editor.container.read(focusedEditorGroupProvider), same(created));
     });
 
     test('only a group on the area boundary offers a root-level split', () {
-      // The shape split nesting builds: root = [a1 | b1], a1 = [primary | a2].
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+      // The shape split nesting builds: root = [a1 | b1], a1 = [primary / a2].
+      final editor = _editor();
+      editor.primary.addTab(TabData(text: 'second'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs[1],
         where: EditorSplit.right,
       );
-      final b1 =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
-                  as GroupLayout)
-              .controller;
-      primary.addTab(TabData(text: 'a2 tab'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs.last,
+      final b1 = allEditorControllers(editor.container)[1];
+      editor.primary.addTab(TabData(text: 'a2 tab'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs.last,
         where: EditorSplit.bottom,
       );
-      final a2 =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[0]
-                      as SplitLayout)
-                  .children[1]
-              as GroupLayout;
-      final a2Controller = a2.controller;
+      final a2 = allEditorControllers(editor.container)[1];
 
       // a2 sits on the area's left edge -- primary and a1 are both entered
       // through their first child -- but not on its right or top edge.
-      expect(
-        groupAtAreaEdge(container, a2Controller, EditorSplit.left),
-        isTrue,
-      );
-      expect(
-        groupAtAreaEdge(container, a2Controller, EditorSplit.right),
-        isFalse,
-      );
-      expect(
-        groupAtAreaEdge(container, a2Controller, EditorSplit.top),
-        isFalse,
-      );
+      expect(editor.layout.isAtAreaEdge(a2, EditorSplit.left), isTrue);
+      expect(editor.layout.isAtAreaEdge(a2, EditorSplit.right), isFalse);
+      expect(editor.layout.isAtAreaEdge(a2, EditorSplit.top), isFalse);
       // b1 is on the right edge and, spanning the horizontal root's full
       // height, on the top and bottom edges too.
-      expect(groupAtAreaEdge(container, b1, EditorSplit.right), isTrue);
-      expect(groupAtAreaEdge(container, b1, EditorSplit.left), isFalse);
-      expect(groupAtAreaEdge(container, b1, EditorSplit.top), isTrue);
+      expect(editor.layout.isAtAreaEdge(b1, EditorSplit.right), isTrue);
+      expect(editor.layout.isAtAreaEdge(b1, EditorSplit.left), isFalse);
+      expect(editor.layout.isAtAreaEdge(b1, EditorSplit.top), isTrue);
     });
 
     test('a drop on the area boundary adds a group above the top split', () {
-      // root = [a1 | b1], a1 = [primary | a2]: the deepest group's tab, moved
-      // out through the area's own boundary, becomes the root's second split.
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+      final editor = _editor();
+      editor.primary.addTab(TabData(text: 'second'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs[1],
         where: EditorSplit.right,
       );
-      final b1 =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
-                  as GroupLayout)
-              .controller;
-      primary.addTab(TabData(text: 'a2 tab'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs.last,
+      final b1 = allEditorControllers(editor.container)[1];
+      editor.primary.addTab(TabData(text: 'a2 tab'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs.last,
         where: EditorSplit.bottom,
       );
-      final a2 =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[0]
-                      as SplitLayout)
-                  .children[1]
-              as GroupLayout;
-      a2.controller.addTab(TabData(text: 'moved'));
-      final before = container.read(editorLayoutProvider);
-      expect(before, isA<SplitLayout>());
+      final a2 = allEditorControllers(editor.container)[1];
+      final moved = TabData(text: 'moved');
+      a2.addTab(moved);
 
-      final moved = a2.controller.tabs.last;
-      final split = splitEditorArea(
-        container,
-        from: a2.controller,
+      final split = editor.layout.splitArea(
+        from: a2,
         tab: moved,
         where: EditorSplit.left,
       );
 
       expect(split, isTrue);
-      final layout = container.read(editorLayoutProvider) as SplitLayout;
+      final layout = editor.container.read(editorLayoutProvider) as SplitLayout;
       expect(layout.axis, Axis.horizontal);
       // The new group wraps the whole previous tree instead of nesting inside
       // the leaf it was dragged from.
       expect(layout.children, hasLength(2));
-      final created = layout.children[0] as GroupLayout;
-      expect(created.controller.tabs.single.text, 'moved');
-      // The previous tree is kept whole, demoted to a child of the new split.
+      final created = (layout.children[0] as GroupLayout).controller;
+      expect(created.tabs.single, same(moved));
       final kept = layout.children[1] as SplitLayout;
       expect(kept.axis, Axis.horizontal);
       expect(kept.children, hasLength(2));
-      // Four groups: primary, a2, b1 and the created one.
-      expect(allEditorControllers(container), hasLength(4));
-      // a2 only lost the tab that was dragged out.
-      expect(a2.controller.tabs.map((tab) => tab.text), ['a2 tab']);
-      // b1 is untouched by a root-level split beside the tree.
+      expect(allEditorControllers(editor.container), hasLength(4));
+      expect(a2.tabs.map((tab) => tab.text), ['a2 tab']);
       expect(b1.tabs, isNotEmpty);
     });
 
     test('the area split refuses what a group split refuses', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      final welcome = primary.tabs.single;
+      final editor = _editor();
+      final welcome = editor.primary.tabs.single;
 
-      // The welcome page is pinned: the area boundary is no way around that.
-      expect(canSplitEditorArea(from: primary, tab: welcome), isFalse);
       expect(
-        splitEditorArea(
-          container,
-          from: primary,
+        editor.layout.canSplitArea(from: editor.primary, tab: welcome),
+        isFalse,
+      );
+      expect(
+        editor.layout.splitArea(
+          from: editor.primary,
           tab: welcome,
           where: EditorSplit.left,
         ),
         isFalse,
       );
-      // A tab the source no longer holds is refused as well.
       expect(
-        canSplitEditorArea(
-          from: primary,
+        editor.layout.canSplitArea(
+          from: editor.primary,
           tab: TabData(text: 'gone'),
         ),
         isFalse,
       );
-      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
     });
 
     test('the last group survives empty, so the editor always has a strip', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.removeTab(0);
+      final editor = _editor();
+      editor.primary.removeTab(0);
 
-      final pruned = pruneEditorGroups(container, GroupLayout(primary));
-      expect(pruned, isA<GroupLayout>());
-      expect((pruned as GroupLayout).controller, same(primary));
-      // Nothing to collapse against, so no refresh is scheduled.
-      expect(needsEditorLayoutRefresh(container), isFalse);
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
+    });
+
+    test('an unchanged tree is not written again', () {
+      final editor = _editor();
+      var writes = 0;
+      editor.container.listen(editorLayoutProvider, (_, _) => writes++);
+
+      editor.layout.replace(GroupLayout(editor.primary));
+      editor.primary.addTab(TabData(text: 'a'));
+
+      expect(writes, 0);
     });
 
     testWidgets('closing a group last tab removes the group from the screen', (
       tester,
     ) async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+      final editor = _editor();
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1200, 800);
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.view.resetPhysicalSize);
 
-      final primary = container.read(tabbedViewControllerProvider);
-      primary.addTab(TabData(text: 'second'));
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: primary.tabs[1],
+      editor.primary.addTab(TabData(text: 'second'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: editor.primary.tabs[1],
         where: EditorSplit.right,
       );
-      final secondary = allEditorControllers(container)[1];
+      final secondary = allEditorControllers(editor.container)[1];
 
       await tester.pumpWidget(
         UncontrolledProviderScope(
-          container: container,
+          container: editor.container,
           child: MaterialApp(
             home: Scaffold(
               body: Builder(
@@ -669,83 +637,169 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(container.read(editorLayoutProvider), isA<SplitLayout>());
       // The action bar belongs to the editor area, not to a group: two groups
       // still share the one bar.
       expect(find.byType(EditorGroup), findsNWidgets(2));
       expect(find.byIcon(Icons.save_outlined), findsOneWidget);
 
-      // Closing is what empties the group: it notifies the group controller,
-      // never the layout provider, which is why the strip used to survive.
       secondary.removeTab(0);
       await tester.pump();
+
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
+      expect(find.byType(EditorGroup), findsOneWidget);
+    });
+
+    testWidgets('reshaping the tree keeps a group\'s subtree alive', (
+      tester,
+    ) async {
+      final editor = _editor();
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1200, 800);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final moved = TabData(text: 'moved');
+      editor.primary.addTab(moved);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: editor.container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => buildShadcnLayer(context, const Editor()),
+              ),
+            ),
+          ),
+        ),
+      );
+      final before = tester.element(find.byType(EditorGroup));
+
+      // The primary group moves from the root into the new split's first pane.
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: moved,
+        where: EditorSplit.right,
+      );
       await tester.pump();
 
-      expect(container.read(editorLayoutProvider), isA<PrimaryGroupLayout>());
-      expect(allEditorControllers(container), hasLength(1));
-      // Only one toolbar is left on screen -- the emptied group is gone.
-      expect(find.byType(EditorGroup), findsOneWidget);
+      final primaryGroup = find.byWidgetPredicate(
+        (widget) =>
+            widget is EditorGroup &&
+            identical(widget.controller, editor.primary),
+      );
+      expect(tester.element(primaryGroup), same(before));
     });
   });
 
-  test('same-named files in different groups are disambiguated', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final primary = container.read(tabbedViewControllerProvider);
-    final parked = TabData(text: 'parked');
-    primary.addTab(parked);
-    splitEditorGroup(
-      container,
-      from: primary,
-      target: primary,
-      tab: parked,
-      where: EditorSplit.right,
-    );
-    final second = allEditorControllers(container)[1];
+  group('every group, not only the primary one', () {
+    test('saving a tab in another group clears its modified dot', () {
+      final editor = _editor();
+      final tab = _fileTab('/nonexistent/s.py', isSaved: false);
+      editor.primary.addTab(tab);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: tab,
+        where: EditorSplit.right,
+      );
 
-    // Same basename, different directories -- one tab per group. Refreshing a
-    // single group's tabs is what left both of these reading `README.md`.
-    final client = TabData(
-      text: 'README.md',
-      value: TabDataValue(type: 'file', filePath: '/proj/client/README.md'),
-    );
-    final server = TabData(
-      text: 'README.md',
-      value: TabDataValue(type: 'file', filePath: '/proj/server/README.md'),
-    );
-    primary.addTab(client);
-    second.addTab(server);
+      editor.container
+          .read(tabbedViewControllerProvider.notifier)
+          .afterFileSave(tab);
 
-    refreshFileTabTitles(allEditorTabs(container));
+      expect(editorTabValueOf(tab)!.isSaved, isTrue);
+    });
 
-    expect(client.text, 'client/README.md');
-    expect(server.text, 'server/README.md');
+    test('renaming a file open in another group renames its tab', () {
+      final editor = _editor();
+      final tab = _fileTab('/proj/old.py');
+      editor.primary.addTab(tab);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: tab,
+        where: EditorSplit.right,
+      );
+
+      editor.container
+          .read(tabbedViewControllerProvider.notifier)
+          .renameLocalOpenPath('/proj/old.py', '/proj/new.py');
+
+      expect(editorTabValueOf(tab)!.filePath, '/proj/new.py');
+      expect(tab.text, 'new.py');
+    });
+
+    test('the active tab follows a selection made inside a split group', () {
+      final editor = _editor();
+      final a = _fileTab('/proj/a.py');
+      final b = _fileTab('/proj/b.py');
+      editor.primary.addTab(a);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: a,
+        where: EditorSplit.right,
+      );
+      final group = editor.container.read(activeEditorControllerProvider);
+      group.addTab(b);
+      final seen = <TabData?>[];
+      editor.container.listen(
+        activeEditorTabProvider,
+        (_, next) => seen.add(next.tab),
+        fireImmediately: true,
+      );
+
+      // What a tap on a tab does: the group is changed in place.
+      group.selectedIndex = group.tabs.indexOf(b);
+
+      expect(editor.container.read(activeEditorTabProvider).tab, same(b));
+      expect(seen.last, same(b));
+    });
+
+    test('same-named files in different groups are disambiguated', () {
+      final editor = _editor();
+      final parked = TabData(text: 'parked');
+      editor.primary.addTab(parked);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: parked,
+        where: EditorSplit.right,
+      );
+      final second = allEditorControllers(editor.container)[1];
+      final client = _fileTab('/proj/client/README.md');
+      final server = _fileTab('/proj/server/README.md');
+      editor.primary.addTab(client);
+      second.addTab(server);
+
+      refreshFileTabTitles(allEditorTabs(editor.container));
+
+      expect(client.text, 'client/README.md');
+      expect(server.text, 'server/README.md');
+    });
   });
 
   group('layout persistence', () {
     test('a split tree round-trips through its persisted shape', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
+      final editor = _editor();
       final a = TabData(text: 'a');
-      final b = TabData(text: 'b');
       final c = TabData(text: 'c');
-      primary.addTab(a);
-      primary.addTab(b);
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
+      editor.primary
+        ..addTab(a)
+        ..addTab(TabData(text: 'b'));
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
         tab: a,
         where: EditorSplit.right,
       );
-      final nested =
-          ((container.read(editorLayoutProvider) as SplitLayout).children[1]
-                  as GroupLayout)
-              .controller;
+      final nested = allEditorControllers(editor.container)[1];
       nested.addTab(c);
-      splitEditorGroup(
-        container,
+      editor.layout.splitGroup(
         from: nested,
         target: nested,
         tab: c,
@@ -753,175 +807,140 @@ void main() {
       );
 
       final persisted = persistEditorLayout(
-        container,
-        (controller) =>
-            PersistedEditorGroup(tabs: const [], selectedTabPath: null),
+        editor.container.read(editorLayoutProvider),
+        primary: editor.primary,
+        convert: (group) => PersistedEditorGroup(tabs: const []),
       );
       expect(persisted.groups, hasLength(3));
+      expect(persisted.primaryIndex, 0);
       final node = persisted.node;
-      expect(node.isSplit, isTrue);
       expect(node.axis, 'horizontal');
       // The right-hand child is itself a split, so the nesting survives.
-      expect(node.children[1].isSplit, isTrue);
       expect(node.children[1].axis, 'vertical');
       expect(node.children[1].children, hasLength(2));
 
-      // And it rebuilds into the same shape, with group 0 staying primary.
-      final restored = restoreEditorLayout(container, persisted.groups, node);
+      final fresh = TabbedViewController([]);
+      final restored = restoreEditorLayout(
+        persisted.groups,
+        node,
+        primary: fresh,
+        primaryIndex: persisted.primaryIndex,
+      );
       final restoredSplit = restored.node as SplitLayout;
       expect(restoredSplit.axis, Axis.horizontal);
-      expect(restoredSplit.children.first, isA<PrimaryGroupLayout>());
+      expect(restoredSplit.children.first, GroupLayout(fresh));
       final inner = restoredSplit.children[1] as SplitLayout;
       expect(inner.axis, Axis.vertical);
       expect(inner.children, hasLength(2));
-      // Wire the tree in so the controller instances are observable.
-      container.read(editorLayoutProvider.notifier).state = restored.node;
-      expect(allEditorControllers(container), hasLength(3));
-      expect(allEditorControllers(container).first, same(primary));
+      expect(restored.controllers, hasLength(3));
+      expect(restored.controllers.first, same(fresh));
+    });
+
+    test('the primary role stays with its group across a restore', () {
+      final editor = _editor();
+      final a = TabData(text: 'a');
+      editor.primary.addTab(a);
+      // A split to the left puts the new group first, ahead of the primary.
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: a,
+        where: EditorSplit.left,
+      );
+
+      final persisted = persistEditorLayout(
+        editor.container.read(editorLayoutProvider),
+        primary: editor.primary,
+        convert: (group) => PersistedEditorGroup(tabs: const []),
+      );
+      expect(persisted.primaryIndex, 1);
+
+      final fresh = TabbedViewController([]);
+      final restored = restoreEditorLayout(
+        persisted.groups,
+        persisted.node,
+        primary: fresh,
+        primaryIndex: persisted.primaryIndex,
+      );
+      // The welcome page's group is still the right-hand one.
+      final split = restored.node as SplitLayout;
+      expect(split.children.last, GroupLayout(fresh));
+      expect(split.children.first, isNot(GroupLayout(fresh)));
     });
 
     test('a single group persists without a tree', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+      final editor = _editor();
 
       final persisted = persistEditorLayout(
-        container,
-        (controller) => PersistedEditorGroup(tabs: []),
+        editor.container.read(editorLayoutProvider),
+        primary: editor.primary,
+        convert: (group) => PersistedEditorGroup(tabs: []),
       );
 
       expect(persisted.groups, hasLength(1));
       expect(persisted.node.isSplit, isFalse);
       final restored = restoreEditorLayout(
-        container,
         persisted.groups,
         persisted.node,
+        primary: editor.primary,
       );
-      expect(restored.node, isA<PrimaryGroupLayout>());
+      expect(restored.node, GroupLayout(editor.primary));
     });
 
-    test('opening a new file leaves the other group untouched', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final primary = container.read(tabbedViewControllerProvider);
-      final stay = TabData(text: 'stay');
-      final parked = TabData(text: 'parked');
-      primary.addTab(stay);
-      primary.addTab(parked);
-      splitEditorGroup(
-        container,
-        from: primary,
-        target: primary,
-        tab: parked,
-        where: EditorSplit.right,
-      );
-      final second = allEditorControllers(container)[1];
-      container.read(focusedEditorGroupProvider.notifier).state = second;
-
-      // Deliberately not the root's first tab, so a selection reset to index 0
-      // is visible too -- not just a jump to the last one.
-      primary.selectedIndex = 1;
-      final incoming = TabData(text: 'incoming');
-      primary.addTab(incoming);
-
-      // What `openFile` does: republish carrying the selection over (a freshly
-      // built controller selects its first tab), then hand the tab to the
-      // focused group and select it here only when it stays.
-      final selection = primary.selectedIndex;
-      final republished = TabbedViewController(List.from(primary.tabs));
-      republished.selectedIndex = selection;
-      container.read(tabbedViewControllerProvider.notifier).state = republished;
-      if (!moveTabToFocusedGroup(container, from: republished, tab: incoming)) {
-        republished.selectTab(incoming);
-      }
-
-      // The root has exactly the tabs it had, and is still showing `stay`.
-      expect(republished.tabs, hasLength(2));
-      expect(republished.tabs.last, same(stay));
-      expect(republished.selectedIndex, 1);
-      expect(republished.selectedTab, same(stay));
-      expect(second.tabs.last, same(incoming));
-      expect(second.selectedTab, same(incoming));
-    });
-
-    test('a node pointing past the surviving groups is dropped', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test('leaves pointing past the groups, or repeated, are dropped', () {
       final groups = [
         PersistedEditorGroup(tabs: []),
         PersistedEditorGroup(tabs: []),
       ];
-      // Group 2 no longer exists -- its files were deleted while closed.
       final node = PersistedEditorLayout.split('horizontal', [
         PersistedEditorLayout.group(0),
         PersistedEditorLayout.split('vertical', [
           PersistedEditorLayout.group(2),
           PersistedEditorLayout.group(1),
+          PersistedEditorLayout.group(1),
         ]),
       ]);
+      final primary = TabbedViewController([]);
 
-      final restored = restoreEditorLayout(container, groups, node);
-      final restoredNode = restored.node as SplitLayout;
-      container.read(editorLayoutProvider.notifier).state = restoredNode;
+      final restored = restoreEditorLayout(groups, node, primary: primary);
+      final split = restored.node as SplitLayout;
 
-      expect(restoredNode.children, hasLength(2));
-      expect(restoredNode.children.first, isA<PrimaryGroupLayout>());
-      // The dangling child is gone, so the inner split collapses into its one
-      // surviving leaf rather than leaving an empty pane behind.
-      expect(restoredNode.children[1], isA<GroupLayout>());
-      expect(allEditorControllers(container), hasLength(2));
+      expect(split.children, hasLength(2));
+      expect(split.children.first, GroupLayout(primary));
+      // The dangling and the repeated leaf are gone, so the inner split
+      // collapses into its one surviving leaf.
+      expect(split.children[1], GroupLayout(restored.controllers[1]));
     });
 
     test(
       'restoreEditorGroups seeds the controllers the tree points at',
       () async {
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
+        final editor = _editor();
         final node = PersistedEditorLayout.split('horizontal', [
           PersistedEditorLayout.group(0),
           PersistedEditorLayout.group(1),
         ]);
 
-        await container
+        await editor.container
             .read(tabbedViewControllerProvider.notifier)
             .restoreEditorGroups([
               PersistedEditorGroup(tabs: []),
               PersistedEditorGroup(tabs: []),
             ], node);
 
-        // The split is rebuilt and every group controller is live, not a second
-        // throwaway set the layout never references.
-        expect(container.read(editorLayoutProvider), isA<SplitLayout>());
-        expect(allEditorControllers(container), hasLength(2));
-      },
-    );
-
-    test(
-      'restoring reuses the root group instead of seeding a second welcome',
-      () async {
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-        final root = container.read(tabbedViewControllerProvider);
-        final node = PersistedEditorLayout.split('horizontal', [
-          PersistedEditorLayout.group(0),
-          PersistedEditorLayout.group(1),
-        ]);
-
-        // Neither group has a file that still exists, so both restore empty.
-        await container
-            .read(tabbedViewControllerProvider.notifier)
-            .restoreEditorGroups([
-              PersistedEditorGroup(tabs: []),
-              PersistedEditorGroup(tabs: []),
-            ], node);
-
-        // The root is the controller the app was built with, not a rebuilt one.
-        expect(allEditorControllers(container).first, same(root));
-        // Only the welcome page the initializer pinned -- a restore never adds
-        // another, which is what used to leave two of them on screen.
-        final welcomeCount = allEditorControllers(container)
-            .expand((controller) => controller.tabs)
-            .where((tab) => editorTabValueOf(tab)?.type == 'page')
-            .length;
+        // The second group restored empty -- its files are gone -- so it is
+        // dropped, and the primary keeps the welcome page it was built with.
+        expect(
+          editor.container.read(editorLayoutProvider),
+          GroupLayout(editor.primary),
+        );
+        expect(
+          editor.container.read(tabbedViewControllerProvider),
+          same(editor.primary),
+        );
+        final welcomeCount = allEditorTabs(
+          editor.container,
+        ).where((tab) => editorTabValueOf(tab)?.type == 'page').length;
         expect(welcomeCount, 1);
       },
     );

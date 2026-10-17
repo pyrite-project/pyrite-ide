@@ -95,6 +95,9 @@ class SdkTab {
         ? payload['renderer'].toString()
         : contribution.value.renderer;
     final title = payload['title']?.toString() ?? contribution.value.title;
+    // `expansion: true` used to open the view in the expansion panel. The
+    // panel is gone; the flag is accepted and ignored, and the view opens in
+    // the focused editor group like any other tab.
 
     final instance = ref
         .read(tabbedViewControllerProvider.notifier)
@@ -129,62 +132,53 @@ class SdkTab {
       _respondError(envelope, respond, '需要 tab_id');
       return;
     }
-    // The editor area can be split, so the tab may live in any group: closing
-    // one has to look wherever the list reports it, or `list` would name a tab
-    // `close` then cannot find.
-    for (final controller in allEditorControllers(ref.container)) {
-      final tabs = controller.tabs;
-      for (int i = 0; i < tabs.length; i++) {
-        final value = tabs[i].value;
-        if (value is! TabDataValue || value.tabId != tabId) continue;
-        final tab = tabs[i];
-        // A pinned tab -- the welcome page -- can be neither closed nor moved,
-        // whatever asked for it.
-        if (!tab.closable) {
-          _respondError(envelope, respond, '该标签页不允许关闭: $tabId');
-          return;
-        }
-        controller.removeTab(i);
-        ref.read(tabbedViewControllerProvider.notifier).afterTabClose(i, tab);
-        _respondOk(envelope, respond, data: true);
-        return;
-      }
+    final found = _findTab(tabId);
+    if (found == null) {
+      _respondError(envelope, respond, '未找到标签页: $tabId');
+      return;
     }
-
-    _respondError(envelope, respond, '未找到标签页: $tabId');
+    // A pinned tab -- the welcome page -- can be neither closed nor moved,
+    // whatever asked for it.
+    if (!found.tab.closable) {
+      _respondError(envelope, respond, '该标签页不允许关闭: $tabId');
+      return;
+    }
+    found.group.removeTab(found.group.tabs.indexOf(found.tab));
+    ref.read(tabbedViewControllerProvider.notifier).afterTabClose(found.tab);
+    _respondOk(envelope, respond, data: true);
   }
 
+  /// Lists every editor tab, group by group in layout order.
+  ///
+  /// `group` is the index of the group holding the tab; `placement` stays
+  /// `editor` for every tab now that the expansion panel is gone.
   void _handleList(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
     final result = <Map<String, dynamic>>[];
     var index = 0;
-    void append(Iterable<TabData> tabs, String placement) {
-      for (final tab in tabs) {
+    final groups = allEditorControllers(ref.container);
+    for (var group = 0; group < groups.length; group++) {
+      for (final tab in groups[group].tabs) {
         final value = tab.value;
         if (value is! TabDataValue) continue;
-        final item = <String, dynamic>{
+        result.add({
           'index': index++,
           'tabId': value.tabId,
           'resource': value.isPluginView ? null : value.filePath,
           'name': tab.text,
           'kind': value.type,
-          'placement': placement,
-        };
-        if (value.isPluginView) {
-          item['view'] = {
-            'pluginId': value.pluginId,
-            'viewId': value.viewId,
-            'instanceId': value.viewInstanceId,
-          };
-        }
-        result.add(item);
+          'placement': 'editor',
+          'group': group,
+          if (value.isPluginView)
+            'view': {
+              'pluginId': value.pluginId,
+              'viewId': value.viewId,
+              'instanceId': value.viewInstanceId,
+            },
+        });
       }
-    }
-
-    for (final controller in allEditorControllers(ref.container)) {
-      append(controller.tabs, 'editor');
     }
     _respondOk(envelope, respond, data: result);
   }
@@ -200,28 +194,31 @@ class SdkTab {
       _respondError(envelope, respond, '需要 tab_id');
       return;
     }
-    // The editor area can be split, so the tab may live in any group: the
-    // group that holds it has to be focused, or the shared editing commands
-    // would keep acting on a group the user is not looking at.
-    for (final open in allEditorControllers(ref.container)) {
-      final tabs = open.tabs;
-      for (int i = 0; i < tabs.length; i++) {
-        final value = tabs[i].value;
-        if (value is! TabDataValue || value.tabId != tabId) continue;
-        ref.read(focusedEditorGroupProvider.notifier).state = open;
-        if (identical(open, ref.read(tabbedViewControllerProvider))) {
-          ref.read(tabbedViewControllerProvider.notifier).onTabTap(tabs[i], i);
-        } else {
-          // Another group's controller lives inside the layout tree: selecting
-          // in place notifies it, and the strip follows through its listener.
-          open.selectTab(tabs[i]);
+    final found = _findTab(tabId);
+    if (found == null) {
+      _respondError(envelope, respond, '未找到标签页: $tabId');
+      return;
+    }
+    // The group holding the tab takes focus as well, or the shared editing
+    // commands would keep acting on a group the user is not looking at.
+    ref.read(tabbedViewControllerProvider.notifier).focusTab(found.tab);
+    _respondOk(envelope, respond, data: true);
+  }
+
+  /// The editor tab [tabId] names, and the group holding it.
+  ///
+  /// The editor area can be split, so every command has to look in every
+  /// group -- the same ones `list` reports.
+  ({TabbedViewController group, TabData tab})? _findTab(String tabId) {
+    for (final group in allEditorControllers(ref.container)) {
+      for (final tab in group.tabs) {
+        final value = tab.value;
+        if (value is TabDataValue && value.tabId == tabId) {
+          return (group: group, tab: tab);
         }
-        _respondOk(envelope, respond, data: true);
-        return;
       }
     }
-
-    _respondError(envelope, respond, '未找到标签页: $tabId');
+    return null;
   }
 }
 

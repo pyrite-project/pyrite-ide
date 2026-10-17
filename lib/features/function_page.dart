@@ -11,9 +11,9 @@ import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
@@ -1712,8 +1712,10 @@ class EditorToolsBar extends ConsumerWidget {
 
   Widget buildFileState(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
-    if (value is! TabDataValue || value.type != "file") {
+    // The focused group's tab, so the status bar describes the editor the
+    // toolbar and the language server readout describe too.
+    final value = ref.watch(activeEditorTabProvider).value;
+    if (value == null || value.type != "file") {
       return StatusBarButton(
         label: I18nKey.statusWelcomePage,
         icon: Icons.home_outlined,
@@ -1924,8 +1926,8 @@ class EditorToolsBar extends ConsumerWidget {
   /// `initState` and build. Subscribing to the controller itself, or to its
   /// `diagnosticsNotifier`, delivers callbacks during the build phase.
   Widget buildEditorState(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
-    if (value is! TabDataValue || value.type != "file") {
+    final value = ref.watch(activeEditorTabProvider).value;
+    if (value == null || value.type != "file") {
       return const SizedBox.shrink();
     }
     final controller = value.editorController;

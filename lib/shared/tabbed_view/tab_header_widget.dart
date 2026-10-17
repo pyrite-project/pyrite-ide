@@ -317,16 +317,13 @@ class TabHeaderWidget extends StatelessWidget {
       // if another tab has been removed
       index = provider.controller.tabs.indexOf(tabData);
       if (index != -1) {
-        provider.controller.removeTab(index);
         final container = ProviderScope.containerOf(context);
-        if (identical(
-          provider.controller,
-          container.read(tabbedViewControllerProvider),
-        )) {
-          container
-              .read(tabbedViewControllerProvider.notifier)
-              .afterTabClose(index, tabData);
-        }
+        provider.controller.removeTab(index);
+        // Whichever group the tab was in, its document has to be released:
+        // the editor, its language server session and its listeners.
+        await container
+            .read(tabbedViewControllerProvider.notifier)
+            .afterTabClose(tabData);
       }
     }
   }

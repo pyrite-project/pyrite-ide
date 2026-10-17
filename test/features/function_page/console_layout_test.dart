@@ -30,12 +30,9 @@ void main() {
 
       // Drag the REPL surface into the editor area as its own group.
       expect(
-        splitEditorArea(
-          container,
-          from: console,
-          tab: repl,
-          where: EditorSplit.right,
-        ),
+        container
+            .read(editorLayoutProvider.notifier)
+            .splitArea(from: console, tab: repl, where: EditorSplit.right),
         isTrue,
       );
       expect(console.tabs, hasLength(3));
@@ -71,12 +68,9 @@ void main() {
       primary.addTab(TabData(text: 'keep.py'));
       final console = container.read(consoleTabbedViewControllerProvider);
       final repl = _repl(container);
-      splitEditorArea(
-        container,
-        from: console,
-        tab: repl,
-        where: EditorSplit.left,
-      );
+      container
+          .read(editorLayoutProvider.notifier)
+          .splitArea(from: console, tab: repl, where: EditorSplit.left);
 
       resetTerminalLayout(container);
 
@@ -101,12 +95,9 @@ void main() {
 
       final console = container.read(consoleTabbedViewControllerProvider);
       final repl = _repl(container);
-      splitEditorArea(
-        container,
-        from: console,
-        tab: repl,
-        where: EditorSplit.right,
-      );
+      container
+          .read(editorLayoutProvider.notifier)
+          .splitArea(from: console, tab: repl, where: EditorSplit.right);
       expect(
         allEditorControllers(container).expand((c) => c.tabs).any(isConsoleTab),
         isTrue,
@@ -153,12 +144,9 @@ void main() {
           ConsoleDockSide.right;
       final console = container.read(consoleTabbedViewControllerProvider);
       final repl = _repl(container);
-      splitEditorArea(
-        container,
-        from: console,
-        tab: repl,
-        where: EditorSplit.right,
-      );
+      container
+          .read(editorLayoutProvider.notifier)
+          .splitArea(from: console, tab: repl, where: EditorSplit.right);
 
       await tester.pumpWidget(
         UncontrolledProviderScope(

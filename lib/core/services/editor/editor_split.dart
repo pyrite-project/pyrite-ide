@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
@@ -27,46 +29,38 @@ enum EditorSplit {
 
 /// The editor area's layout: a single group, or a tree of splits.
 ///
-/// Only a drag rewrites the tree, and every rewrite replaces it wholesale --
-/// which is what lets a group be split again inside itself.
+/// Every group is a [TabbedViewController] that lives as long as the group and
+/// is changed in place, so a leaf holds its controller directly. The tree
+/// itself is immutable; only [EditorLayoutNotifier] replaces it.
 sealed class EditorLayout {
   const EditorLayout();
 
   /// Every group in the tree, in layout order.
-  ///
-  /// [primary] is the controller new tabs open in; the primary leaf resolves
-  /// against it because that controller is not stable across operations.
-  Iterable<TabbedViewController> controllers(TabbedViewController primary);
+  Iterable<TabbedViewController> get controllers;
+
+  /// Every tab of every group, in layout order.
+  Iterable<TabData> get tabs => controllers.expand((group) => group.tabs);
+
+  /// Whether [group] is one of the tree's groups.
+  bool contains(TabbedViewController group) =>
+      controllers.any((candidate) => identical(candidate, group));
 }
 
-/// A leaf bound to one controller instance.
-///
-/// Used for every group except the primary one, whose controller is swapped
-/// for a fresh instance by nearly every tab operation.
+/// A leaf: one group and its tab strip.
 class GroupLayout extends EditorLayout {
   const GroupLayout(this.controller);
 
   final TabbedViewController controller;
 
   @override
-  Iterable<TabbedViewController> controllers(TabbedViewController primary) => [
-    controller,
-  ];
-}
-
-/// The group new tabs open in.
-///
-/// Held as a role rather than an instance: [tabbedViewControllerProvider]
-/// publishes a brand-new controller on almost every tab operation, so an
-/// instance captured here would strand the strip on a dead controller and
-/// leave a stale twin of the group on screen.
-class PrimaryGroupLayout extends EditorLayout {
-  const PrimaryGroupLayout();
+  Iterable<TabbedViewController> get controllers => [controller];
 
   @override
-  Iterable<TabbedViewController> controllers(TabbedViewController primary) => [
-    primary,
-  ];
+  bool operator ==(Object other) =>
+      other is GroupLayout && identical(other.controller, controller);
+
+  @override
+  int get hashCode => identityHashCode(controller);
 }
 
 /// A split whose [children] are laid out along [axis].
@@ -77,200 +71,314 @@ class SplitLayout extends EditorLayout {
   final List<EditorLayout> children;
 
   @override
-  Iterable<TabbedViewController> controllers(TabbedViewController primary) => [
-    for (final child in children) ...child.controllers(primary),
-  ];
+  Iterable<TabbedViewController> get controllers =>
+      children.expand((child) => child.controllers);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SplitLayout &&
+      other.axis == axis &&
+      listEquals(other.children, children);
+
+  @override
+  int get hashCode => Object.hash(axis, Object.hashAll(children));
 }
 
 /// The editor area's layout. One group until a tab is dropped on an edge.
-final StateProvider<EditorLayout> editorLayoutProvider =
-    StateProvider<EditorLayout>((ref) => const PrimaryGroupLayout());
+final StateNotifierProvider<EditorLayoutNotifier, EditorLayout>
+editorLayoutProvider =
+    StateNotifierProvider<EditorLayoutNotifier, EditorLayout>(
+      (ref) => EditorLayoutNotifier(ref),
+    );
 
-/// The controller a group leaf renders.
-TabbedViewController groupController(
-  ProviderContainer container,
-  EditorLayout node,
-) {
-  if (node is PrimaryGroupLayout) {
-    return container.read(tabbedViewControllerProvider);
-  }
-  if (node is GroupLayout) return node.controller;
-  throw ArgumentError.value(node, 'node', 'a split has no controller');
-}
-
-/// The group the shared editing commands act on, or null for the only group.
+/// The group the user last worked in, or null before any group took focus.
 final StateProvider<TabbedViewController?> focusedEditorGroupProvider =
     StateProvider<TabbedViewController?>((ref) => null);
 
 /// The group the shared editing commands act on.
 ///
-/// Falls back to the primary group whenever nothing is focused or the focused
-/// group has since been dropped, which is every session that never split and
-/// keeps every existing caller on its old target.
+/// The focused group while it is still in the tree, the primary group
+/// otherwise -- which covers every session that never split.
 final Provider<TabbedViewController> activeEditorControllerProvider =
     Provider<TabbedViewController>((ref) {
+      final layout = ref.watch(editorLayoutProvider);
       final focused = ref.watch(focusedEditorGroupProvider);
-      final primary = ref.watch(tabbedViewControllerProvider);
-      if (focused != null &&
-          ref
-              .watch(editorLayoutProvider)
-              .controllers(primary)
-              .contains(focused)) {
-        return focused;
-      }
-      return primary;
+      if (focused != null && layout.contains(focused)) return focused;
+      // The primary controller is never replaced, so there is nothing to
+      // watch -- and watching its provider would make every read of this one
+      // from inside the tab notifier a dependency cycle.
+      return ref.read(editorLayoutProvider.notifier).primary;
     });
 
-/// Every group that holds tabs.
+/// The tab the shared editing commands act on, with the group holding it.
 ///
-/// Anything that has to see *all* open tabs -- the unsaved guard, tab
-/// persistence -- has to walk the tree, or a tab parked in a nested group
-/// would be missed.
-List<TabbedViewController> allEditorControllers(ProviderContainer container) {
-  return container
-      .read(editorLayoutProvider)
-      .controllers(container.read(tabbedViewControllerProvider))
-      .toList();
+/// Deliberately without value equality: [activeEditorTabProvider] hands out a
+/// new instance on every change of the group, and that new instance is what
+/// tells its dependents something moved.
+@immutable
+class ActiveEditorTab {
+  const ActiveEditorTab(this.group, this.tab);
+
+  final TabbedViewController group;
+  final TabData? tab;
+
+  /// The document behind [tab], or null when the tab is not a document.
+  TabDataValue? get value => editorTabValueOf(tab);
 }
 
-/// Every tab of every group, in layout order.
+/// The active group's selected tab, kept current as that group changes.
 ///
-/// Titles are disambiguated across the whole editor area, because a name that
-/// is unique inside its own group can still collide with a tab in another one.
-/// Refreshing a single group's tabs is what left two identical titles on
-/// screen -- and a tab dragged out of a group stuck with the long title it had
-/// been given there, since nothing ever shortened it back.
-List<TabData> allEditorTabs(ProviderContainer container) {
-  return [
-    for (final controller in allEditorControllers(container))
-      ...controller.tabs,
-  ];
-}
+/// Groups are changed in place -- a tab selected, opened, closed or marked
+/// modified -- so a provider handing out the controller itself never reports
+/// any of it. This one rebuilds on every change of the active group.
+final Provider<ActiveEditorTab> activeEditorTabProvider =
+    Provider<ActiveEditorTab>((ref) {
+      final group = ref.watch(activeEditorControllerProvider);
+      group.addListener(ref.invalidateSelf);
+      ref.onDispose(() => group.removeListener(ref.invalidateSelf));
+      return ActiveEditorTab(group, group.selectedTab);
+    });
+
+/// Every editor group, in layout order.
+List<TabbedViewController> allEditorControllers(ProviderContainer container) =>
+    container.read(editorLayoutProvider).controllers.toList();
+
+/// Every tab of every editor group, in layout order.
+///
+/// Whatever has to see all open tabs -- the unsaved guard, persistence, title
+/// disambiguation -- walks this, or a tab parked in another group is missed.
+List<TabData> allEditorTabs(ProviderContainer container) =>
+    container.read(editorLayoutProvider).tabs.toList();
 
 /// Whether [tab] may leave its group.
 ///
 /// The welcome page is pinned -- `draggable: false` -- because it is the
-/// editor's floor: it can be neither closed nor moved, and a group holding
-/// nothing else keeps it rather than being pruned away.
+/// editor's floor: it can be neither closed nor moved, which is also what
+/// keeps the primary group from ever being pruned.
 bool canTabLeaveGroup(TabData tab) => tab.draggable;
 
-/// Moves [tab] into the group that has focus, if that is not [from].
+/// Owns the editor area's layout tree and keeps it well-formed.
 ///
-/// Tabs are built on the primary controller because that is the provider the
-/// tab notifier is bound to; a split editor should open the file in the group
-/// the user is looking at. Only the creation paths route through here --
-/// saving, closing and restoring all keep working on the primary group.
-///
-/// Returns whether the tab moved, so the caller knows to republish [from].
-bool moveTabToFocusedGroup(
-  ProviderContainer container, {
-  required TabbedViewController from,
-  required TabData tab,
-}) {
-  final focused = container.read(activeEditorControllerProvider);
-  if (identical(focused, from)) return false;
-
-  final index = from.tabs.indexOf(tab);
-  if (index < 0) return false;
-  // A pinned tab never moves, whatever asked for it.
-  if (!canTabLeaveGroup(tab)) return false;
-
-  // The tab the user was looking at in [from] must survive the move.
-  final selected = from.selectedTab;
-  final selectedIndex = from.selectedIndex;
-  from.removeTab(index);
-  focused.insertTab(focused.tabs.length, tab);
-  focused.selectTab(tab);
-  if (selected != null && from.tabs.contains(selected)) {
-    from.selectTab(selected);
-  } else if (from.selectedIndex == null && from.tabs.isNotEmpty) {
-    // [selected] left together with the move, and [from] had no other tab to
-    // fall back to, so it is left with nothing selected. `removeTab` only
-    // restores a selection when one existed.
-    from.selectedIndex = (selectedIndex ?? 0).clamp(0, from.tabs.length - 1);
+/// Every rewrite goes through [_commit], which drops groups that lost their
+/// last tab, collapses splits left with one child, brings the primary group
+/// back when it holds tabs while out of the tree, keeps the focused group
+/// valid and refreshes the tab titles. The groups are watched as well, since
+/// tabs leave a group through its own controller -- the close button, a
+/// context menu, a drop onto another strip, the SDK -- without passing here.
+class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
+  EditorLayoutNotifier(this._ref)
+    : super(GroupLayout(_ref.read(tabbedViewControllerProvider))) {
+    _followGroups();
   }
-  return true;
+
+  final Ref _ref;
+  final Set<TabbedViewController> _followed = {};
+  final _Signal _tabChanges = _Signal();
+
+  /// Above zero while this notifier is changing groups itself; the group
+  /// listeners stay quiet then, and the change commits once, at the end.
+  int _muted = 0;
+
+  /// Fires whenever a tab of any group changes, or the set of groups does.
+  ///
+  /// For whatever has to see every open tab -- persistence, the plugin
+  /// document registry -- so it does not have to follow each group itself.
+  Listenable get tabChanges => _tabChanges;
+
+  /// The group the welcome page lives in, and the one new tabs fall back to
+  /// while no group has focus.
+  TabbedViewController get primary => _ref.read(tabbedViewControllerProvider);
+
+  /// Whether dropping [tab] on [target]'s edge would really split it.
+  ///
+  /// Asked for the drop preview and again by [splitGroup], so a preview is
+  /// only shown for a drop that will be honoured. [from] is wherever the tab
+  /// lives now: the docked console panel is a group outside the tree.
+  bool canSplitGroup({
+    required TabbedViewController from,
+    required TabbedViewController target,
+    required TabData tab,
+  }) {
+    if (!canTabLeaveGroup(tab) || !from.tabs.contains(tab)) return false;
+    if (!state.contains(target)) return false;
+    // Splitting a group's own last tab out would empty it, and pruning would
+    // then undo the split.
+    return !identical(from, target) || from.tabs.length >= 2;
+  }
+
+  /// Splits [target] towards [where] and moves [tab] into the new group.
+  bool splitGroup({
+    required TabbedViewController from,
+    required TabbedViewController target,
+    required TabData tab,
+    required EditorSplit where,
+  }) {
+    if (!canSplitGroup(from: from, target: target, tab: tab)) return false;
+    _apply(() {
+      final created = _detachIntoNewGroup(from, tab);
+      final split = _beside(GroupLayout(target), created, where);
+      return (layout: _replaceGroup(state, target, split), focus: created);
+    });
+    return true;
+  }
+
+  /// Whether dropping [tab] on the editor area's boundary would split it.
+  bool canSplitArea({
+    required TabbedViewController from,
+    required TabData tab,
+  }) => canTabLeaveGroup(tab) && from.tabs.contains(tab);
+
+  /// Splits the editor area itself: [tab] moves into a new group placed
+  /// beside the whole current tree along [where]'s axis.
+  ///
+  /// A leaf's edge bands only ever split that leaf, and every ancestor has its
+  /// edges covered by its children's, so this is the only gesture that adds a
+  /// group above the top-level split.
+  bool splitArea({
+    required TabbedViewController from,
+    required TabData tab,
+    required EditorSplit where,
+  }) {
+    if (!canSplitArea(from: from, tab: tab)) return false;
+    _apply(() {
+      final created = _detachIntoNewGroup(from, tab);
+      return (layout: _beside(state, created, where), focus: created);
+    });
+    return true;
+  }
+
+  /// Moves [tab] to the end of [into] and shows it there.
+  ///
+  /// Returns false when the tab is already in [into]: the strip's own drop
+  /// regions reorder tabs inside a group.
+  bool moveTab({
+    required TabbedViewController from,
+    required TabData tab,
+    required TabbedViewController into,
+  }) {
+    if (identical(from, into)) return false;
+    final index = from.tabs.indexOf(tab);
+    if (index < 0 || !canTabLeaveGroup(tab)) return false;
+    _apply(() {
+      from.removeTab(index);
+      into.addTab(tab);
+      into.selectedIndex = into.tabs.length - 1;
+      return (layout: state, focus: into);
+    });
+    return true;
+  }
+
+  /// Whether [group]'s edge on [where]'s side is the editor area's boundary.
+  ///
+  /// Walking down to the group, a split running along [where]'s axis keeps
+  /// the boundary only while the group sits in the child on that side, and a
+  /// split running across it is spanned and leaves the answer to the child.
+  /// Groups outside the tree -- the docked console panel -- are never on it.
+  bool isAtAreaEdge(TabbedViewController group, EditorSplit where) =>
+      _atAreaEdge(state, group, where);
+
+  /// Makes [group] the one the shared editing commands act on.
+  void focus(TabbedViewController group) {
+    if (!state.contains(group)) return;
+    final focused = _ref.read(focusedEditorGroupProvider.notifier);
+    if (!identical(focused.state, group)) focused.state = group;
+  }
+
+  /// Replaces the whole tree, as a session restore does.
+  void replace(EditorLayout layout) => _commit(layout);
+
+  @override
+  void dispose() {
+    for (final group in _followed) {
+      group.removeListener(_onGroupChanged);
+    }
+    _followed.clear();
+    _tabChanges.dispose();
+    super.dispose();
+  }
+
+  /// Runs [change] with the group listeners muted, then commits its result.
+  void _apply(
+    ({EditorLayout layout, TabbedViewController? focus}) Function() change,
+  ) {
+    final ({EditorLayout layout, TabbedViewController? focus}) result;
+    _muted++;
+    try {
+      result = change();
+    } finally {
+      _muted--;
+    }
+    _commit(result.layout, focus: result.focus);
+  }
+
+  void _commit(EditorLayout next, {TabbedViewController? focus}) {
+    _muted++;
+    try {
+      final normalized = _normalize(next);
+      if (normalized != state) state = normalized;
+      _followGroups();
+      final focused = _ref.read(focusedEditorGroupProvider.notifier);
+      final current = focused.state;
+      if (focus != null && state.contains(focus)) {
+        if (!identical(current, focus)) focused.state = focus;
+      } else if (current != null && !state.contains(current)) {
+        focused.state = null;
+      }
+      // Which names collide depends on which tabs are open, in every group.
+      refreshFileTabTitles(state.tabs);
+    } finally {
+      _muted--;
+    }
+    _tabChanges.notify();
+  }
+
+  /// Whether the tree already satisfies what [_commit] establishes.
+  bool get _isNormalized {
+    final groups = state.controllers.toList();
+    if (groups.length > 1 && groups.any((group) => group.tabs.isEmpty)) {
+      return false;
+    }
+    return primary.tabs.isEmpty || state.contains(primary);
+  }
+
+  void _onGroupChanged() {
+    if (_muted > 0) return;
+    if (_isNormalized) {
+      _tabChanges.notify();
+    } else {
+      _commit(state);
+    }
+  }
+
+  /// Follows every group in the tree, and the primary even while it is out of
+  /// the tree: new tabs fall back to it, and it has to come back as soon as it
+  /// holds one.
+  void _followGroups() {
+    final live = {...state.controllers, primary};
+    for (final group in live) {
+      if (_followed.add(group)) group.addListener(_onGroupChanged);
+    }
+    _followed.removeWhere((group) {
+      if (live.contains(group)) return false;
+      group.removeListener(_onGroupChanged);
+      return true;
+    });
+  }
+
+  /// [layout] with empty and repeated groups dropped, single-child splits
+  /// collapsed and the primary group brought back when it holds tabs.
+  ///
+  /// The last group is kept even when empty, so the area always has a strip.
+  EditorLayout _normalize(EditorLayout layout) {
+    final pruned = _prune(layout, {}) ?? GroupLayout(primary);
+    if (primary.tabs.isEmpty || pruned.contains(primary)) return pruned;
+    return SplitLayout(Axis.horizontal, [GroupLayout(primary), pruned]);
+  }
 }
 
-/// Moves [tab] into [into], dropping the group it came from if that empties.
-///
-/// Returns false when the tab is already in [into]; the strip's own drop
-/// regions handle reordering inside a group.
-bool moveTabToEditorGroup(
-  ProviderContainer container, {
-  required TabbedViewController from,
-  required TabData tab,
-  required TabbedViewController into,
-}) {
-  if (identical(from, into)) return false;
-  final index = from.tabs.indexOf(tab);
-  if (index < 0) return false;
-  // A pinned tab never moves, whatever asked for it.
-  if (!canTabLeaveGroup(tab)) return false;
-
-  from.removeTab(index);
-  into.insertTab(into.tabs.length, tab);
-  into.selectTab(tab);
-  container.read(focusedEditorGroupProvider.notifier).state = into;
-  _refreshLayout(container);
-  return true;
-}
-
-/// Whether dropping [tab] on [target]'s edge would really split.
-///
-/// Asked twice: once to decide whether to show the drop preview, and once
-/// again on the drop itself. Showing a preview the drop cannot honour is what
-/// used to make a split look accepted and then silently do nothing.
-///
-/// [from] is wherever the tab currently lives -- a console tab comes from the
-/// docked panel, which is a group the editor layout does not contain.
-bool canSplitEditorGroup({
-  required TabbedViewController from,
-  required TabbedViewController target,
-  required TabData tab,
-}) {
-  // Splitting a group's own last tab would empty it, and pruning would then
-  // undo the split -- refuse it rather than pretend it happened.
-  return !identical(from, target) || from.tabs.length >= 2;
-}
-
-/// Splits the group [target] towards [where] and moves [tab] into the new one.
-///
-/// [tab] comes from [from], which need not be [target]: dragging across groups
-/// onto an edge is the usual way to open a new group, and the docked console
-/// panel is a group too even though it is not a node of the editor layout.
-bool splitEditorGroup(
-  ProviderContainer container, {
-  required TabbedViewController from,
-  required TabbedViewController target,
-  required TabData tab,
-  required EditorSplit where,
-}) {
-  if (identical(from, target) && from.tabs.length < 2) return false;
-  // A pinned tab never moves, so it is never split out either.
-  if (!canTabLeaveGroup(tab)) return false;
-  // The source controller was captured when the drag started, and the primary
-  // is republished by nearly every tab operation: the tab may have closed or
-  // the controller been swapped since. `removeTab` validates its index.
-  if (!from.tabs.contains(tab)) return false;
-
-  final created = _detachIntoNewGroup(from, tab);
-
-  final replacement = SplitLayout(where.axis, [
-    if (where.secondaryFirst) GroupLayout(created),
-    _leafFor(container, target),
-    if (!where.secondaryFirst) GroupLayout(created),
-  ]);
-  container.read(editorLayoutProvider.notifier).state = _replaceGroup(
-    container,
-    container.read(editorLayoutProvider),
-    target,
-    replacement,
-  );
-  container.read(focusedEditorGroupProvider.notifier).state = created;
-  // The tab may have been the last one where it came from; that group goes.
-  _refreshLayout(container);
-  return true;
+/// A [ChangeNotifier] whose notification is public to its owner.
+class _Signal extends ChangeNotifier {
+  void notify() => notifyListeners();
 }
 
 /// Moves [tab] out of [from] into a new group of its own.
@@ -287,288 +395,149 @@ TabbedViewController _detachIntoNewGroup(
   return TabbedViewController([tab]);
 }
 
-/// Whether dropping [tab] on the editor area's boundary would really split it.
-bool canSplitEditorArea({
-  required TabbedViewController from,
-  required TabData tab,
-}) {
-  return canTabLeaveGroup(tab) && from.tabs.contains(tab);
-}
-
-/// Splits the editor area itself: [tab] moves into a new group placed beside
-/// the whole current tree along [where]'s axis.
-///
-/// A leaf's edge bands can only ever split the leaf they belong to, and every
-/// ancestor group has its edges covered by its children's, so without this a
-/// second split above the top-level one -- the root's own new child -- has no
-/// gesture at all. The outermost strip of a group that sits on the area's
-/// boundary is that gesture.
-bool splitEditorArea(
-  ProviderContainer container, {
-  required TabbedViewController from,
-  required TabData tab,
-  required EditorSplit where,
-}) {
-  if (!canTabLeaveGroup(tab)) return false;
-  if (!from.tabs.contains(tab)) return false;
-
-  final created = _detachIntoNewGroup(from, tab);
-  final current = container.read(editorLayoutProvider);
-  container
-      .read(editorLayoutProvider.notifier)
-      .state = SplitLayout(where.axis, [
-    if (where.secondaryFirst) GroupLayout(created),
-    current,
-    if (!where.secondaryFirst) GroupLayout(created),
-  ]);
-  container.read(focusedEditorGroupProvider.notifier).state = created;
-  // The tab may have been the last one where it came from; that group goes.
-  // The primary always survives -- the welcome page is pinned -- so the split
-  // keeps both of its children.
-  _refreshLayout(container);
-  return true;
-}
-
-/// Whether [controller]'s edge on [where]'s side is the editor area's own
-/// boundary.
-///
-/// Walking up from the group, a split running along [where]'s axis keeps the
-/// boundary only while the group is entered through the child on that side,
-/// and a split running across it is spanned and leaves the answer to its
-/// parent. Groups the layout does not contain -- the docked console panel --
-/// are never on it.
-bool groupAtAreaEdge(
-  ProviderContainer container,
-  TabbedViewController controller,
+/// [existing] and a new leaf for [created], side by side along [where].
+SplitLayout _beside(
+  EditorLayout existing,
+  TabbedViewController created,
   EditorSplit where,
-) {
-  final primary = container.read(tabbedViewControllerProvider);
-  return _atAreaEdge(
-    container.read(editorLayoutProvider),
-    primary,
-    controller,
-    where,
-  );
-}
+) => SplitLayout(where.axis, [
+  if (where.secondaryFirst) GroupLayout(created),
+  existing,
+  if (!where.secondaryFirst) GroupLayout(created),
+]);
 
-bool _atAreaEdge(
-  EditorLayout node,
-  TabbedViewController primary,
-  TabbedViewController controller,
-  EditorSplit where,
-) {
-  if (node is GroupLayout) return identical(node.controller, controller);
-  if (node is PrimaryGroupLayout) return identical(primary, controller);
-  final split = node as SplitLayout;
-  for (var i = 0; i < split.children.length; i++) {
-    if (!_atAreaEdge(split.children[i], primary, controller, where)) continue;
-    // The group lives in this split.
-    if (split.axis != where.axis) return true;
-    return where.secondaryFirst ? i == 0 : i == split.children.length - 1;
-  }
-  return false;
-}
-
-/// The leaf that keeps rendering [controller] after this operation.
-///
-/// The primary keeps its role so the next controller the provider publishes
-/// still lands in the same strip.
-EditorLayout _leafFor(
-  ProviderContainer container,
-  TabbedViewController controller,
-) {
-  if (identical(controller, container.read(tabbedViewControllerProvider))) {
-    return const PrimaryGroupLayout();
-  }
-  return GroupLayout(controller);
-}
-
-/// Rebuilds [node] with the group [target] swapped for [replacement].
+/// [node] with the group [target] swapped for [replacement].
 EditorLayout _replaceGroup(
-  ProviderContainer container,
   EditorLayout node,
   TabbedViewController target,
   EditorLayout replacement,
+) => switch (node) {
+  GroupLayout(:final controller) =>
+    identical(controller, target) ? replacement : node,
+  SplitLayout(:final axis, :final children) => SplitLayout(axis, [
+    for (final child in children) _replaceGroup(child, target, replacement),
+  ]),
+};
+
+bool _atAreaEdge(
+  EditorLayout node,
+  TabbedViewController group,
+  EditorSplit where,
 ) {
-  if (node is GroupLayout) {
-    return identical(node.controller, target) ? replacement : node;
+  switch (node) {
+    case GroupLayout(:final controller):
+      return identical(controller, group);
+    case SplitLayout(:final axis, :final children):
+      for (var i = 0; i < children.length; i++) {
+        if (!_atAreaEdge(children[i], group, where)) continue;
+        if (axis != where.axis) return true;
+        return where.secondaryFirst ? i == 0 : i == children.length - 1;
+      }
+      return false;
   }
-  if (node is PrimaryGroupLayout) {
-    return identical(groupController(container, node), target)
-        ? replacement
-        : node;
+}
+
+/// [node] without empty groups, groups already in [seen] and single-child
+/// splits, or null when nothing in it survives.
+EditorLayout? _prune(EditorLayout node, Set<TabbedViewController> seen) {
+  switch (node) {
+    case GroupLayout(:final controller):
+      // A group listed twice -- only a damaged restore produces that -- would
+      // render one controller in two strips.
+      if (controller.tabs.isEmpty || !seen.add(controller)) return null;
+      return node;
+    case SplitLayout(:final axis, :final children):
+      final kept = <EditorLayout>[];
+      for (final child in children) {
+        final pruned = _prune(child, seen);
+        if (pruned != null) kept.add(pruned);
+      }
+      if (kept.isEmpty) return null;
+      if (kept.length == 1) return kept.single;
+      return SplitLayout(axis, kept);
   }
-  final split = node as SplitLayout;
-  return SplitLayout(split.axis, [
-    for (final child in split.children)
-      _replaceGroup(container, child, target, replacement),
-  ]);
 }
 
-/// Re-reads the layout so groups that just lost their last tab disappear.
-void _refreshLayout(ProviderContainer container) {
-  container.read(editorLayoutProvider.notifier).state = refreshEditorLayout(
-    container,
-  );
-  // Group membership changed, so which names collide changed with it: a tab
-  // that carried a long disambiguating title into a group with no rival has to
-  // drop back to its basename, and vice versa.
-  refreshFileTabTitles(allEditorTabs(container));
-}
-
-/// The layout as it should be: empty groups dropped, primary brought back.
-EditorLayout refreshEditorLayout(ProviderContainer container) {
-  return restoreEditorPrimary(
-    container,
-    pruneEditorGroups(container, container.read(editorLayoutProvider)),
-  );
-}
-
-/// Whether the layout needs a rewrite: a group went empty while another still
-/// has tabs, or the primary holds a tab it has nowhere to render.
-///
-/// Checked on every frame by [Editor]: tabs leave a group in ways no single
-/// call site owns -- the close button, the context menu, the SDK -- so waiting
-/// for a move to prune leaves an empty strip behind. The second half of the
-/// test keeps an all-empty layout from scheduling itself forever.
-bool needsEditorLayoutRefresh(ProviderContainer container) {
-  final layout = container.read(editorLayoutProvider);
-  final primary = container.read(tabbedViewControllerProvider);
-  if (primary.tabs.isNotEmpty && !hasPrimaryGroupNode(layout)) return true;
-  final groups = layout.controllers(primary).toList();
-  return groups.any((group) => group.tabs.isEmpty) &&
-      groups.any((group) => group.tabs.isNotEmpty);
-}
-
-/// Drops every group that lost its last tab and collapses single-child splits.
-///
-/// The last group is kept even when empty: the editor area always has a strip,
-/// exactly like it did before any split existed.
-EditorLayout pruneEditorGroups(ProviderContainer container, EditorLayout node) {
-  final primary = container.read(tabbedViewControllerProvider);
-  return _prune(container, node) ?? GroupLayout(primary);
-}
-
-EditorLayout? _prune(ProviderContainer container, EditorLayout node) {
-  if (node is GroupLayout) {
-    return node.controller.tabs.isEmpty ? null : node;
-  }
-  if (node is PrimaryGroupLayout) {
-    return groupController(container, node).tabs.isEmpty ? null : node;
-  }
-  final split = node as SplitLayout;
-  final kept = <EditorLayout>[];
-  for (final child in split.children) {
-    final pruned = _prune(container, child);
-    if (pruned != null) kept.add(pruned);
-  }
-  if (kept.isEmpty) return null;
-  if (kept.length == 1) return kept.single;
-  return SplitLayout(split.axis, kept);
-}
-
-/// Brings the primary group back when it holds a tab while out of the tree.
-///
-/// New tabs always open in the primary controller, so a primary pruned while
-/// empty has to reappear the moment it holds something again -- otherwise the
-/// file would open into a strip nothing renders.
-EditorLayout restoreEditorPrimary(
-  ProviderContainer container,
-  EditorLayout layout,
-) {
-  if (hasPrimaryGroupNode(layout)) return layout;
-  final primary = container.read(tabbedViewControllerProvider);
-  if (primary.tabs.isEmpty) return layout;
-  return SplitLayout(Axis.horizontal, [const PrimaryGroupLayout(), layout]);
-}
-
-bool hasPrimaryGroupNode(EditorLayout node) {
-  if (node is PrimaryGroupLayout) return true;
-  if (node is GroupLayout) return false;
-  return (node as SplitLayout).children.any(hasPrimaryGroupNode);
-}
-
-/// The layout tree as persisted groups plus a [PersistedEditorLayout] node.
+/// The tree as persisted groups plus a [PersistedEditorLayout] node.
 ///
 /// [convert] is called once per group in layout order and the results are
-/// numbered in that same order, so the flat list and the tree always agree.
-/// Converting a group's tabs is the caller's job: it owns the file model, and
-/// the tree only owns the shape.
-({List<PersistedEditorGroup> groups, PersistedEditorLayout node})
-persistEditorLayout(
-  ProviderContainer container,
-  PersistedEditorGroup Function(TabbedViewController controller) convert,
-) {
-  final groups = <PersistedEditorGroup>[];
-  final node = _persistNode(
-    container,
-    container.read(editorLayoutProvider),
-    groups,
-    convert,
-  );
-  return (groups: groups, node: node);
-}
-
-PersistedEditorLayout _persistNode(
-  ProviderContainer container,
-  EditorLayout node,
+/// numbered in that order, so the flat list and the tree always agree.
+/// `primaryIndex` is where [primary] landed: a restore hands the primary role
+/// -- the welcome page, the fallback for new tabs -- back to that group rather
+/// than to whichever group happens to come first.
+({
   List<PersistedEditorGroup> groups,
-  PersistedEditorGroup Function(TabbedViewController controller) convert,
-) {
-  if (node is! SplitLayout) {
-    final index = groups.length;
-    groups.add(convert(groupController(container, node)));
-    return PersistedEditorLayout.group(index);
+  PersistedEditorLayout node,
+  int primaryIndex,
+})
+persistEditorLayout(
+  EditorLayout layout, {
+  required TabbedViewController primary,
+  required PersistedEditorGroup Function(TabbedViewController group) convert,
+}) {
+  final groups = <PersistedEditorGroup>[];
+  var primaryIndex = 0;
+  PersistedEditorLayout visit(EditorLayout node) {
+    switch (node) {
+      case GroupLayout(:final controller):
+        if (identical(controller, primary)) primaryIndex = groups.length;
+        groups.add(convert(controller));
+        return PersistedEditorLayout.group(groups.length - 1);
+      case SplitLayout(:final axis, :final children):
+        return PersistedEditorLayout.split(axis.name, [
+          for (final child in children) visit(child),
+        ]);
+    }
   }
-  return PersistedEditorLayout.split(node.axis.name, [
-    for (final child in node.children)
-      _persistNode(container, child, groups, convert),
-  ]);
+
+  final node = visit(layout);
+  return (groups: groups, node: node, primaryIndex: primaryIndex);
 }
 
-/// Rebuilds the layout tree from [groups] and [node].
+/// Rebuilds the tree persisted as [groups] and [node].
 ///
-/// The primary provider owns group 0 so it stays where new files open; every
-/// other group gets a fresh, empty controller. The callers seed those
-/// controllers (the seeding is async, so it cannot happen here); the returned
-/// [controllers] are the exact instances wired into [node], so the two stay in
-/// sync. A node pointing past the groups that survived the restore is dropped,
-/// so a session saved with tabs that have since been deleted still opens.
+/// The group at [primaryIndex] is [primary] itself; every other group gets a
+/// fresh controller for the caller to seed (seeding is async, so it cannot
+/// happen here). The returned `controllers` are the exact instances wired into
+/// the tree, one per persisted group. Leaves pointing past [groups], or at a
+/// group another leaf already took, are dropped, so a damaged session still
+/// opens.
 ({EditorLayout node, List<TabbedViewController> controllers})
 restoreEditorLayout(
-  ProviderContainer container,
   List<PersistedEditorGroup> groups,
-  PersistedEditorLayout? node,
-) {
-  final primary = container.read(tabbedViewControllerProvider);
+  PersistedEditorLayout? node, {
+  required TabbedViewController primary,
+  int primaryIndex = 0,
+}) {
   if (node == null || !node.isSplit || groups.isEmpty) {
-    return (node: const PrimaryGroupLayout(), controllers: [primary]);
+    return (node: GroupLayout(primary), controllers: [primary]);
   }
 
-  final controllers = <TabbedViewController>[primary];
-  for (var i = 1; i < groups.length; i++) {
-    controllers.add(TabbedViewController([]));
-  }
+  final primaryAt = primaryIndex.clamp(0, groups.length - 1);
+  final controllers = [
+    for (var i = 0; i < groups.length; i++)
+      i == primaryAt ? primary : TabbedViewController([]),
+  ];
+  final used = <int>{};
+  final axes = Axis.values.asNameMap();
 
-  EditorLayout build(PersistedEditorLayout n) {
+  EditorLayout? build(PersistedEditorLayout n) {
     if (!n.isSplit) {
-      final index = (n.groupIndex ?? 0).clamp(0, controllers.length - 1);
-      return index == 0
-          ? const PrimaryGroupLayout()
-          : GroupLayout(controllers[index]);
+      final index = n.groupIndex ?? 0;
+      if (index < 0 || index >= controllers.length || !used.add(index)) {
+        return null;
+      }
+      return GroupLayout(controllers[index]);
     }
     final children = <EditorLayout>[];
     for (final child in n.children) {
-      if ((child.groupIndex ?? 0) >= controllers.length) continue;
-      children.add(build(child));
+      final built = build(child);
+      if (built != null) children.add(built);
     }
-    if (children.isEmpty) return const PrimaryGroupLayout();
+    if (children.isEmpty) return null;
     if (children.length == 1) return children.single;
-    return SplitLayout(
-      n.axis == 'vertical' ? Axis.vertical : Axis.horizontal,
-      children,
-    );
+    return SplitLayout(axes[n.axis] ?? Axis.horizontal, children);
   }
 
-  return (node: build(node), controllers: controllers);
+  return (node: build(node) ?? GroupLayout(primary), controllers: controllers);
 }

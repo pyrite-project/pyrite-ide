@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
@@ -97,8 +98,9 @@ Future<void> revealLspLocation(
       .read(tabbedViewControllerProvider.notifier)
       .openFile(context, file: File(path));
   if (!context.mounted) return;
+  // Opening the file focused the group showing it, wherever that is.
   final targetController = editorTabValueOf(
-    ref.read(tabbedViewControllerProvider).selectedTab,
+    ref.read(activeEditorControllerProvider).selectedTab,
   )?.editorController;
   if (targetController == null) return;
   final offset = (targetController.getLineStartOffset(line) + character).clamp(

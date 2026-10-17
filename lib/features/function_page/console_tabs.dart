@@ -4,7 +4,6 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
-import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/function_page.dart';
@@ -241,12 +240,6 @@ void resetTerminalLayout(ProviderContainer container) {
   // The preset is the bottom dock, whatever side it was last dragged to.
   container.read(consoleDockSideProvider.notifier).state =
       ConsoleDockSide.bottom;
-
-  // Drop any editor groups the evacuation left empty, and keep titles honest.
-  container.read(editorLayoutProvider.notifier).state = refreshEditorLayout(
-    container,
-  );
-  refreshFileTabTitles(allEditorTabs(container));
 }
 
 /// Moves every console tab out of the editor area and into the bottom panel.
@@ -271,8 +264,4 @@ void evacuateConsoleTabsToPanel(ProviderContainer container) {
   final next = TabbedViewController(all);
   if (next.tabs.isNotEmpty) next.selectedIndex = 0;
   container.read(consoleTabbedViewControllerProvider.notifier).state = next;
-  container.read(editorLayoutProvider.notifier).state = refreshEditorLayout(
-    container,
-  );
-  refreshFileTabTitles(allEditorTabs(container));
 }

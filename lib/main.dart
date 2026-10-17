@@ -279,44 +279,16 @@ void _startAutoSave() {
   _watchEditorArea();
 }
 
-/// Watches the editor area so a restart brings back the groups the user made.
+/// Saves the session whenever the editor area changes.
 ///
-/// Only an edited buffer used to mark the persisted state stale, so splitting
-/// the editor -- or closing a group, or dragging a tab between two of them --
-/// was written out only if some file happened to be edited in the same
-/// session, and a restart then dropped the whole layout. The group controllers
-/// are watched as well as the tree because a tab can leave a group through the
-/// close button, the context menu or the SDK, none of which touch the tree.
+/// Tabs join and leave groups through their own controllers -- the close
+/// button, a drag, the SDK -- so the layout state alone would miss most of it.
+/// [EditorLayoutNotifier.tabChanges] reports every change in any group.
 void _watchEditorArea() {
-  _settingsSubscriptions.add(
-    container.listen<EditorLayout>(editorLayoutProvider, (_, _) {
-      _triggerSave();
-      _followEditorGroupTabs();
-    }),
-  );
-  _settingsSubscriptions.add(
-    container.listen(tabbedViewControllerProvider, (_, _) {
-      _triggerSave();
-      // The primary is swapped for a fresh instance by nearly every tab
-      // operation, so following it again keeps the watch on the live one.
-      _followEditorGroupTabs();
-    }),
-  );
-  _followEditorGroupTabs();
-}
-
-/// [removeListener] callbacks for the group controllers currently watched.
-final List<VoidCallback> _groupTabUnsubscribes = [];
-
-void _followEditorGroupTabs() {
-  for (final unsubscribe in _groupTabUnsubscribes) {
-    unsubscribe();
-  }
-  _groupTabUnsubscribes.clear();
-  for (final controller in allEditorControllers(container)) {
-    controller.addListener(_triggerSave);
-    _groupTabUnsubscribes.add(() => controller.removeListener(_triggerSave));
-  }
+  container
+      .read(editorLayoutProvider.notifier)
+      .tabChanges
+      .addListener(_triggerSave);
 }
 
 /// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.

@@ -11,6 +11,7 @@ import 'package:pyrite_ide/core/sdk/document_service.dart';
 import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
 import 'package:pyrite_ide/core/sdk/environment_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
@@ -115,25 +116,31 @@ Future<void> _revealControllerWhenReady(
 /// Bridges the real editor tab model to [PluginDocumentService] and serves the
 /// document query APIs.
 ///
-/// It listens to [tabbedViewControllerProvider], keeps the document registry in
-/// sync, attaches a per-controller listener to split content vs selection
-/// changes, and emits lifecycle events onto the plugin event bus.
+/// It follows every editor group -- the editor area can be split, and a
+/// document moved to another group is still open -- keeps the document
+/// registry in sync, attaches a per-controller listener to split content vs
+/// selection changes, and emits lifecycle events onto the plugin event bus.
 class EditorDocumentHost implements DocumentHost {
   EditorDocumentHost(this._ref) {
     _service = PluginDocumentService(
       emit: (topic, payload) =>
           _ref.read(pluginEventBusProvider).emit(topic, payload),
     );
-    _subscription = _ref.listen<TabbedViewController>(
-      tabbedViewControllerProvider,
-      (_, next) => _onTabsChanged(next),
-      fireImmediately: true,
+    _tabChanges = _ref.read(editorLayoutProvider.notifier).tabChanges
+      ..addListener(_sync);
+    // The active document follows the focused group, which can change without
+    // any tab changing.
+    _activeSubscription = _ref.listen<TabbedViewController>(
+      activeEditorControllerProvider,
+      (_, _) => _sync(),
     );
+    _sync();
   }
 
   final Ref _ref;
   late final PluginDocumentService _service;
-  late final ProviderSubscription<TabbedViewController> _subscription;
+  late final Listenable _tabChanges;
+  late final ProviderSubscription<TabbedViewController> _activeSubscription;
 
   /// Per-controller listeners, so we can detach on close.
   final Map<CodeForgeController, VoidCallback> _listeners = {};
@@ -165,17 +172,10 @@ class EditorDocumentHost implements DocumentHost {
       throw StateError('Document is no longer open');
     }
 
-    final tabs = _ref.read(tabbedViewControllerProvider).tabs;
-    final index = tabs.indexOf(handle.tab);
-    if (index < 0) throw StateError('Document tab is no longer open');
-    if (!identical(
-      _ref.read(tabbedViewControllerProvider).selectedTab,
-      handle.tab,
-    )) {
-      _ref
-          .read(tabbedViewControllerProvider.notifier)
-          .onTabTap(handle.tab, index);
-    }
+    final shown = _ref
+        .read(tabbedViewControllerProvider.notifier)
+        .focusTab(handle.tab);
+    if (!shown) throw StateError('Document tab is no longer open');
 
     await _revealControllerWhenReady(
       handle.controller,
@@ -194,10 +194,10 @@ class EditorDocumentHost implements DocumentHost {
     );
   }
 
-  void _onTabsChanged(TabbedViewController controller) {
+  void _sync() {
     final snapshots = <DocumentSnapshot>[];
-    final selected = controller.selectedTab;
-    for (final tab in controller.tabs) {
+    final active = _ref.read(activeEditorControllerProvider).selectedTab;
+    for (final tab in _ref.read(editorLayoutProvider).tabs) {
       final value = tab.value;
       if (value is! TabDataValue || value.type != 'file') continue;
       final editor = value.editorController;
@@ -208,7 +208,7 @@ class EditorDocumentHost implements DocumentHost {
           handle: handle,
           filePath: value.filePath,
           isSaved: value.isSaved,
-          isActive: identical(tab, selected),
+          isActive: identical(tab, active),
           languageId: _languageFor(value.filePath),
           revision: editor.contentVersion,
         ),
@@ -298,7 +298,8 @@ class EditorDocumentHost implements DocumentHost {
     _lastVersion.clear();
     _handles.clear();
     _service.clear();
-    _subscription.close();
+    _tabChanges.removeListener(_sync);
+    _activeSubscription.close();
   }
 }
 

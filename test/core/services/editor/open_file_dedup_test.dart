@@ -42,13 +42,14 @@ void main() {
     final primary = container.read(tabbedViewControllerProvider);
     final other = TabData(text: 'other');
     primary.addTab(other);
-    splitEditorGroup(
-      container,
-      from: primary,
-      target: primary,
-      tab: other,
-      where: EditorSplit.right,
-    );
+    container
+        .read(editorLayoutProvider.notifier)
+        .splitGroup(
+          from: primary,
+          target: primary,
+          tab: other,
+          where: EditorSplit.right,
+        );
     final second = allEditorControllers(container)[1];
     final fileTab = TabData(
       text: file.uri.pathSegments.last,
@@ -95,13 +96,14 @@ void main() {
       value: TabDataValue(type: 'file', filePath: file.path),
     );
     primary.addTab(fileTab);
-    splitEditorGroup(
-      container,
-      from: primary,
-      target: primary,
-      tab: fileTab,
-      where: EditorSplit.right,
-    );
+    container
+        .read(editorLayoutProvider.notifier)
+        .splitGroup(
+          from: primary,
+          target: primary,
+          tab: fileTab,
+          where: EditorSplit.right,
+        );
     final split = allEditorControllers(container)[1];
     split.addTab(TabData(text: 'other'));
     split.selectedIndex = 1;

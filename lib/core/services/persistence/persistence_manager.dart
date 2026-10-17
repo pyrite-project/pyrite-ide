@@ -257,20 +257,17 @@ class PersistenceManager {
     final tabController = container.read(tabbedViewControllerProvider);
     // The layout tree is persisted as it stands, so a session saved with any
     // number of nested groups reopens exactly as it was left. The flat list is
-    // still written: sessions saved before groups existed restore from it, and
-    // anything that only needs "every open file" keeps working.
+    // still written: sessions saved before groups existed restore from it.
     final persisted = persistEditorLayout(
-      container,
-      (controller) => PersistedEditorGroup(
+      container.read(editorLayoutProvider),
+      primary: tabController,
+      convert: (controller) => PersistedEditorGroup(
         tabs: [
           for (final tab in controller.tabs)
             if (editorTabValueOf(tab)?.type == "file")
               _persistTab(editorTabValueOf(tab)!),
         ],
-        selectedTabPath: () {
-          final selected = controller.selectedTab;
-          return selected == null ? null : editorTabValueOf(selected)?.filePath;
-        }(),
+        selectedTabPath: editorTabValueOf(controller.selectedTab)?.filePath,
       ),
     );
     final tabs = [for (final group in persisted.groups) ...group.tabs];

@@ -291,7 +291,7 @@ void main() {
 
     final tabs = container.read(tabbedViewControllerProvider).tabs;
     final index = tabs.length - 1;
-    notifier.afterTabClose(index, tabs[index]);
+    notifier.afterTabClose(tabs[index]);
 
     expect(store.model(tabInstance), isNull);
     expect(store.model(_sidebarInstance), isNotNull);
