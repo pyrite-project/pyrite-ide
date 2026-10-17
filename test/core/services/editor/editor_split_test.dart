@@ -219,6 +219,41 @@ void main() {
       expect(primary.tabs, hasLength(2));
     });
 
+    test('a tab split into a new group can be selected there', () {
+      for (final splitArea in [false, true]) {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final primary = container.read(tabbedViewControllerProvider);
+        final moved = TabData(text: 'moved');
+        primary.addTab(TabData(text: 'stays'));
+        primary.addTab(moved);
+
+        if (splitArea) {
+          splitEditorArea(
+            container,
+            from: primary,
+            tab: moved,
+            where: EditorSplit.right,
+          );
+        } else {
+          splitEditorGroup(
+            container,
+            from: primary,
+            target: primary,
+            tab: moved,
+            where: EditorSplit.right,
+          );
+        }
+        final created = container.read(activeEditorControllerProvider);
+
+        // Reopening the tab's file focuses it with `selectTab`, which reads the
+        // index the tab stores: it must point into the new group, not be the
+        // -1 its old group left behind.
+        expect(() => created.selectTab(moved), returnsNormally);
+        expect(created.selectedTab, same(moved));
+      }
+    });
+
     test('brings the primary back when it gains a tab while away', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);

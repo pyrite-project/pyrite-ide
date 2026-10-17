@@ -252,10 +252,9 @@ bool splitEditorGroup(
   // The source controller was captured when the drag started, and the primary
   // is republished by nearly every tab operation: the tab may have closed or
   // the controller been swapped since. `removeTab` validates its index.
-  if (from.tabs.indexOf(tab) < 0) return false;
+  if (!from.tabs.contains(tab)) return false;
 
-  final created = TabbedViewController([tab]);
-  from.removeTab(from.tabs.indexOf(tab));
+  final created = _detachIntoNewGroup(from, tab);
 
   final replacement = SplitLayout(where.axis, [
     if (where.secondaryFirst) GroupLayout(created),
@@ -272,6 +271,20 @@ bool splitEditorGroup(
   // The tab may have been the last one where it came from; that group goes.
   _refreshLayout(container);
   return true;
+}
+
+/// Moves [tab] out of [from] into a new group of its own.
+///
+/// The tab has to leave [from] before the new controller is built: a
+/// [TabData] stores the index its owner gave it and `removeTab` resets that to
+/// -1, so a controller built first would hold a tab whose index reads -1 and
+/// throw on the first `selectTab`.
+TabbedViewController _detachIntoNewGroup(
+  TabbedViewController from,
+  TabData tab,
+) {
+  from.removeTab(from.tabs.indexOf(tab));
+  return TabbedViewController([tab]);
 }
 
 /// Whether dropping [tab] on the editor area's boundary would really split it.
@@ -297,10 +310,9 @@ bool splitEditorArea(
   required EditorSplit where,
 }) {
   if (!canTabLeaveGroup(tab)) return false;
-  if (from.tabs.indexOf(tab) < 0) return false;
+  if (!from.tabs.contains(tab)) return false;
 
-  final created = TabbedViewController([tab]);
-  from.removeTab(from.tabs.indexOf(tab));
+  final created = _detachIntoNewGroup(from, tab);
   final current = container.read(editorLayoutProvider);
   container
       .read(editorLayoutProvider.notifier)

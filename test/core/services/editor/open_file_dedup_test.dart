@@ -72,4 +72,45 @@ void main() {
     expect(container.read(focusedEditorGroupProvider), same(second));
     expect(primary.selectedTab, isNot(same(fileTab)));
   });
+
+  testWidgets('reopening a file whose own tab was split out focuses it', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: SizedBox.expand())),
+      ),
+    );
+    final context = tester.element(find.byType(Scaffold));
+
+    // The usual gesture: drag the file's tab onto an edge, then open the same
+    // file again from the tree. The split group holds the very tab that left
+    // the primary, so the tab's stored index must have followed it.
+    final primary = container.read(tabbedViewControllerProvider);
+    final fileTab = TabData(
+      text: file.uri.pathSegments.last,
+      value: TabDataValue(type: 'file', filePath: file.path),
+    );
+    primary.addTab(fileTab);
+    splitEditorGroup(
+      container,
+      from: primary,
+      target: primary,
+      tab: fileTab,
+      where: EditorSplit.right,
+    );
+    final split = allEditorControllers(container)[1];
+    split.addTab(TabData(text: 'other'));
+    split.selectedIndex = 1;
+
+    await container
+        .read(tabbedViewControllerProvider.notifier)
+        .openFile(context, file: file);
+
+    expect(split.selectedTab, same(fileTab));
+    expect(container.read(focusedEditorGroupProvider), same(split));
+  });
 }
