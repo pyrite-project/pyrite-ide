@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
@@ -11,12 +12,12 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 
-/// The action row a console surface shows above its own content.
+/// A console surface's buttons, sized for the trailing edge of a tab strip.
 ///
-/// The console and the editor are the same kind of tab strip, so a surface's
-/// buttons belong to that surface rather than to the strip: they travel with
-/// the tab when it is dragged into an editor group, and the strip keeps its
-/// corner for the panel-level controls.
+/// The buttons belong to the surface rather than to the console panel: the
+/// strip hosting the surface -- the panel, or an editor group it was dragged
+/// into -- shows them while the surface is selected, so they take no height
+/// from the surface itself.
 class ConsoleSurfaceActions extends ConsumerWidget {
   const ConsoleSurfaceActions({super.key, required this.actions});
 
@@ -26,19 +27,21 @@ class ConsoleSurfaceActions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (actions.isEmpty) return const SizedBox.shrink();
     final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return Container(
-      height: compact ? 26 : 30,
-      padding: const EdgeInsets.only(right: 4),
-      alignment: Alignment.centerRight,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [for (final action in actions) _actionSlot(action, compact)],
-      ),
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 18,
+          child: VerticalDivider(width: 9, color: scheme.outlineVariant),
+        ),
+        for (final action in actions) _actionSlot(action, compact),
+        const SizedBox(width: 4),
+      ],
     );
   }
 
-  /// Matches the button footprint the strip's trailing area used, so the row
-  /// keeps its size at every density tier.
+  /// The same footprint at every density tier the panel's old header used.
   Widget _actionSlot(Widget child, bool compact) {
     return SizedBox.square(
       dimension: compact ? 26 : 30,
@@ -152,6 +155,42 @@ class LogSurfaceActions extends ConsumerWidget {
           tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
           onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
           icon: const Icon(Icons.cleaning_services_outlined),
+        ),
+      ],
+    );
+  }
+}
+
+/// The Problems surface's own action: collapse or expand every file.
+///
+/// "Every file" means every file that currently has rows; stale paths from
+/// closed files are ignored.
+class ProblemsSurfaceActions extends ConsumerWidget {
+  const ProblemsSurfaceActions({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final groupPaths = [
+      for (final file in ref.watch(problemsProvider))
+        if (file.diagnostics.isNotEmpty) file.path,
+    ];
+    final collapsed = ref.watch(collapsedProblemFilesProvider);
+    final allCollapsed =
+        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
+    return ConsoleSurfaceActions(
+      actions: [
+        IconButton(
+          tooltip: translateForWidget(
+            ref,
+            allCollapsed
+                ? I18nKey.problemsPanelExpandAll
+                : I18nKey.problemsPanelCollapseAll,
+          ),
+          onPressed: () {
+            ref.read(collapsedProblemFilesProvider.notifier).state =
+                allCollapsed ? <String>{} : Set<String>.from(groupPaths);
+          },
+          icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
         ),
       ],
     );

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
@@ -42,7 +43,7 @@ void main() {
           from: primary,
           target: primary,
           tab: b,
-          where: EditorSplit.right,
+          where: PaneEdge.right,
         );
     expect(persistedEditorAreaKey(container), isNot(key));
     key = persistedEditorAreaKey(container);

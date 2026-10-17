@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/function_page.dart';
+import 'package:pyrite_ide/features/function_page/console_surface_actions.dart';
 import 'package:pyrite_ide/features/function_page/problems_view.dart';
-import 'package:pyrite_ide/shared/tabbed_view/tab_widget.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_chrome.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
-/// One of the console panel's fixed surfaces.
+/// One of the console panel's fixed surfaces, in their canonical order.
 ///
 /// The id survives a drag, which is what lets a tab keep its identity while it
 /// moves between the console strip and the editor strip.
@@ -21,15 +23,29 @@ enum ConsoleTabId { repl, log, terminal, problems }
 /// Value carried by every console tab.
 ///
 /// The console and the editor share one drag-and-drop system, so a tab has to
-/// say which strip it was created for: [ConsolePage] reads it back to update
-/// the Problems label, and it keeps a console tab distinguishable from a file
-/// tab after the two strips have exchanged tabs.
+/// say which surface it is: it keeps a console tab distinguishable from a file
+/// tab after the strips have exchanged tabs, and it brings the surface's menu
+/// and buttons into whichever strip hosts it.
 @immutable
-class ConsoleTabValue {
+class ConsoleTabValue implements TabChrome {
   const ConsoleTabValue(this.id);
 
   final ConsoleTabId id;
+
+  @override
+  Menu buildTabMenu(BuildContext context) => buildConsoleTabMenu(context);
+
+  @override
+  Widget? buildTabActions(BuildContext context) => switch (id) {
+    ConsoleTabId.repl => const ReplSurfaceActions(),
+    ConsoleTabId.log => const LogSurfaceActions(),
+    ConsoleTabId.terminal => null,
+    ConsoleTabId.problems => const ProblemsSurfaceActions(),
+  };
 }
+
+/// Whether [tab] is one of the console panel's fixed surfaces.
+bool isConsoleTab(TabData tab) => tab.value is ConsoleTabValue;
 
 /// Total problem count, rendered as a suffix on the Problems tab.
 final Provider<int> consoleProblemCountProvider = Provider<int>((ref) {
@@ -41,99 +57,44 @@ final Provider<int> consoleProblemCountProvider = Provider<int>((ref) {
 });
 
 /// Appends the open-problem count to an already translated [baseLabel].
-///
-/// Takes the label rather than a ref so both a [WidgetRef] (the page) and a
-/// provider's [Ref] (the controller) can build it.
 String consoleProblemsLabel(String baseLabel, int count) {
   return count > 0 ? '$baseLabel ($count)' : baseLabel;
 }
 
-/// A controller holding the panel's default surfaces.
-///
-/// Exposed because the pane goes away once its last tab is dragged out, and
-/// nothing else can repopulate a group that has been emptied: without this the
-/// console would stay empty for the rest of the session. The labels are the
-/// caller's because translating them needs a [Ref] (the provider) or a
-/// [WidgetRef] (the reset entry), and this stays free of either.
-TabbedViewController createConsoleController({
-  required String logLabel,
-  required String terminalLabel,
-  required String problemsLabel,
-}) {
-  final controller = TabbedViewController([
-    _consoleTab(
-      text: 'REPL',
-      icon: Icons.terminal,
-      id: ConsoleTabId.repl,
-      content: const ReplView(),
-    ),
-    _consoleTab(
-      text: logLabel,
-      icon: Icons.article_outlined,
-      id: ConsoleTabId.log,
-      content: const OutputLogView(),
-    ),
-    _consoleTab(
-      text: terminalLabel,
-      icon: Icons.terminal_outlined,
-      id: ConsoleTabId.terminal,
-      content: const DesktopTerminalView(),
-    ),
-    _consoleTab(
-      text: problemsLabel,
-      icon: Icons.report_problem_outlined,
-      id: ConsoleTabId.problems,
-      content: const ProblemsView(),
-    ),
-  ]);
-  // A fresh controller selects nothing, which would leave the panel blank.
-  controller.selectedIndex = 0;
-  return controller;
-}
+/// The label of surface [id], with the Problems count when there is one.
+String _consoleLabel(
+  ConsoleTabId id,
+  String Function(I18nKey key) tr,
+  int problemCount,
+) => switch (id) {
+  ConsoleTabId.repl => 'REPL',
+  ConsoleTabId.log => tr(I18nKey.bottomPanelLogTab),
+  ConsoleTabId.terminal => tr(I18nKey.bottomPanelTerminalTab),
+  ConsoleTabId.problems => consoleProblemsLabel(
+    tr(I18nKey.bottomPanelProblemsTab),
+    problemCount,
+  ),
+};
 
-/// The console's own tab strip.
-///
-/// It is a [TabbedViewController] exactly like the editor's, so both strips
-/// render the same widget and a tab can be dragged from one to the other: the
-/// native drag already moves tabs across controllers.
-final StateProvider<TabbedViewController> consoleTabbedViewControllerProvider =
-    StateProvider<TabbedViewController>(
-      (ref) => createConsoleController(
-        logLabel: translate(ref, I18nKey.bottomPanelLogTab),
-        terminalLabel: translate(ref, I18nKey.bottomPanelTerminalTab),
-        problemsLabel: consoleProblemsLabel(
-          translate(ref, I18nKey.bottomPanelProblemsTab),
-          ref.read(consoleProblemCountProvider),
-        ),
-      ),
-    );
-
-/// Brings the panel back after its tabs have all been dragged out.
-void resetConsoleTabs(WidgetRef ref) {
-  ref
-      .read(consoleTabbedViewControllerProvider.notifier)
-      .state = createConsoleController(
-    logLabel: translateForWidget(ref, I18nKey.bottomPanelLogTab),
-    terminalLabel: translateForWidget(ref, I18nKey.bottomPanelTerminalTab),
-    problemsLabel: consoleProblemsLabel(
-      translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
-      ref.read(consoleProblemCountProvider),
+TabData _consoleTab(ConsoleTabId id, String label) {
+  final (icon, content) = switch (id) {
+    ConsoleTabId.repl => (Icons.terminal, const ReplView() as Widget),
+    ConsoleTabId.log => (Icons.article_outlined, const OutputLogView()),
+    ConsoleTabId.terminal => (
+      Icons.terminal_outlined,
+      const DesktopTerminalView(),
     ),
-  );
-}
-
-TabData _consoleTab({
-  required String text,
-  required IconData icon,
-  required ConsoleTabId id,
-  required Widget content,
-}) {
+    ConsoleTabId.problems => (
+      Icons.report_problem_outlined,
+      const ProblemsView(),
+    ),
+  };
   return TabData(
     // The surfaces are permanent: closing one would leave no way back.
     closable: false,
     keepAlive: true,
     value: ConsoleTabValue(id),
-    text: text,
+    text: label,
     content: content,
     leading: (context, status) => Padding(
       padding: const EdgeInsets.only(right: 4),
@@ -142,65 +103,67 @@ TabData _consoleTab({
   );
 }
 
-/// Rewrites the Problems tab label after the count changes, keeping selection.
+/// The console panel's tab strip.
 ///
-/// The count rides on the translated label so a locale switch re-renders it
-/// together with the tab text; there is no badge slot to write it to.
-void updateConsoleProblemsLabel(WidgetRef ref, int count) {
-  final controller = ref.read(consoleTabbedViewControllerProvider);
-  final index = controller.tabs.indexWhere(
-    (tab) =>
-        tab.value is ConsoleTabValue &&
-        (tab.value! as ConsoleTabValue).id == ConsoleTabId.problems,
-  );
-  if (index < 0) return;
+/// One controller for the whole session, changed in place like every editor
+/// group: its tabs travel between this strip and the editor groups. The labels
+/// follow the problem count and the language wherever the tabs sit, so the
+/// Problems count stays live inside an editor group, or while the panel is
+/// hidden.
+final Provider<TabbedViewController> consoleTabbedViewControllerProvider =
+    Provider<TabbedViewController>((ref) {
+      String label(ConsoleTabId id) => _consoleLabel(
+        id,
+        (key) => translate(ref, key),
+        ref.read(consoleProblemCountProvider),
+      );
+      final controller = TabbedViewController([
+        for (final id in ConsoleTabId.values) _consoleTab(id, label(id)),
+      ]);
 
-  final tab = controller.tabs[index];
-  final label = consoleProblemsLabel(
-    translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
-    count,
-  );
-  if (tab.text == label) return;
-  tab.text = label;
+      void relabel() {
+        for (final tab in [
+          ...controller.tabs,
+          ...ref.read(editorLayoutProvider).tabs,
+        ]) {
+          if (tab.value case ConsoleTabValue(:final id)) tab.text = label(id);
+        }
+      }
 
-  // The same [TabData] instances are reused, so selection can be restored by
-  // object rather than by index.
-  final next = TabbedViewController(List<TabData>.from(controller.tabs));
-  final selected = controller.selectedTab;
-  if (selected != null) next.selectTab(selected);
-  ref.read(consoleTabbedViewControllerProvider.notifier).state = next;
-}
+      ref.listen(consoleProblemCountProvider, (_, _) => relabel());
+      ref.listen(activeLocaleProvider, (_, _) => relabel());
+      ref.listen(dataRegistryProvider, (_, _) => relabel());
+      return controller;
+    });
 
-/// The surfaces' canonical order in the bottom console panel.
-const List<ConsoleTabId> _consoleOrder = [
-  ConsoleTabId.repl,
-  ConsoleTabId.log,
-  ConsoleTabId.terminal,
-  ConsoleTabId.problems,
-];
-
-int _consoleRank(TabData tab) {
-  final id = (tab.value as ConsoleTabValue?)?.id;
-  final index = id == null ? -1 : _consoleOrder.indexOf(id);
-  return index < 0 ? _consoleOrder.length : index;
-}
-
-/// Whether [tab] is one of the console panel's fixed surfaces.
-bool isConsoleTab(TabData tab) => tab.value is ConsoleTabValue;
-
-/// The right-click menu for a console surface -- the same system-native styling
-/// as an editor tab, with the terminal-layout actions added.
+/// The right-click menu of a console surface, in whichever strip it sits.
 ///
-/// Built in the console layer so the shared [TabWidget] stays free of any
-/// feature-specific knowledge; it only forwards the menu builder.
-Menu buildConsoleTabContextMenu(BuildContext context, int index) {
+/// The panel's position is chosen here, like VS Code's "Panel Position": the
+/// panel is moved by a command, its tabs by a drag.
+Menu buildConsoleTabMenu(BuildContext context) {
   final container = ProviderScope.containerOf(context);
   final registry = container.read(dataRegistryProvider);
   final locale = container.read(activeLocaleProvider);
   String tr(I18nKey key) => translateFromRegistry(registry, locale, key);
+  final docked = container.read(consoleDockSideProvider);
 
   return Menu(
     children: [
+      Menu(
+        title: tr(I18nKey.consolePanelPosition),
+        children: [
+          for (final edge in PaneEdge.values)
+            MenuAction(
+              title: tr(_dockLabel(edge)),
+              state: edge == docked
+                  ? MenuActionState.radioOn
+                  : MenuActionState.radioOff,
+              callback: () =>
+                  container.read(consoleDockSideProvider.notifier).state = edge,
+            ),
+        ],
+      ),
+      MenuSeparator(),
       MenuAction(
         title: tr(I18nKey.consoleResetLayout),
         callback: () => resetTerminalLayout(container),
@@ -209,59 +172,83 @@ Menu buildConsoleTabContextMenu(BuildContext context, int index) {
   );
 }
 
+I18nKey _dockLabel(PaneEdge edge) => switch (edge) {
+  PaneEdge.left => I18nKey.consoleDockLeft,
+  PaneEdge.top => I18nKey.consoleDockTop,
+  PaneEdge.right => I18nKey.consoleDockRight,
+  PaneEdge.bottom => I18nKey.consoleDockBottom,
+};
+
 /// Restores the terminal to its preset bottom layout.
 ///
-/// Every console tab -- wherever it sits, in the bottom panel or dragged into
-/// an editor group -- returns to the bottom panel in its canonical order, and
-/// the dock side resets to the bottom. The editor's own tab groups are left
-/// exactly where they were.
+/// Every console surface -- in the panel or dragged into an editor group --
+/// returns to the panel in its canonical order, and the panel docks at the
+/// bottom again. A surface missing altogether is created anew, so this is also
+/// the way back once every surface was dragged out and the panel disappeared.
+/// The editor's own tabs stay where they are.
 void resetTerminalLayout(ProviderContainer container) {
-  final console = container.read(consoleTabbedViewControllerProvider);
-  final collected = <TabData>[];
-
-  // Pull console tabs out of every editor group they were dragged into.
-  for (final controller in allEditorControllers(container)) {
-    for (final tab in List<TabData>.from(controller.tabs)) {
-      if (isConsoleTab(tab)) {
-        controller.removeTab(controller.tabs.indexOf(tab));
-        collected.add(tab);
-      }
-    }
-  }
-
-  // Reassemble the panel: what it already held, then what came back, both in
-  // the canonical surface order.
-  final all = [...console.tabs, ...collected];
-  all.sort((a, b) => _consoleRank(a).compareTo(_consoleRank(b)));
-  final next = TabbedViewController(all);
-  if (next.tabs.isNotEmpty) next.selectedIndex = 0;
-  container.read(consoleTabbedViewControllerProvider.notifier).state = next;
-
-  // The preset is the bottom dock, whatever side it was last dragged to.
-  container.read(consoleDockSideProvider.notifier).state =
-      ConsoleDockSide.bottom;
+  _gatherConsoleSurfaces(container, createMissing: true);
+  container.read(consoleDockSideProvider.notifier).state = PaneEdge.bottom;
 }
 
-/// Moves every console tab out of the editor area and into the bottom panel.
+/// Moves every console surface out of the editor area and into the panel.
 ///
-/// Used when the window narrows to a mobile width, where grouping is unavailable
-/// and the terminal lives in its bottom popup instead. The editor's own tabs
-/// stay put; only the console surfaces relocate.
+/// Used when the window narrows to the mobile layout, where the terminal lives
+/// in its bottom popup and grouping is unavailable. The dock side is kept.
 void evacuateConsoleTabsToPanel(ProviderContainer container) {
+  _gatherConsoleSurfaces(container, createMissing: false);
+}
+
+void _gatherConsoleSurfaces(
+  ProviderContainer container, {
+  required bool createMissing,
+}) {
   final console = container.read(consoleTabbedViewControllerProvider);
-  final collected = <TabData>[];
-  for (final controller in allEditorControllers(container)) {
-    for (final tab in List<TabData>.from(controller.tabs)) {
-      if (isConsoleTab(tab)) {
-        controller.removeTab(controller.tabs.indexOf(tab));
-        collected.add(tab);
+  final surfaces = <ConsoleTabId, TabData>{
+    for (final tab in console.tabs)
+      if (tab.value case ConsoleTabValue(:final id)) id: tab,
+  };
+  var changed = false;
+  // A group the evacuation empties is dropped by the layout notifier.
+  for (final group in allEditorControllers(container)) {
+    for (final tab in List.of(group.tabs)) {
+      if (tab.value case ConsoleTabValue(:final id)) {
+        group.removeTab(group.tabs.indexOf(tab));
+        surfaces[id] = tab;
+        changed = true;
       }
     }
   }
-  if (collected.isEmpty) return;
-  final all = [...console.tabs, ...collected];
-  all.sort((a, b) => _consoleRank(a).compareTo(_consoleRank(b)));
-  final next = TabbedViewController(all);
-  if (next.tabs.isNotEmpty) next.selectedIndex = 0;
-  container.read(consoleTabbedViewControllerProvider.notifier).state = next;
+  if (createMissing) {
+    final registry = container.read(dataRegistryProvider);
+    final locale = container.read(activeLocaleProvider);
+    final problemCount = container.read(consoleProblemCountProvider);
+    for (final id in ConsoleTabId.values) {
+      if (surfaces.containsKey(id)) continue;
+      final label = _consoleLabel(
+        id,
+        (key) => translateFromRegistry(registry, locale, key),
+        problemCount,
+      );
+      surfaces[id] = _consoleTab(id, label);
+      changed = true;
+    }
+  }
+  final ordered = [for (final id in ConsoleTabId.values) ?surfaces[id]];
+  if (!changed && _sameTabs(console.tabs, ordered)) return;
+
+  final selected = console.selectedTab;
+  console
+    ..removeTabs()
+    ..addTabs(ordered);
+  final keep = selected == null ? -1 : console.tabs.indexOf(selected);
+  if (console.tabs.isNotEmpty) console.selectedIndex = keep < 0 ? 0 : keep;
+}
+
+bool _sameTabs(List<TabData> a, List<TabData> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (!identical(a[i], b[i])) return false;
+  }
+  return true;
 }

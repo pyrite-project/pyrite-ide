@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
@@ -34,17 +35,17 @@ TabData _fileTab(String path, {bool isSaved = true}) => TabData(
 void main() {
   group('editor split geometry', () {
     test('side splits run horizontally, stacked ones vertically', () {
-      expect(EditorSplit.left.axis, Axis.horizontal);
-      expect(EditorSplit.right.axis, Axis.horizontal);
-      expect(EditorSplit.top.axis, Axis.vertical);
-      expect(EditorSplit.bottom.axis, Axis.vertical);
+      expect(PaneEdge.left.axis, Axis.horizontal);
+      expect(PaneEdge.right.axis, Axis.horizontal);
+      expect(PaneEdge.top.axis, Axis.vertical);
+      expect(PaneEdge.bottom.axis, Axis.vertical);
     });
 
     test('only the leading splits put the new group first', () {
-      expect(EditorSplit.left.secondaryFirst, isTrue);
-      expect(EditorSplit.top.secondaryFirst, isTrue);
-      expect(EditorSplit.right.secondaryFirst, isFalse);
-      expect(EditorSplit.bottom.secondaryFirst, isFalse);
+      expect(PaneEdge.left.isLeading, isTrue);
+      expect(PaneEdge.top.isLeading, isTrue);
+      expect(PaneEdge.right.isLeading, isFalse);
+      expect(PaneEdge.bottom.isLeading, isFalse);
     });
   });
 
@@ -58,7 +59,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: second,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
 
       expect(split, isTrue);
@@ -83,7 +84,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: b,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final notifier = editor.container.read(
         tabbedViewControllerProvider.notifier,
@@ -113,7 +114,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs[1],
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final nested = allEditorControllers(editor.container)[1];
       nested.addTab(TabData(text: 'nested'));
@@ -124,7 +125,7 @@ void main() {
         from: nested,
         target: nested,
         tab: nested.tabs.last,
-        where: EditorSplit.bottom,
+        where: PaneEdge.bottom,
       );
 
       expect(split, isTrue);
@@ -144,7 +145,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs[1],
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final nested = allEditorControllers(editor.container)[1];
       final dragged = TabData(text: 'third');
@@ -156,7 +157,7 @@ void main() {
         from: editor.primary,
         target: nested,
         tab: dragged,
-        where: EditorSplit.bottom,
+        where: PaneEdge.bottom,
       );
 
       expect(split, isTrue);
@@ -198,7 +199,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: a,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final created = allEditorControllers(editor.container)[1];
       expect(
@@ -226,7 +227,7 @@ void main() {
           from: editor.primary,
           target: editor.primary,
           tab: gone,
-          where: EditorSplit.bottom,
+          where: PaneEdge.bottom,
         ),
         isFalse,
       );
@@ -249,14 +250,14 @@ void main() {
           editor.layout.splitArea(
             from: editor.primary,
             tab: moved,
-            where: EditorSplit.right,
+            where: PaneEdge.right,
           );
         } else {
           editor.layout.splitGroup(
             from: editor.primary,
             target: editor.primary,
             tab: moved,
-            where: EditorSplit.right,
+            where: PaneEdge.right,
           );
         }
         final created = editor.container.read(activeEditorControllerProvider);
@@ -293,7 +294,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: moved,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final secondary = allEditorControllers(editor.container)[1];
       editor.container.read(focusedEditorGroupProvider.notifier).state =
@@ -323,7 +324,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: only,
-        where: EditorSplit.bottom,
+        where: PaneEdge.bottom,
       );
 
       expect(split, isFalse);
@@ -342,7 +343,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: moved,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
 
       // Dragging the only tab of the second group back empties it, and the
@@ -371,7 +372,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: parked,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final focused = allEditorControllers(editor.container)[1];
       final primarySelection = editor.primary.selectedTab;
@@ -411,7 +412,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: b,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final notifier = editor.container.read(
         tabbedViewControllerProvider.notifier,
@@ -439,7 +440,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: other,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final second = allEditorControllers(editor.container)[1];
 
@@ -448,7 +449,7 @@ void main() {
           from: editor.primary,
           target: editor.primary,
           tab: welcome,
-          where: EditorSplit.bottom,
+          where: PaneEdge.bottom,
         ),
         isFalse,
       );
@@ -470,7 +471,7 @@ void main() {
         from: console,
         target: editor.primary,
         tab: console.tabs.single,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
 
       expect(split, isTrue);
@@ -489,7 +490,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs[1],
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final b1 = allEditorControllers(editor.container)[1];
       editor.primary.addTab(TabData(text: 'a2 tab'));
@@ -497,20 +498,20 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs.last,
-        where: EditorSplit.bottom,
+        where: PaneEdge.bottom,
       );
       final a2 = allEditorControllers(editor.container)[1];
 
       // a2 sits on the area's left edge -- primary and a1 are both entered
       // through their first child -- but not on its right or top edge.
-      expect(editor.layout.isAtAreaEdge(a2, EditorSplit.left), isTrue);
-      expect(editor.layout.isAtAreaEdge(a2, EditorSplit.right), isFalse);
-      expect(editor.layout.isAtAreaEdge(a2, EditorSplit.top), isFalse);
+      expect(editor.layout.isAtAreaEdge(a2, PaneEdge.left), isTrue);
+      expect(editor.layout.isAtAreaEdge(a2, PaneEdge.right), isFalse);
+      expect(editor.layout.isAtAreaEdge(a2, PaneEdge.top), isFalse);
       // b1 is on the right edge and, spanning the horizontal root's full
       // height, on the top and bottom edges too.
-      expect(editor.layout.isAtAreaEdge(b1, EditorSplit.right), isTrue);
-      expect(editor.layout.isAtAreaEdge(b1, EditorSplit.left), isFalse);
-      expect(editor.layout.isAtAreaEdge(b1, EditorSplit.top), isTrue);
+      expect(editor.layout.isAtAreaEdge(b1, PaneEdge.right), isTrue);
+      expect(editor.layout.isAtAreaEdge(b1, PaneEdge.left), isFalse);
+      expect(editor.layout.isAtAreaEdge(b1, PaneEdge.top), isTrue);
     });
 
     test('a drop on the area boundary adds a group above the top split', () {
@@ -520,7 +521,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs[1],
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final b1 = allEditorControllers(editor.container)[1];
       editor.primary.addTab(TabData(text: 'a2 tab'));
@@ -528,7 +529,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs.last,
-        where: EditorSplit.bottom,
+        where: PaneEdge.bottom,
       );
       final a2 = allEditorControllers(editor.container)[1];
       final moved = TabData(text: 'moved');
@@ -537,7 +538,7 @@ void main() {
       final split = editor.layout.splitArea(
         from: a2,
         tab: moved,
-        where: EditorSplit.left,
+        where: PaneEdge.left,
       );
 
       expect(split, isTrue);
@@ -568,7 +569,7 @@ void main() {
         editor.layout.splitArea(
           from: editor.primary,
           tab: welcome,
-          where: EditorSplit.left,
+          where: PaneEdge.left,
         ),
         isFalse,
       );
@@ -620,7 +621,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: editor.primary.tabs[1],
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final secondary = allEditorControllers(editor.container)[1];
 
@@ -682,7 +683,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: moved,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       await tester.pump();
 
@@ -704,7 +705,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: tab,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
 
       editor.container
@@ -722,7 +723,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: tab,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
 
       editor.container
@@ -742,7 +743,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: a,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final group = editor.container.read(activeEditorControllerProvider);
       group.addTab(b);
@@ -768,7 +769,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: parked,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final second = allEditorControllers(editor.container)[1];
       final client = _fileTab('/proj/client/README.md');
@@ -795,7 +796,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: a,
-        where: EditorSplit.right,
+        where: PaneEdge.right,
       );
       final nested = allEditorControllers(editor.container)[1];
       nested.addTab(c);
@@ -803,7 +804,7 @@ void main() {
         from: nested,
         target: nested,
         tab: c,
-        where: EditorSplit.bottom,
+        where: PaneEdge.bottom,
       );
 
       final persisted = persistEditorLayout(
@@ -845,7 +846,7 @@ void main() {
         from: editor.primary,
         target: editor.primary,
         tab: a,
-        where: EditorSplit.left,
+        where: PaneEdge.left,
       );
 
       final persisted = persistEditorLayout(

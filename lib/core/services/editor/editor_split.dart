@@ -2,30 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
-
-/// Where a dropped tab splits the group it landed on.
-enum EditorSplit {
-  left,
-  top,
-  right,
-  bottom;
-
-  /// The axis the group splits along.
-  Axis get axis => switch (this) {
-    EditorSplit.left || EditorSplit.right => Axis.horizontal,
-    EditorSplit.top || EditorSplit.bottom => Axis.vertical,
-  };
-
-  /// Whether the new group goes before the one it was split from.
-  bool get secondaryFirst => switch (this) {
-    EditorSplit.left || EditorSplit.top => true,
-    EditorSplit.right || EditorSplit.bottom => false,
-  };
-}
 
 /// The editor area's layout: a single group, or a tree of splits.
 ///
@@ -211,7 +192,7 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
     required TabbedViewController from,
     required TabbedViewController target,
     required TabData tab,
-    required EditorSplit where,
+    required PaneEdge where,
   }) {
     if (!canSplitGroup(from: from, target: target, tab: tab)) return false;
     _apply(() {
@@ -237,7 +218,7 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
   bool splitArea({
     required TabbedViewController from,
     required TabData tab,
-    required EditorSplit where,
+    required PaneEdge where,
   }) {
     if (!canSplitArea(from: from, tab: tab)) return false;
     _apply(() {
@@ -274,7 +255,7 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
   /// the boundary only while the group sits in the child on that side, and a
   /// split running across it is spanned and leaves the answer to the child.
   /// Groups outside the tree -- the docked console panel -- are never on it.
-  bool isAtAreaEdge(TabbedViewController group, EditorSplit where) =>
+  bool isAtAreaEdge(TabbedViewController group, PaneEdge where) =>
       _atAreaEdge(state, group, where);
 
   /// Makes [group] the one the shared editing commands act on.
@@ -399,11 +380,11 @@ TabbedViewController _detachIntoNewGroup(
 SplitLayout _beside(
   EditorLayout existing,
   TabbedViewController created,
-  EditorSplit where,
+  PaneEdge where,
 ) => SplitLayout(where.axis, [
-  if (where.secondaryFirst) GroupLayout(created),
+  if (where.isLeading) GroupLayout(created),
   existing,
-  if (!where.secondaryFirst) GroupLayout(created),
+  if (!where.isLeading) GroupLayout(created),
 ]);
 
 /// [node] with the group [target] swapped for [replacement].
@@ -422,7 +403,7 @@ EditorLayout _replaceGroup(
 bool _atAreaEdge(
   EditorLayout node,
   TabbedViewController group,
-  EditorSplit where,
+  PaneEdge where,
 ) {
   switch (node) {
     case GroupLayout(:final controller):
@@ -431,7 +412,7 @@ bool _atAreaEdge(
       for (var i = 0; i < children.length; i++) {
         if (!_atAreaEdge(children[i], group, where)) continue;
         if (axis != where.axis) return true;
-        return where.secondaryFirst ? i == 0 : i == children.length - 1;
+        return where.isLeading ? i == 0 : i == children.length - 1;
       }
       return false;
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
@@ -40,7 +41,6 @@ import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
-import 'package:pyrite_ide/features/function_page/console_surface_actions.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
@@ -62,57 +62,25 @@ Widget consolePage() {
 /// The console panel.
 ///
 /// It renders the same [TabbedView] as the editor and owns the same kind of
-/// controller, which is what lets a tab be dragged from here into the editor
-/// strip and back without a dedicated drag widget: the shared drag already
-/// moves tabs across controllers.
-class ConsolePage extends ConsumerStatefulWidget {
+/// controller, which is what lets a tab be dragged from here into an editor
+/// group and back: the shared drag already moves tabs across controllers.
+/// Each surface brings its own buttons and menu, which the strip shows.
+class ConsolePage extends ConsumerWidget {
   const ConsolePage({super.key});
 
-  @override
-  ConsumerState<ConsolePage> createState() => _ConsolePageState();
-}
-
-class _ConsolePageState extends ConsumerState<ConsolePage> {
-  TabbedViewController? _listenedController;
-
-  @override
-  void dispose() {
-    _listenedController?.removeListener(_onControllerChanged);
-    super.dispose();
-  }
-
-  void _onControllerChanged() {
-    if (mounted) setState(() {});
-  }
-
-  /// Selecting a tab notifies through the controller while the provider keeps
-  /// its value, so the trailing actions need the controller's own listener to
-  /// follow the selection.
-  void _listen(TabbedViewController controller) {
-    if (_listenedController == controller) return;
-    _listenedController?.removeListener(_onControllerChanged);
-    _listenedController = controller;
-    controller.addListener(_onControllerChanged);
-  }
+  /// Only the panel's own surfaces may be dropped on its strip. A document
+  /// would sit outside the editor layout, where persistence, the unsaved guard
+  /// and the open-file dedup cannot see it.
+  static bool _acceptsTab(DraggableData source, TabbedViewController _) =>
+      isConsoleTab(source.tabData);
 
   @override
-  Widget build(BuildContext context) {
-    final controller = ref.watch(consoleTabbedViewControllerProvider);
-    _listen(controller);
-    ref.listen<int>(
-      consoleProblemCountProvider,
-      (_, count) => updateConsoleProblemsLabel(ref, count),
-    );
-
-    // No trailing area: each surface carries its own actions, so the strip's
-    // corner stays for the panel-level controls alone. The strip's right-click
-    // menu is the terminal-layout one -- reset to the bottom -- shared with the
-    // editor tab's native styling.
+  Widget build(BuildContext context, WidgetRef ref) {
     return TabbedViewTheme(
       data: buildTabStripTheme(context),
       child: TabbedView(
-        controller: controller,
-        menuBuilder: buildConsoleTabContextMenu,
+        controller: ref.watch(consoleTabbedViewControllerProvider),
+        canDrop: _acceptsTab,
       ),
     );
   }
@@ -154,45 +122,37 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
   /// Whether the console held at least one tab on the previous notification.
   ///
   /// A console whose tabs have all been dragged out is not a group any more, so
-  /// the pane goes away — and the panel comes back at its default ratio when a
+  /// the pane goes away -- and the panel comes back at its default ratio when a
   /// tab is dragged back in.
   bool _consoleWasEmpty = false;
 
-  /// The console controller currently being followed.
-  ///
-  /// Its tabs change without the provider's value changing, so the workspace
-  /// has to listen to the controller itself to notice a group emptying.
-  TabbedViewController? _followedConsole;
+  /// The console controller, followed for its tabs: they change in place, so
+  /// the provider never reports a group emptying.
+  late final TabbedViewController _console;
 
   @override
   void initState() {
     super.initState();
     _primaryController = shadcn.FlexibleResizablePaneController(_primaryFlex);
     _consoleController = shadcn.FlexibleResizablePaneController(_consoleFlex);
-    _followConsole(ref.read(consoleTabbedViewControllerProvider));
+    _console = ref.read(consoleTabbedViewControllerProvider)
+      ..addListener(_onConsoleTabsChanged);
+    _consoleWasEmpty = _console.tabs.isEmpty;
     ref.listenManual<bool>(consolePageShow, (_, _) => _resetPaneSizes());
-    ref.listenManual<ConsoleDockSide>(
+    ref.listenManual<PaneEdge>(
       consoleDockSideProvider,
       (_, _) => _resetPaneSizes(),
     );
   }
 
-  void _followConsole(TabbedViewController controller) {
-    if (identical(_followedConsole, controller)) return;
-    _followedConsole?.removeListener(_onConsoleTabsChanged);
-    _followedConsole = controller;
-    controller.addListener(_onConsoleTabsChanged);
-  }
-
   void _onConsoleTabsChanged() {
     if (!mounted) return;
-    final empty = ref.read(consoleTabbedViewControllerProvider).tabs.isEmpty;
-    if (empty != _consoleWasEmpty) {
-      _consoleWasEmpty = empty;
-      // Reset before the rebuild that drops the pane: the panel keeps the
-      // ratio it resolved while both panes existed otherwise.
-      _resetPaneSizes();
-    }
+    final empty = _console.tabs.isEmpty;
+    if (empty == _consoleWasEmpty) return;
+    _consoleWasEmpty = empty;
+    // Reset before the rebuild that drops the pane: the panel keeps the ratio
+    // it resolved while both panes existed otherwise.
+    _resetPaneSizes();
     setState(() {});
   }
 
@@ -215,7 +175,7 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   void dispose() {
-    _followedConsole?.removeListener(_onConsoleTabsChanged);
+    _console.removeListener(_onConsoleTabsChanged);
     _primaryController.dispose();
     _consoleController.dispose();
     super.dispose();
@@ -226,11 +186,8 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
     // The console is a group like any other, so it only occupies a pane while
     // it still holds tabs: drag them all out and the group — and its pane —
     // goes away.
-    final consoleController = ref.watch(consoleTabbedViewControllerProvider);
-    _followConsole(consoleController);
-    final consoleEmpty = consoleController.tabs.isEmpty;
     final showConsole =
-        widget.allowConsole && ref.watch(consolePageShow) && !consoleEmpty;
+        widget.allowConsole && ref.watch(consolePageShow) && !_consoleWasEmpty;
     final dockSide = ref.watch(consoleDockSideProvider);
     final splitsVertically = dockSide.axis == Axis.vertical;
 
@@ -250,7 +207,7 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
           EditorSplitDropRegion(
             // The panel is a group too, so its edges accept a tab like any
             // other group's: the new group lands in the editor area.
-            controller: ref.read(consoleTabbedViewControllerProvider),
+            controller: _console,
             edgeTarget: ref.read(tabbedViewControllerProvider),
             // Only the panel's own surfaces come back here. A document dropped
             // into this group would sit outside the layout tree, where
@@ -277,9 +234,9 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
         );
       },
       children: [
-        if (dockSide.consoleFirst && showConsole) consolePane,
+        if (dockSide.isLeading && showConsole) consolePane,
         primaryPane,
-        if (!dockSide.consoleFirst && showConsole) consolePane,
+        if (!dockSide.isLeading && showConsole) consolePane,
       ],
     );
   }
@@ -664,37 +621,6 @@ NavigationRailDestination _tooltippedDestination(
   );
 }
 
-/// Pulls any console surfaces out of the editor area while the window is narrow.
-///
-/// Grouping is a desktop-only feature: on mobile the terminal lives in its
-/// bottom popup, so a console group that survived a desktop-to-mobile resize has
-/// to leave the editor tree for the popup to show it. Runs once on mount, after
-/// the first frame, and is a no-op when nothing is docked in the area.
-class MobileConsoleEvacuator extends ConsumerStatefulWidget {
-  const MobileConsoleEvacuator({super.key});
-
-  @override
-  ConsumerState<MobileConsoleEvacuator> createState() =>
-      _MobileConsoleEvacuatorState();
-}
-
-class _MobileConsoleEvacuatorState
-    extends ConsumerState<MobileConsoleEvacuator> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(_evacuate);
-  }
-
-  void _evacuate(_) {
-    if (!mounted) return;
-    evacuateConsoleTabsToPanel(ProviderScope.containerOf(context));
-  }
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}
-
 class MobileView extends ConsumerWidget {
   const MobileView({super.key, required this.child, required this.state});
 
@@ -731,7 +657,6 @@ class MobileView extends ConsumerWidget {
             // no shadcn theme is in scope. A restored split reaches this branch
             // on a narrow window, where the layout is no longer a single group.
             Expanded(child: buildShadcnLayer(context, child)),
-            const MobileConsoleEvacuator(),
             EditorToolsBar(showNavigationDrawerButton: true),
           ],
         ),
@@ -1085,19 +1010,10 @@ class ReplView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final terminalTheme = buildTerminalTheme(context, ref);
     final terminalStyle = buildTerminalStyle(ref);
-    // The REPL's buttons are the tab's own, so they stay with it when the tab
-    // is dragged into an editor group.
-    return Column(
-      children: [
-        const ReplSurfaceActions(),
-        Expanded(
-          child: ReplSurface(
-            backgroundColor: terminalTheme.background,
-            foregroundColor: terminalTheme.foreground,
-            textStyle: terminalStyle.toTextStyle(),
-          ),
-        ),
-      ],
+    return ReplSurface(
+      backgroundColor: terminalTheme.background,
+      foregroundColor: terminalTheme.foreground,
+      textStyle: terminalStyle.toTextStyle(),
     );
   }
 }
@@ -1108,19 +1024,12 @@ class OutputLogView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final surface = Theme.of(context).colorScheme.surface;
-    return Column(
-      children: [
-        const LogSurfaceActions(),
-        Expanded(
-          child: TerminalView(
-            ideOutputTerminal,
-            controller: ideOutputController,
-            theme: buildTerminalTheme(context, ref),
-            textStyle: buildTerminalStyle(ref),
-            key: ValueKey('output_${surface.toARGB32()}'),
-          ),
-        ),
-      ],
+    return TerminalView(
+      ideOutputTerminal,
+      controller: ideOutputController,
+      theme: buildTerminalTheme(context, ref),
+      textStyle: buildTerminalStyle(ref),
+      key: ValueKey('output_${surface.toARGB32()}'),
     );
   }
 }

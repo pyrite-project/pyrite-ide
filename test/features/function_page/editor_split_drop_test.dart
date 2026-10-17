@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
@@ -82,6 +84,54 @@ void main() {
     // and the open-file dedup cannot see it at all.
     expect(fileController.tabs, orderedEquals([fileTab]));
     expect(consoleController.tabs, orderedEquals([consoleTab]));
+  });
+
+  testWidgets('the console strip itself refuses a document', (tester) async {
+    // The strip's own tab drop targets sit inside the panel's region and are
+    // hit first; the region's `accept` alone would not keep a document out.
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final console = container.read(consoleTabbedViewControllerProvider);
+    final fileTab = TabData(
+      text: 'main.py',
+      value: TabDataValue(type: 'file', filePath: '/tmp/main.py'),
+    );
+    final fileController = TabbedViewController([fileTab]);
+    addTearDown(fileController.dispose);
+    final documentDrag = NativeTabDragRegistry.register(
+      controller: fileController,
+      tab: fileTab,
+      dragScope: null,
+    );
+    addTearDown(documentDrag.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(
+            body: SizedBox(width: 800, height: 300, child: ConsolePage()),
+          ),
+        ),
+      ),
+    );
+
+    final regions = tester.widgetList<DropRegion>(find.byType(DropRegion));
+    expect(regions, isNotEmpty);
+    final center = tester.getCenter(find.byType(ConsolePage));
+    final position = DropPosition(local: center, global: center);
+    for (final region in regions) {
+      final operation = await Future<DropOperation>.value(
+        region.onDropOver(
+          DropOverEvent(
+            session: _FakeDropSession(documentDrag.localData),
+            position: position,
+          ),
+        ),
+      );
+      expect(operation, DropOperation.none);
+    }
+    expect(console.tabs.any((tab) => identical(tab, fileTab)), isFalse);
   });
 
   testWidgets('a console surface still splits a group outside the tree', (
@@ -212,7 +262,7 @@ void main() {
     // The outermost strip of the boundary edge is the area's own gesture, and
     // the area draws that preview -- the root has no pane to draw it in.
     await hover(10);
-    expect(container.read(editorAreaSplitPreviewProvider), EditorSplit.left);
+    expect(container.read(editorAreaSplitPreviewProvider), PaneEdge.left);
 
     // Just inside the strip the promise falls back to the leaf, which draws
     // its own preview; nothing is published for the area any more.

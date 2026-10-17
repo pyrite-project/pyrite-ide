@@ -5,6 +5,7 @@ import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:git2dart/git2dart.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -32,6 +33,9 @@ import 'package:pyrite_ide/core/services/periodic_task/main.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/features/window.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
+import 'package:pyrite_ide/core/sdk/environment_provider.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
 
 String? getPythonPath() {
@@ -166,8 +170,7 @@ void _applyData(PersistedData data) {
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
   container.read(consoleDockSideProvider.notifier).state =
-      ConsoleDockSide.values.asNameMap()[data.consoleDockSide] ??
-      ConsoleDockSide.bottom;
+      PaneEdge.values.asNameMap()[data.consoleDockSide] ?? PaneEdge.bottom;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
   container.read(ensureBoardFilesystemOnConnect.notifier).state =
@@ -293,6 +296,23 @@ void _watchEditorArea() {
     if (next == last) return;
     last = next;
     _triggerSave();
+  });
+}
+
+/// Moves console surfaces out of the editor area when the window narrows to
+/// the mobile layout.
+///
+/// Grouping is a desktop and tablet feature: on mobile the terminal lives in
+/// its bottom popup, so a surface dragged into an editor group has to return
+/// to the panel for the popup to show it.
+void _gatherConsoleOnMobileLayout() {
+  final environment = container.read(environmentNotifierProvider);
+  var layoutMode = environment.snapshot.layoutMode;
+  environment.addListener(() {
+    final next = environment.snapshot.layoutMode;
+    if (next == layoutMode) return;
+    layoutMode = next;
+    if (next == LayoutMode.mobile) evacuateConsoleTabsToPanel(container);
   });
 }
 
@@ -499,6 +519,7 @@ void main() async {
   );
 
   _startAutoSave();
+  _gatherConsoleOnMobileLayout();
 
   // Let Flutter paint the first frame before native CPython initialization.
   // Startup plugins still wait for the runtime snapshot inside the helper.

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
@@ -25,11 +26,11 @@ const Size _splitMinimumArea = Size(360, 240);
 /// root-level split has to be drawn by the editor area rather than by the
 /// region the pointer is over -- which is a leaf and only covers part of what
 /// the split will take.
-final StateProvider<EditorSplit?> editorAreaSplitPreviewProvider =
-    StateProvider<EditorSplit?>((ref) => null);
+final StateProvider<PaneEdge?> editorAreaSplitPreviewProvider =
+    StateProvider<PaneEdge?>((ref) => null);
 
 /// Where, and at which level, a drop would split.
-typedef _PendingSplit = ({EditorSplit where, bool root});
+typedef _PendingSplit = ({PaneEdge where, bool root});
 
 /// Drop target of one group.
 ///
@@ -195,16 +196,16 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
       return null;
     }
     if (local.dx <= _splitEdgeExtent) {
-      return _pendingSplit(EditorSplit.left, local.dx);
+      return _pendingSplit(PaneEdge.left, local.dx);
     }
     if (local.dx >= size.width - _splitEdgeExtent) {
-      return _pendingSplit(EditorSplit.right, size.width - local.dx);
+      return _pendingSplit(PaneEdge.right, size.width - local.dx);
     }
     if (local.dy <= _splitEdgeExtent) {
-      return _pendingSplit(EditorSplit.top, local.dy);
+      return _pendingSplit(PaneEdge.top, local.dy);
     }
     if (local.dy >= size.height - _splitEdgeExtent) {
-      return _pendingSplit(EditorSplit.bottom, size.height - local.dy);
+      return _pendingSplit(PaneEdge.bottom, size.height - local.dy);
     }
     return null;
   }
@@ -212,7 +213,7 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
   /// A drop [depth] into the band of [where]: root-level when the group sits
   /// on the area's boundary and the drop is in the outermost strip, the group
   /// itself otherwise.
-  _PendingSplit _pendingSplit(EditorSplit where, double depth) {
+  _PendingSplit _pendingSplit(PaneEdge where, double depth) {
     final atBoundary =
         depth <= _areaEdgeExtent &&
         ref
@@ -252,13 +253,13 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
 class EditorSplitHint extends StatelessWidget {
   const EditorSplitHint({super.key, required this.split});
 
-  final EditorSplit split;
+  final PaneEdge split;
 
   AlignmentGeometry get alignment => switch (split) {
-    EditorSplit.left => Alignment.centerLeft,
-    EditorSplit.top => Alignment.topCenter,
-    EditorSplit.right => Alignment.centerRight,
-    EditorSplit.bottom => Alignment.bottomCenter,
+    PaneEdge.left => Alignment.centerLeft,
+    PaneEdge.top => Alignment.topCenter,
+    PaneEdge.right => Alignment.centerRight,
+    PaneEdge.bottom => Alignment.bottomCenter,
   };
 
   @override

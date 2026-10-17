@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
@@ -79,8 +80,7 @@ void main() {
     addTearDown(container.dispose);
     await _pumpWorkspace(tester, container);
 
-    container.read(consoleDockSideProvider.notifier).state =
-        ConsoleDockSide.right;
+    container.read(consoleDockSideProvider.notifier).state = PaneEdge.right;
     await tester.pump();
 
     final workspace = tester.getRect(find.byKey(_workspaceKey));
@@ -101,8 +101,7 @@ void main() {
     addTearDown(container.dispose);
     await _pumpWorkspace(tester, container);
 
-    container.read(consoleDockSideProvider.notifier).state =
-        ConsoleDockSide.top;
+    container.read(consoleDockSideProvider.notifier).state = PaneEdge.top;
     await tester.pump();
 
     final workspace = tester.getRect(find.byKey(_workspaceKey));
@@ -175,11 +174,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(console.tabs, isEmpty);
 
-    resetConsoleTabs(
-      tester
-          .state<ConsumerState<ConsoleWorkspace>>(find.byType(ConsoleWorkspace))
-          .ref,
-    );
+    resetTerminalLayout(container);
 
     await tester.pump();
     await tester.pumpAndSettle();

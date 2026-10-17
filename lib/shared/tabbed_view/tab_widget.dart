@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:super_context_menu/super_context_menu.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_chrome.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/tab_data.dart';
@@ -43,7 +44,6 @@ class TabWidget extends ConsumerWidget {
     required this.updateHoveredIndex,
     required this.onClose,
     required this.sizeHolder,
-    this.menuBuilder,
   }) : super(key: key);
 
   final int index;
@@ -53,14 +53,8 @@ class TabWidget extends ConsumerWidget {
   final Function onClose;
   final SizeHolder sizeHolder;
 
-  /// Overrides the tab's context menu; when set, it replaces the editor's
-  /// built-in close menu. The console strip passes one that adds its
-  /// terminal-layout actions; the editor passes nothing.
-  final Menu? Function(BuildContext context, int index)? menuBuilder;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final menuBuilder = this.menuBuilder;
     final TabData tab = provider.controller.tabs[index];
     final TabbedViewThemeData theme = TabbedViewTheme.of(context);
     final TabThemeData tabTheme = theme.tab;
@@ -148,11 +142,12 @@ class TabWidget extends ConsumerWidget {
 
     // super_context_menu combines the menu and native drag configuration into
     // one long-press session only when the menu is inside DraggableWidget.
-    if (menuBuilder != null) {
-      // A strip that supplies its own menu (the console) always offers it: its
-      // tabs are not closable, so the editor's closable-only gate would hide it.
+    final chrome = tab.value;
+    if (chrome is TabChrome) {
+      // A tab that brings its own menu offers it in whichever strip hosts it:
+      // a console surface is not closable, so the close menu would hide it.
       widget = PyriteContextMenuWidget(
-        menuProvider: (_) => menuBuilder(context, index),
+        menuProvider: (_) => chrome.buildTabMenu(context),
         child: widget,
       );
     } else if (tab.closable) {

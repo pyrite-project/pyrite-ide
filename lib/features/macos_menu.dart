@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 
 class MacOSMenu extends ConsumerWidget {
   const MacOSMenu({super.key, required this.app});
@@ -134,6 +135,11 @@ class MacOSMenu extends ConsumerWidget {
             label: t(I18nKey.menuToggleConsolePanel),
             onSelected: () => ref.read(consolePageShow.notifier).state = !ref
                 .read(consolePageShow),
+          ),
+          PlatformMenuItem(
+            label: t(I18nKey.consoleResetLayout),
+            onSelected: () =>
+                resetTerminalLayout(ProviderScope.containerOf(context)),
           ),
         ],
       ),

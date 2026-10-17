@@ -3,7 +3,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:super_context_menu/super_context_menu.dart';
 
 import 'package:pyrite_ide/shared/tabbed_view/content_area.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
@@ -45,7 +44,6 @@ class TabbedView extends StatefulWidget {
     this.dragScope,
     this.tabRemoveInterceptor,
     this.trailing,
-    this.menuBuilder,
   });
 
   final TabbedViewController controller;
@@ -69,14 +67,6 @@ class TabbedView extends StatefulWidget {
   final OnBeforeDropAccept? onBeforeDropAccept;
   final String? dragScope;
   final Widget? trailing;
-
-  /// Overrides the tab context menu for every tab in this strip.
-  ///
-  /// The editor passes nothing and keeps its built-in close menu; the console
-  /// strip passes a builder that adds its terminal-layout actions. Kept as a
-  /// callback so the menu logic stays in the feature layer and this shared
-  /// widget never imports it.
-  final Menu? Function(BuildContext context, int index)? menuBuilder;
 
   @override
   State<StatefulWidget> createState() => _TabbedViewState();
@@ -127,10 +117,7 @@ class _TabbedViewState extends State<TabbedView> {
         widget.tabsAreaVisible ?? theme.tabsArea.visible;
     List<LayoutId> children = [];
     if (tabsAreaVisible) {
-      Widget tabArea = TabsArea(
-        provider: provider,
-        menuBuilder: widget.menuBuilder,
-      );
+      Widget tabArea = TabsArea(provider: provider);
       children.add(LayoutId(id: 1, child: tabArea));
     }
     Widget contentArea = ContentArea(

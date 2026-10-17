@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -148,7 +149,7 @@ void main() {
             from: primary,
             target: primary,
             tab: document,
-            where: EditorSplit.right,
+            where: PaneEdge.right,
           );
       final split = allEditorControllers(container)[1];
       split.addTab(TabData(text: 'other'));
