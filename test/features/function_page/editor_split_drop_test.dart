@@ -295,6 +295,156 @@ void main() {
       GroupLayout(container.read(tabbedViewControllerProvider)),
     );
   });
+
+  testWidgets('the split zones are the ones VS Code uses', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    // A group on the area's boundary with a tab that may leave it.
+    final primary = container.read(tabbedViewControllerProvider);
+    primary.addTab(TabData(text: 'second'));
+
+    final registration = NativeTabDragRegistry.register(
+      controller: primary,
+      tab: primary.tabs.last,
+      dragScope: null,
+    );
+    addTearDown(registration.dispose);
+    final session = _FakeDropSession(registration.localData);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 800,
+              height: 600,
+              child: EditorSplitDropRegion(
+                controller: primary,
+                child: const ColoredBox(color: Colors.black),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final region = tester.widget<DropRegion>(find.byType(DropRegion));
+    Future<void> hover(Offset local) async {
+      await Future<DropOperation>.value(
+        region.onDropOver(
+          DropOverEvent(
+            session: session,
+            position: DropPosition(local: local, global: local),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    // The inner 80%x80% is the middle: the tab moves into the group, and no
+    // split is promised.
+    await hover(const Offset(400, 300));
+    expect(find.byType(EditorSplitHint), findsNothing);
+    expect(container.read(editorAreaSplitPreviewProvider), isNull);
+
+    // Past the area strip, the outer tenth of each side splits the group, and
+    // the preview names the half the new group takes.
+    for (final (position, alignment) in const [
+      (Offset(60, 300), Alignment.centerLeft),
+      (Offset(740, 300), Alignment.centerRight),
+      (Offset(400, 50), Alignment.topCenter),
+      (Offset(400, 550), Alignment.bottomCenter),
+    ]) {
+      await hover(position);
+      expect(
+        tester.widget<EditorSplitHint>(find.byType(EditorSplitHint)).alignment,
+        alignment,
+        reason: 'a drop at $position',
+      );
+      expect(container.read(editorAreaSplitPreviewProvider), isNull);
+    }
+
+    // Side-by-side is the preferred direction, so the corners of the top and
+    // bottom bands go with the side splits.
+    await hover(const Offset(100, 50));
+    expect(
+      tester.widget<EditorSplitHint>(find.byType(EditorSplitHint)).alignment,
+      Alignment.centerLeft,
+    );
+    await hover(const Offset(700, 50));
+    expect(
+      tester.widget<EditorSplitHint>(find.byType(EditorSplitHint)).alignment,
+      Alignment.centerRight,
+    );
+    // Only the middle third of the width splits up or down.
+    await hover(const Offset(300, 50));
+    expect(
+      tester.widget<EditorSplitHint>(find.byType(EditorSplitHint)).alignment,
+      Alignment.topCenter,
+    );
+  });
+
+  testWidgets('the bands scale with the group, so a small pane keeps both', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final primary = container.read(tabbedViewControllerProvider);
+    primary.addTab(TabData(text: 'second'));
+
+    final registration = NativeTabDragRegistry.register(
+      controller: primary,
+      tab: primary.tabs.last,
+      dragScope: null,
+    );
+    addTearDown(registration.dispose);
+    final session = _FakeDropSession(registration.localData);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 300,
+              child: EditorSplitDropRegion(
+                controller: primary,
+                child: const ColoredBox(color: Colors.black),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final region = tester.widget<DropRegion>(find.byType(DropRegion));
+    Future<void> hover(Offset local) async {
+      await Future<DropOperation>.value(
+        region.onDropOver(
+          DropOverEvent(
+            session: session,
+            position: DropPosition(local: local, global: local),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    // A tenth of 400 is 40, so a drop 80px in is already the group's middle.
+    await hover(const Offset(80, 150));
+    expect(find.byType(EditorSplitHint), findsNothing);
+    expect(container.read(editorAreaSplitPreviewProvider), isNull);
+
+    // The outer tenth still splits, and the area strip takes at most half of
+    // the band, so the group's own split stays reachable beside it.
+    await hover(const Offset(10, 150));
+    expect(container.read(editorAreaSplitPreviewProvider), PaneEdge.left);
+    await hover(const Offset(30, 150));
+    expect(container.read(editorAreaSplitPreviewProvider), isNull);
+    expect(find.byType(EditorSplitHint), findsOneWidget);
+  });
 }
 
 class _FakeDropSession with Diagnosticable implements DropSession {

@@ -29,6 +29,7 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
 import 'package:pyrite_ide/core/sdk/command_service.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/editor_document_host.dart';
@@ -74,13 +75,33 @@ class ConsolePage extends ConsumerWidget {
   static bool _acceptsTab(DraggableData source, TabbedViewController _) =>
       isConsoleTab(source.tabData);
 
+  /// Marks the console the pane the user is working in.
+  static void _markFocused(WidgetRef ref) {
+    ref.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.console;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return TabbedViewTheme(
-      data: buildTabStripTheme(context),
-      child: TabbedView(
-        controller: ref.watch(consoleTabbedViewControllerProvider),
-        canDrop: _acceptsTab,
+    // A click -- or keyboard focus arriving inside the panel -- marks the
+    // console the focused pane, so a plugin view opened without an explicit
+    // pane lands where the user is looking.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (hasFocus) {
+        if (hasFocus) _markFocused(ref);
+      },
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _markFocused(ref),
+        child: TabbedViewTheme(
+          data: buildTabStripTheme(context),
+          child: TabbedView(
+            controller: ref.watch(consoleTabbedViewControllerProvider),
+            canDrop: _acceptsTab,
+          ),
+        ),
       ),
     );
   }

@@ -17,6 +17,9 @@ import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 
 const _pluginId = 'tabbed-plugin';
 const _viewId = 'tabbed-plugin.outline';
@@ -147,10 +150,11 @@ int _sequence = 100;
 Future<Map<String, dynamic>> _request(
   PluginRunManager manager,
   _Transport transport,
-  Map<String, dynamic> payload,
-) async {
+  Map<String, dynamic> payload, {
+  String type = SdkTabCommands.createView,
+}) async {
   final envelope = makeEnvelope(
-    type: SdkTabCommands.createView,
+    type: type,
     payload: payload,
     pluginId: manager.pluginId,
     sessionId: manager.sessionId,
@@ -167,7 +171,7 @@ Future<Map<String, dynamic>> _request(
         .firstOrNull;
     if (match != null) return match;
   }
-  throw StateError('No response for ${SdkTabCommands.createView}');
+  throw StateError('No response for $type');
 }
 
 Future<
@@ -182,6 +186,7 @@ _harness({
   Map<String, List<String>> permissions = const {
     'tab': ['create'],
   },
+  List<Override> overrides = const [],
 }) async {
   final transport = _Transport();
   final manager = PluginRunManager(
@@ -195,6 +200,7 @@ _harness({
   );
   final container = ProviderContainer(
     overrides: [
+      ...overrides,
       pluginRunManagerProvider.overrideWith(
         (ref) => _FixtureRunManagers(ref, running ? manager : null),
       ),
@@ -335,5 +341,171 @@ void main() {
     final tab = harness.container.read(tabbedViewControllerProvider).tabs.last;
     expect((tab.value as TabDataValue).renderer, RendererTokens.log);
     expect(tab.text, 'Log');
+  });
+
+  test('an explicit editor pane keeps the tab in the primary group', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 'editor',
+    });
+
+    expect(response['type'], 'sdk.response.ok');
+    expect(response['payload']['data']['placement'], 'editor');
+    expect(harness.container.read(tabbedViewControllerProvider).tabs.last.text,
+        'Outline');
+  });
+
+  test('a console pane opens the view on the console strip', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 'console',
+    });
+
+    expect(response['type'], 'sdk.response.ok');
+    final data = response['payload']['data'] as Map<String, dynamic>;
+    expect(data['placement'], 'console');
+    final instanceId = data['instanceId'] as String;
+
+    final console = harness.container.read(consoleTabbedViewControllerProvider);
+    expect(console.tabs, isNotEmpty);
+    final value = console.tabs.last.value as TabDataValue;
+    expect(value.isPluginView, isTrue);
+    expect(value.viewInstanceId, instanceId);
+    // A hidden panel is brought back, or the view would land in a pane the
+    // user cannot see.
+    expect(harness.container.read(consolePageShow), isTrue);
+  });
+
+  test('a focused pane routes the view to wherever the user last was', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+    harness.container
+        .read(focusedWorkspacePaneProvider.notifier)
+        .state = WorkspacePane.console;
+
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 'focused',
+    });
+
+    expect(response['type'], 'sdk.response.ok');
+    expect(response['payload']['data']['placement'], 'console');
+    final console = harness.container.read(consoleTabbedViewControllerProvider);
+    expect((console.tabs.last.value as TabDataValue).isPluginView, isTrue);
+  });
+
+  test('a group index places the view in exactly that editor group', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+
+    // Group 0 is the primary group -- the only one until a split.
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 0,
+    });
+
+    expect(response['type'], 'sdk.response.ok');
+    final data = response['payload']['data'] as Map<String, dynamic>;
+    expect(data['placement'], 'editor');
+    final tab = harness.container.read(tabbedViewControllerProvider).tabs.last;
+    expect((tab.value as TabDataValue).viewInstanceId, data['instanceId']);
+  });
+
+  test('a group index as a string resolves the same way', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': '0',
+    });
+
+    expect(response['type'], 'sdk.response.ok');
+  });
+
+  test('an out-of-range group index is rejected', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 3,
+    });
+
+    expect(response['type'], 'sdk.response.error');
+    expect(response['payload']['message'], contains('3'));
+    // Nothing was opened anywhere.
+    expect(harness.container.read(tabbedViewControllerProvider).tabs.length, 1);
+    expect(
+      harness.container
+          .read(consoleTabbedViewControllerProvider)
+          .tabs
+          .where((tab) => tab.value is TabDataValue),
+      isEmpty,
+    );
+  });
+
+  test('an unknown pane is rejected', () async {
+    final harness = await _harness();
+    addTearDown(harness.container.dispose);
+
+    final response = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 'somewhere-else',
+    });
+
+    expect(response['type'], 'sdk.response.error');
+    expect(response['payload']['message'], contains('somewhere-else'));
+    expect(harness.container.read(tabbedViewControllerProvider).tabs.length, 1);
+  });
+
+  test('a console view shows up in list and can be closed', () async {
+    // list 需要 tab:manage，close 同样是 tab:manage。
+    final harness = await _harness(permissions: const {
+      'tab': ['create', 'manage'],
+    });
+    addTearDown(harness.container.dispose);
+
+    final opened = await _request(harness.manager, harness.transport, {
+      'viewId': _viewId,
+      'pane': 'console',
+    });
+    final tabId =
+        (opened['payload']['data'] as Map<String, dynamic>)['tabId'] as String;
+
+    final listed = await _request(
+      harness.manager,
+      harness.transport,
+      const {},
+      type: SdkTabCommands.list,
+    );
+    final entries =
+        (listed['payload']['data'] as List).cast<Map<String, dynamic>>();
+    final consoleEntry = entries.where((e) => e['tabId'] == tabId).firstOrNull;
+    expect(consoleEntry, isNotNull);
+    expect(consoleEntry!['placement'], 'console');
+
+    final closed = await _request(
+      harness.manager,
+      harness.transport,
+      {'tab_id': tabId},
+      type: SdkTabCommands.close,
+    );
+    expect(closed['type'], 'sdk.response.ok');
+    final remains = harness.container
+        .read(consoleTabbedViewControllerProvider)
+        .tabs
+        .any(
+          (tab) =>
+              tab.value is TabDataValue &&
+              (tab.value as TabDataValue).tabId == tabId,
+        );
+    expect(remains, isFalse);
   });
 }

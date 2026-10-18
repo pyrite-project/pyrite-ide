@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
 /// The editor area's layout: a single group, or a tree of splits.
@@ -282,6 +283,9 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
     if (!state.contains(group)) return;
     final focused = _ref.read(focusedEditorGroupProvider.notifier);
     if (!identical(focused.state, group)) focused.state = group;
+    _ref
+        .read(focusedWorkspacePaneProvider.notifier)
+        .state = WorkspacePane.editor;
   }
 
   /// Replaces the whole tree, as a session restore does.
@@ -334,6 +338,9 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
       final current = focused.state;
       if (focus != null && state.contains(focus)) {
         if (!identical(current, focus)) focused.state = focus;
+        _ref
+            .read(focusedWorkspacePaneProvider.notifier)
+            .state = WorkspacePane.editor;
       } else if (current != null && !state.contains(current)) {
         focused.state = null;
       }

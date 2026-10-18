@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 
 const _workspaceKey = ValueKey<String>('test-console-workspace');
 const _primaryContentKey = ValueKey<String>('test-primary-content');
@@ -131,6 +133,27 @@ void main() {
     );
     // A fresh strip selects its first tab, so the panel is never blank.
     expect(controller.selectedIndex, 0);
+  });
+
+  testWidgets('tapping the console marks it the focused workspace pane', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(focusedWorkspacePaneProvider.notifier)
+        .state = WorkspacePane.editor;
+    await _pumpDockableWorkspace(tester, container);
+
+    expect(container.read(focusedWorkspacePaneProvider), WorkspacePane.editor);
+
+    // A click anywhere on the panel marks the console the pane the user is
+    // working in, so a plugin view opened without an explicit pane lands
+    // there.
+    await tester.tap(find.byType(TabbedView).first);
+    await tester.pump();
+
+    expect(container.read(focusedWorkspacePaneProvider), WorkspacePane.console);
   });
 
   testWidgets('the console pane goes away once its last tab is dragged out', (

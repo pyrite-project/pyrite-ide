@@ -7,6 +7,7 @@ import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
@@ -50,6 +51,20 @@ void main() {
   });
 
   group('splitting a group', () {
+    test('focusing a group marks the editor the focused workspace pane', () {
+      final editor = _editor();
+      // Start somewhere else, then focus an editor group: the workspace
+      // follows the editor again.
+      editor.container.read(focusedWorkspacePaneProvider.notifier).state =
+          WorkspacePane.console;
+      editor.layout.focus(editor.primary);
+
+      expect(
+        editor.container.read(focusedWorkspacePaneProvider),
+        WorkspacePane.editor,
+      );
+    });
+
     test('moves the tab into a new group nested in the tree', () {
       final editor = _editor();
       final second = TabData(text: 'second');

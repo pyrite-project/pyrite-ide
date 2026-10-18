@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/pane_edge.dart';
@@ -6,8 +8,11 @@ import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
-/// Width of the band along each edge that splits the group.
-const double _splitEdgeExtent = 96;
+/// Share of a group's size that counts as its edge, as in VS Code: the outer
+/// 10% of each dimension splits the group, the inner 80%x80% moves the tab
+/// into it. Proportional, so a small group offers the same gesture a large one
+/// does, and no pane is ever small enough for the bands to cover it all.
+const double _splitEdgeRatio = 0.1;
 
 /// Width of the strip, measured from the editor area's boundary, that splits
 /// the area itself instead of the group it runs along.
@@ -15,12 +20,9 @@ const double _splitEdgeExtent = 96;
 /// Every ancestor group has its edges covered by its children's, so without
 /// this strip a second split above the top-level one has no gesture at all.
 /// Wide enough to find without aiming for it, while still leaving most of the
-/// [_splitEdgeExtent] band to the group's own split.
+/// edge band to the group's own split -- and never more than half of it, so a
+/// small group's band still reaches its own split.
 const double _areaEdgeExtent = 40;
-
-/// Smallest area that still offers a split: below this the bands would cover
-/// the whole pane and every drop would hit one.
-const Size _splitMinimumArea = Size(360, 240);
 
 /// The area-level split a drop is currently promising, or null.
 ///
@@ -36,9 +38,12 @@ typedef _PendingSplit = ({PaneEdge where, bool root});
 
 /// Drop target of one group.
 ///
-/// Dropping near an edge splits *this* group -- which is what makes splits
-/// nest: the new group is a leaf of the same tree, so it can be split again.
-/// Dropping in the middle moves the tab into this group, the way VS Code does.
+/// The zones are VS Code's: the outer 10% of each dimension splits *this*
+/// group -- which is what makes splits nest: the new group is a leaf of the
+/// same tree, so it can be split again -- and the inner 80%x80% moves the tab
+/// into this group. Side-by-side splits are preferred there, so the outer
+/// thirds of the width decide first and only the middle third splits up or
+/// down, corners included.
 ///
 /// The outermost [_areaEdgeExtent] of an edge the group shares with the editor
 /// area's boundary splits the area itself, which is how a second split above
@@ -189,35 +194,44 @@ class _EditorSplitDropRegionState extends ConsumerState<EditorSplitDropRegion> {
   }
 
   /// Which edge [local] falls on and at which level, or null when the drop is
-  /// not near one.
+  /// in the group's middle, which moves the tab into it.
+  ///
+  /// VS Code's zones: a drop inside the inner 80% of both axes merges; outside
+  /// it, the outer thirds of the width split left or right -- side-by-side is
+  /// the preferred direction, so the corners go with them -- and the middle
+  /// third's top and bottom bands split up or down.
   _PendingSplit? _resolveSplit(Offset local) {
     final size = context.size;
     if (size == null) return null;
-    if (size.width < _splitMinimumArea.width ||
-        size.height < _splitMinimumArea.height) {
+    final width = size.width;
+    final height = size.height;
+    final edgeWidth = width * _splitEdgeRatio;
+    final edgeHeight = height * _splitEdgeRatio;
+    if (local.dx > edgeWidth &&
+        local.dx < width - edgeWidth &&
+        local.dy > edgeHeight &&
+        local.dy < height - edgeHeight) {
       return null;
     }
-    if (local.dx <= _splitEdgeExtent) {
-      return _pendingSplit(PaneEdge.left, local.dx);
+    final splitWidth = width / 3;
+    if (local.dx < splitWidth) {
+      return _pendingSplit(PaneEdge.left, local.dx, edgeWidth);
     }
-    if (local.dx >= size.width - _splitEdgeExtent) {
-      return _pendingSplit(PaneEdge.right, size.width - local.dx);
+    if (local.dx > splitWidth * 2) {
+      return _pendingSplit(PaneEdge.right, width - local.dx, edgeWidth);
     }
-    if (local.dy <= _splitEdgeExtent) {
-      return _pendingSplit(PaneEdge.top, local.dy);
-    }
-    if (local.dy >= size.height - _splitEdgeExtent) {
-      return _pendingSplit(PaneEdge.bottom, size.height - local.dy);
-    }
-    return null;
+    return local.dy < height / 2
+        ? _pendingSplit(PaneEdge.top, local.dy, edgeHeight)
+        : _pendingSplit(PaneEdge.bottom, height - local.dy, edgeHeight);
   }
 
-  /// A drop [depth] into the band of [where]: root-level when the group sits
+  /// A drop [depth] into the [band] of [where]: root-level when the group sits
   /// on the area's boundary and the drop is in the outermost strip, the group
   /// itself otherwise.
-  _PendingSplit _pendingSplit(PaneEdge where, double depth) {
+  _PendingSplit _pendingSplit(PaneEdge where, double depth, double band) {
+    final areaExtent = math.min(_areaEdgeExtent, band / 2);
     final atBoundary =
-        depth <= _areaEdgeExtent &&
+        depth <= areaExtent &&
         ref
             .read(editorLayoutProvider.notifier)
             .isAtAreaEdge(widget.controller, where);

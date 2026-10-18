@@ -26,6 +26,8 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
@@ -647,6 +649,61 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     required String viewId,
     required String renderer,
     String? title,
+    TabbedViewController? targetGroup,
+  }) {
+    final built = _buildPluginViewTab(
+      pluginId: pluginId,
+      viewId: viewId,
+      renderer: renderer,
+      title: title,
+    );
+    if (built == null) return null;
+    // Without an explicit group the tab opens where the user is looking; with
+    // one, it lands exactly there -- the group a plugin named by its index.
+    if (targetGroup == null) {
+      openTab(built.tab);
+    } else {
+      targetGroup.addTab(built.tab);
+      targetGroup.selectedIndex = targetGroup.tabs.length - 1;
+      _refreshTitles();
+    }
+    return built.instance;
+  }
+
+  /// Opens a plugin view as a tab on the docked console panel.
+  ///
+  /// The console sits outside the editor layout tree, so such a tab is not
+  /// persisted and stays invisible to the document services -- acceptable for
+  /// a view, whose lifetime is the plugin session anyway. A hidden or empty
+  /// panel is brought back: a view landing in a pane the user cannot see
+  /// would be lost.
+  ViewInstanceId? openPluginViewInConsole({
+    required String pluginId,
+    required String viewId,
+    required String renderer,
+    String? title,
+  }) {
+    final built = _buildPluginViewTab(
+      pluginId: pluginId,
+      viewId: viewId,
+      renderer: renderer,
+      title: title,
+    );
+    if (built == null) return null;
+    final console = ref.read(consoleTabbedViewControllerProvider);
+    console.addTab(built.tab);
+    console.selectedIndex = console.tabs.length - 1;
+    ref.read(consolePageShow.notifier).state = true;
+    _markConsoleFocused();
+    return built.instance;
+  }
+
+  /// Builds, without placing it, the tab hosting a plugin view.
+  ({ViewInstanceId instance, TabData tab})? _buildPluginViewTab({
+    required String pluginId,
+    required String viewId,
+    required String renderer,
+    String? title,
   }) {
     final manager = ref
         .read(pluginRunManagerProvider)
@@ -692,9 +749,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         title: title,
       ),
     );
+    return (instance: instance, tab: tab);
+  }
 
-    openTab(tab);
-    return instance;
+  /// Marks the console the pane the user is working in.
+  void _markConsoleFocused() {
+    ref.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.console;
   }
 
   /// The open tab hosting the document [match] accepts, in any group.
@@ -721,6 +782,21 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       return true;
     }
     return false;
+  }
+
+  /// Shows a console-hosted [tab] and marks the console the focused pane.
+  ///
+  /// Returns false when the console does not hold [tab]. A hidden panel is
+  /// brought back: activating a view in a pane the user cannot see would be
+  /// lost.
+  bool focusConsoleTab(TabData tab) {
+    final console = ref.read(consoleTabbedViewControllerProvider);
+    final index = console.tabs.indexOf(tab);
+    if (index < 0) return false;
+    console.selectedIndex = index;
+    ref.read(consolePageShow.notifier).state = true;
+    _markConsoleFocused();
+    return true;
   }
 
   void closePluginView(TabDataValue value) {
