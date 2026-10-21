@@ -114,7 +114,7 @@ PyriteIDE 插件以 PYRIX 分发，并通过 `plugin.toml` 声明类型、平台
 | `service` | 后台任务、设备监听与同步服务 |
 | `data` | 主题、语言包与 MicroPython Stubs |
 
-插件运行时、生命周期、SDK API、权限模型和打包方式见插件开发文档，具体内容正在撰写，请关注通知 。
+插件运行时、生命周期、SDK API、权限模型、组件树与打包方式见 [插件开发文档](PLUGIN_DEVELOPMENT.md)。
 
 ## 参与开发
 
@@ -123,6 +123,7 @@ PyriteIDE 插件以 PYRIX 分发，并通过 `plugin.toml` 声明类型、平台
 ```bash
 dart format .
 flutter analyze --no-fatal-infos lib test
+flutter test
 ```
 
 项目中没有引入 Riverpod 注解或路由生成器，推荐使用传统写法：
