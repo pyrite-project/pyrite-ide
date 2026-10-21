@@ -1438,6 +1438,11 @@ enum I18nKey {
   editorGoToLine('editor.go_to_line', '跳转到行'),
   editorGoToLineHint('editor.go_to_line.hint', '行号（1-{lines}）'),
   editorGoToLineInvalid('editor.go_to_line.invalid', '行号超出范围，请输入 1-{lines}'),
+  editorOutlineTitle('editor.outline.title', '大纲'),
+  editorOutlineUnavailable('editor.outline.unavailable', '打开一个文件以查看符号大纲'),
+  editorOutlineLoading('editor.outline.loading', '正在读取符号…'),
+  editorOutlineEmpty('editor.outline.empty', '这个文件没有可用的符号'),
+  editorOutlineCount('editor.outline.count', '{count} 个符号'),
   editorFileBinaryDialogTitle('editor.file.binary.title', '无法编辑二进制文件'),
   editorFileBinaryDialogBody(
     'editor.file.binary.body',

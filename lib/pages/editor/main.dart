@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/features/edit_core/editor_surface.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -93,6 +94,7 @@ class Editor extends ConsumerWidget {
                     : null,
               ),
               const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
+              const EditorOutlineToggle(),
               IconButton(
                 tooltip: translateForWidget(
                   ref,
@@ -224,8 +226,8 @@ class Editor extends ConsumerWidget {
           <int, Color>{},
         ),
       ),
-      child: TabbedView(
-        controller: ref.watch(tabbedViewControllerProvider),
+      child: EditorSurface(
+        child: TabbedView(controller: ref.watch(tabbedViewControllerProvider)),
       ),
     );
   }
