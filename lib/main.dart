@@ -182,6 +182,12 @@ void _applyData(PersistedData data) {
       HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
       HardwareResetStrategy.disabled;
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
+  container.read(terminalShellExecutable.notifier).state =
+      data.terminalShellExecutable;
+  container.read(terminalShellArguments.notifier).state =
+      data.terminalShellArguments;
+  container.read(terminalWorkingDirectory.notifier).state =
+      data.terminalWorkingDirectory;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
   container.read(terminalLigatures.notifier).state = data.terminalLigatures;

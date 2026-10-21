@@ -151,7 +151,14 @@ void main() {
     // The hover popup is anchored to the line it documents, so a wide gap reads
     // as a detached popup. Guard against it silently creeping back up to the
     // generic popup gap.
-    expect(kHoverAnchorGap, greaterThan(0));
+    //
+    // 期望值更新：code_forge 的 `kHoverAnchorGap` 已按设计收敛到 0——悬停
+    // 弹窗紧贴被注释的那一行（见 code_forge/lib/code_forge/code_area.dart 中
+    // 该常量的文档："Currently 0 - the popup sits flush against the hovered
+    // line"）。原先的 `greaterThan(0)` 固化了更早的 6.0，与当前产品行为不符。
+    // 这里改为断言“紧贴但不外扩”的设计契约：间距非负，且远小于通用弹窗间距。
+    // code_forge 是第三方 submodule，不在本次可改范围，故调整测试期望。
+    expect(kHoverAnchorGap, greaterThanOrEqualTo(0.0));
     expect(kHoverAnchorGap, lessThan(8));
   });
 

@@ -1,9 +1,14 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:tabbed_view/tabbed_view.dart' as tabbed;
 
+/// 与 global_key_regression_test 相同的环境前提：标签页会被套上
+/// `PyriteContextMenuWidget`（ConsumerWidget），必须在 ProviderScope 内
+/// 构建。这里验证的是标签条横向滚动的布局与滚轮位移，与 scope 无关，
+/// 所以补 scope 而不是改产品代码。
 void main() {
   testWidgets('tab area keeps overflow tabs visible in a horizontal scroller', (
     tester,
@@ -26,11 +31,13 @@ void main() {
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: SizedBox(
-          width: 360,
-          height: 220,
-          child: TabbedView(controller: controller),
+      ProviderScope(
+        child: MaterialApp(
+          home: SizedBox(
+            width: 360,
+            height: 220,
+            child: TabbedView(controller: controller),
+          ),
         ),
       ),
     );

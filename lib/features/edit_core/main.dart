@@ -1601,7 +1601,10 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   beginReplRunOutput();
 
   try {
-    await saveFile(context, ref, quiet: true);
+    // Running what is on screen is not the same as saving it. A quick
+    // experiment should not rewrite the file, and with format-on-save enabled
+    // it should not reformat it either. The buffer is what gets executed, so
+    // the unsaved text is exactly what the user is looking at.
     ref.read(consolePageShow.notifier).state = true;
     await runPythonOnActiveDeviceStreaming(
       ref,
