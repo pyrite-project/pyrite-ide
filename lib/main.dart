@@ -43,6 +43,29 @@ String? getPythonPath() {
 }
 
 late final PersistenceManager persistenceManager;
+
+/// Port the previous session was talking to.
+///
+/// Kept here rather than as a provider: nothing renders it, and the only use is
+/// reconnecting once the serial layer is ready. Attempting that reconnect is
+/// opt-in through the saved auto-reconnect switch, so a user who does not want
+/// the IDE claiming a port on launch is not surprised by it.
+String _lastActivePortPath = '';
+
+/// Reopens the port the previous session used, once the app is running.
+///
+/// Deferred to a post-frame callback because the device-scoped caches it
+/// clears (board tree, status panel) are provider-owned and must not be mutated
+/// while the first frame is still being built.
+Future<void> _resumeLastSerialPort() async {
+  final path = _lastActivePortPath;
+  if (path.isEmpty) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (container.read(serialProvider).isConnected) return;
+    unawaited(container.read(serialProvider.notifier).connectPort(path));
+  });
+}
+
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
@@ -173,6 +196,7 @@ void _applyData(PersistedData data) {
   container.read(serialDefaultBaudRate.notifier).state =
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
+  _lastActivePortPath = data.serialActivePortPath;
   container.read(replModeProvider.notifier).state =
       ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
   container.read(fileTransferModeProvider.notifier).state =
@@ -213,6 +237,12 @@ void _applyData(PersistedData data) {
   container
       .read(serialProvider.notifier)
       .setAutoReconnect(data.serialAutoReconnect);
+  // Reconnect last session's port only when the user asked for automatic
+  // reconnection; claiming a port uninvited would also fight any other tool
+  // the user has open on it.
+  if (data.serialAutoReconnect && _lastActivePortPath.isNotEmpty) {
+    unawaited(_resumeLastSerialPort());
+  }
   container.read(uploadConfirmStyleProvider.notifier).state =
       data.uploadConfirmStyle;
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;

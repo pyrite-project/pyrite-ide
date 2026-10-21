@@ -163,6 +163,9 @@ class PersistedData {
   final bool ensureBoardFilesystemOnConnect;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
+
+  /// Last port in use; empty when the IDE never had a device connected.
+  final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
 
@@ -252,6 +255,7 @@ class PersistedData {
     this.ensureBoardFilesystemOnConnect = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
+    this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalShellExecutable = '',

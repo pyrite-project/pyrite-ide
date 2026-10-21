@@ -46,6 +46,13 @@ class SettingsPersistedData {
   final bool ensureBoardFilesystemOnConnect;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
+
+  /// Port the IDE was talking to when it last closed.
+  ///
+  /// Persisted so a user with several boards does not have to pick the same
+  /// port again on every launch. Empty means "no previous device", which is
+  /// the state a fresh install starts in.
+  final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
 
@@ -117,6 +124,7 @@ class SettingsPersistedData {
     this.ensureBoardFilesystemOnConnect = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
+    this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalShellExecutable = '',
@@ -186,6 +194,7 @@ class SettingsPersistedData {
     'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
     'serialDefaultBaudRate': serialDefaultBaudRate,
     'serialAutoReconnect': serialAutoReconnect,
+    'serialActivePortPath': serialActivePortPath,
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
     'terminalShellExecutable': terminalShellExecutable,
@@ -267,6 +276,7 @@ class SettingsPersistedData {
         json['ensureBoardFilesystemOnConnect'] as bool? ?? false,
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
+    serialActivePortPath: json['serialActivePortPath'] as String? ?? '',
     terminalFontFamily:
         json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,

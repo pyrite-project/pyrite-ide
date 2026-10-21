@@ -88,16 +88,37 @@ class _ToolsState extends ConsumerState<Tools> {
             itemBuilder: (context, index) {
               final portInfo = state.portInfos[index];
               final identity = identifyPort(portInfo);
+              final sessions = ref
+                  .read(serialProvider.notifier)
+                  .sessions
+                  .sessions;
+              final session = sessions
+                  .where((item) => item.portPath == portInfo.path)
+                  .firstOrNull;
+              final isActive = session?.isActive ?? false;
               return ExpansionTile(
                 visualDensity: compact ? VisualDensity.compact : null,
                 leading: Icon(
-                  identity.isKnown
+                  isActive
+                      ? Icons.check_circle
+                      : session != null
+                      ? Icons.usb
+                      : identity.isKnown
                       ? Icons.memory
                       : Icons.developer_board_outlined,
+                  color: isActive
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
                 ),
                 title: Text(portInfo.path),
                 subtitle: Text(
-                  identity.isKnown ? identity.label : portInfo.description,
+                  isActive
+                      ? '已连接 · 当前设备'
+                      : session != null
+                      ? '已连接 · 点击切换'
+                      : identity.isKnown
+                      ? identity.label
+                      : portInfo.description,
                 ),
                 childrenPadding: EdgeInsetsDirectional.fromSTEB(
                   16,
@@ -106,20 +127,54 @@ class _ToolsState extends ConsumerState<Tools> {
                   compact ? 8 : 12,
                 ),
                 children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: webReplActive
-                          ? null
-                          : () {
-                              ref
+                  if (session == null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: webReplActive
+                            ? null
+                            : () {
+                                ref
+                                    .read(serialProvider.notifier)
+                                    .connectPort(portInfo.path);
+                              },
+                        icon: const Icon(Icons.power_settings_new),
+                        label: const UseText(I18nKey.devicesConnectSerial),
+                      ),
+                    )
+                  else
+                    // The port is already open. Connecting it again would only
+                    // switch to it, so the two actions are labelled for what
+                    // they do instead of offering "connect" a second time.
+                    Row(
+                      children: [
+                        if (!isActive)
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              onPressed: () => ref
                                   .read(serialProvider.notifier)
-                                  .connectPort(portInfo.path);
-                            },
-                      icon: const Icon(Icons.power_settings_new),
-                      label: const UseText(I18nKey.devicesConnectSerial),
+                                  .activateSession(session.id),
+                              icon: const Icon(Icons.swap_horiz),
+                              label: const Text('切换到此设备'),
+                            ),
+                          )
+                        else
+                          const Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text('当前正在使用此设备'),
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => ref
+                              .read(serialProvider.notifier)
+                              .closeSessionFor(portInfo.path),
+                          icon: const Icon(Icons.link_off),
+                          label: const Text('断开'),
+                        ),
+                      ],
                     ),
-                  ),
                   buildBoardIdentityTile(context, identity, portInfo),
                   buildDetailListTile(
                     context,

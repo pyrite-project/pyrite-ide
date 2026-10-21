@@ -20,6 +20,13 @@ abstract class SdkSerialCommands {
   static const String hardwareReset = 'sdk.serial.hardware_reset';
   static const String setBaudRate = 'sdk.serial.set_baud_rate';
   static const String setAutoReconnect = 'sdk.serial.set_auto_reconnect';
+
+  // Multi-device sessions. The commands above keep addressing the active
+  // device; these expose the other open ports so a plugin can drive two boards
+  // at once instead of being limited to whichever one the user is looking at.
+  static const String listSessions = 'sdk.serial.list_sessions';
+  static const String activateSession = 'sdk.serial.activate_session';
+  static const String closeSession = 'sdk.serial.close_session';
 }
 
 class SdkSerial {
@@ -50,6 +57,81 @@ class SdkSerial {
       SdkSerialCommands.setAutoReconnect,
       _handleSetAutoReconnect,
     );
+    runManager.registerHandler(
+      SdkSerialCommands.listSessions,
+      _handleListSessions,
+    );
+    runManager.registerHandler(
+      SdkSerialCommands.activateSession,
+      _handleActivateSession,
+    );
+    runManager.registerHandler(
+      SdkSerialCommands.closeSession,
+      _handleCloseSession,
+    );
+  }
+
+  void _handleListSessions(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final sessions = ref.read(serialProvider.notifier).sessions.sessions;
+    _respondOk(
+      envelope,
+      respond,
+      data: [
+        for (final session in sessions)
+          {
+            'id': session.id,
+            'port': session.portPath,
+            'baud_rate': session.baudRate,
+            'is_active': session.isActive,
+            'board_family': session.identity?.family.name,
+            'board_label': session.identity?.label,
+          },
+      ],
+    );
+  }
+
+  void _handleActivateSession(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = _payload(envelope);
+    final id = payload['id']?.toString() ?? payload['session_id']?.toString();
+    if (id == null || id.isEmpty) {
+      _respondError(envelope, respond, 'Missing session id');
+      return;
+    }
+    final notifier = ref.read(serialProvider.notifier);
+    if (!notifier.sessions.sessions.any((session) => session.id == id)) {
+      _respondError(envelope, respond, 'No such serial session: $id');
+      return;
+    }
+    notifier.activateSession(id);
+    _handleGetStatus(envelope, respond);
+  }
+
+  Future<void> _handleCloseSession(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) async {
+    final payload = _payload(envelope);
+    final id = payload['id']?.toString() ?? payload['session_id']?.toString();
+    if (id == null || id.isEmpty) {
+      _respondError(envelope, respond, 'Missing session id');
+      return;
+    }
+    final notifier = ref.read(serialProvider.notifier);
+    final session = notifier.sessions.sessions
+        .where((item) => item.id == id)
+        .firstOrNull;
+    if (session == null) {
+      _respondError(envelope, respond, 'No such serial session: $id');
+      return;
+    }
+    await notifier.closeSessionFor(session.portPath);
+    _handleGetStatus(envelope, respond);
   }
 
   void _respondOk(

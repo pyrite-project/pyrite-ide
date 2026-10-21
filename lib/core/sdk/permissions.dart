@@ -143,6 +143,9 @@ abstract class Permissions {
     // serial (future)
     'sdk.serial.list_ports': 'serial:read',
     'sdk.serial.get_status': 'serial:read',
+    'sdk.serial.list_sessions': 'serial:read',
+    'sdk.serial.activate_session': 'serial:write',
+    'sdk.serial.close_session': 'serial:write',
     'sdk.serial.read': 'serial:read',
     'sdk.serial.connect': 'serial:write',
     'sdk.serial.disconnect': 'serial:write',

@@ -18,6 +18,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class PersistenceManager {
@@ -99,6 +100,7 @@ class PersistenceManager {
           settings?.ensureBoardFilesystemOnConnect ?? false,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
+      serialActivePortPath: settings?.serialActivePortPath ?? '',
       terminalFontFamily:
           settings?.terminalFontFamily ?? 'JetBrains Maple Mono',
       terminalFontSize: settings?.terminalFontSize ?? 13,
@@ -199,6 +201,8 @@ class PersistenceManager {
           ),
           serialDefaultBaudRate: container.read(serialDefaultBaudRate),
           serialAutoReconnect: container.read(serialAutoReconnect),
+          serialActivePortPath:
+              container.read(serialProvider).selectedPortName ?? '',
           terminalFontFamily: container.read(terminalFontFamily),
           terminalFontSize: container.read(terminalFontSize),
           terminalShellExecutable: container.read(terminalShellExecutable),
