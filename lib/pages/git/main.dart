@@ -4,6 +4,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/git/git_blame_gutter.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
@@ -22,6 +23,14 @@ const _fallbackAuthorEmail = 'pyrite@example.local';
 enum _CheckoutBlockedAction { stash, merge, force }
 
 enum _ForceCheckoutAction { all, listedTracked }
+
+/// 删除本地分支时用户的选择：是否强制、是否连同名远端一起删。
+class _BranchDeleteChoice {
+  const _BranchDeleteChoice({required this.force, required this.includeRemote});
+
+  final bool force;
+  final bool includeRemote;
+}
 
 class GitPage extends ConsumerStatefulWidget {
   const GitPage({super.key});
@@ -278,6 +287,9 @@ class _GitPageState extends ConsumerState<GitPage> {
             ],
           ),
         ),
+        // blame 折叠条：只有选中文件时才出现，默认折叠、零额外请求。
+        if (state.selectedPath != null)
+          GitBlameGutter(filePath: state.selectedPath!),
         _CommitBar(
           messageController: _messageController,
           authorController: _authorController,
@@ -351,6 +363,12 @@ class _GitPageState extends ConsumerState<GitPage> {
   }
 
   Widget _branchesTab(GitViewState state, GitRepositorySnapshot snapshot) {
+    final localBranches = snapshot.branches
+        .where((branch) => !branch.isRemote)
+        .toList();
+    final remoteBranches = snapshot.branches
+        .where((branch) => branch.isRemote)
+        .toList();
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -371,40 +389,174 @@ class _GitPageState extends ConsumerState<GitPage> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        for (final branch in snapshot.branches)
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: const EdgeInsetsDirectional.only(start: 4),
-            leading: Icon(
-              branch.isRemote ? Icons.cloud_outlined : Icons.account_tree,
-              size: 18,
-            ),
-            title: Text(branch.name, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              [
-                branch.targetSha.length > 7
-                    ? branch.targetSha.substring(0, 7)
-                    : branch.targetSha,
-                if (branch.upstream.isNotEmpty) branch.upstream,
-              ].join(' · '),
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: branch.isCurrent
-                ? const PillBadge(label: I18nKey.gitCurrentBranch)
-                : SizedBox(
-                    height: 32,
-                    child: TextButton(
-                      onPressed: state.isBusy
-                          ? null
-                          : () => _checkoutBranch(branch),
-                      child: const UseText(I18nKey.gitCheckout),
-                    ),
-                  ),
+        if (localBranches.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const _SectionTitle(title: I18nKey.gitTabBranches),
+        ],
+        for (final branch in localBranches)
+          _BranchTile(
+            branch: branch,
+            isBusy: state.isBusy,
+            onCheckout: () => _checkoutBranch(branch),
+            onRename: () => _renameBranchDialog(branch),
+            onDelete: () => _deleteBranchDialog(branch),
+          ),
+        if (remoteBranches.isNotEmpty) ...[
+          const SectionDivider(),
+          const _SectionTitle(title: I18nKey.gitTabRemotes),
+        ],
+        for (final branch in remoteBranches)
+          _BranchTile(
+            branch: branch,
+            isBusy: state.isBusy,
+            onCheckout: () => _checkoutBranch(branch),
+            onDelete: () => _deleteBranchDialog(branch),
           ),
       ],
     );
+  }
+
+  /// 重命名分支：预填当前名称并全选，当前分支也能重命名（HEAD 会被 libgit2
+  /// 一起迁移到新名字）。
+  Future<void> _renameBranchDialog(GitBranchInfo branch) async {
+    await _textDialog(
+      title: '重命名分支',
+      label: I18nKey.gitBranchName,
+      initialValue: branch.name,
+      selectAll: true,
+      onSubmit: (value) =>
+          ref.read(gitProvider.notifier).renameBranch(branch, value),
+    );
+  }
+
+  /// 删除分支：本地分支在同一个对话框里一次问清“是否强制”“是否连远端”。
+  ///
+  /// 取舍：不在删除失败后再弹“要不要强制”——失败信息要经 state 绕一圈，
+  /// 很容易读到上一次操作的陈旧 error。把选项前置到确认对话框，逻辑线性，
+  /// 也符合“操作前必须二次确认”的要求。
+  Future<void> _deleteBranchDialog(GitBranchInfo branch) async {
+    final notifier = ref.read(gitProvider.notifier);
+    if (branch.isRemote) {
+      final confirmed = await _confirmDeletion(
+        title: '删除远端分支',
+        message: '确定在远端删除分支 ${branch.name}？该操作会影响其他协作者。',
+        confirmKey: I18nKey.gitDelete,
+      );
+      if (!mounted || !confirmed) return;
+      await notifier.deleteBranch(branch);
+      return;
+    }
+
+    final target = await notifier.inspectBranchDeletionTarget(branch.name);
+    if (!mounted) return;
+    if (target != null && target.isCurrent) {
+      showIdeError(context, '不能删除当前分支 ${branch.name}，请先切换到其他分支。');
+      return;
+    }
+    final hasRemote = target?.hasRemote ?? false;
+    final choice = await _branchDeleteDialog(
+      branch: branch,
+      hasRemote: hasRemote,
+      remoteBranchName: target?.remoteBranchName ?? '',
+    );
+    if (!mounted || choice == null) return;
+    await notifier.deleteBranch(
+      branch,
+      includeRemote: choice.includeRemote,
+      force: choice.force,
+    );
+  }
+
+  Future<_BranchDeleteChoice?> _branchDeleteDialog({
+    required GitBranchInfo branch,
+    required bool hasRemote,
+    required String remoteBranchName,
+  }) {
+    return showDialog<_BranchDeleteChoice>(
+      context: context,
+      builder: (context) {
+        var force = false;
+        var includeRemote = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            icon: const Icon(Icons.warning_amber_outlined),
+            title: Text('删除本地分支 ${branch.name}'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('已合并的分支会直接删除；未合并分支需要勾选强制删除。'),
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: force,
+                    onChanged: (value) =>
+                        setDialogState(() => force = value ?? false),
+                    title: const Text('强制删除（丢弃未合并的提交）'),
+                  ),
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: includeRemote,
+                    onChanged: hasRemote
+                        ? (value) => setDialogState(
+                            () => includeRemote = value ?? false,
+                          )
+                        : null,
+                    title: Text(
+                      hasRemote ? '同时删除远端分支 $remoteBranchName' : '远端没有同名分支',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const UseText(I18nKey.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _BranchDeleteChoice(
+                    force: force,
+                    includeRemote: hasRemote && includeRemote,
+                  ),
+                ),
+                child: const UseText(I18nKey.gitDelete),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<bool> _confirmDeletion({
+    required String title,
+    required String message,
+    required I18nKey confirmKey,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_outlined),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: UseText(confirmKey),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Widget _remotesTab(GitViewState state, GitRepositorySnapshot snapshot) {
@@ -445,9 +597,147 @@ class _GitPageState extends ConsumerState<GitPage> {
             onFetch: () => ref.read(gitProvider.notifier).fetch(remote.name),
             onPull: () => ref.read(gitProvider.notifier).pull(remote.name),
             onPush: () => ref.read(gitProvider.notifier).push(remote.name),
+            onEditUrl: () => _editRemoteUrlDialog(remote),
+            onRename: () => _renameRemoteDialog(remote),
+            onDelete: () => _deleteRemoteDialog(remote),
           ),
       ],
     );
+  }
+
+  /// 创建 tag：message 留空 => 保持原有 lightweight 路径；填写则创建 annotated。
+  Future<void> _createTagDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return DialogFormFields(
+          initialValues: const ['', ''],
+          builder: (context, c) => AlertDialog(
+            title: const UseText(I18nKey.gitCreateTag),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: c[0],
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    label: UseText(I18nKey.gitTagName),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: c[1],
+                  minLines: 1,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    label: Text('Tag 消息（留空则创建 lightweight tag）'),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const UseText(I18nKey.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () {
+                  ref
+                      .read(gitProvider.notifier)
+                      .createTag(c[0].text, message: c[1].text);
+                  Navigator.of(context).pop();
+                },
+                child: const UseText(I18nKey.gitCreateTag),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 删除 tag：先确认本地删除，若存在同名远端 tag 再单独确认删除远端。
+  Future<void> _deleteTagDialog(
+    GitTagInfo tag,
+    GitRepositorySnapshot snapshot,
+  ) async {
+    final confirmed = await _confirmDeletion(
+      title: '删除标签',
+      message: '确定删除本地标签 ${tag.name}？',
+      confirmKey: I18nKey.gitDelete,
+    );
+    if (!confirmed) return;
+
+    final remoteConfirmed = snapshot.remotes.isNotEmpty
+        ? await _confirmDeletion(
+            title: '同时删除远端标签',
+            message:
+                '是否同时删除远端（${snapshot.remotes.map((r) => r.name).join(' / ')}）'
+                '上的同名标签 ${tag.name}？\n取消则只删除本地标签。',
+            confirmKey: I18nKey.gitDelete,
+          )
+        : false;
+    if (!mounted) return;
+    final remoteName = remoteConfirmed ? snapshot.remotes.first.name : null;
+    await ref
+        .read(gitProvider.notifier)
+        .deleteTag(tag.name, remoteName: remoteName);
+  }
+
+  /// 编辑远端 URL。保存前二次确认：URL 会影响后续 fetch/push 的目标。
+  Future<void> _editRemoteUrlDialog(GitRemoteInfo remote) async {
+    await _textDialog(
+      title: '编辑远端 URL',
+      label: I18nKey.gitRemoteUrl,
+      initialValue: remote.url,
+      selectAll: true,
+      onSubmit: (value) async {
+        final confirmed = await _confirmDeletion(
+          title: '修改远端 URL',
+          message: '把 ${remote.name} 的 URL 从\n${remote.url}\n改为\n$value ?',
+          confirmKey: I18nKey.commonConfirm,
+        );
+        if (!confirmed) return;
+        // provider 会把失败写入 state.error，由页面顶层 ref.listen 弹错误提示；
+        // 这里 await 是为了让失败发生在对话框流程内，不会被当成静默丢弃。
+        await ref.read(gitProvider.notifier).setRemoteUrl(remote.name, value);
+      },
+    );
+  }
+
+  /// 重命名远端：libgit2 会同步迁移 remote-tracking 分支与配置。
+  Future<void> _renameRemoteDialog(GitRemoteInfo remote) async {
+    await _textDialog(
+      title: '重命名远端',
+      label: I18nKey.gitRemoteName,
+      initialValue: remote.name,
+      selectAll: true,
+      onSubmit: (value) async {
+        final confirmed = await _confirmDeletion(
+          title: '重命名远端',
+          message:
+              '把远端 ${remote.name} 重命名为 $value ?\n'
+              '所有 remote-tracking 分支与配置会一起更新。',
+          confirmKey: I18nKey.commonConfirm,
+        );
+        if (!confirmed) return;
+        await ref.read(gitProvider.notifier).renameRemote(remote.name, value);
+      },
+    );
+  }
+
+  /// 删除远端：明确提示会移除 tracking 分支与配置，二次确认后才执行。
+  Future<void> _deleteRemoteDialog(GitRemoteInfo remote) async {
+    final confirmed = await _confirmDeletion(
+      title: '删除远端',
+      message:
+          '确定删除远端 ${remote.name}？\n'
+          '这会移除 ${remote.name} 的配置与所有 remote-tracking 分支，'
+          '本地提交不会受影响。',
+      confirmKey: I18nKey.gitDelete,
+    );
+    if (!confirmed) return;
+    await ref.read(gitProvider.notifier).deleteRemote(remote.name);
   }
 
   Widget _historyTab(GitViewState state, GitRepositorySnapshot snapshot) {
@@ -464,13 +754,7 @@ class _GitPageState extends ConsumerState<GitPage> {
           runSpacing: 5,
           children: [
             FilledButton.tonalIcon(
-              onPressed: state.isBusy
-                  ? null
-                  : () => _textDialog(
-                      title: I18nKey.gitCreateTag,
-                      label: I18nKey.gitTagName,
-                      onSubmit: ref.read(gitProvider.notifier).createTag,
-                    ),
+              onPressed: state.isBusy ? null : () => _createTagDialog(),
               icon: const Icon(Icons.sell_outlined),
               label: const UseText(I18nKey.gitTagHead),
             ),
@@ -650,10 +934,26 @@ class _GitPageState extends ConsumerState<GitPage> {
         for (final tag in snapshot.tags.take(50))
           ListTile(
             dense: true,
-            leading: const Icon(Icons.sell_outlined),
+            leading: Icon(
+              tag.isAnnotated ? Icons.local_offer : Icons.sell_outlined,
+            ),
             title: Text(tag.name, overflow: TextOverflow.ellipsis),
-            subtitle: Text(tag.targetSha, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              [
+                tag.targetSha,
+                if (tag.isAnnotated)
+                  tag.message.isEmpty ? 'annotated' : tag.message,
+              ].join(' · '),
+              overflow: TextOverflow.ellipsis,
+            ),
             contentPadding: const EdgeInsetsDirectional.only(start: 4),
+            trailing: IconButton(
+              tooltip: translateForWidget(ref, I18nKey.gitDelete),
+              onPressed: state.isBusy
+                  ? null
+                  : () => _deleteTagDialog(tag, snapshot),
+              icon: const Icon(Icons.delete_outline),
+            ),
           ),
         const SectionDivider(),
         _SectionTitle(title: I18nKey.gitTabCredentials),
@@ -1028,11 +1328,15 @@ class _GitPageState extends ConsumerState<GitPage> {
     required Object title,
     required Object label,
     required Future<void> Function(String value) onSubmit,
+    String initialValue = '',
+    bool selectAll = false,
   }) async {
     await showDialog<void>(
       context: context,
       builder: (context) {
         return DialogFormFields(
+          initialValues: [initialValue],
+          selectAll: selectAll,
           builder: (context, c) => AlertDialog(
             title: UseText(title),
             content: TextField(
@@ -1348,6 +1652,125 @@ class _CommitBarState extends ConsumerState<_CommitBar> {
   }
 }
 
+class _BranchTile extends ConsumerWidget {
+  const _BranchTile({
+    required this.branch,
+    required this.isBusy,
+    required this.onCheckout,
+    required this.onDelete,
+    this.onRename,
+  });
+
+  final GitBranchInfo branch;
+  final bool isBusy;
+  final VoidCallback onCheckout;
+  final VoidCallback onDelete;
+  final VoidCallback? onRename;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final details = <String>[
+      branch.targetSha.length > 7
+          ? branch.targetSha.substring(0, 7)
+          : branch.targetSha,
+      if (branch.upstream.isNotEmpty) branch.upstream,
+      if (branch.trackingLabel.isNotEmpty) branch.trackingLabel,
+    ];
+    final row = SizedBox(
+      height: 40,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            Icon(
+              branch.isRemote ? Icons.cloud_outlined : Icons.account_tree,
+              size: 18,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    branch.name,
+                    style: textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    details.join(' · '),
+                    style: textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (branch.trackingLabel.isNotEmpty)
+              PillBadge(label: branch.trackingLabel),
+            if (branch.isCurrent)
+              const Padding(
+                padding: EdgeInsetsDirectional.only(start: 6),
+                child: PillBadge(label: I18nKey.gitCurrentBranch),
+              )
+            else
+              TextButton(
+                onPressed: isBusy ? null : onCheckout,
+                child: const UseText(I18nKey.gitCheckout),
+              ),
+            if (!branch.isRemote)
+              IconButton(
+                tooltip: '重命名分支',
+                onPressed: isBusy || onRename == null ? null : onRename,
+                icon: const Icon(Icons.drive_file_rename_outline),
+              ),
+            IconButton(
+              tooltip: '删除分支',
+              onPressed: isBusy ? null : onDelete,
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return PyriteContextMenuWidget(
+      child: row,
+      menuProvider: (request) {
+        return Menu(
+          children: [
+            MenuAction(
+              title: translateForWidget(ref, I18nKey.gitCheckout),
+              callback: onCheckout,
+              attributes: MenuActionAttributes(
+                disabled: isBusy || branch.isCurrent,
+              ),
+            ),
+            if (!branch.isRemote)
+              MenuAction(
+                title: '重命名分支',
+                callback: onRename ?? () {},
+                attributes: MenuActionAttributes(
+                  disabled: isBusy || onRename == null,
+                ),
+              ),
+            MenuSeparator(),
+            MenuAction(
+              title: '删除分支',
+              callback: onDelete,
+              attributes: MenuActionAttributes(disabled: isBusy),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _RemoteTile extends ConsumerWidget {
   const _RemoteTile({
     required this.remote,
@@ -1355,6 +1778,9 @@ class _RemoteTile extends ConsumerWidget {
     required this.onFetch,
     required this.onPull,
     required this.onPush,
+    required this.onEditUrl,
+    required this.onRename,
+    required this.onDelete,
   });
 
   final GitRemoteInfo remote;
@@ -1362,6 +1788,9 @@ class _RemoteTile extends ConsumerWidget {
   final VoidCallback onFetch;
   final VoidCallback onPull;
   final VoidCallback onPush;
+  final VoidCallback onEditUrl;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1408,6 +1837,33 @@ class _RemoteTile extends ConsumerWidget {
               tooltip: translateForWidget(ref, I18nKey.gitPush),
               onPressed: isBusy ? null : onPush,
               icon: const Icon(Icons.cloud_upload_outlined),
+            ),
+            PyriteContextMenuWidget(
+              child: IconButton(
+                tooltip: '远端设置',
+                onPressed: isBusy ? null : onEditUrl,
+                icon: const Icon(Icons.more_vert),
+              ),
+              menuProvider: (request) => Menu(
+                children: [
+                  MenuAction(
+                    title: '编辑 URL',
+                    callback: onEditUrl,
+                    attributes: MenuActionAttributes(disabled: isBusy),
+                  ),
+                  MenuAction(
+                    title: '重命名远端',
+                    callback: onRename,
+                    attributes: MenuActionAttributes(disabled: isBusy),
+                  ),
+                  MenuSeparator(),
+                  MenuAction(
+                    title: translateForWidget(ref, I18nKey.gitDelete),
+                    callback: onDelete,
+                    attributes: MenuActionAttributes(disabled: isBusy),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

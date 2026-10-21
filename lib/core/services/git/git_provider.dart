@@ -34,11 +34,19 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Timer? _refreshDebounce;
   String? _watchedRootPath;
 
+  /// busy 期间收到的刷新请求。
+  ///
+  /// 旧实现会在 busy 时递归重排 timer，结果既没有真正刷新、又让 timer 永远
+  /// 在转；这里改成“记一个挂起标记，空闲后补一次”，保证事件不丢也不循环。
+  bool _pendingWatchedRefresh = false;
+
   GitRepositoryService get _service => ref.read(gitRepositoryServiceProvider);
 
   Future<void> refresh({String? workspacePath}) async {
     if (state.isBusy) {
-      GitDebugLog.log('GitNotifier.refresh skipped because state.isBusy=true');
+      // 不再直接丢弃：记下挂起刷新，当前操作结束（isBusy=false）后补一次。
+      _pendingWatchedRefresh = true;
+      GitDebugLog.log('GitNotifier.refresh deferred because state.isBusy=true');
       return;
     }
     final path = workspacePath ?? ref.read(localWorkspaceProvider)?.path;
@@ -92,20 +100,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }
 
   Future<void> blameSelected() async {
-    final rootPath = await _rootPath();
     final selectedPath = state.selectedPath;
-    if (rootPath == null || selectedPath == null) return;
-    await _run(
-      () async {
-        final blame = await _service.blame(rootPath, selectedPath);
-        state = state.copyWith(
-          blame: blame,
-          lastMessage: '已读取 $selectedPath 的 blame',
-        );
-      },
-      success: null,
-      refreshAfter: false,
-    );
+    if (selectedPath == null) return;
+    await showBlame(selectedPath);
   }
 
   Future<void> stage(String path) async {
@@ -324,11 +321,160 @@ class GitNotifier extends StateNotifier<GitViewState> {
     );
   }
 
-  Future<void> createTag(String name) async {
+  Future<void> createTag(String name, {String message = ''}) async {
     await _runRoot(
-      (root) async => _service.createTag(root, name),
-      success: '已创建标签 $name',
+      (root) async => _service.createTag(root, name, message: message),
+      success: message.trim().isEmpty
+          ? '已创建标签 $name'
+          : '已创建 annotated 标签 $name',
     );
+  }
+
+  Future<void> deleteTag(String name, {String? remoteName}) async {
+    await _runRoot(
+      (root) async => _service.deleteTag(
+        root,
+        name,
+        remoteName: remoteName,
+        draft: state.credentials,
+      ),
+      success: remoteName == null || remoteName.isEmpty
+          ? '已删除标签 $name'
+          : '已删除本地与 $remoteName 上的标签 $name',
+    );
+  }
+
+  /// 查询分支在本地/远端的删除目标。
+  ///
+  /// 页面需要提前知道“是否存在同名远端分支”，才能在删除本地后单独询问是否
+  /// 一并删除远端；失败时把错误写回 state 并返回 null。
+  Future<GitBranchDeletionTarget?> inspectBranchDeletionTarget(
+    String name,
+  ) async {
+    final rootPath = await _rootPath();
+    if (rootPath == null) {
+      state = state.copyWith(error: '当前工作区不是 Git 仓库。');
+      return null;
+    }
+    try {
+      return await _service.inspectBranchDeletionTarget(rootPath, name);
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitNotifier.inspectBranchDeletionTarget error name=$name',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = state.copyWith(error: error.toString());
+      return null;
+    }
+  }
+
+  Future<void> deleteBranch(
+    GitBranchInfo branch, {
+    bool includeRemote = false,
+    bool force = false,
+  }) async {
+    if (branch.isRemote) {
+      final separator = branch.name.indexOf('/');
+      if (separator <= 0) {
+        state = state.copyWith(error: '无法解析远端分支：${branch.name}');
+        return;
+      }
+      await _runRoot(
+        (root) async => _service.deleteRemoteBranch(
+          root,
+          branch.name.substring(0, separator),
+          branch.name.substring(separator + 1),
+          state.credentials,
+        ),
+        success: '已删除远端分支 ${branch.name}',
+      );
+      return;
+    }
+
+    final currentRoot = await _rootPath();
+    if (currentRoot == null) {
+      state = state.copyWith(error: '当前工作区不是 Git 仓库。');
+      return;
+    }
+    final target = await _service.inspectBranchDeletionTarget(
+      currentRoot,
+      branch.name,
+    );
+    await _runRoot(
+      (root) async {
+        await _service.deleteBranch(root, branch.name, force: force);
+        if (includeRemote && target.hasRemote) {
+          return _service.deleteRemoteBranch(
+            root,
+            target.remoteName,
+            branch.name,
+            state.credentials,
+          );
+        }
+        return null;
+      },
+      success: includeRemote && target.hasRemote
+          ? '已删除本地与 ${target.remoteBranchName} 分支'
+          : '已删除分支 ${branch.name}',
+    );
+  }
+
+  Future<void> renameBranch(
+    GitBranchInfo branch,
+    String newName, {
+    bool force = false,
+  }) async {
+    await _runRoot(
+      (root) async =>
+          _service.renameBranch(root, branch.name, newName, force: force),
+      success: '已重命名为 $newName',
+    );
+  }
+
+  Future<void> setRemoteUrl(String name, String url) async {
+    await _runRoot(
+      (root) async => _service.setRemoteUrl(root, name, url),
+      success: '已更新远端 $name 的 URL',
+    );
+  }
+
+  Future<void> renameRemote(String oldName, String newName) async {
+    await _runRoot(
+      (root) async => _service.renameRemote(root, oldName, newName),
+      success: '已将远端 $oldName 重命名为 $newName',
+    );
+  }
+
+  Future<void> deleteRemote(String name) async {
+    await _runRoot(
+      (root) async => _service.deleteRemote(root, name),
+      success: '已删除远端 $name',
+    );
+  }
+
+  /// 打开某个文件的 blame，并记录当前 blame 文件路径。
+  Future<void> showBlame(String path) async {
+    final rootPath = await _rootPath();
+    if (rootPath == null) return;
+    await _run(
+      () async {
+        final blame = await _service.blame(rootPath, path);
+        state = state.copyWith(
+          blame: blame,
+          blamePath: path,
+          lastMessage: blame.isEmpty
+              ? '$path 还没有 blame 信息'
+              : '已读取 $path 的 blame（${blame.length} 段）',
+        );
+      },
+      success: null,
+      refreshAfter: false,
+    );
+  }
+
+  void clearBlame() {
+    state = state.copyWith(blame: const [], clearBlamePath: true);
   }
 
   Future<void> createWorktree(String name, String path) async {
@@ -437,6 +583,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
       return null;
     } finally {
       state = state.copyWith(isBusy: false);
+      _flushPendingRefresh();
     }
   }
 
@@ -471,6 +618,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
       state = state.copyWith(error: error.toString());
     } finally {
       state = state.copyWith(isBusy: false);
+      _flushPendingRefresh();
     }
   }
 
@@ -493,6 +641,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
       selectedStaged: selectedStaged,
       selectedPatch: patch,
       blame: const [],
+      clearBlamePath: true,
       lastMessage:
           lastMessage ??
           (history.isEmpty
@@ -653,11 +802,40 @@ class GitNotifier extends StateNotifier<GitViewState> {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 250), () {
       if (state.isBusy) {
-        _scheduleWatchedRefresh();
+        // 关键修复：busy 时只记录挂起，不再递归重排 timer。
+        _pendingWatchedRefresh = true;
+        GitDebugLog.log('GitNotifier watched refresh deferred while busy');
         return;
       }
-      unawaited(refresh(workspacePath: state.snapshot?.rootPath));
+      _pendingWatchedRefresh = false;
+      unawaited(_refreshFromWatcher());
     });
+  }
+
+  /// watcher 触发的刷新：异常统一记账，不允许静默丢失。
+  Future<void> _refreshFromWatcher() async {
+    try {
+      await refresh(workspacePath: state.snapshot?.rootPath);
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitNotifier._refreshFromWatcher failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = state.copyWith(error: error.toString());
+    }
+  }
+
+  /// 空闲后补一次被挂起的刷新。
+  ///
+  /// 在所有会把 isBusy 置回 false 的路径末尾调用；这是“补刷新”的唯一出口，
+  /// 避免每个操作各写一份触发逻辑。
+  void _flushPendingRefresh() {
+    if (!_pendingWatchedRefresh) return;
+    if (state.isBusy) return;
+    _pendingWatchedRefresh = false;
+    GitDebugLog.log('GitNotifier flushing deferred refresh');
+    unawaited(_refreshFromWatcher());
   }
 
   @override

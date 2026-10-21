@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/git/git_isolate_runner.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 
 const _maxUntrackedScanEntries = 20000;
@@ -24,174 +25,73 @@ class GitCommitInput {
   final String authorEmail;
 }
 
+/// 本地分支 + 可选的同名远端分支。
+///
+/// 删除分支时 UI 需要知道“是否还有同名远端分支”，才能分别走本地删除和远端
+/// 删除两条确认流程，所以这里把两侧信息放在一起返回，而不是让页面自己猜。
+class GitBranchDeletionTarget {
+  const GitBranchDeletionTarget({
+    required this.name,
+    required this.hasLocal,
+    required this.hasRemote,
+    this.remoteName = '',
+    this.isCurrent = false,
+  });
+
+  final String name;
+  final bool hasLocal;
+  final bool hasRemote;
+
+  /// 同名远端分支所在的 remote，例如 `origin`。
+  final String remoteName;
+
+  final bool isCurrent;
+
+  /// 远端分支的完整名，例如 `origin/feature/demo`。
+  String get remoteBranchName => remoteName.isEmpty ? '' : '$remoteName/$name';
+}
+
 class GitRepositoryService {
-  GitRepositoryService({Duration commandTimeout = const Duration(seconds: 20)});
+  GitRepositoryService({Duration commandTimeout = const Duration(seconds: 20)})
+    : _commandTimeout = commandTimeout;
+
+  /// 单次 Git 操作（含后台 isolate 调度）的超时。
+  ///
+  /// 由构造函数注入：测试里可以缩短它来验证超时路径，生产默认 20 秒。
+  final Duration _commandTimeout;
+
+  Duration get commandTimeout => _commandTimeout;
 
   Future<GitRepositorySnapshot?> loadSnapshot(String? workspacePath) async {
     GitDebugLog.log(
       'GitRepositoryService.loadSnapshot start workspace=$workspacePath',
     );
-    final rootPath = await GitDebugLog.timeAsync(
-      'GitRepositoryService.discoverRoot',
-      () => discoverRoot(workspacePath),
-      result: (value) => 'root=$value',
-    );
+    final rootPath = await discoverRoot(workspacePath);
     if (rootPath == null) {
       GitDebugLog.log('GitRepositoryService.loadSnapshot no repository found');
       return null;
     }
-
-    try {
-      return await _withRepository(rootPath, (repo) async {
-        final statusEntries = GitDebugLog.timeSync(
-          'GitRepositoryService.statusEntries',
-          () => _statusEntries(repo),
-          result: (value) =>
-              'count=${value.length} untracked=${value.where((entry) => entry.isUntracked).length}',
-        );
-        final conflicts = await GitDebugLog.timeAsync(
-          'GitRepositoryService.conflicts',
-          () => _conflicts(repo, statusEntries),
-          result: (value) => 'count=${value.length}',
-        );
-        final aheadBehind = GitDebugLog.timeSync(
-          'GitRepositoryService.aheadBehind',
-          () => _aheadBehind(repo),
-          result: (value) => 'ahead=${value.$1} behind=${value.$2}',
-        );
-        final unstagedPatch = await GitDebugLog.timeAsync(
-          'GitRepositoryService.unstagedPatch',
-          () => _unstagedPatch(repo, statusEntries),
-          result: (value) => 'bytes=${value.length}',
-        );
-        final root = _normalizeWorkdir(repo.workdir);
-        final gitDir = p.normalize(repo.path);
-        final branchLabel = GitDebugLog.timeSync(
-          'GitRepositoryService.branchLabel',
-          () => _branchLabel(repo),
-        );
-        final stateLabel = GitDebugLog.timeSync(
-          'GitRepositoryService.repositoryStateLabel',
-          () => _repositoryStateLabel(repo),
-        );
-        final isDetached = _isDetached(repo);
-        final isEmpty = _isEmpty(repo);
-        final authorName = _configValue(repo, 'user.name') ?? 'Pyrite User';
-        final authorEmail =
-            _configValue(repo, 'user.email') ?? 'pyrite@example.local';
-        final branches = GitDebugLog.timeSync(
-          'GitRepositoryService.branches',
-          () => _branches(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final remotes = GitDebugLog.timeSync(
-          'GitRepositoryService.remotes',
-          () => _remotes(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final stashes = GitDebugLog.timeSync(
-          'GitRepositoryService.stashes',
-          () => _stashes(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final tags = GitDebugLog.timeSync(
-          'GitRepositoryService.tags',
-          () => _tags(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final submodules = GitDebugLog.timeSync(
-          'GitRepositoryService.submodules',
-          () => _submodules(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final worktrees = GitDebugLog.timeSync(
-          'GitRepositoryService.worktrees',
-          () => _worktrees(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final commits = GitDebugLog.timeSync(
-          'GitRepositoryService.commits',
-          () => _commits(repo),
-          result: (value) => 'count=${value.length}',
-        );
-        final stagedPatch = GitDebugLog.timeSync(
-          'GitRepositoryService.stagedPatch',
-          () => _stagedPatch(repo),
-          result: (value) => 'bytes=${value.length}',
-        );
-
+    return _runInIsolate('loadSnapshot', () async {
+      try {
+        return await _withRepository(rootPath, _buildSnapshot);
+      } catch (error, stackTrace) {
         GitDebugLog.log(
-          'GitRepositoryService.loadSnapshot complete root=$root '
-          'gitDir=$gitDir status=${statusEntries.length} '
-          'branches=${branches.length} commits=${commits.length}',
+          'GitRepositoryService.loadSnapshot error root=$rootPath',
+          error: error,
+          stackTrace: stackTrace,
         );
-        return GitRepositorySnapshot(
-          rootPath: root,
-          gitDir: gitDir,
-          branchLabel: branchLabel,
-          stateLabel: stateLabel,
-          isDetached: isDetached,
-          isEmpty: isEmpty,
-          authorName: authorName,
-          authorEmail: authorEmail,
-          ahead: aheadBehind.$1,
-          behind: aheadBehind.$2,
-          statusEntries: statusEntries,
-          branches: branches,
-          remotes: remotes,
-          stashes: stashes,
-          tags: tags,
-          submodules: submodules,
-          worktrees: worktrees,
-          commits: commits,
-          conflicts: conflicts,
-          stagedPatch: stagedPatch,
-          unstagedPatch: unstagedPatch,
-        );
-      });
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
-        'GitRepositoryService.loadSnapshot error root=$rootPath',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
+        rethrow;
+      }
+    });
   }
 
   Future<String?> discoverRoot(String? workspacePath) async {
     if (workspacePath == null || workspacePath.isEmpty) return null;
-
-    final startPath = Directory(workspacePath).existsSync()
-        ? workspacePath
-        : p.dirname(workspacePath);
-    try {
-      GitDebugLog.log('Repository.discover start startPath=$startPath');
-      final gitDir = Repository.discover(startPath: startPath);
-      GitDebugLog.log('Repository.discover end gitDir=$gitDir');
-      GitDebugLog.log('Repository.open(discovered) start gitDir=$gitDir');
-      final repo = Repository.open(gitDir);
-      try {
-        GitDebugLog.log(
-          'Repository.open(discovered) end path=${repo.path} '
-          'workdir=${repo.workdir}',
-        );
-        final workdir = repo.workdir;
-        if (workdir.isEmpty) return p.normalize(p.dirname(gitDir));
-        return _normalizeWorkdir(workdir);
-      } finally {
-        GitDebugLog.log('Repository.free(discovered) start gitDir=$gitDir');
-        repo.free();
-        GitDebugLog.log('Repository.free(discovered) end gitDir=$gitDir');
-      }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
-        'GitRepositoryService.discoverRoot failed startPath=$startPath',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return null;
-    }
+    return _runInIsolate(
+      'discoverRoot',
+      () => _discoverRootSync(workspacePath),
+      swallowErrors: true,
+    );
   }
 
   Future<void> initRepository(String workspacePath) async {
@@ -200,9 +100,10 @@ class GitRepositoryService {
     if (!Directory(path).existsSync()) {
       throw ArgumentError('工作区文件夹不存在：$path');
     }
-
-    final repo = Repository.init(path: path);
-    repo.free();
+    await _runInIsolate<void>('initRepository', () async {
+      final repo = Repository.init(path: path);
+      repo.free();
+    });
   }
 
   Future<String> diffForPath(
@@ -210,13 +111,16 @@ class GitRepositoryService {
     String filePath, {
     bool staged = false,
   }) {
-    return _withRepository(rootPath, (repo) async {
-      final patch = staged
-          ? _stagedPatch(repo, filePath: filePath)
-          : _trackedUnstagedPatch(repo, filePath: filePath);
-      if (patch.isNotEmpty || staged) return patch;
-      return _untrackedFilePatch(_normalizeWorkdir(repo.workdir), filePath);
-    });
+    return _runInIsolate(
+      'diffForPath',
+      () => _withRepository(rootPath, (repo) async {
+        final patch = staged
+            ? _stagedPatch(repo, filePath: filePath)
+            : _trackedUnstagedPatch(repo, filePath: filePath);
+        if (patch.isNotEmpty || staged) return patch;
+        return _untrackedFilePatch(_normalizeWorkdir(repo.workdir), filePath);
+      }),
+    );
   }
 
   Future<String> diffForEntry(
@@ -225,7 +129,10 @@ class GitRepositoryService {
     bool staged = false,
   }) {
     if (entry.isUntracked && !staged) {
-      return _untrackedFilePatch(rootPath, entry.path);
+      return _runInIsolate(
+        'diffForEntry',
+        () => _untrackedFilePatch(rootPath, entry.path),
+      );
     }
     return diffForPath(rootPath, entry.path, staged: staged);
   }
@@ -234,140 +141,326 @@ class GitRepositoryService {
     String rootPath,
     String filePath,
   ) async {
-    return _withRepository(rootPath, (repo) {
-      return _commits(repo, limit: 200, pathspec: filePath);
-    });
+    return _runInIsolate(
+      'fileHistory',
+      () => _withRepository(
+        rootPath,
+        (repo) => _commits(repo, limit: 200, pathspec: filePath),
+      ),
+    );
   }
 
   Future<List<GitBlameLine>> blame(String rootPath, String filePath) async {
-    return _withRepository(rootPath, (repo) {
-      final blame = Blame.file(repo: repo, path: filePath);
-      try {
-        return [
-          for (final hunk in blame)
-            GitBlameLine(
-              lineStart: hunk.finalStartLineNumber,
-              lineCount: hunk.linesCount,
-              commitSha: hunk.finalCommitOid.sha,
-              author: hunk.finalCommitter?.name ?? '',
-              email: hunk.finalCommitter?.email ?? '',
-              time: _signatureTime(hunk.finalCommitter),
-            ),
-        ];
-      } finally {
-        blame.free();
-      }
-    });
+    return _runInIsolate(
+      'blame',
+      () => _withRepository(rootPath, (repo) {
+        final blame = Blame.file(repo: repo, path: filePath);
+        try {
+          return [
+            for (final hunk in blame)
+              GitBlameLine(
+                lineStart: hunk.finalStartLineNumber,
+                lineCount: hunk.linesCount,
+                commitSha: hunk.finalCommitOid.sha,
+                author: hunk.finalCommitter?.name ?? '',
+                email: hunk.finalCommitter?.email ?? '',
+                time: _signatureTime(hunk.finalCommitter),
+              ),
+          ];
+        } finally {
+          blame.free();
+        }
+      }),
+    );
   }
 
   Future<void> stage(String rootPath, Iterable<String> paths) async {
-    await _withRepository(rootPath, (repo) {
-      final index = repo.index;
-      try {
-        for (final rawPath in _cleanPaths(paths)) {
-          final absolutePath = p.join(_normalizeWorkdir(repo.workdir), rawPath);
-          if (Directory(absolutePath).existsSync()) {
-            index.addAll([_gitPath(rawPath)]);
-          } else if (File(absolutePath).existsSync()) {
-            index.add(_gitPath(rawPath));
-          } else {
-            index.remove(_gitPath(rawPath));
+    final cleanPaths = _cleanPaths(paths).toList();
+    await _runInIsolate<void>('stage', () async {
+      await _withRepository(rootPath, (repo) {
+        final index = repo.index;
+        try {
+          for (final rawPath in cleanPaths) {
+            final absolutePath = p.join(
+              _normalizeWorkdir(repo.workdir),
+              rawPath,
+            );
+            if (Directory(absolutePath).existsSync()) {
+              index.addAll([_gitPath(rawPath)]);
+            } else if (File(absolutePath).existsSync()) {
+              index.add(_gitPath(rawPath));
+            } else {
+              index.remove(_gitPath(rawPath));
+            }
           }
+          index.write();
+        } finally {
+          index.free();
         }
-        index.write();
-      } finally {
-        index.free();
-      }
+      });
     });
   }
 
   Future<void> unstage(String rootPath, Iterable<String> paths) async {
-    await _withRepository(rootPath, (repo) {
-      final cleanPaths = _cleanPaths(paths).toList();
-      if (cleanPaths.isEmpty) return;
-
-      final headOid = _headOidOrNull(repo);
-      if (headOid != null) {
-        repo.resetDefault(
-          oid: headOid,
-          pathspec: cleanPaths.map(_gitPath).toList(),
-        );
-        return;
-      }
-
-      final index = repo.index;
-      try {
-        for (final path in cleanPaths) {
-          index.remove(_gitPath(path));
+    final cleanPaths = _cleanPaths(paths).toList();
+    if (cleanPaths.isEmpty) return;
+    await _runInIsolate<void>('unstage', () async {
+      await _withRepository(rootPath, (repo) {
+        final headOid = _headOidOrNull(repo);
+        if (headOid != null) {
+          repo.resetDefault(
+            oid: headOid,
+            pathspec: cleanPaths.map(_gitPath).toList(),
+          );
+          return;
         }
-        index.write();
-      } finally {
-        index.free();
-      }
+
+        final index = repo.index;
+        try {
+          for (final path in cleanPaths) {
+            index.remove(_gitPath(path));
+          }
+          index.write();
+        } finally {
+          index.free();
+        }
+      });
     });
   }
 
   Future<void> discardChanges(String rootPath, GitStatusEntry entry) async {
-    await _withRepository(rootPath, (repo) async {
-      if (entry.isUntracked) {
-        await _deleteUntrackedPath(_normalizeWorkdir(repo.workdir), entry.path);
-        return;
-      }
-      Checkout.head(
-        repo: repo,
-        strategy: const {GitCheckout.force, GitCheckout.recreateMissing},
-        paths: [_gitPath(entry.path)],
-      );
+    await _runInIsolate<void>('discardChanges', () async {
+      await _withRepository(rootPath, (repo) async {
+        if (entry.isUntracked) {
+          await _deleteUntrackedPath(
+            _normalizeWorkdir(repo.workdir),
+            entry.path,
+          );
+          return;
+        }
+        Checkout.head(
+          repo: repo,
+          strategy: const {GitCheckout.force, GitCheckout.recreateMissing},
+          paths: [_gitPath(entry.path)],
+        );
+      });
     });
   }
 
   Future<void> commit(String rootPath, GitCommitInput input) async {
-    await _withRepository(rootPath, (repo) {
-      if (repo.index.hasConflicts) {
-        throw StateError('仍有冲突未解决，不能提交。');
-      }
-      final message = input.message.trim();
-      if (message.isEmpty) {
-        throw ArgumentError('提交信息不能为空。');
-      }
+    await _runInIsolate<void>('commit', () async {
+      await _withRepository(rootPath, (repo) {
+        if (repo.index.hasConflicts) {
+          throw StateError('仍有冲突未解决，不能提交。');
+        }
+        final message = input.message.trim();
+        if (message.isEmpty) {
+          throw ArgumentError('提交信息不能为空。');
+        }
 
-      final index = repo.index;
-      try {
-        final tree = Tree.lookup(repo: repo, oid: index.writeTree(repo));
+        final index = repo.index;
         try {
-          final signature = _signature(input);
-          final parents = _commitParents(repo);
-          Commit.create(
-            repo: repo,
-            updateRef: 'HEAD',
-            author: signature,
-            committer: signature,
-            messageEncoding: 'UTF-8',
-            message: message,
-            tree: tree,
-            parents: parents,
-          );
-          if (repo.state != GitRepositoryState.none &&
-              repo.state != GitRepositoryState.rebase &&
-              repo.state != GitRepositoryState.rebaseMerge) {
-            repo.stateCleanup();
+          final tree = Tree.lookup(repo: repo, oid: index.writeTree(repo));
+          try {
+            final signature = _signature(input);
+            final parents = _commitParents(repo);
+            Commit.create(
+              repo: repo,
+              updateRef: 'HEAD',
+              author: signature,
+              committer: signature,
+              messageEncoding: 'UTF-8',
+              message: message,
+              tree: tree,
+              parents: parents,
+            );
+            if (repo.state != GitRepositoryState.none &&
+                repo.state != GitRepositoryState.rebase &&
+                repo.state != GitRepositoryState.rebaseMerge) {
+              repo.stateCleanup();
+            }
+          } finally {
+            tree.free();
           }
         } finally {
-          tree.free();
+          index.free();
         }
-      } finally {
-        index.free();
-      }
+      });
     });
   }
 
   Future<void> createBranch(String rootPath, String name) async {
-    await _withRepository(rootPath, (repo) {
-      final branchName = name.trim();
-      if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
-      final head = _headCommit(repo);
-      Branch.create(repo: repo, name: branchName, target: head);
+    final branchName = name.trim();
+    await _runInIsolate<void>('createBranch', () async {
+      await _withRepository(rootPath, (repo) {
+        if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+        final head = _headCommit(repo);
+        Branch.create(repo: repo, name: branchName, target: head);
+      });
     });
+  }
+
+  /// 删除本地分支。
+  ///
+  /// 使用 `git_branch_delete` 语义（等价 `git branch -d`），未合并的分支会被
+  /// libgit2 拒绝；当前分支也无法删除，两种情况都会以可读的中文错误抛出。
+  /// 需要丢弃未合并提交时显式传 [force]（等价 `git branch -D`）。
+  Future<void> deleteBranch(
+    String rootPath,
+    String name, {
+    bool force = false,
+  }) async {
+    final branchName = name.trim();
+    if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+    await _runInIsolate<void>('deleteBranch', () async {
+      await _withRepository(rootPath, (repo) {
+        final current = _currentBranch(repo);
+        if (current == branchName) {
+          throw StateError('不能删除当前分支 $branchName，请先切换到其他分支。');
+        }
+        try {
+          Branch.lookup(repo: repo, name: branchName).free();
+        } catch (_) {
+          throw ArgumentError('分支不存在：$branchName');
+        }
+        if (!force) {
+          final head = _headCommitOrNull(repo);
+          if (head != null) {
+            final target = Branch.lookup(repo: repo, name: branchName).target;
+            if (!_isMergedInto(repo, head, target)) {
+              throw StateError('分支 $branchName 尚未合并到当前分支；请使用强制删除。');
+            }
+          }
+        }
+        Branch.delete(repo: repo, name: branchName);
+      });
+    });
+  }
+
+  /// 删除远端分支。
+  ///
+  /// 通过 push 一个空 refspec（`git push <remote> :<branch>`）实现；这是
+  /// libgit2 唯一稳定的远端分支删除方式。[branchName] 是远端上的分支短名
+  /// （例如 `feature/demo`），不要带 `remote/` 前缀。
+  Future<String> deleteRemoteBranch(
+    String rootPath,
+    String remoteName,
+    String branchName,
+    GitCredentialDraft draft,
+  ) async {
+    final remote = remoteName.trim();
+    final branch = branchName.trim();
+    if (remote.isEmpty) throw ArgumentError('远端名称不能为空。');
+    if (branch.isEmpty) throw ArgumentError('远端分支名称不能为空。');
+    return _runInIsolate(
+      'deleteRemoteBranch',
+      () => _withRepository(rootPath, (repo) {
+        final handle = Remote.lookup(repo: repo, name: remote);
+        try {
+          handle.push(
+            refspecs: [':refs/heads/$branch'],
+            callbacks: _callbacks(draft),
+          );
+        } finally {
+          handle.free();
+        }
+        _pruneRemoteTrackingBranch(repo, remote, branch);
+        return '已删除远端分支 $remote/$branch';
+      }),
+    );
+  }
+
+  /// 重命名分支（含当前分支场景）。
+  ///
+  /// `git_branch_move` 在 HEAD 指向旧分支时会自动把 HEAD 迁移到新分支，
+  /// 因此当前分支重命名不需要额外处理；重命名后统一刷新 UI snapshot。
+  Future<void> renameBranch(
+    String rootPath,
+    String oldName,
+    String newName, {
+    bool force = false,
+  }) async {
+    final from = oldName.trim();
+    final to = newName.trim();
+    if (from.isEmpty) throw ArgumentError('原分支名称不能为空。');
+    if (to.isEmpty) throw ArgumentError('新分支名称不能为空。');
+    if (from == to) return;
+    await _runInIsolate<void>('renameBranch', () async {
+      await _withRepository(rootPath, (repo) {
+        if (!Branch.isNameValid(to)) {
+          throw ArgumentError('分支名称不合法：$to');
+        }
+        try {
+          Branch.lookup(repo: repo, name: from).free();
+        } catch (_) {
+          throw ArgumentError('分支不存在：$from');
+        }
+        Branch.rename(repo: repo, oldName: from, newName: to, force: force);
+      });
+    });
+  }
+
+  /// 删除 tag（本地 + 可选远端）。
+  ///
+  /// [remoteName] 为空时只删除本地 tag；非空时先推送删除远端同名 tag，
+  /// 成功后再删除本地，避免出现“本地没了、远端还在”的静默不一致。
+  Future<String> deleteTag(
+    String rootPath,
+    String name, {
+    String? remoteName,
+    GitCredentialDraft draft = const GitCredentialDraft(),
+  }) async {
+    final tagName = name.trim();
+    if (tagName.isEmpty) throw ArgumentError('标签名称不能为空。');
+    final remote = remoteName?.trim() ?? '';
+    return _runInIsolate(
+      'deleteTag',
+      () => _withRepository(rootPath, (repo) {
+        if (remote.isNotEmpty) {
+          final handle = Remote.lookup(repo: repo, name: remote);
+          try {
+            handle.push(
+              refspecs: [':refs/tags/$tagName'],
+              callbacks: _callbacks(draft),
+            );
+          } finally {
+            handle.free();
+          }
+        }
+        Tag.delete(repo: repo, tagName: tagName);
+        return remote.isEmpty
+            ? '已删除标签 $tagName'
+            : '已删除本地与 $remote 上的标签 $tagName';
+      }),
+    );
+  }
+
+  /// 把某个 tag 推送到远端（`git push <remote> refs/tags/<name>`）。
+  Future<String> pushTag(
+    String rootPath,
+    String remoteName,
+    String tagName,
+    GitCredentialDraft draft,
+  ) async {
+    final remote = remoteName.trim();
+    final tag = tagName.trim();
+    if (remote.isEmpty) throw ArgumentError('远端名称不能为空。');
+    if (tag.isEmpty) throw ArgumentError('标签名称不能为空。');
+    return _runInIsolate(
+      'pushTag',
+      () => _withRepository(rootPath, (repo) {
+        final handle = Remote.lookup(repo: repo, name: remote);
+        try {
+          handle.push(
+            refspecs: ['refs/tags/$tag:refs/tags/$tag'],
+            callbacks: _callbacks(draft),
+          );
+        } finally {
+          handle.free();
+        }
+        return '已将标签 $tag 推送到 $remote';
+      }),
+    );
   }
 
   Future<void> checkoutBranch(
@@ -375,8 +468,10 @@ class GitRepositoryService {
     String name, {
     bool remote = false,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      _checkoutBranch(repo, name, remote: remote);
+    await _runInIsolate<void>('checkoutBranch', () async {
+      await _withRepository(rootPath, (repo) {
+        _checkoutBranch(repo, name, remote: remote);
+      });
     });
   }
 
@@ -385,15 +480,17 @@ class GitRepositoryService {
     String name, {
     bool remote = false,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      final signature = _defaultSignature(repo);
-      Stash.create(
-        repo: repo,
-        stasher: signature,
-        message: 'PyriteIDE: stash before switching to ${name.trim()}',
-        flags: const {GitStash.includeUntracked},
-      );
-      _checkoutBranch(repo, name, remote: remote);
+    await _runInIsolate<void>('checkoutBranchWithStash', () async {
+      await _withRepository(rootPath, (repo) {
+        final signature = _defaultSignature(repo);
+        Stash.create(
+          repo: repo,
+          stasher: signature,
+          message: 'PyriteIDE: stash before switching to ${name.trim()}',
+          flags: const {GitStash.includeUntracked},
+        );
+        _checkoutBranch(repo, name, remote: remote);
+      });
     });
   }
 
@@ -402,18 +499,20 @@ class GitRepositoryService {
     String name, {
     bool remote = false,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      _checkoutBranch(
-        repo,
-        name,
-        remote: remote,
-        strategy: const {
-          GitCheckout.safe,
-          GitCheckout.recreateMissing,
-          GitCheckout.allowConflicts,
-          GitCheckout.conflictStyleMerge,
-        },
-      );
+    await _runInIsolate<void>('checkoutBranchWithMerge', () async {
+      await _withRepository(rootPath, (repo) {
+        _checkoutBranch(
+          repo,
+          name,
+          remote: remote,
+          strategy: const {
+            GitCheckout.safe,
+            GitCheckout.recreateMissing,
+            GitCheckout.allowConflicts,
+            GitCheckout.conflictStyleMerge,
+          },
+        );
+      });
     });
   }
 
@@ -422,29 +521,31 @@ class GitRepositoryService {
     String name, {
     bool remote = false,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      final headOid = _headOidOrNull(repo);
-      if (headOid != null) {
-        repo.reset(
-          oid: headOid,
-          resetType: GitReset.hard,
+    await _runInIsolate<void>('forceCheckoutBranch', () async {
+      await _withRepository(rootPath, (repo) {
+        final headOid = _headOidOrNull(repo);
+        if (headOid != null) {
+          repo.reset(
+            oid: headOid,
+            resetType: GitReset.hard,
+            strategy: const {
+              GitCheckout.force,
+              GitCheckout.removeUntracked,
+              GitCheckout.recreateMissing,
+            },
+          );
+        }
+        _checkoutBranch(
+          repo,
+          name,
+          remote: remote,
           strategy: const {
             GitCheckout.force,
             GitCheckout.removeUntracked,
             GitCheckout.recreateMissing,
           },
         );
-      }
-      _checkoutBranch(
-        repo,
-        name,
-        remote: remote,
-        strategy: const {
-          GitCheckout.force,
-          GitCheckout.removeUntracked,
-          GitCheckout.recreateMissing,
-        },
-      );
+      });
     });
   }
 
@@ -454,16 +555,18 @@ class GitRepositoryService {
     Iterable<String> paths, {
     bool remote = false,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      final trackedPaths = _cleanPaths(paths).map(_gitPath).toList();
-      if (trackedPaths.isNotEmpty) {
-        Checkout.head(
-          repo: repo,
-          strategy: const {GitCheckout.force, GitCheckout.recreateMissing},
-          paths: trackedPaths,
-        );
-      }
-      _checkoutBranch(repo, name, remote: remote);
+    final trackedPaths = _cleanPaths(paths).map(_gitPath).toList();
+    await _runInIsolate<void>('discardPathsAndCheckoutBranch', () async {
+      await _withRepository(rootPath, (repo) {
+        if (trackedPaths.isNotEmpty) {
+          Checkout.head(
+            repo: repo,
+            strategy: const {GitCheckout.force, GitCheckout.recreateMissing},
+            paths: trackedPaths,
+          );
+        }
+        _checkoutBranch(repo, name, remote: remote);
+      });
     });
   }
 
@@ -472,18 +575,20 @@ class GitRepositoryService {
     GitCommitInput input, {
     bool includeUntracked = true,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      final message = input.message.trim().isEmpty
-          ? 'WIP'
-          : input.message.trim();
-      Stash.create(
-        repo: repo,
-        stasher: _signature(input),
-        message: message,
-        flags: includeUntracked
-            ? const {GitStash.includeUntracked}
-            : const {GitStash.defaults},
-      );
+    await _runInIsolate<void>('stash', () async {
+      await _withRepository(rootPath, (repo) {
+        final message = input.message.trim().isEmpty
+            ? 'WIP'
+            : input.message.trim();
+        Stash.create(
+          repo: repo,
+          stasher: _signature(input),
+          message: message,
+          flags: includeUntracked
+              ? const {GitStash.includeUntracked}
+              : const {GitStash.defaults},
+        );
+      });
     });
   }
 
@@ -492,18 +597,22 @@ class GitRepositoryService {
     int index, {
     bool pop = false,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      if (pop) {
-        Stash.pop(repo: repo, index: index);
-      } else {
-        Stash.apply(repo: repo, index: index);
-      }
+    await _runInIsolate<void>('applyStash', () async {
+      await _withRepository(rootPath, (repo) {
+        if (pop) {
+          Stash.pop(repo: repo, index: index);
+        } else {
+          Stash.apply(repo: repo, index: index);
+        }
+      });
     });
   }
 
   Future<void> dropStash(String rootPath, int index) async {
-    await _withRepository(rootPath, (repo) {
-      Stash.drop(repo: repo, index: index);
+    await _runInIsolate<void>('dropStash', () async {
+      await _withRepository(rootPath, (repo) {
+        Stash.drop(repo: repo, index: index);
+      });
     });
   }
 
@@ -512,15 +621,18 @@ class GitRepositoryService {
     String remoteName,
     GitCredentialDraft draft,
   ) async {
-    return _withRepository(rootPath, (repo) {
-      final remote = Remote.lookup(repo: repo, name: remoteName);
-      try {
-        remote.fetch(callbacks: _callbacks(draft));
-      } finally {
-        remote.free();
-      }
-      return '已从 $remoteName 获取更新';
-    });
+    return _runInIsolate(
+      'fetch',
+      () => _withRepository(rootPath, (repo) {
+        final remote = Remote.lookup(repo: repo, name: remoteName);
+        try {
+          remote.fetch(callbacks: _callbacks(draft));
+        } finally {
+          remote.free();
+        }
+        return '已从 $remoteName 获取更新';
+      }),
+    );
   }
 
   Future<String> push(
@@ -528,22 +640,28 @@ class GitRepositoryService {
     String remoteName,
     GitCredentialDraft draft,
   ) async {
-    return _withRepository(rootPath, (repo) {
-      final branch = _currentBranch(repo);
-      if (branch == null) {
-        throw StateError('当前不是可推送的本地分支。');
-      }
-      final remote = Remote.lookup(repo: repo, name: remoteName);
-      try {
-        remote.push(
-          refspecs: ['refs/heads/$branch:refs/heads/$branch'],
-          callbacks: _callbacks(draft),
-        );
-      } finally {
-        remote.free();
-      }
-      return '已推送 $branch 到 $remoteName';
-    });
+    return _runInIsolate(
+      'push',
+      () => _withRepository(rootPath, (repo) {
+        final branch = _currentBranch(repo);
+        if (branch == null) {
+          throw StateError('当前不是可推送的本地分支。');
+        }
+        final remote = Remote.lookup(repo: repo, name: remoteName);
+        try {
+          remote.push(
+            refspecs: ['refs/heads/$branch:refs/heads/$branch'],
+            callbacks: _callbacks(draft),
+          );
+        } finally {
+          remote.free();
+        }
+        // 等价 `git push -u`：首次推送后记录 upstream，否则分支列表永远显示
+        // 不出 ahead/behind。已有 upstream 时保持不动。
+        _ensureBranchUpstream(repo, branch, remoteName);
+        return '已推送 $branch 到 $remoteName';
+      }),
+    );
   }
 
   Future<String> pull(
@@ -551,43 +669,135 @@ class GitRepositoryService {
     String remoteName,
     GitCredentialDraft draft,
   ) async {
-    return _withRepository(rootPath, (repo) {
-      final branch = _currentBranch(repo);
-      if (branch == null) {
-        throw StateError('当前 HEAD 分离，不能自动 pull。');
-      }
+    return _runInIsolate(
+      'pull',
+      () => _withRepository(rootPath, (repo) {
+        final branch = _currentBranch(repo);
+        if (branch == null) {
+          throw StateError('当前 HEAD 分离，不能自动 pull。');
+        }
 
-      final remote = Remote.lookup(repo: repo, name: remoteName);
-      try {
-        remote.fetch(callbacks: _callbacks(draft));
-      } finally {
-        remote.free();
-      }
+        final remote = Remote.lookup(repo: repo, name: remoteName);
+        try {
+          remote.fetch(callbacks: _callbacks(draft));
+        } finally {
+          remote.free();
+        }
 
-      final upstreamSpec = _upstreamSpec(repo, branch) ?? '$remoteName/$branch';
-      _merge(repo, upstreamSpec);
-      return '已从 $remoteName 拉取并合并到 $branch';
-    });
+        final upstreamSpec =
+            _upstreamSpec(repo, branch) ?? '$remoteName/$branch';
+        _merge(repo, upstreamSpec);
+        return '已从 $remoteName 拉取并合并到 $branch';
+      }),
+    );
   }
 
   Future<void> addRemote(String rootPath, String name, String url) async {
-    await _withRepository(rootPath, (repo) {
-      final remoteName = name.trim();
-      final remoteUrl = url.trim();
-      if (remoteName.isEmpty) throw ArgumentError('远端名称不能为空。');
-      if (remoteUrl.isEmpty) throw ArgumentError('远端 URL 不能为空。');
-      final remote = Remote.create(
-        repo: repo,
-        name: remoteName,
-        url: remoteUrl,
-      );
-      remote.free();
+    final remoteName = name.trim();
+    final remoteUrl = url.trim();
+    if (remoteName.isEmpty) throw ArgumentError('远端名称不能为空。');
+    if (remoteUrl.isEmpty) throw ArgumentError('远端 URL 不能为空。');
+    await _runInIsolate<void>('addRemote', () async {
+      await _withRepository(rootPath, (repo) {
+        final remote = Remote.create(
+          repo: repo,
+          name: remoteName,
+          url: remoteUrl,
+        );
+        remote.free();
+      });
     });
   }
 
+  /// 修改远端 URL。
+  ///
+  /// 同时更新 push URL（若原 push URL 与 fetch URL 不同，说明用户单独配置过
+  /// push 地址，这里保留原值，避免悄悄覆盖）。
+  Future<void> setRemoteUrl(String rootPath, String name, String url) async {
+    final remoteName = name.trim();
+    final remoteUrl = url.trim();
+    if (remoteName.isEmpty) throw ArgumentError('远端名称不能为空。');
+    if (remoteUrl.isEmpty) throw ArgumentError('远端 URL 不能为空。');
+    await _runInIsolate<void>('setRemoteUrl', () async {
+      await _withRepository(rootPath, (repo) {
+        final existing = Remote.lookup(repo: repo, name: remoteName);
+        final previousUrl = existing.url;
+        final previousPushUrl = existing.pushUrl;
+        existing.free();
+        Remote.setUrl(repo: repo, remote: remoteName, url: remoteUrl);
+        if (previousPushUrl.isEmpty || previousPushUrl == previousUrl) {
+          Remote.setPushUrl(repo: repo, remote: remoteName, url: remoteUrl);
+        }
+      });
+    });
+  }
+
+  /// 重命名远端，并返回 libgit2 报告无法迁移的非默认 refspec。
+  Future<List<String>> renameRemote(
+    String rootPath,
+    String oldName,
+    String newName,
+  ) async {
+    final from = oldName.trim();
+    final to = newName.trim();
+    if (from.isEmpty) throw ArgumentError('原远端名称不能为空。');
+    if (to.isEmpty) throw ArgumentError('新远端名称不能为空。');
+    if (from == to) return const [];
+    return _runInIsolate(
+      'renameRemote',
+      () => _withRepository(rootPath, (repo) {
+        if (!Remote.list(repo).contains(from)) {
+          throw ArgumentError('远端不存在：$from');
+        }
+        return Remote.rename(repo: repo, oldName: from, newName: to);
+      }),
+    );
+  }
+
+  Future<void> deleteRemote(String rootPath, String name) async {
+    final remoteName = name.trim();
+    if (remoteName.isEmpty) throw ArgumentError('远端名称不能为空。');
+    await _runInIsolate<void>('deleteRemote', () async {
+      await _withRepository(rootPath, (repo) {
+        if (!Remote.list(repo).contains(remoteName)) {
+          throw ArgumentError('远端不存在：$remoteName');
+        }
+        Remote.delete(repo: repo, name: remoteName);
+      });
+    });
+  }
+
+  /// 查询某个分支名在本地/远端两侧的存在情况。
+  ///
+  /// 删除分支前调用，让 UI 能分别确认“删除本地分支”和“删除同名远端分支”。
+  Future<GitBranchDeletionTarget> inspectBranchDeletionTarget(
+    String rootPath,
+    String name,
+  ) async {
+    final branchName = name.trim();
+    if (branchName.isEmpty) throw ArgumentError('分支名称不能为空。');
+    return _runInIsolate(
+      'inspectBranchDeletionTarget',
+      () => _withRepository(rootPath, (repo) {
+        final hasLocal = _branchExists(repo, branchName);
+        final current = _currentBranch(repo);
+        final remoteTarget = _remoteBranchTarget(repo, branchName);
+        return GitBranchDeletionTarget(
+          name: branchName,
+          hasLocal: hasLocal,
+          hasRemote: remoteTarget != null,
+          remoteName: remoteTarget?.$1 ?? '',
+          isCurrent: current == branchName,
+        );
+      }),
+    );
+  }
+
   Future<void> merge(String rootPath, String targetSpec) async {
-    await _withRepository(rootPath, (repo) {
-      _merge(repo, targetSpec);
+    await _runInIsolate<void>('merge', () async {
+      await _withRepository(rootPath, (repo) {
+        _merge(repo, targetSpec);
+      });
     });
   }
 
@@ -596,74 +806,82 @@ class GitRepositoryService {
     String targetSpec,
     GitCommitInput input,
   ) async {
-    await _withRepository(rootPath, (repo) {
-      final upstream = AnnotatedCommit.fromRevSpec(
-        repo: repo,
-        spec: targetSpec,
-      );
-      final rebase = Rebase.init(repo: repo, upstream: upstream);
-      try {
-        _advanceRebase(repo, rebase, input);
-      } finally {
-        rebase.free();
-        upstream.free();
-      }
+    await _runInIsolate<void>('rebase', () async {
+      await _withRepository(rootPath, (repo) {
+        final upstream = AnnotatedCommit.fromRevSpec(
+          repo: repo,
+          spec: targetSpec,
+        );
+        final rebase = Rebase.init(repo: repo, upstream: upstream);
+        try {
+          _advanceRebase(repo, rebase, input);
+        } finally {
+          rebase.free();
+          upstream.free();
+        }
+      });
     });
   }
 
   Future<void> continueRebase(String rootPath, GitCommitInput input) async {
-    await _withRepository(rootPath, (repo) {
-      if (repo.index.hasConflicts) {
-        throw StateError('仍有冲突未解决，不能继续 rebase。');
-      }
-      final rebase = Rebase.open(repo);
-      try {
-        rebase.commit(committer: _signature(input));
-        _advanceRebase(repo, rebase, input);
-      } finally {
-        rebase.free();
-      }
+    await _runInIsolate<void>('continueRebase', () async {
+      await _withRepository(rootPath, (repo) {
+        if (repo.index.hasConflicts) {
+          throw StateError('仍有冲突未解决，不能继续 rebase。');
+        }
+        final rebase = Rebase.open(repo);
+        try {
+          rebase.commit(committer: _signature(input));
+          _advanceRebase(repo, rebase, input);
+        } finally {
+          rebase.free();
+        }
+      });
     });
   }
 
   Future<void> abortRebase(String rootPath) async {
-    await _withRepository(rootPath, (repo) {
-      final rebase = Rebase.open(repo);
-      try {
-        rebase.abort();
-      } finally {
-        rebase.free();
-      }
+    await _runInIsolate<void>('abortRebase', () async {
+      await _withRepository(rootPath, (repo) {
+        final rebase = Rebase.open(repo);
+        try {
+          rebase.abort();
+        } finally {
+          rebase.free();
+        }
+      });
     });
   }
 
   Future<void> cherryPick(String rootPath, String targetSpec) async {
-    await _withRepository(rootPath, (repo) {
-      final commit = _commitFromSpec(repo, targetSpec);
-      Merge.cherryPick(repo: repo, commit: commit);
-      if (repo.index.hasConflicts) return;
+    await _runInIsolate<void>('cherryPick', () async {
+      await _withRepository(rootPath, (repo) {
+        final commit = _commitFromSpec(repo, targetSpec);
+        Merge.cherryPick(repo: repo, commit: commit);
+        if (repo.index.hasConflicts) return;
 
-      final index = repo.index;
-      try {
-        final tree = Tree.lookup(repo: repo, oid: index.writeTree(repo));
+        final index = repo.index;
         try {
-          Commit.create(
-            repo: repo,
-            updateRef: 'HEAD',
-            author: commit.author,
-            committer: _defaultSignature(repo),
-            messageEncoding: commit.messageEncoding,
-            message: commit.message,
-            tree: tree,
-            parents: _commitParents(repo),
-          );
-          if (repo.state != GitRepositoryState.none) repo.stateCleanup();
+          final tree = Tree.lookup(repo: repo, oid: index.writeTree(repo));
+          try {
+            Commit.create(
+              repo: repo,
+              updateRef: 'HEAD',
+              author: commit.author,
+              committer: _defaultSignature(repo),
+              messageEncoding: commit.messageEncoding,
+              message: commit.message,
+              tree: tree,
+              parents: _commitParents(repo),
+            );
+            if (repo.state != GitRepositoryState.none) repo.stateCleanup();
+          } finally {
+            tree.free();
+          }
         } finally {
-          tree.free();
+          index.free();
         }
-      } finally {
-        index.free();
-      }
+      });
     });
   }
 
@@ -676,92 +894,116 @@ class GitRepositoryService {
     String filePath,
     GitConflictSide side,
   ) async {
-    await _withRepository(rootPath, (repo) {
-      Checkout.index(
-        repo: repo,
-        strategy: {
-          GitCheckout.force,
-          side == GitConflictSide.ours
-              ? GitCheckout.useOurs
-              : GitCheckout.useTheirs,
-        },
-        paths: [_gitPath(filePath)],
-      );
-      final index = repo.index;
-      try {
-        index.add(_gitPath(filePath));
-        index.write();
-      } finally {
-        index.free();
-      }
+    await _runInIsolate<void>('acceptConflictSide', () async {
+      await _withRepository(rootPath, (repo) {
+        Checkout.index(
+          repo: repo,
+          strategy: {
+            GitCheckout.force,
+            side == GitConflictSide.ours
+                ? GitCheckout.useOurs
+                : GitCheckout.useTheirs,
+          },
+          paths: [_gitPath(filePath)],
+        );
+        final index = repo.index;
+        try {
+          index.add(_gitPath(filePath));
+          index.write();
+        } finally {
+          index.free();
+        }
+      });
     });
   }
 
+  /// 创建 tag。
+  ///
+  /// 保留原有的 lightweight 路径（无 message），新增 annotated 路径：
+  /// [GitTagInput.message] 非空时用 `Tag.createAnnotated` 写入 tagger 与消息。
   Future<void> createTag(
     String rootPath,
     String name, {
     String? targetSpec,
+    String? message,
   }) async {
-    await _withRepository(rootPath, (repo) {
-      final tagName = name.trim();
-      if (tagName.isEmpty) throw ArgumentError('标签名称不能为空。');
-      final target = _objectFromSpec(
-        repo,
-        targetSpec?.trim().isNotEmpty == true ? targetSpec!.trim() : 'HEAD',
-      );
-      final oid = switch (target) {
-        Commit(:final oid) => oid,
-        Tree(:final oid) => oid,
-        Blob(:final oid) => oid,
-        Tag(:final oid) => oid,
-        _ => throw ArgumentError('不支持的标签目标。'),
-      };
-      final type = _objectType(target);
-      Tag.createLightweight(
-        repo: repo,
-        tagName: tagName,
-        target: oid,
-        targetType: type,
-      );
+    final tagName = name.trim();
+    final tagMessage = message?.trim() ?? '';
+    final spec = targetSpec?.trim().isNotEmpty == true
+        ? targetSpec!.trim()
+        : 'HEAD';
+    if (tagName.isEmpty) throw ArgumentError('标签名称不能为空。');
+    await _runInIsolate<void>('createTag', () async {
+      await _withRepository(rootPath, (repo) {
+        final target = _objectFromSpec(repo, spec);
+        final oid = switch (target) {
+          Commit(:final oid) => oid,
+          Tree(:final oid) => oid,
+          Blob(:final oid) => oid,
+          Tag(:final oid) => oid,
+          _ => throw ArgumentError('不支持的标签目标。'),
+        };
+        final type = _objectType(target);
+        if (tagMessage.isEmpty) {
+          Tag.createLightweight(
+            repo: repo,
+            tagName: tagName,
+            target: oid,
+            targetType: type,
+          );
+          return;
+        }
+        Tag.createAnnotated(
+          repo: repo,
+          tagName: tagName,
+          target: oid,
+          targetType: type,
+          tagger: _defaultSignature(repo),
+          message: tagMessage,
+        );
+      });
     });
   }
 
   Future<void> createWorktree(String rootPath, String name, String path) async {
-    await _withRepository(rootPath, (repo) {
-      final worktreeName = name.trim();
-      final worktreePath = path.trim();
-      if (worktreeName.isEmpty) throw ArgumentError('worktree 名称不能为空。');
-      if (worktreePath.isEmpty) throw ArgumentError('worktree 路径不能为空。');
-
-      Reference? ref;
-      try {
-        ref = Reference.lookup(repo: repo, name: _localRefName(worktreeName));
-      } catch (_) {
-        ref = null;
-      }
-      final worktree = Worktree.create(
-        repo: repo,
-        name: worktreeName,
-        path: worktreePath,
-        ref: ref,
-      );
-      worktree.free();
-      ref?.free();
+    final worktreeName = name.trim();
+    final worktreePath = path.trim();
+    if (worktreeName.isEmpty) throw ArgumentError('worktree 名称不能为空。');
+    if (worktreePath.isEmpty) throw ArgumentError('worktree 路径不能为空。');
+    await _runInIsolate<void>('createWorktree', () async {
+      await _withRepository(rootPath, (repo) {
+        Reference? ref;
+        try {
+          ref = Reference.lookup(repo: repo, name: _localRefName(worktreeName));
+        } catch (_) {
+          ref = null;
+        }
+        final worktree = Worktree.create(
+          repo: repo,
+          name: worktreeName,
+          path: worktreePath,
+          ref: ref,
+        );
+        worktree.free();
+        ref?.free();
+      });
     });
   }
 
   Future<void> pruneWorktree(String rootPath, String name) async {
-    await _withRepository(rootPath, (repo) {
-      final worktree = Worktree.lookup(repo: repo, name: name);
-      try {
-        worktree.prune(const {
-          GitWorktree.pruneValid,
-          GitWorktree.pruneLocked,
-          GitWorktree.pruneWorkingTree,
-        });
-      } finally {
-        worktree.free();
-      }
+    await _runInIsolate<void>('pruneWorktree', () async {
+      await _withRepository(rootPath, (repo) {
+        final worktree = Worktree.lookup(repo: repo, name: name);
+        try {
+          worktree.prune(const {
+            GitWorktree.pruneValid,
+            GitWorktree.pruneLocked,
+            GitWorktree.pruneWorkingTree,
+          });
+        } finally {
+          worktree.free();
+        }
+      });
     });
   }
 
@@ -770,21 +1012,261 @@ class GitRepositoryService {
     String name,
     GitCredentialDraft draft,
   ) async {
-    await _withRepository(rootPath, (repo) {
-      Submodule.update(
-        repo: repo,
-        name: name,
-        init: true,
-        callbacks: _callbacks(draft),
-      );
+    await _runInIsolate<void>('updateSubmodule', () async {
+      await _withRepository(rootPath, (repo) {
+        Submodule.update(
+          repo: repo,
+          name: name,
+          init: true,
+          callbacks: _callbacks(draft),
+        );
+      });
     });
   }
 
   Future<void> writeCommitGraph(String rootPath) async {
-    await _withRepository(rootPath, (_) {
-      // git2dart/libgit2 does not expose commit-graph writing. Keep the action
-      // command-free so mobile platforms do not shell out to a missing Git CLI.
+    await _runInIsolate<void>('writeCommitGraph', () async {
+      await _withRepository(rootPath, (_) {
+        // git2dart/libgit2 does not expose commit-graph writing. Keep the action
+        // command-free so mobile platforms do not shell out to a missing Git CLI.
+      });
     });
+  }
+
+  /// 在后台 isolate 中执行 [body]，把异常还原成原始的 Dart 异常类型。
+  ///
+  /// [swallowErrors] 为 true 时，任何失败都返回 [fallback]（用于 discoverRoot
+  /// 这类“失败即视为没有仓库”的探测型 API）；否则异常会原样抛回调用方。
+  Future<T> _runInIsolate<T>(
+    String label,
+    FutureOr<T> Function() body, {
+    bool swallowErrors = false,
+    T? fallback,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    GitDebugLog.log('GitRepositoryService.$label isolate start');
+    try {
+      final result = await runGitJob<T>(
+        () async => body(),
+        timeout: _commandTimeout,
+        debugLabel: label,
+        describeError: _describeJobError,
+      );
+      GitDebugLog.log(
+        'GitRepositoryService.$label isolate end '
+        '${stopwatch.elapsedMilliseconds}ms',
+      );
+      return result;
+    } on GitJobFailureException catch (error, stackTrace) {
+      final restored = _restoreJobError(error.failure);
+      GitDebugLog.log(
+        'GitRepositoryService.$label isolate failed code=${error.failure.code}',
+        error: restored,
+        stackTrace: error.failure.stack.isEmpty ? stackTrace : null,
+      );
+      if (swallowErrors) return fallback as T;
+      Error.throwWithStackTrace(restored, stackTrace);
+    } on TimeoutException {
+      GitDebugLog.log(
+        'GitRepositoryService.$label isolate timeout '
+        '${stopwatch.elapsedMilliseconds}ms',
+      );
+      if (swallowErrors) return fallback as T;
+      rethrow;
+    }
+  }
+
+  /// 把 [GitJobFailure] 还原成调用方可判定的具体异常类型。
+  ///
+  /// 只还原服务层主动抛出、且调用方会做分支处理的类型；其余（libgit2 的
+  /// `Error` 子类）统一还原为 [GitJobFailureException] 文本，避免跨 isolate
+  /// 伪造原生错误对象。
+  Object _restoreJobError(GitJobFailure failure) {
+    return switch (failure.code) {
+      'blocked' => GitCheckoutBlockedException(
+        message: failure.message,
+        paths: failure.paths,
+      ),
+      'argument' => ArgumentError(failure.message),
+      'state' => StateError(failure.message),
+      'format' => FormatException(failure.message),
+      'timeout' => TimeoutException(failure.message, _commandTimeout),
+      _ =>
+        failure.isError
+            ? GitRepositoryFailureError(failure.message)
+            : GitRepositoryFailure(failure.message),
+    };
+  }
+
+  /// 工作 isolate 内的异常分类器。
+  GitJobFailure _describeJobError(Object error, StackTrace stackTrace) {
+    final stack = '$stackTrace';
+    if (error is GitCheckoutBlockedException) {
+      return GitJobFailure(
+        code: 'blocked',
+        message: error.message,
+        paths: error.paths,
+        stack: stack,
+      );
+    }
+    if (error is ArgumentError) {
+      return GitJobFailure(
+        code: 'argument',
+        message: '${error.message ?? error}',
+        stack: stack,
+      );
+    }
+    if (error is StateError) {
+      return GitJobFailure(code: 'state', message: error.message, stack: stack);
+    }
+    if (error is FormatException) {
+      return GitJobFailure(
+        code: 'format',
+        message: error.message,
+        stack: stack,
+      );
+    }
+    return GitJobFailure(
+      code: 'other',
+      message: '$error',
+      stack: stack,
+      isError: error is Error,
+    );
+  }
+
+  String? _discoverRootSync(String workspacePath) {
+    final startPath = Directory(workspacePath).existsSync()
+        ? workspacePath
+        : p.dirname(workspacePath);
+    try {
+      final gitDir = Repository.discover(startPath: startPath);
+      GitDebugLog.log('Repository.discover end gitDir=$gitDir');
+      final repo = Repository.open(gitDir);
+      try {
+        final workdir = repo.workdir;
+        if (workdir.isEmpty) return p.normalize(p.dirname(gitDir));
+        return _normalizeWorkdir(workdir);
+      } finally {
+        repo.free();
+      }
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitRepositoryService.discoverRoot failed startPath=$startPath',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
+  }
+
+  /// 组装一次完整 snapshot。所有回调都在同一个 isolate 里执行，返回的
+  /// [GitRepositorySnapshot] 只含基本类型/DTO，可安全跨 isolate 传递。
+  Future<GitRepositorySnapshot> _buildSnapshot(Repository repo) async {
+    final statusEntries = GitDebugLog.timeSync(
+      'GitRepositoryService.statusEntries',
+      () => _statusEntries(repo),
+      result: (value) =>
+          'count=${value.length} untracked=${value.where((entry) => entry.isUntracked).length}',
+    );
+    final conflicts = await GitDebugLog.timeAsync(
+      'GitRepositoryService.conflicts',
+      () => _conflicts(repo, statusEntries),
+      result: (value) => 'count=${value.length}',
+    );
+    final aheadBehind = GitDebugLog.timeSync(
+      'GitRepositoryService.aheadBehind',
+      () => _aheadBehind(repo),
+      result: (value) => 'ahead=${value.$1} behind=${value.$2}',
+    );
+    final unstagedPatch = await GitDebugLog.timeAsync(
+      'GitRepositoryService.unstagedPatch',
+      () => _unstagedPatch(repo, statusEntries),
+      result: (value) => 'bytes=${value.length}',
+    );
+    final root = _normalizeWorkdir(repo.workdir);
+    final gitDir = p.normalize(repo.path);
+    final branchLabel = GitDebugLog.timeSync(
+      'GitRepositoryService.branchLabel',
+      () => _branchLabel(repo),
+    );
+    final stateLabel = GitDebugLog.timeSync(
+      'GitRepositoryService.repositoryStateLabel',
+      () => _repositoryStateLabel(repo),
+    );
+    final isDetached = _isDetached(repo);
+    final isEmpty = _isEmpty(repo);
+    final authorName = _configValue(repo, 'user.name') ?? 'Pyrite User';
+    final authorEmail =
+        _configValue(repo, 'user.email') ?? 'pyrite@example.local';
+    final branches = GitDebugLog.timeSync(
+      'GitRepositoryService.branches',
+      () => _branches(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final remotes = GitDebugLog.timeSync(
+      'GitRepositoryService.remotes',
+      () => _remotes(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final stashes = GitDebugLog.timeSync(
+      'GitRepositoryService.stashes',
+      () => _stashes(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final tags = GitDebugLog.timeSync(
+      'GitRepositoryService.tags',
+      () => _tags(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final submodules = GitDebugLog.timeSync(
+      'GitRepositoryService.submodules',
+      () => _submodules(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final worktrees = GitDebugLog.timeSync(
+      'GitRepositoryService.worktrees',
+      () => _worktrees(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final commits = GitDebugLog.timeSync(
+      'GitRepositoryService.commits',
+      () => _commits(repo),
+      result: (value) => 'count=${value.length}',
+    );
+    final stagedPatch = GitDebugLog.timeSync(
+      'GitRepositoryService.stagedPatch',
+      () => _stagedPatch(repo),
+      result: (value) => 'bytes=${value.length}',
+    );
+
+    GitDebugLog.log(
+      'GitRepositoryService.loadSnapshot complete root=$root '
+      'gitDir=$gitDir status=${statusEntries.length} '
+      'branches=${branches.length} commits=${commits.length}',
+    );
+    return GitRepositorySnapshot(
+      rootPath: root,
+      gitDir: gitDir,
+      branchLabel: branchLabel,
+      stateLabel: stateLabel,
+      isDetached: isDetached,
+      isEmpty: isEmpty,
+      authorName: authorName,
+      authorEmail: authorEmail,
+      ahead: aheadBehind.$1,
+      behind: aheadBehind.$2,
+      statusEntries: statusEntries,
+      branches: branches,
+      remotes: remotes,
+      stashes: stashes,
+      tags: tags,
+      submodules: submodules,
+      worktrees: worktrees,
+      commits: commits,
+      conflicts: conflicts,
+      stagedPatch: stagedPatch,
+      unstagedPatch: unstagedPatch,
+    );
   }
 
   Future<T> _withRepository<T>(
@@ -1277,19 +1759,34 @@ class GitRepositoryService {
     GitDebugLog.log('GitRepositoryService._branchInfos start remote=$remote');
     final branches = remote ? repo.branchesRemote : repo.branchesLocal;
     final infos = [
-      for (final branch in branches)
-        GitBranchInfo(
-          name: branch.name,
-          targetSha: branch.target.sha,
-          isCurrent: !remote && branch.isHead,
-          isRemote: remote,
-          upstream: remote ? '' : _branchUpstream(branch),
-        ),
+      for (final branch in branches) _branchInfo(repo, branch, remote: remote),
     ];
     GitDebugLog.log(
       'GitRepositoryService._branchInfos end remote=$remote count=${infos.length}',
     );
     return infos;
+  }
+
+  /// 单个分支的 DTO。本地分支附带 upstream 与 ahead/behind 跟踪信息。
+  GitBranchInfo _branchInfo(
+    Repository repo,
+    Branch branch, {
+    required bool remote,
+  }) {
+    final upstream = remote ? '' : _branchUpstream(branch);
+    final tracking = remote || upstream.isEmpty
+        ? (0, 0, false)
+        : _branchTracking(repo, branch);
+    return GitBranchInfo(
+      name: branch.name,
+      targetSha: branch.target.sha,
+      isCurrent: !remote && branch.isHead,
+      isRemote: remote,
+      upstream: upstream,
+      ahead: tracking.$1,
+      behind: tracking.$2,
+      hasUpstream: tracking.$3,
+    );
   }
 
   List<GitBranchInfo> _remoteBranchInfosFromRefs(Repository repo) {
@@ -1378,11 +1875,143 @@ class GitRepositoryService {
     return branchName.contains(' -> ') || branchName.endsWith('/HEAD');
   }
 
+  /// 读取分支的 upstream 短名；没有 upstream 时返回空串。
   String _branchUpstream(Branch branch) {
     try {
       return branch.upstream.shorthand;
     } catch (_) {
       return '';
+    }
+  }
+
+  /// 计算 [branch] 相对其 upstream 的 ahead/behind。
+  ///
+  /// 没有 upstream 时返回 `(0, 0, false)`；调用方用第三位区分“同步”和
+  /// “无跟踪关系”，避免 UI 把 0/0 当成“已同步”。
+  (int, int, bool) _branchTracking(Repository repo, Branch branch) {
+    try {
+      final upstream = branch.upstream;
+      final values = repo.aheadBehind(
+        local: branch.target,
+        upstream: upstream.target,
+      );
+      return (values[0], values[1], true);
+    } catch (_) {
+      return (0, 0, false);
+    }
+  }
+
+  /// 判断 [target] 是否已经并入 [head]（等价 `git branch --merged`）。
+  bool _isMergedInto(Repository repo, Commit head, Oid target) {
+    try {
+      final values = repo.aheadBehind(local: target, upstream: head.oid);
+      // 第 0 位是 target 领先 head 的提交数：为 0 说明 target 已被 head 包含。
+      return values[0] == 0;
+    } catch (_) {
+      // 无法判定时按“未合并”处理，让用户显式选择强制删除，避免静默丢提交。
+      return false;
+    }
+  }
+
+  /// 首次推送后把本地分支的 upstream 指向 `<remote>/<branch>`。
+  ///
+  /// libgit2 的 push 不会像 `git push -u` 那样写配置，需要显式补上；已有
+  /// upstream（用户可能指向别的远端）时不覆盖。
+  void _ensureBranchUpstream(
+    Repository repo,
+    String branchName,
+    String remoteName,
+  ) {
+    try {
+      final branch = Branch.lookup(repo: repo, name: branchName);
+      try {
+        String existing = '';
+        try {
+          existing = branch.upstream.shorthand;
+        } catch (_) {
+          existing = '';
+        }
+        if (existing.isNotEmpty) return;
+        final trackingRef = '$remoteName/$branchName';
+        Reference.lookup(repo: repo, name: 'refs/remotes/$trackingRef').free();
+        branch.setUpstream(trackingRef);
+      } finally {
+        branch.free();
+      }
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitRepositoryService._ensureBranchUpstream skipped '
+        'branch=$branchName remote=$remoteName',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  bool _branchExists(Repository repo, String name) {
+    try {
+      Branch.lookup(repo: repo, name: name).free();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 找出本地分支 [branchName] 在某个 remote 上的同名分支。
+  ///
+  /// 返回 `(remoteName, remoteRefName)`，找不到时返回 null。优先匹配
+  /// 本地分支已配置的 upstream remote，其次遍历全部 remote。
+  (String, String)? _remoteBranchTarget(Repository repo, String branchName) {
+    final candidates = <String>[];
+    try {
+      final branch = Branch.lookup(repo: repo, name: branchName);
+      try {
+        final remoteName = branch.upstreamRemote;
+        if (remoteName.isNotEmpty) candidates.add(remoteName);
+      } catch (_) {
+        // 分支没有 upstream，继续遍历全部 remote。
+      } finally {
+        branch.free();
+      }
+    } catch (_) {
+      // 分支不存在（例如只删除远端分支的场景），直接遍历全部 remote。
+    }
+    for (final name in repo.remotes) {
+      if (!candidates.contains(name)) candidates.add(name);
+    }
+    for (final remoteName in candidates) {
+      final refName = '$remoteName/$branchName';
+      try {
+        Reference.lookup(repo: repo, name: 'refs/remotes/$refName').free();
+        return (remoteName, refName);
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /// 删除远端分支后清理对应的 remote-tracking ref。
+  ///
+  /// libgit2 的 push 删除不会自动移除 `refs/remotes/<remote>/<branch>`，
+  /// 不清理的话 UI 仍会显示一个已经不存在的远端分支。
+  void _pruneRemoteTrackingBranch(
+    Repository repo,
+    String remoteName,
+    String branchName,
+  ) {
+    try {
+      Reference.delete(
+        repo: repo,
+        name: 'refs/remotes/$remoteName/$branchName',
+      );
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitRepositoryService._pruneRemoteTrackingBranch failed '
+        'remote=$remoteName branch=$branchName',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -1434,12 +2063,66 @@ class GitRepositoryService {
     GitDebugLog.log('GitRepositoryService._tagsFromRefs start');
     final refs = _tagRefTargets(repo);
     final tags = [
-      for (final entry in refs.entries)
-        GitTagInfo(name: entry.key, targetSha: entry.value),
+      for (final entry in refs.entries) _tagInfo(repo, entry.key, entry.value),
     ];
     tags.sort((a, b) => a.name.compareTo(b.name));
     GitDebugLog.log('GitRepositoryService._tags end count=${tags.length}');
     return tags;
+  }
+
+  /// 解析单个 tag：区分 lightweight/annotated，并取 annotated 的消息首行。
+  ///
+  /// ref 直接指向 commit 的是 lightweight tag；指向 tag 对象的是 annotated。
+  /// 解析失败（例如 tag 指向 tree/blob）时退化成 lightweight，不影响列表展示。
+  GitTagInfo _tagInfo(Repository repo, String name, String targetSha) {
+    try {
+      final object = RevParse.single(repo: repo, spec: 'refs/tags/$name');
+      if (object is Tag) {
+        try {
+          return GitTagInfo(
+            name: name,
+            targetSha: targetSha,
+            isAnnotated: true,
+            message: _firstLine(object.message),
+          );
+        } finally {
+          object.free();
+        }
+      }
+      _freeGitObject(object);
+    } catch (error, stackTrace) {
+      GitDebugLog.log(
+        'GitRepositoryService._tagInfo failed name=$name',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+    return GitTagInfo(name: name, targetSha: targetSha);
+  }
+
+  /// 释放 [RevParse.single] 返回的任意 Git 对象。
+  ///
+  /// 它返回 `Object`（Commit/Tree/Blob/Tag），静态类型上没有 `free()`；
+  /// 这里按运行时类型分派，避免每处调用都写同样的 switch。
+  void _freeGitObject(Object object) {
+    switch (object) {
+      case Commit(:final free):
+        free();
+      case Tree(:final free):
+        free();
+      case Blob(:final free):
+        free();
+      case Tag(:final free):
+        free();
+      default:
+        break;
+    }
+  }
+
+  String _firstLine(String text) {
+    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final index = normalized.indexOf('\n');
+    return (index == -1 ? normalized : normalized.substring(0, index)).trim();
   }
 
   Map<String, String> _tagRefTargets(Repository repo) {
@@ -2125,6 +2808,29 @@ class GitCheckoutBlockedException implements Exception {
 
   final String message;
   final List<String> paths;
+
+  @override
+  String toString() => message;
+}
+
+/// 后台 isolate 中抛出、无法对应到具体 Dart 异常类型的操作失败。
+///
+/// 保留 message 让 UI 能直接展示；用专门的类型包裹，是为了避免把 libgit2 的
+/// 原生错误对象跨 isolate 复制（它们持有原生指针，不能发送）。
+class GitRepositoryFailure implements Exception {
+  const GitRepositoryFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// [GitRepositoryFailure] 的 Error 版本，对应工作 isolate 中抛出的 Error。
+class GitRepositoryFailureError extends Error {
+  GitRepositoryFailureError(this.message);
+
+  final String message;
 
   @override
   String toString() => message;

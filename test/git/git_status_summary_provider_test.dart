@@ -25,7 +25,10 @@ void main() {
       final summary = GitStatusSummary.inspect(nestedPath);
 
       expect(summary, isNotNull);
-      expect(summary!.rootPath, tempDir.path);
+      // macOS 上 Directory.systemTemp 位于 /var/...，而 git2dart 报告的
+      // workdir 是解析过符号链接的 /private/var/...。两者指向同一个目录，
+      // 这里把期望值也解析一遍再比较；生产代码返回真实路径是对的，不需要改。
+      expect(summary!.rootPath, _resolved(tempDir.path));
       expect(summary.branchLabel, 'main');
     } finally {
       tempDir.deleteSync(recursive: true);
@@ -73,7 +76,9 @@ void main() {
       final summary = GitStatusSummary.inspect(worktreePath);
 
       expect(summary, isNotNull);
-      expect(summary!.rootPath, worktreePath);
+      // 同上：worktree 路径也实拍在系统临时目录里，需要先解析符号链接
+      // 才能和 git2dart 报告的 workdir 比较。
+      expect(summary!.rootPath, _resolved(worktreePath));
       expect(summary.branchLabel, 'feature/git');
     } finally {
       tempDir.deleteSync(recursive: true);
@@ -98,3 +103,10 @@ Future<void> _commitFile(
     ),
   );
 }
+
+/// 解析符号链接后的真实路径。
+///
+/// `Directory.systemTemp` 在 macOS 上返回 `/var/...`，它是 `/private/var/...`
+/// 的符号链接；git2dart 报告的是 libgit2 解析过的真实路径。断言里先归一化
+/// 期望值，避免把“同一个目录的两种写法”当成 bug。
+String _resolved(String path) => Directory(path).resolveSymbolicLinksSync();
