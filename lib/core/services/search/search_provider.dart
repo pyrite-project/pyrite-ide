@@ -107,10 +107,11 @@ class SearchState {
   }
 }
 
-final searchRunnerProvider =
-    StateNotifierProvider<SearchRunner, SearchState>((ref) {
-      return SearchRunner(ref);
-    });
+final searchRunnerProvider = StateNotifierProvider<SearchRunner, SearchState>((
+  ref,
+) {
+  return SearchRunner(ref);
+});
 
 /// In-memory matching runs inline below this much total content; anything
 /// larger is matched inside a background isolate so typing and toggling match
@@ -154,8 +155,7 @@ class SearchRunner extends StateNotifier<SearchState> {
     _token = token;
 
     final cache = _cache;
-    final reuseCache =
-        !rescan && cache != null && cache.root.path == root.path;
+    final reuseCache = !rescan && cache != null && cache.root.path == root.path;
 
     if (reuseCache) {
       () async {
@@ -165,7 +165,10 @@ class SearchRunner extends StateNotifier<SearchState> {
           _publishResults(results);
         } catch (e) {
           if (!mounted) return;
-          state = state.copyWith(status: SearchStatus.error, error: e.toString());
+          state = state.copyWith(
+            status: SearchStatus.error,
+            error: e.toString(),
+          );
         }
       }();
       return;
@@ -309,7 +312,10 @@ class SearchRunner extends StateNotifier<SearchState> {
 
   /// Re-reads one file from disk, updates the scan cache entry, and re-matches
   /// just that file so a single replacement doesn't rescan the whole project.
-  Future<void> _refreshFileInResults(String filePath, SearchOptions options) async {
+  Future<void> _refreshFileInResults(
+    String filePath,
+    SearchOptions options,
+  ) async {
     final cache = _cache;
     if (cache == null) return;
 
@@ -319,20 +325,19 @@ class SearchRunner extends StateNotifier<SearchState> {
     } catch (_) {
       return;
     }
-    final normalized =
-        content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final normalized = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
     final updated = <ScannedFile>[];
     for (final file in cache.files) {
       updated.add(
-        file.path == filePath
-            ? (path: filePath, content: normalized)
-            : file,
+        file.path == filePath ? (path: filePath, content: normalized) : file,
       );
     }
     _cache = (root: cache.root, files: updated);
 
-    final rematched = matchFiles([(path: filePath, content: normalized)], options);
+    final rematched = matchFiles([
+      (path: filePath, content: normalized),
+    ], options);
     final results = <FileSearchResult>[];
     var replacedEntry = false;
     for (final result in state.results) {

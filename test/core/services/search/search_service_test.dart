@@ -57,9 +57,10 @@ void main() {
       ).toRegExp(multiLine: true);
       expect(regex.hasMatch('foo\nbar'), isTrue);
       expect(
-        const SearchOptions(pattern: '^bar', isRegExp: true)
-            .toRegExp()
-            .hasMatch('foo\nbar'),
+        const SearchOptions(
+          pattern: '^bar',
+          isRegExp: true,
+        ).toRegExp().hasMatch('foo\nbar'),
         isFalse,
       );
     });
@@ -85,9 +86,7 @@ void main() {
     });
 
     test('anchors keep per-line semantics over whole content', () {
-      final files = [
-        (path: '/p/a.txt', content: 'alpha\nbeta alpha\n'),
-      ];
+      final files = [(path: '/p/a.txt', content: 'alpha\nbeta alpha\n')];
 
       final results = matchFiles(
         files,
@@ -105,10 +104,7 @@ void main() {
         (path: '/p/b.txt', content: 'a needle'),
       ];
 
-      final results = matchFiles(
-        files,
-        const SearchOptions(pattern: 'needle'),
-      );
+      final results = matchFiles(files, const SearchOptions(pattern: 'needle'));
 
       expect(results.map((r) => r.filePath), ['/p/b.txt']);
       expect(results.first.matches.first.ranges, [(2, 8)]);
@@ -148,10 +144,12 @@ void main() {
     });
 
     test('finds matches across nested files', () async {
-      await File(path.join(temp.path, 'a.txt'))
-          .writeAsString('hello world\nfoo bar baz\n');
-      await File(path.join(temp.path, 'b.dart'))
-          .writeAsString('class Foo {}\n  world;\n');
+      await File(
+        path.join(temp.path, 'a.txt'),
+      ).writeAsString('hello world\nfoo bar baz\n');
+      await File(
+        path.join(temp.path, 'b.dart'),
+      ).writeAsString('class Foo {}\n  world;\n');
       final sub = Directory(path.join(temp.path, 'sub'))..createSync();
       await File(path.join(sub.path, 'c.txt')).writeAsString('world again');
 

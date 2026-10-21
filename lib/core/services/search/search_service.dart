@@ -223,7 +223,9 @@ List<FileSearchResult> matchFiles(
 
     final fileMatches = _collectLineMatches(content, regex);
     if (fileMatches.isNotEmpty) {
-      results.add(FileSearchResult(filePath: scanned.path, matches: fileMatches));
+      results.add(
+        FileSearchResult(filePath: scanned.path, matches: fileMatches),
+      );
     }
   }
 
@@ -279,8 +281,7 @@ List<SearchMatch> _collectLineMatches(String content, RegExp regex) {
   final lines = byLine.keys.toList()..sort();
   final matches = <SearchMatch>[];
   for (final line in lines) {
-    final ranges = byLine[line]!
-      ..sort((a, b) => a.$1.compareTo(b.$1));
+    final ranges = byLine[line]!..sort((a, b) => a.$1.compareTo(b.$1));
     matches.add(
       SearchMatch(lineIndex: line, lineText: lineText(line), ranges: ranges),
     );
@@ -415,7 +416,8 @@ Future<bool> replaceOneOccurrence(
   if (target == null) return false;
 
   final replacement = _expandReplacement(target, options);
-  final newContent = content.substring(0, target.start) +
+  final newContent =
+      content.substring(0, target.start) +
       replacement +
       content.substring(target.end);
   try {
@@ -434,22 +436,15 @@ Future<bool> replaceOneOccurrence(
 /// is inserted literally.
 String _expandReplacement(Match match, SearchOptions options) {
   if (!options.isRegExp) return options.replaceText;
-  return options.replaceText.replaceAllMapped(
-    RegExp(r'\$(\d+)'),
-    (group) {
-      final index = int.parse(group.group(1)!);
-      if (index == 0) return match.group(0) ?? '';
-      return match.group(index) ?? '';
-    },
-  );
+  return options.replaceText.replaceAllMapped(RegExp(r'\$(\d+)'), (group) {
+    final index = int.parse(group.group(1)!);
+    if (index == 0) return match.group(0) ?? '';
+    return match.group(index) ?? '';
+  });
 }
 
 /// Replaces every match of [regex] in [content] with [options.replaceText].
-String _replaceContent(
-  String content,
-  RegExp regex,
-  SearchOptions options,
-) {
+String _replaceContent(String content, RegExp regex, SearchOptions options) {
   if (!options.isRegExp) {
     return content.replaceAll(options.pattern, options.replaceText);
   }

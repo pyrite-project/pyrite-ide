@@ -28,10 +28,7 @@ void main() {
       expect(entry, isNotNull);
       expect(entry!.line, 3);
       expect(entry.character, 7);
-      expect(
-        entry.path,
-        isWindows ? r'W:\work\main.py' : '/w:/work/main.py',
-      );
+      expect(entry.path, isWindows ? r'W:\work\main.py' : '/w:/work/main.py');
     });
 
     test('reads an implementation-style location map', () {

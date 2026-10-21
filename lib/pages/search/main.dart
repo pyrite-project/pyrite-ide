@@ -83,8 +83,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   Future<void> _replaceCurrent() async {
     final root = ref.read(fileProvider);
-    final replaced =
-        await ref.read(searchRunnerProvider.notifier).replaceCurrent(root);
+    final replaced = await ref
+        .read(searchRunnerProvider.notifier)
+        .replaceCurrent(root);
     if (!replaced || !mounted) return;
 
     // Refresh the file tree and reconcile any open tab whose buffer now
@@ -107,14 +108,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           return AlertDialog(
             title: Text(_tr(r, I18nKey.searchConfirmReplaceTitle)),
             content: Text(
-              _tr(
-                r,
-                I18nKey.searchConfirmReplaceBody,
-                {
-                  'files': '${state.matchedFiles}',
-                  'matches': '${state.totalMatches}',
-                },
-              ),
+              _tr(r, I18nKey.searchConfirmReplaceBody, {
+                'files': '${state.matchedFiles}',
+                'matches': '${state.totalMatches}',
+              }),
             ),
             actions: [
               TextButton(
@@ -132,8 +129,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     );
     if (confirmed != true) return;
 
-    final count =
-        await ref.read(searchRunnerProvider.notifier).replaceAll(root);
+    final count = await ref
+        .read(searchRunnerProvider.notifier)
+        .replaceAll(root);
 
     // Refresh the file tree and reconcile any open tabs whose buffer now
     // differs from the rewritten file on disk.
@@ -144,9 +142,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     // Files changed on disk, so the scan cache is stale — rescan.
     if (mounted) {
-      ref
-          .read(searchRunnerProvider.notifier)
-          .runSearch(root, rescan: true);
+      ref.read(searchRunnerProvider.notifier).runSearch(root, rescan: true);
     }
 
     if (context.mounted && count > 0) {
@@ -181,7 +177,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
           _buildStatusRow(searchState, scheme, root),
           const Divider(height: 1),
-          Expanded(child: _buildResults(searchState, root, scheme, currentMatch)),
+          Expanded(
+            child: _buildResults(searchState, root, scheme, currentMatch),
+          ),
         ],
       ),
     );
@@ -225,8 +223,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ),
             const Spacer(),
             TextButton(
-              onPressed: () =>
-                  ref.read(searchRunnerProvider.notifier).cancel(),
+              onPressed: () => ref.read(searchRunnerProvider.notifier).cancel(),
               child: Text(_tr(ref, I18nKey.searchCancel)),
             ),
           ],
@@ -240,17 +237,16 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         child: Row(
           children: [
             Text(
-              _tr(ref, I18nKey.searchFilesMatched,
-                  {'files': '${searchState.matchedFiles}'}),
+              _tr(ref, I18nKey.searchFilesMatched, {
+                'files': '${searchState.matchedFiles}',
+              }),
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
+            Text('  ·  ', style: TextStyle(color: scheme.onSurfaceVariant)),
             Text(
-              '  ·  ',
-              style: TextStyle(color: scheme.onSurfaceVariant),
-            ),
-            Text(
-              _tr(ref, I18nKey.searchMatchesInFile,
-                  {'count': '${searchState.totalMatches}'}),
+              _tr(ref, I18nKey.searchMatchesInFile, {
+                'count': '${searchState.totalMatches}',
+              }),
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const Spacer(),
@@ -262,8 +258,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             TextButton(
               onPressed: () =>
                   ref.read(searchCollapsedProvider.notifier).state = {
-                for (final r in searchState.results) r.filePath,
-              },
+                    for (final r in searchState.results) r.filePath,
+                  },
               child: Text(_tr(ref, I18nKey.searchCollapseAll)),
             ),
           ],
@@ -466,10 +462,7 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
             bottom: BorderSide(color: scheme.outlineVariant.withAlpha(60)),
           ),
         ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: _inset,
-          vertical: 6,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: _inset, vertical: 6),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final counter = _matchCounter(
@@ -536,8 +529,7 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
                               children: [
                                 _FindToggle(
                                   label: 'Aa',
-                                  tooltip:
-                                      tr(I18nKey.editorFindCaseSensitive),
+                                  tooltip: tr(I18nKey.editorFindCaseSensitive),
                                   active: options.caseSensitive,
                                   foreground: foreground,
                                   onPressed: () => _toggleOption(
@@ -714,8 +706,8 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
     final text = !hasQuery
         ? ''
         : noResults
-            ? tr(I18nKey.editorFindNoResults)
-            : '${(current + 1).clamp(1, total)}/$total';
+        ? tr(I18nKey.editorFindNoResults)
+        : '${(current + 1).clamp(1, total)}/$total';
     final color = noResults
         ? Colors.redAccent.withAlpha(220)
         : foreground.withAlpha(200);
@@ -728,7 +720,10 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
       text: TextSpan(text: text, style: textStyle),
       textDirection: TextDirection.ltr,
     )..layout();
-    final width = max(_matchCounterMinWidth, painter.width + _matchCounterPadding);
+    final width = max(
+      _matchCounterMinWidth,
+      painter.width + _matchCounterPadding,
+    );
     painter.dispose();
     return (
       width: width,
@@ -822,7 +817,11 @@ class _FindToggleState extends State<_FindToggle> {
                   widget.label,
                   style: TextStyle(
                     color: widget.foreground.withAlpha(
-                      widget.active ? 255 : _hovered ? 210 : 150,
+                      widget.active
+                          ? 255
+                          : _hovered
+                          ? 210
+                          : 150,
                     ),
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,

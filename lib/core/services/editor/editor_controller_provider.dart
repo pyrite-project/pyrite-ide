@@ -117,10 +117,7 @@ class EditorControllerMapNotifier
         // malformed-tolerant decode and block editing so garbage is never
         // written back over the file.
         openedReadOnly = true;
-        text = utf8.decode(
-          await file.readAsBytes(),
-          allowMalformed: true,
-        );
+        text = utf8.decode(await file.readAsBytes(), allowMalformed: true);
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));

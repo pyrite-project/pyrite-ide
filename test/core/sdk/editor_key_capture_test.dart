@@ -201,7 +201,10 @@ void main() {
     expect(captured['type'], SdkCommands.responseOk);
     expect(harness.registry.hasCaptures, isTrue);
     expect(harness.registry.ownerOf('Tab')?.pluginId, 'fim-completion');
-    expect(harness.registry.isCaptured(_keyDown(LogicalKeyboardKey.tab)), isTrue);
+    expect(
+      harness.registry.isCaptured(_keyDown(LogicalKeyboardKey.tab)),
+      isTrue,
+    );
     expect(
       harness.registry.isCaptured(_keyDown(LogicalKeyboardKey.enter)),
       isFalse,

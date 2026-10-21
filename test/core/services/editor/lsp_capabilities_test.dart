@@ -26,8 +26,7 @@ class _FakeServer {
         final request = jsonDecode(message as String) as Map<String, dynamic>;
         fake.requests.add(request);
         if (request['method'] == 'initialize') {
-          fake.initializeParams =
-              request['params'] as Map<String, dynamic>;
+          fake.initializeParams = request['params'] as Map<String, dynamic>;
         }
         if (request['id'] != null) {
           socket.add(
@@ -102,8 +101,9 @@ void main() {
       await config.initialize();
 
       final textDocument =
-          (server.initializeParams!['capabilities'] as Map<String, dynamic>)[
-              'textDocument'] as Map<String, dynamic>;
+          (server.initializeParams!['capabilities']
+                  as Map<String, dynamic>)['textDocument']
+              as Map<String, dynamic>;
       expect(textDocument['definition'], isNotNull);
       expect(textDocument['rename'], isNotNull);
       expect(textDocument['codeAction'], isNotNull);
@@ -128,8 +128,9 @@ void main() {
       await config.initialize();
 
       final textDocument =
-          (server.initializeParams!['capabilities'] as Map<String, dynamic>)[
-              'textDocument'] as Map<String, dynamic>;
+          (server.initializeParams!['capabilities']
+                  as Map<String, dynamic>)['textDocument']
+              as Map<String, dynamic>;
       expect(textDocument.containsKey('definition'), isFalse);
       expect(textDocument.containsKey('rename'), isFalse);
       expect(textDocument.containsKey('codeAction'), isFalse);

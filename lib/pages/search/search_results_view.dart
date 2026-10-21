@@ -22,7 +22,7 @@ class SearchResultsView extends ConsumerWidget {
   final Directory root;
   final FlatSearchMatch? currentMatch;
   final void Function(String filePath, int lineIndex, int rangeIndex)
-      onOpenMatch;
+  onOpenMatch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,7 +60,8 @@ class SearchResultsView extends ConsumerWidget {
       if (isCollapsed) continue;
 
       for (final match in fileResult.matches) {
-        final isCurrent = currentMatch != null &&
+        final isCurrent =
+            currentMatch != null &&
             currentMatch!.filePath == fileResult.filePath &&
             currentMatch!.match.lineIndex == match.lineIndex;
         children.add(
@@ -75,8 +76,7 @@ class SearchResultsView extends ConsumerWidget {
                   fontFamily: 'monospace',
                 ) ??
                 const TextStyle(),
-            onTap: () =>
-                onOpenMatch(fileResult.filePath, match.lineIndex, 0),
+            onTap: () => onOpenMatch(fileResult.filePath, match.lineIndex, 0),
           ),
         );
       }
@@ -138,9 +138,9 @@ class _FileHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: scheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -202,11 +202,9 @@ class _MatchRow extends StatelessWidget {
                 child: Text(
                   '${match.lineIndex + 1}',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: isCurrent
-                            ? scheme.primary
-                            : scheme.onSurfaceVariant,
-                        fontWeight: isCurrent ? FontWeight.w700 : null,
-                      ),
+                    color: isCurrent ? scheme.primary : scheme.onSurfaceVariant,
+                    fontWeight: isCurrent ? FontWeight.w700 : null,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

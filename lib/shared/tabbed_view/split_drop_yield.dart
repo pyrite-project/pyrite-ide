@@ -21,11 +21,7 @@ abstract interface class SplitDropYield {
 /// Implemented by `EditorSplitDropRegion`; looked up by the native tab strip
 /// while a drag moves over it.
 class SplitDropScope extends InheritedWidget {
-  const SplitDropScope({
-    super.key,
-    required this.area,
-    required super.child,
-  });
+  const SplitDropScope({super.key, required this.area, required super.child});
 
   final SplitDropYield area;
 
