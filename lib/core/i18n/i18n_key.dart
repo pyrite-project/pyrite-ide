@@ -743,6 +743,16 @@ enum I18nKey {
     'settings.editor.shortcuts.description',
     '上传/下载确认的快捷键。',
   ),
+  settingsEditorShortcutReferenceSection(
+    'settings.editor.shortcut_reference.section',
+    '编辑器快捷键',
+  ),
+  settingsEditorShortcutReferenceDescription(
+    'settings.editor.shortcut_reference.description',
+    '编辑器内置的按键绑定。这些键目前不可自定义，列出以便查阅。',
+  ),
+  settingsEditorShortcutSave('settings.editor.shortcut.save', '保存当前文件'),
+  settingsEditorShortcutRun('settings.editor.shortcut.run', '运行当前文件'),
   settingsEditorConfirmAction('settings.editor.shortcuts.confirm', '确认操作'),
   settingsEditorCancelAction('settings.editor.shortcuts.cancel', '取消操作'),
   settingsEditorBehaviorSection('settings.editor.behavior.title', '编辑行为'),
