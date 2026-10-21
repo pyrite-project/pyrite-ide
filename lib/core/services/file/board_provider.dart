@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
@@ -245,6 +246,8 @@ class BoardNotifier {
         localFolderPath ??
         ref.read(fileProvider.notifier).getFocusFolderNode()?.id;
     final targetFolder = localFolderTarget ?? localWorkspace.path;
+    final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+    final cancelToken = progressNotifier.beginCancelToken();
     FileConflictAction? conflictPolicy;
     var downloaded = 0;
     var skipped = 0;
@@ -253,6 +256,7 @@ class BoardNotifier {
 
     try {
       for (var i = 0; i < nodes.length; i++) {
+        throwIfTransferCancelled(cancelToken);
         final node = nodes[i];
         final targetPath = path.join(
           targetFolder,
@@ -323,7 +327,11 @@ class BoardNotifier {
         }
 
         if (node.data is FolderItem) {
-          await transfer.downloadFolder(node.id, targetPath);
+          await transfer.downloadFolder(
+            node.id,
+            targetPath,
+            cancel: cancelToken,
+          );
           transferredFolders.add(targetPath);
         } else {
           ref
@@ -350,6 +358,15 @@ class BoardNotifier {
         }
         downloaded++;
       }
+    } on FileTransferCancelledException {
+      progressNotifier.cancelledByUser();
+      ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+      showEditorSnackBar(
+        context,
+        '${translate(ref, I18nKey.fileMessageCanceledDownload)}'
+        '（已完成 $downloaded，跳过 $skipped）',
+      );
+      return;
     } finally {
       ref
           .read(tabbedViewControllerProvider.notifier)

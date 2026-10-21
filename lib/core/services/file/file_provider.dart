@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart'
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -308,6 +309,17 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+
+    // Upload pre-flight: sum what the batch will move and fail *before* any
+    // file is written when the device reports too little free space. The check
+    // silently degrades when the port has no usable statvfs.
+    final passedPreflight = await _preflightUpload(context, [
+      for (final node in nodes) node.id,
+    ]);
+    if (passedPreflight == null) return;
+
+    final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+    final cancelToken = progressNotifier.beginCancelToken();
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -316,6 +328,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     try {
       for (var i = 0; i < nodes.length; i++) {
+        throwIfTransferCancelled(cancelToken);
         final node = nodes[i];
         final targetPath = buildBoardUploadTargetPath(
           sourcePath: node.id,
@@ -391,7 +404,12 @@ class FileNotifier extends StateNotifier<Directory?> {
           await ref
               .read(boardProvider)
               .transfer
-              .uploadFolder(node.id, targetPath);
+              .uploadFolder(
+                node.id,
+                targetPath,
+                cancel: cancelToken,
+                preflightSpace: false,
+              );
           transferredFolders.add(targetPath);
         } else {
           final bytes = await File(node.id).readAsBytes();
@@ -438,6 +456,14 @@ class FileNotifier extends StateNotifier<Directory?> {
           'skipped': skipped.toString(),
         }),
       );
+    } on FileTransferCancelledException {
+      progressNotifier.cancelledByUser();
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      showEditorSnackBar(
+        context,
+        '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
+        '（已完成 $uploaded，跳过 $skipped）',
+      );
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
@@ -468,6 +494,12 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+
+    final budget = await _preflightUpload(context, sourcePaths);
+    if (budget == null) return;
+
+    final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+    final cancelToken = progressNotifier.beginCancelToken();
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -476,6 +508,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     try {
       for (var i = 0; i < sourcePaths.length; i++) {
+        throwIfTransferCancelled(cancelToken);
         final sourcePath = sourcePaths[i];
         final isFolder = await Directory(sourcePath).exists();
         final targetPath = buildBoardUploadTargetPath(
@@ -530,7 +563,12 @@ class FileNotifier extends StateNotifier<Directory?> {
           await ref
               .read(boardProvider)
               .transfer
-              .uploadFolder(sourcePath, targetPath);
+              .uploadFolder(
+                sourcePath,
+                targetPath,
+                cancel: cancelToken,
+                preflightSpace: false,
+              );
           transferredFolders.add(targetPath);
         } else {
           final bytes = await File(sourcePath).readAsBytes();
@@ -576,6 +614,14 @@ class FileNotifier extends StateNotifier<Directory?> {
           'done': uploaded.toString(),
           'skipped': skipped.toString(),
         }),
+      );
+    } on FileTransferCancelledException {
+      progressNotifier.cancelledByUser();
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      showEditorSnackBar(
+        context,
+        '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
+        '（已完成 $uploaded，跳过 $skipped）',
       );
     } catch (error) {
       ref
@@ -875,6 +921,45 @@ class FileNotifier extends StateNotifier<Directory?> {
     }
   }
 
+  /// Runs the upload space pre-flight for [localPaths].
+  ///
+  /// Returns the budget on success/graceful degradation, or `null` when the
+  /// check failed and the caller must abort: the failure message is already in
+  /// the progress area and a snack bar so no silent swallow happens.
+  ///
+  /// The required size is accumulated across the whole batch ("批量时累加总
+  /// 大小") so a batch that individually fits but collectively does not is
+  /// rejected before the first write.
+  Future<SpaceBudgetResult?> _preflightUpload(
+    BuildContext context,
+    List<String> localPaths,
+  ) async {
+    final ops = ref.read(boardProvider).ops;
+    final int requiredBytes;
+    try {
+      requiredBytes = await ops.localTransferSize(localPaths);
+    } catch (error) {
+      // Size probing is part of the pre-flight only; failing to size a path is
+      // not a reason to block the upload, but it must be visible in the log.
+      debugPrint('[file] upload pre-flight size probe failed: $error');
+      return checkSpaceBudget(null, 0);
+    }
+    if (requiredBytes <= 0) return checkSpaceBudget(null, 0);
+
+    final budget = await ops.preflightUploadSpace(requiredBytes);
+    if (budget.status == SpaceBudgetStatus.insufficient) {
+      ref.read(fileTransferProgressProvider.notifier).fail(budget.message);
+      if (context.mounted) {
+        showIdeError(context, budget.message);
+      }
+      return null;
+    }
+    if (budget.status == SpaceBudgetStatus.unknown) {
+      debugPrint('[file] upload pre-flight skipped: ${budget.message}');
+    }
+    return budget;
+  }
+
   Future<void> _deleteLocalPath(String targetPath) async {
     final type = await FileSystemEntity.type(targetPath);
     if (type == FileSystemEntityType.directory) {
@@ -1099,6 +1184,22 @@ class FileNotifier extends StateNotifier<Directory?> {
         }
       }
 
+      final encodedBytes = utf8.encode(content);
+      // Single large files get the same pre-flight as batches; the size is the
+      // bytes actually written, not the on-disk file length, because the editor
+      // buffer may be larger than what was last saved.
+      final singleBudget = await ref
+          .read(boardProvider)
+          .ops
+          .preflightUploadSpace(encodedBytes.length);
+      if (singleBudget.status == SpaceBudgetStatus.insufficient) {
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(singleBudget.message);
+        if (context.mounted) showIdeError(context, singleBudget.message);
+        return;
+      }
+
       try {
         ref
             .read(fileTransferProgressProvider.notifier)
@@ -1116,7 +1217,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             .ops
             .writeFileBytesWithProgress(
               targetPath,
-              utf8.encode(content),
+              encodedBytes,
               currentFile: sourcePath,
               index: 1,
               totalFiles: 1,
@@ -1159,11 +1260,18 @@ class FileNotifier extends StateNotifier<Directory?> {
         sourcePath: selected!.id,
         boardFolderPath: boardFolderTarget?.id,
       );
+      final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+      final budget = await _preflightUpload(context, [selected.id]);
+      if (budget == null) return;
       try {
         await ref
             .read(boardProvider)
             .transfer
-            .uploadFolder(selected.id, targetPath);
+            .uploadFolder(
+              selected.id,
+              targetPath,
+              cancel: progressNotifier.beginCancelToken(),
+            );
         ref
             .read(tabbedViewControllerProvider.notifier)
             .warnOpenFilesOverwritten(
@@ -1299,6 +1407,14 @@ class FileNotifier extends StateNotifier<Directory?> {
     String targetPath,
   ) async {
     final bytes = await File(sourcePath).readAsBytes();
+    final budget = await ref
+        .read(boardProvider)
+        .ops
+        .preflightUploadSpace(bytes.length);
+    if (budget.status == SpaceBudgetStatus.insufficient) {
+      ref.read(fileTransferProgressProvider.notifier).fail(budget.message);
+      throw InsufficientDeviceSpaceException(budget);
+    }
     try {
       ref
           .read(fileTransferProgressProvider.notifier)

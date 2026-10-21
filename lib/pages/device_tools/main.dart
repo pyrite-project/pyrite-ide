@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/device/board_identity.dart';
+import 'package:pyrite_ide/core/services/device/board_identity_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
+import 'package:flserial/serial_scanner.dart';
 import 'package:pyrite_ide/pages/device_tools/device_status_panel.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -84,11 +87,18 @@ class _ToolsState extends ConsumerState<Tools> {
             itemCount: state.portNames.length,
             itemBuilder: (context, index) {
               final portInfo = state.portInfos[index];
+              final identity = identifyPort(portInfo);
               return ExpansionTile(
                 visualDensity: compact ? VisualDensity.compact : null,
-                leading: const Icon(Icons.developer_board_outlined),
+                leading: Icon(
+                  identity.isKnown
+                      ? Icons.memory
+                      : Icons.developer_board_outlined,
+                ),
                 title: Text(portInfo.path),
-                subtitle: Text(portInfo.description),
+                subtitle: Text(
+                  identity.isKnown ? identity.label : portInfo.description,
+                ),
                 childrenPadding: EdgeInsetsDirectional.fromSTEB(
                   16,
                   0,
@@ -110,6 +120,7 @@ class _ToolsState extends ConsumerState<Tools> {
                       label: const UseText(I18nKey.devicesConnectSerial),
                     ),
                   ),
+                  buildBoardIdentityTile(context, identity, portInfo),
                   buildDetailListTile(
                     context,
                     'Description',
@@ -226,5 +237,157 @@ class _ToolsState extends ConsumerState<Tools> {
       title: UseText(value ?? I18nKey.devicesUnknown),
       subtitle: Text(name),
     );
+  }
+
+  /// Shows the USB VID/PID identification result for one port.
+  ///
+  /// Unknown ids are displayed as "未知" with a hint that the IDE will fall
+  /// back to the persisted defaults, instead of hiding the row: a missing
+  /// answer is information too, because it explains why no board defaults
+  /// were applied on connect.
+  Widget buildBoardIdentityTile(
+    BuildContext context,
+    BoardIdentity identity,
+    SerialPortInfo portInfo,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final vidPid = identifyUsbIdLabel(portInfo.vid, portInfo.pid);
+    final resetLabel = boardResetStrategyLabel(identity.resetStrategy);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                identity.isKnown
+                    ? Icons.check_circle_outline
+                    : Icons.help_outline,
+                size: 16,
+                color: identity.isKnown
+                    ? scheme.primary
+                    : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  identity.label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'VID/PID: $vidPid',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '芯片家族: ${boardFamilyLabel(identity.family)}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            '建议波特率: ${identity.likelyBaud} · 复位方式: $resetLabel',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            '识别来源: ${boardIdentityConfidenceLabel(identity.confidence)}',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          if (!identity.isKnown)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '未匹配到已知板卡，连接时使用已保存的波特率与复位设置。',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Formats USB ids for display, keeping an unknown value explicit.
+String identifyUsbIdLabel(int? vid, int? pid) {
+  final vidText = vid == null
+      ? '未知'
+      : '0x${vid.toRadixString(16).padLeft(4, '0').toUpperCase()}';
+  final pidText = pid == null
+      ? '未知'
+      : '0x${pid.toRadixString(16).padLeft(4, '0').toUpperCase()}';
+  return '$vidText / $pidText';
+}
+
+/// Chinese label for a chip family.
+String boardFamilyLabel(BoardFamily family) {
+  switch (family) {
+    case BoardFamily.esp32:
+      return 'ESP32';
+    case BoardFamily.esp32s2:
+      return 'ESP32-S2';
+    case BoardFamily.esp32s3:
+      return 'ESP32-S3';
+    case BoardFamily.esp32c3:
+      return 'ESP32-C3';
+    case BoardFamily.esp32c6:
+      return 'ESP32-C6';
+    case BoardFamily.esp8266:
+      return 'ESP8266';
+    case BoardFamily.rp2040:
+      return 'RP2040 / Pico';
+    case BoardFamily.stm32:
+      return 'STM32 / pyboard';
+    case BoardFamily.k230:
+      return 'K230';
+    case BoardFamily.unknown:
+      return '未知';
+  }
+}
+
+/// Chinese label for a reset strategy.
+String boardResetStrategyLabel(BoardResetStrategy strategy) {
+  switch (strategy) {
+    case BoardResetStrategy.none:
+      return '不自动复位';
+    case BoardResetStrategy.dtrPulse:
+      return 'DTR 脉冲';
+    case BoardResetStrategy.rtsPulse:
+      return 'RTS 脉冲';
+    case BoardResetStrategy.esp32:
+      return 'ESP32 自动复位';
+    case BoardResetStrategy.reopenPort:
+      return '重开端口';
+  }
+}
+
+/// Chinese label for how a board was identified.
+String boardIdentityConfidenceLabel(BoardIdentityConfidence confidence) {
+  switch (confidence) {
+    case BoardIdentityConfidence.exact:
+      return 'USB VID/PID 精确匹配';
+    case BoardIdentityConfidence.description:
+      return '端口描述匹配';
+    case BoardIdentityConfidence.transportOnly:
+      return '仅识别到 USB 转串口芯片';
+    case BoardIdentityConfidence.unknown:
+      return '未识别';
   }
 }

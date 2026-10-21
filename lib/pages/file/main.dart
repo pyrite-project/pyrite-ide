@@ -11,6 +11,9 @@ import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_service.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_ui.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_manager.dart';
@@ -1439,6 +1442,13 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),
                   IconButton(
+                    tooltip: '同步到设备…（先预览差异清单）',
+                    onPressed: isConnected
+                        ? () => _openBoardSyncPreview(context, ref)
+                        : null,
+                    icon: const Icon(Icons.sync_alt),
+                  ),
+                  IconButton(
                     tooltip: translateForWidget(
                       ref,
                       I18nKey.fileActionRefreshLocal,
@@ -1622,6 +1632,10 @@ class ProjectFiles extends ConsumerWidget {
       return Column(
         children: [
           buildLocalHeader(context, ref, localWorkspace),
+          // The cancel affordance must be visible while the batch runs, so the
+          // progress row lives in the pane it belongs to rather than only in the
+          // status bar.
+          const FileTransferProgressBar(),
           // buildLocalActionStrip(context, ref),
           Expanded(
             child: SuperTreeView<FileSystemItem>(
@@ -1801,6 +1815,118 @@ class ProjectFiles extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Builds the local<->board plan, shows the preview, then executes it.
+  ///
+  /// The device is only touched twice: once to scan the board tree for the
+  /// plan and once per executed file. Cancelling the preview never starts a
+  /// transfer, and cancelling the execution stops between whole files so the
+  /// REPL is left at a normal prompt.
+  Future<void> _openBoardSyncPreview(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final localWorkspace = ref.read(fileProvider);
+    if (localWorkspace == null) {
+      showIdeError(
+        context,
+        translateForWidget(ref, I18nKey.fileMessageOpenLocalProject),
+      );
+      return;
+    }
+
+    final boardOps = ref.read(boardProvider).ops;
+    final boardRoot = ref.read(boardProvider).getFocusFolderNode()?.id ?? '/';
+
+    BoardSyncPlan plan;
+    try {
+      plan = await buildWorkspaceSyncPlan(
+        ops: boardOps,
+        localRoot: localWorkspace.path,
+        boardRoot: boardRoot,
+      );
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(
+          ref,
+          I18nKey.fileOperationRefreshBoardFile,
+        ),
+      );
+      if (sendCtrlC) sendCommandToActiveDevice(ref.read, "\x03");
+      return;
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(context, '生成同步清单失败：$error');
+      return;
+    }
+
+    if (!context.mounted) return;
+    if (!plan.hasWork) {
+      showEditorSnackBar(
+        context,
+        plan.isEmpty ? '本地工作区没有可同步的文件' : '两侧内容一致，无需同步',
+      );
+      return;
+    }
+
+    final result = await showBoardSyncPreviewDialog(
+      context,
+      plan: plan,
+      localRoot: localWorkspace.path,
+    );
+    if (result == null || result.selectedPaths.isEmpty || !context.mounted) {
+      return;
+    }
+
+    final filtered = _restrictPlanToDirection(plan, result.direction);
+    final progress = ref.read(fileTransferProgressProvider.notifier);
+    final executor = BoardSyncExecutor(ops: boardOps, progress: progress);
+    // No token is passed in: the executor creates it right after `start()`, so
+    // the progress bar's cancel button cancels exactly the token being polled.
+    final outcome = await executor.execute(
+      plan: filtered,
+      localRoot: localWorkspace.path,
+      selectedPaths: result.selectedPaths,
+    );
+
+    if (!context.mounted) return;
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+    if (outcome.error != null) {
+      showIdeError(context, '同步失败：${outcome.error}');
+    } else if (outcome.hasFailures) {
+      final first = outcome.failed.first;
+      showIdeError(
+        context,
+        '${outcome.summary}\n首个失败：${first.entry.relativePath} — ${first.error}',
+      );
+    } else {
+      showEditorSnackBar(context, outcome.summary);
+    }
+  }
+
+  /// Drops entries that point in the opposite direction of the user's choice.
+  ///
+  /// `none` keeps both directions. This is the "本地→设备 only" switch the
+  /// preview offers without needing a second plan.
+  BoardSyncPlan _restrictPlanToDirection(
+    BoardSyncPlan plan,
+    BoardSyncDirection direction,
+  ) {
+    if (direction == BoardSyncDirection.none) return plan;
+    return BoardSyncPlan(
+      entries: [
+        for (final entry in plan.entries)
+          if (entry.direction == BoardSyncDirection.none ||
+              entry.direction == direction)
+            entry,
+      ],
+      localRoot: plan.localRoot,
+      boardRoot: plan.boardRoot,
     );
   }
 

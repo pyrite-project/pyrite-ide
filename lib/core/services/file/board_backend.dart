@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
@@ -48,13 +49,32 @@ class BoardFileEntry {
   final String name;
   final BoardFileEntryType type;
 
+  /// File size in bytes when the listing reported it. `null` for folders and
+  /// for backends/listings that do not carry metadata.
+  final int? size;
+
+  /// Raw `st_mtime` (seconds since the epoch) when reported.
+  ///
+  /// Many MicroPython ports return 0 or an RTC-relative value, so callers must
+  /// treat a non-positive value as "no timestamp" instead of 1970.
+  final int? modifiedSeconds;
+
   const BoardFileEntry({
     required this.path,
     required this.name,
     required this.type,
+    this.size,
+    this.modifiedSeconds,
   });
 
   bool get isFolder => type == BoardFileEntryType.folder;
+
+  /// Modification time, or `null` when the board did not report a usable one.
+  DateTime? get modified {
+    final seconds = modifiedSeconds;
+    if (seconds == null || seconds <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +83,10 @@ class BoardFileEntry {
 
 abstract class BoardFileBackend {
   Future<List<BoardFileEntry>> listDirectory({String path = '/'});
-  Future<List<BoardFileEntry>> listTree({String path = '/'});
+  Future<List<BoardFileEntry>> listTree({
+    String path = '/',
+    bool includeMetadata = false,
+  });
   Future<String> readTextFile(String path);
   Future<Uint8List> readFileBytes(
     String path, {
@@ -81,6 +104,13 @@ abstract class BoardFileBackend {
   Future<void> move(String oldPath, String newPath);
   Future<void> createFolder(String path);
   Future<void> pathExists(String path);
+
+  /// Free bytes available on the filesystem holding [path], or `null` when the
+  /// device cannot report it (no `os.statvfs`, zeroed tuple, ...).
+  ///
+  /// Returning `null` is a normal outcome, not an error: callers degrade to
+  /// skipping the space pre-flight instead of blocking the transfer.
+  Future<int?> freeSpaceBytes({String path = '/'});
 }
 
 class BoardFileBackendException implements Exception {
@@ -236,7 +266,24 @@ _emit_ok(items)
   }
 
   @override
-  Future<List<BoardFileEntry>> listTree({String path = '/'}) async {
+  Future<List<BoardFileEntry>> listTree({
+    String path = '/',
+    bool includeMetadata = false,
+  }) async {
+    final metadataStatements = includeMetadata
+        ? '''
+    try:
+      _st = os.stat(item_path)
+      _size = _st[6]
+      _mtime = _st[8] if len(_st) > 8 else 0
+    except Exception:
+      _size = -1
+      _mtime = 0
+'''
+        : '''
+    _size = -1
+    _mtime = 0
+''';
     final value = await _runJsonValue(
       _wrapSimplePython('''
 base = ${boardFileTextExpression(path)}
@@ -250,10 +297,12 @@ def walk(base_path):
     mode = entry[1] if len(entry) > 1 else 0
     item_path = '/' + name if base_path == '/' else base_path + '/' + name
     is_dir = bool(mode & 0x4000) if mode else False
-    result.append({
+$metadataStatements    result.append({
       'path_b64': _encode_text(item_path),
       'name_b64': _encode_text(name),
       'type': 'folder' if is_dir else 'file',
+      'size': _size,
+      'mtime': _mtime,
     })
     if is_dir:
       result.extend(walk(item_path))
@@ -821,6 +870,18 @@ _emit_ok(True)
     );
   }
 
+  /// Reads `os.statvfs` with the same field interpretation as
+  /// `DeviceStatusNotifier` (`f_bsize` = block size, `f_bavail` = free blocks).
+  ///
+  /// Several MicroPython ports either lack `statvfs` or report a zeroed tuple
+  /// on an unmounted filesystem, so every failure path returns `null` and the
+  /// caller skips the pre-flight check rather than refusing to upload.
+  @override
+  Future<int?> freeSpaceBytes({String path = '/'}) async {
+    final result = await queryFreeSpaceBytes(ref, path: path);
+    return result.freeBytes;
+  }
+
   Future<dynamic> _runJsonValue(
     String python, {
     Duration timeout = const Duration(seconds: 20),
@@ -946,10 +1007,16 @@ except Exception as _pyrite_exc:
       final type = entry['type'] == 'folder'
           ? BoardFileEntryType.folder
           : BoardFileEntryType.file;
+      final rawSize = entry['size'];
+      final rawMtime = entry['mtime'];
+      final size = rawSize is num && rawSize >= 0 ? rawSize.toInt() : null;
+      final mtime = rawMtime is num && rawMtime > 0 ? rawMtime.toInt() : null;
       return BoardFileEntry(
         path: _entryText(entry, 'path'),
         name: _entryText(entry, 'name'),
         type: type,
+        size: type == BoardFileEntryType.folder ? null : size,
+        modifiedSeconds: type == BoardFileEntryType.folder ? null : mtime,
       );
     }).toList();
   }
@@ -1017,6 +1084,82 @@ except Exception as _pyrite_exc:
 final boardFileBackendProvider = Provider<BoardFileBackend>(
   (ref) => SerialBoardFileBackend(ref),
 );
+
+// ---------------------------------------------------------------------------
+// Device free space (statvfs) — shared query used by the upload pre-flight
+// ---------------------------------------------------------------------------
+
+const _freeSpaceMarker = '__PYRITE_FREE_SPACE__';
+
+/// Result of one `os.statvfs` probe.
+///
+/// [reported] distinguishes "the device said it has N bytes free" from "the
+/// device cannot answer", because a pre-flight check must skip in the latter
+/// case instead of treating it as 0 bytes free.
+class DeviceFreeSpace {
+  const DeviceFreeSpace({required this.freeBytes, required this.reported});
+
+  /// Free bytes, or `null` when unknown.
+  final int? freeBytes;
+
+  /// Whether the device actually reported a usable value.
+  final bool reported;
+
+  static const DeviceFreeSpace unknown = DeviceFreeSpace(
+    freeBytes: null,
+    reported: false,
+  );
+}
+
+/// Queries the free space of the filesystem holding [path].
+///
+/// Mirrors `DeviceStatusNotifier`'s reading of `os.statvfs`: `f_frsize`/`f_bsize`
+/// as the block size and `f_bavail` as the free block count. Any error,
+/// missing `statvfs`, or zeroed tuple is reported as [DeviceFreeSpace.unknown]
+/// so callers can degrade gracefully.
+Future<DeviceFreeSpace> queryFreeSpaceBytes(
+  Ref ref, {
+  String path = '/',
+}) async {
+  try {
+    final output = await runPythonOnActiveDevice(
+      ref,
+      _freeSpaceScript(boardFileTextExpression(path)),
+      timeout: const Duration(seconds: 8),
+    );
+    for (final line in output.split('\n')) {
+      final trimmed = line.trim();
+      if (!trimmed.startsWith(_freeSpaceMarker)) continue;
+      final value = int.tryParse(trimmed.substring(_freeSpaceMarker.length));
+      if (value == null || value < 0) return DeviceFreeSpace.unknown;
+      return DeviceFreeSpace(freeBytes: value, reported: true);
+    }
+  } catch (error) {
+    debugPrint('[board-backend] statvfs probe failed: $error');
+  }
+  return DeviceFreeSpace.unknown;
+}
+
+String _freeSpaceScript(String pathExpression) =>
+    '''
+try:
+  import uos as os
+except ImportError:
+  import os
+try:
+  _path = _decode_text($pathExpression)
+except Exception:
+  _path = '/'
+try:
+  _st = os.statvfs(_path)
+  _bsize = _st[1] if len(_st) > 1 and _st[1] > 0 else _st[0]
+  if not _bsize:
+    _bsize = 1
+  _free = _st[3] * _bsize
+except Exception:
+  _free = -1
+print('$_freeSpaceMarker' + str(_free))
+''';
 
 // ---------------------------------------------------------------------------
 // BoardFileOps — pure file I/O operations (no BuildContext)
@@ -1127,8 +1270,13 @@ class BoardFileOps {
     await ref.read(boardFileBackendProvider).createFolder(path);
   }
 
-  Future<List<BoardFileEntry>> lisFolderRecursive({String path = "/"}) async {
-    return ref.read(boardFileBackendProvider).listTree(path: path);
+  Future<List<BoardFileEntry>> lisFolderRecursive({
+    String path = "/",
+    bool includeMetadata = false,
+  }) async {
+    return ref
+        .read(boardFileBackendProvider)
+        .listTree(path: path, includeMetadata: includeMetadata);
   }
 
   Future<bool> boardFolderExists(String folderPath) async {
@@ -1158,6 +1306,55 @@ class BoardFileOps {
       await deleteFile(targetPath);
     }
   }
+
+  /// Free bytes reported by the device for [path], or `null` when unavailable.
+  Future<int?> freeSpaceBytes({String path = '/'}) async {
+    return ref.read(boardFileBackendProvider).freeSpaceBytes(path: path);
+  }
+
+  /// Runs the upload pre-flight for [requiredBytes].
+  ///
+  /// Returns the [SpaceBudgetResult] instead of throwing so batch callers can
+  /// accumulate sizes first and report one message. When the device cannot
+  /// report free space the result is [SpaceBudgetStatus.unknown] and the upload
+  /// proceeds: blocking on a missing `statvfs` would make several MicroPython
+  /// ports unusable.
+  Future<SpaceBudgetResult> preflightUploadSpace(int requiredBytes) async {
+    try {
+      final free = await freeSpaceBytes();
+      return checkSpaceBudget(free, requiredBytes);
+    } catch (error) {
+      debugPrint('[board-backend] upload pre-flight skipped: $error');
+      return checkSpaceBudget(null, requiredBytes);
+    }
+  }
+
+  /// Sums the byte sizes of the given local paths (files or directories).
+  ///
+  /// Directory sizes come from walking the tree, which is what the pre-flight
+  /// needs before a folder upload. Unreadable entries contribute 0 rather than
+  /// aborting the whole upload.
+  Future<int> localTransferSize(Iterable<String> localPaths) async {
+    var total = 0;
+    for (final localPath in localPaths) {
+      final type = await io.FileSystemEntity.type(localPath);
+      if (type == io.FileSystemEntityType.directory) {
+        await for (final entity in io.Directory(
+          localPath,
+        ).list(recursive: true, followLinks: false)) {
+          if (entity is! io.File) continue;
+          try {
+            total += await entity.length();
+          } catch (_) {}
+        }
+      } else if (type == io.FileSystemEntityType.file) {
+        try {
+          total += await io.File(localPath).length();
+        } catch (_) {}
+      }
+    }
+    return total;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,7 +1369,17 @@ class BoardTransfer {
 
   BoardTransfer(this.ref, this._ops);
 
-  Future<void> uploadFolder(String localPath, String remotePath) async {
+  /// Uploads a local directory tree to [remotePath].
+  ///
+  /// [cancel] is checked at every file boundary (never inside a write) so a
+  /// cancelled folder upload stops before the next file starts and leaves the
+  /// REPL in its normal prompt state: no CTRL-C or transaction abort is needed.
+  Future<void> uploadFolder(
+    String localPath,
+    String remotePath, {
+    FileTransferCancelToken? cancel,
+    bool preflightSpace = true,
+  }) async {
     final dir = io.Directory(localPath);
     final entities = await dir.list(recursive: true).toList();
     final files = entities.whereType<io.File>().toList(growable: false);
@@ -1189,6 +1396,20 @@ class BoardTransfer {
           ),
         );
 
+    if (preflightSpace) {
+      var totalBytes = 0;
+      for (final file in files) {
+        try {
+          totalBytes += await file.length();
+        } catch (_) {}
+      }
+      final budget = await _ops.preflightUploadSpace(totalBytes);
+      if (budget.status == SpaceBudgetStatus.insufficient) {
+        ref.read(fileTransferProgressProvider.notifier).fail(budget.message);
+        throw InsufficientDeviceSpaceException(budget);
+      }
+    }
+
     await _ensureBoardFolder(remotePath, createdDirs);
 
     for (final entity in entities) {
@@ -1204,6 +1425,7 @@ class BoardTransfer {
     }
 
     for (var i = 0; i < files.length; i++) {
+      throwIfTransferCancelled(cancel);
       final entity = files[i];
       final relativePath = path
           .relative(entity.path, from: localPath)
@@ -1253,7 +1475,15 @@ class BoardTransfer {
     }
   }
 
-  Future<void> downloadFolder(String remotePath, String localPath) async {
+  /// Downloads a board directory tree to [localPath].
+  ///
+  /// [cancel] is checked before each file so cancelling stops the loop at a
+  /// clean boundary; the in-flight file is always completed first.
+  Future<void> downloadFolder(
+    String remotePath,
+    String localPath, {
+    FileTransferCancelToken? cancel,
+  }) async {
     final items = await _ops.lisFolderRecursive(path: remotePath);
     final folders = items
         .where((item) => item.isFolder)
@@ -1285,6 +1515,7 @@ class BoardTransfer {
     }
 
     for (var i = 0; i < files.length; i++) {
+      throwIfTransferCancelled(cancel);
       final item = files[i];
       final relativePath = _boardPath
           .relative(item.path, from: remotePath)

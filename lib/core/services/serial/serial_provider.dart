@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/device/board_identity_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
@@ -106,6 +107,11 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     await disconnectPort();
     ref.read(boardFileItemsProvider.notifier).clear();
     ref.read(deviceStatusProvider.notifier).clear();
+
+    // USB VID/PID identification runs before the port is opened so the first
+    // handshake already uses the right baud rate and reset strategy. Explicit
+    // user settings are never overwritten here.
+    applyBoardDefaultsOnConnect(ref, path: path);
 
     bindReplOnOutputCallback();
     final serial = FlSerial();

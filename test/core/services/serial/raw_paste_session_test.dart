@@ -15,6 +15,11 @@ void main() {
       final progress = <int>[];
 
       var scriptSubmitted = false;
+      // 设备侧计的是 Base64 传输行携带的 payload 字节，不是写出的行长度：
+      // 每行是 "<base64>\n"，4 字节 payload 编码成 8 个字符 + 换行 = 9 字节。
+      // 旧实现用 bytes.length 累加，第 2 行时 uploaded=9 已经越过 10 字节的
+      // payload，于是既不注入 '+'，也不再发 DONE，第 2 次 ACK 等待必然超时。
+      // 这里改成解析收到的 Base64 行，按解码后的 payload 字节累加。
       var uploaded = 0;
       var uploadChunks = 0;
 
@@ -31,14 +36,38 @@ void main() {
 
         if (!scriptSubmitted || uploaded >= payload.length) return;
 
-        uploaded += bytes.length;
+        // 传输阶段写出的一律是 Base64 文本行。非 Base64 行（例如控制字节）
+        // 不计入 payload 进度。
+        final line = utf8.decode(bytes, allowMalformed: true).trim();
+        if (line.isEmpty) return;
+        final Uint8List chunk;
+        try {
+          chunk = base64Decode(line);
+        } on FormatException {
+          return;
+        }
+        if (chunk.isEmpty) return;
+
+        uploaded += chunk.length;
         uploadChunks += 1;
         if (uploadChunks == 2 && uploaded < payload.length) {
           queue.add(Uint8List.fromList(utf8.encode('+')));
         }
         if (uploaded >= payload.length) {
-          // Script done: DONE marker.
-          queue.add(Uint8List.fromList(utf8.encode('DONE')));
+          // Script done: the device answers with DONE, then the raw-REPL
+          // trailer, which `executeWithRawInput` consumes as
+          // stdout-EOT / stderr-EOT / prompt. 之前这份 mock 只注入了 DONE，
+          // 少了后面这三个字节，`executeWithRawInput` 会在读 stdout 的 EOT
+          // 时一直等下去；生产端协议（a49aa21 起的 device_executor.dart）
+          // 明确会继续读 EOT+EOT+prompt，所以这是测试过期，不是产品 bug。
+          queue.add(
+            Uint8List.fromList([
+              ...utf8.encode('DONE'),
+              0x04, // end of stdout
+              0x04, // end of stderr (empty)
+              0x3e, // prompt ">"
+            ]),
+          );
         }
       }
 
