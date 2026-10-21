@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -191,6 +192,12 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                         title: I18nKey.aboutTempDirectory,
                         value: info.tempPath,
                       ),
+                      const SectionDivider(),
+                      _CopyableInfoTile(
+                        icon: Icons.receipt_long_outlined,
+                        title: I18nKey.aboutLogFile,
+                        value: info.logPath,
+                      ),
                     ],
                   ),
                   SettingsSection(
@@ -353,6 +360,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
     final layers = ref.read(microPythonStubsLayers);
     return _DiagnosticInfo(
       platform: Platform.operatingSystem,
+      logPath: GitDebugLog.path,
       supportPath: support.path,
       pluginPath: path.join(support.path, 'plugin'),
       cachePath: cache.path,
@@ -388,6 +396,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
       'Plugin directory: ${info.pluginPath}',
       'Cache directory: ${info.cachePath}',
       'Temp directory: ${info.tempPath}',
+      'Log file: ${info.logPath}',
       'Python runtime asset: ${info.pythonAsset}',
       'Python runtime boot: assets/python_runtime_boot.zip',
       'Plugins: installed=${info.pluginCount}, enabled=${info.enabledPluginCount}, data=${info.dataPluginCount}',
@@ -409,6 +418,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
 class _DiagnosticInfo {
   const _DiagnosticInfo({
     required this.platform,
+    required this.logPath,
     required this.supportPath,
     required this.pluginPath,
     required this.cachePath,
@@ -426,6 +436,13 @@ class _DiagnosticInfo {
   });
 
   final String platform;
+
+  /// Path of the rotating debug log.
+  ///
+  /// The log is written to a hidden directory outside the app bundle, so
+  /// without this row a user reporting a crash has no way to find it.
+  final String logPath;
+
   final String supportPath;
   final String pluginPath;
   final String cachePath;

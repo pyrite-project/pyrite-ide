@@ -1168,6 +1168,7 @@ enum I18nKey {
   aboutPluginDirectory('about.runtime_paths.plugin_directory', '插件目录'),
   aboutCacheDirectory('about.runtime_paths.cache_directory', '缓存目录'),
   aboutTempDirectory('about.runtime_paths.temp_directory', '临时目录'),
+  aboutLogFile('about.runtime_paths.log_file', '调试日志文件'),
   aboutRuntimeStatus('about.runtime_status.title', '运行状态'),
   aboutRuntimeStatusDescription(
     'about.runtime_status.description',
