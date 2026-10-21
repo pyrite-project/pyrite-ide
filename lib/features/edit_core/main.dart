@@ -781,6 +781,23 @@ class _EditCoreState extends ConsumerState<EditCore> {
     // Prefill the dialog with the symbol being renamed so the user edits the
     // name in place instead of retyping it.
     final offset = _lspOffset(controller, textOffset);
+    final line = controller.getLineAtOffset(offset);
+    final character = offset - controller.getLineStartOffset(line);
+    // Ask the server first whether this position is renameable at all. Without
+    // this probe, pressing F2 on whitespace or a keyword showed the user a raw
+    // "textDocument/rename failed" string; here the request simply declines
+    // and nothing opens.
+    final bool renameable;
+    try {
+      renameable =
+          await config.prepareRename(filePath, line, character) != null;
+    } catch (error) {
+      if (!context.mounted) return;
+      _showLspRequestError(ref, error);
+      return;
+    }
+    if (!renameable || !context.mounted) return;
+
     final currentName = symbolAtOffset(controller.text, offset);
     final newName = await showDialog<String>(
       context: context,
@@ -804,8 +821,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ),
     );
     if (newName == null || newName.trim().isEmpty) return;
-    final line = controller.getLineAtOffset(offset);
-    final character = offset - controller.getLineStartOffset(line);
     try {
       final edit = await config.renameSymbol(
         filePath,

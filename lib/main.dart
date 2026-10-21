@@ -28,6 +28,7 @@ import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/features/window.dart';
@@ -452,6 +453,30 @@ void main() async {
           selectedTabPath: data.selectedTabPath,
         );
   }
+
+  // The board mirror only ever holds scratch copies of board files. Anything
+  // no restored tab points at was written by an earlier session, and deleting
+  // it here keeps the directory from growing with every download.
+  unawaited(
+    pruneBoardMirrorDirectory(
+      keepRelativePaths: {
+        for (final tab in data.tabs)
+          if (tab.boardFilePath != null &&
+              tab.boardFilePath!.isNotEmpty &&
+              tab.isBoardFile)
+            boardMirrorRelativePath(tab.boardFilePath!),
+      },
+    ).then(
+      (removed) {
+        if (removed > 0) {
+          GitDebugLog.log('pruned $removed stale board mirror entries');
+        }
+      },
+      onError: (Object error) {
+        GitDebugLog.log('board mirror prune failed', error: error);
+      },
+    ),
+  );
 
   appWindow.bind(container);
   appWindow.init();

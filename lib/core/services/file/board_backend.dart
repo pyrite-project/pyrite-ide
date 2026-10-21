@@ -1340,6 +1340,79 @@ Future<io.File> getLocalFile(String boardFilePath) async {
   return file;
 }
 
+/// Name of the directory that mirrors board files onto this machine.
+const String boardMirrorDirectoryName = 'temporary_board_files';
+
+/// Path of a board file inside the local mirror, relative to the mirror root.
+String boardMirrorRelativePath(String boardFilePath) =>
+    boardFilePath.split("/").skip(1).join("/");
+
+/// Removes mirrored board files that no persisted tab refers to.
+///
+/// Every downloaded or opened board file lands under
+/// `temporary_board_files/` and nothing ever removed one, so the directory
+/// grew with every session and kept stale copies of board files the user had
+/// long since replaced. Entries named by [keepRelativePaths] are preserved
+/// because restoring a board tab reopens exactly that mirror file; everything
+/// else was written by an earlier session and is re-downloadable on demand.
+///
+/// Returns the number of files and directories deleted, or 0 when the mirror
+/// does not exist or held nothing stale.
+Future<int> pruneBoardMirrorDirectory({
+  required Set<String> keepRelativePaths,
+  String? supportDirectoryPath,
+}) async {
+  final root =
+      supportDirectoryPath ?? (await getApplicationSupportDirectory()).path;
+  final mirror = io.Directory(path.join(root, boardMirrorDirectoryName));
+  if (!await mirror.exists()) return 0;
+
+  final rootPrefix = mirror.path.endsWith(io.Platform.pathSeparator)
+      ? mirror.path
+      : '${mirror.path}${io.Platform.pathSeparator}';
+  var removed = 0;
+
+  // Deepest-first so a directory is only considered once its children are
+  // gone, which is what lets the empty-prune below see the final state.
+  final entries = await mirror
+      .list(recursive: true, followLinks: false)
+      .toList();
+  entries.sort((a, b) => b.path.length.compareTo(a.path.length));
+
+  for (final entity in entries) {
+    final relative = entity.path.startsWith(rootPrefix)
+        ? entity.path.substring(rootPrefix.length)
+        : entity.path;
+    final normalized = relative.replaceAll(io.Platform.pathSeparator, '/');
+    if (entity is io.File && keepRelativePaths.contains(normalized)) {
+      continue;
+    }
+    if (entity is io.Directory &&
+        _mirrorDirectoryHasKeptFile(relative, keepRelativePaths)) {
+      continue;
+    }
+    try {
+      await entity.delete(recursive: true);
+      if (entity is io.File) removed++;
+    } on io.FileSystemException catch (error) {
+      // A file the editor still holds open can refuse deletion on Windows;
+      // leaving one entry behind is better than failing the whole cleanup.
+      debugPrint('pruneBoardMirrorDirectory: could not delete $entity: $error');
+    }
+  }
+  return removed;
+}
+
+bool _mirrorDirectoryHasKeptFile(
+  String relative,
+  Set<String> keepRelativePaths,
+) {
+  final prefix = relative.replaceAll(io.Platform.pathSeparator, '/');
+  return keepRelativePaths.any(
+    (kept) => kept == prefix || kept.startsWith('$prefix/'),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Board filesystem mount
 // ---------------------------------------------------------------------------

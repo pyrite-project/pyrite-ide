@@ -5,6 +5,9 @@
 *.swp
 .DS_Store
 .zcode/
+# Agent planning scratch files: they are transient design notes, not sources.
+.codebuddy/
+/codex/
 /temp_todo.txt
 .atom/
 .build/

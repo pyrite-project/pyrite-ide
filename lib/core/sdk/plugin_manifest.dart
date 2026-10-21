@@ -503,6 +503,7 @@ class PluginManifestValidator {
     'board.write',
     'editor.read',
     'editor.write',
+    'editor.keys',
     'persistence.read',
     'persistence.write',
     'tab.create',

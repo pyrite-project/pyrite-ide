@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/web_repl_handshake.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_file_protocol.dart';
@@ -180,9 +181,9 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     if (isBinaryFrame) return;
     final text = utf8.decode(bytes, allowMalformed: true);
     if (state.state == WebReplState.waitingPassword) {
-      if (text.contains('Password') || text.contains('password')) {
+      if (awaitsWebReplPassword(text)) {
         _channel?.sendText('$_password\n');
-      } else if (text.contains('>>>') || text.contains('OK')) {
+      } else if (showsWebReplPrompt(text)) {
         state = state.copyWith(state: WebReplState.connected);
         writeReplOutput(text);
         sendText('\x03');

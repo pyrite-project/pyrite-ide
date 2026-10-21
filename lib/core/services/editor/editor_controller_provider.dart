@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_stdio_args.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
@@ -217,8 +218,7 @@ class EditorControllerMapNotifier
     if (type == LspType.stdio) {
       final executable = ref.read(lspStdioExecutable).trim();
       if (executable.isEmpty) return null;
-      final argsStr = ref.read(lspStdioArgs).trim();
-      final args = argsStr.split(' ').where((s) => s.isNotEmpty).toList();
+      final args = splitLspStdioArgs(ref.read(lspStdioArgs));
       try {
         return await LspStdioConfig.start(
           executable: executable,

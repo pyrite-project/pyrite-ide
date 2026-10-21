@@ -1744,7 +1744,24 @@ enum I18nKey {
   statusForceResetDevice('status.force_reset.device', '强制重置设备连接'),
   sdkDefaultOpenFolderTitle('sdk.dialog.open_folder_title', '选择文件夹'),
   sdkDefaultOpenFileTitle('sdk.dialog.open_file_title', '选择文件'),
-  sdkDefaultOpenFilesTitle('sdk.dialog.open_files_title', '选择多个文件');
+  sdkDefaultOpenFilesTitle('sdk.dialog.open_files_title', '选择多个文件'),
+
+  // Global search / cross-file replace page.
+  searchTitle('search.title', '搜索'),
+  searchNoProject('search.no_project', '先打开一个项目目录再搜索。'),
+  searchScanned('search.scanned', '已扫描 {scanned} / {total} 个文件'),
+  searchCancel('search.cancel', '取消'),
+  searchFilesMatched('search.files_matched', '{files} 个文件'),
+  searchMatchesInFile('search.matches_in_file', '{count} 处匹配'),
+  searchExpandAll('search.expand_all', '全部展开'),
+  searchCollapseAll('search.collapse_all', '全部折叠'),
+  searchEmpty('search.empty', '没有匹配结果'),
+  searchConfirmReplaceTitle('search.confirm_replace.title', '确认跨文件替换'),
+  searchConfirmReplaceBody(
+    'search.confirm_replace.body',
+    '将在 {files} 个文件中替换 {matches} 处匹配。此操作会直接写回磁盘，且不可撤销。',
+  ),
+  searchReplaceDone('search.replace_done', '已替换 {matches} 处');
 
   const I18nKey(this.key, this.fallback);
 

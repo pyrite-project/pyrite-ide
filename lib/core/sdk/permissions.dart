@@ -100,6 +100,11 @@ abstract class Permissions {
     'sdk.editor.scroll_to_line': 'editor:write',
     'sdk.editor.cut': 'editor:write',
     'sdk.editor.paste': 'editor:write',
+    // Hijacking a key suppresses the editor's own handling of it, so a plugin
+    // can take over Tab and friends while it owns the screen. That is a
+    // stronger claim than editing text, hence its own action.
+    'sdk.editor.capture_keys': 'editor:keys',
+    'sdk.editor.release_keys': 'editor:keys',
 
     // editor document service (T13)
     'sdk.editor.active_document.get': 'editor:read',
