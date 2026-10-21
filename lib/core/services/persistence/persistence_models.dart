@@ -165,6 +165,11 @@ class PersistedData {
   final bool serialAutoReconnect;
   final String terminalFontFamily;
   final double terminalFontSize;
+
+  /// Desktop shell overrides; empty means "use the platform default".
+  final String terminalShellExecutable;
+  final String terminalShellArguments;
+  final String terminalWorkingDirectory;
   final double terminalLineHeight;
   final bool terminalLigatures;
   final String terminalAppearance;
@@ -249,6 +254,9 @@ class PersistedData {
     this.serialAutoReconnect = false,
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
+    this.terminalShellExecutable = '',
+    this.terminalShellArguments = '',
+    this.terminalWorkingDirectory = '',
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
     this.terminalAppearance = 'dark',

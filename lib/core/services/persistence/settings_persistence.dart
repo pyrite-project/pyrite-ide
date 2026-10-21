@@ -48,6 +48,12 @@ class SettingsPersistedData {
   final bool serialAutoReconnect;
   final String terminalFontFamily;
   final double terminalFontSize;
+
+  /// Desktop shell overrides. An empty string means "not configured", which
+  /// falls back to `$SHELL` / `powershell.exe` rather than launching nothing.
+  final String terminalShellExecutable;
+  final String terminalShellArguments;
+  final String terminalWorkingDirectory;
   final double terminalLineHeight;
   final bool terminalLigatures;
   final String terminalAppearance;
@@ -113,6 +119,9 @@ class SettingsPersistedData {
     this.serialAutoReconnect = false,
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
+    this.terminalShellExecutable = '',
+    this.terminalShellArguments = '',
+    this.terminalWorkingDirectory = '',
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
     this.terminalAppearance = 'dark',
@@ -179,6 +188,9 @@ class SettingsPersistedData {
     'serialAutoReconnect': serialAutoReconnect,
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
+    'terminalShellExecutable': terminalShellExecutable,
+    'terminalShellArguments': terminalShellArguments,
+    'terminalWorkingDirectory': terminalWorkingDirectory,
     'terminalLineHeight': terminalLineHeight,
     'terminalLigatures': terminalLigatures,
     'terminalAppearance': terminalAppearance,
@@ -258,6 +270,9 @@ class SettingsPersistedData {
     terminalFontFamily:
         json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
+    terminalShellExecutable: json['terminalShellExecutable'] as String? ?? '',
+    terminalShellArguments: json['terminalShellArguments'] as String? ?? '',
+    terminalWorkingDirectory: json['terminalWorkingDirectory'] as String? ?? '',
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     terminalLigatures: json['terminalLigatures'] as bool? ?? true,
     terminalAppearance: json['terminalAppearance'] as String? ?? 'dark',

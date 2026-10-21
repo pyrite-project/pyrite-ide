@@ -45,6 +45,8 @@ import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 import 'package:pyrite_ide/features/function_page/problems_view.dart';
+import 'package:pyrite_ide/features/terminal/desktop_terminal_surface.dart';
+import 'package:pyrite_ide/features/terminal/terminal_link_handlers.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
@@ -1374,20 +1376,33 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                             programBackground,
                           )
                         : terminalTheme;
-                    return TerminalView(
-                      configureTerminalColorQueries(
-                        session.terminal,
-                        terminalTheme,
-                        backgroundColor: session.backgroundColor,
-                      ),
+                    // Rebind the OSC 10/11 color queries to the current theme
+                    // before the surface renders: the closure captures the
+                    // theme by value, and a theme switch must be answered with
+                    // the new palette rather than the one from startup.
+                    configureTerminalColorQueries(
+                      session.terminal,
+                      terminalTheme,
+                      backgroundColor: session.backgroundColor,
+                    );
+                    return DesktopTerminalSurface(
+                      // Keying on the session id still rebuilds for a new
+                      // session; the surface keeps a GlobalKey on its
+                      // TerminalView so a theme contribution updates the
+                      // renderer in place instead of recreating it.
+                      key: ValueKey('terminal_${session.id}'),
+                      terminal: session.terminal,
                       controller: session.controller,
                       theme: effectiveTheme,
                       textStyle: buildTerminalStyle(ref),
-                      hardwareKeyboardOnly: true,
-                      // Keep the renderer alive when a theme contribution is
-                      // installed or selected. TerminalView updates its theme
-                      // in place; replacing it would discard focus/scroll UI.
-                      key: ValueKey('terminal_${session.id}'),
+                      // The link actions need the editor and the message
+                      // system, which the surface deliberately does not import;
+                      // they are injected here where the workspace providers
+                      // are already in scope.
+                      onUrlClick: (link) =>
+                          openTerminalUrlLink(context, ref, link.url!),
+                      onFileReferenceClick: (link) =>
+                          revealTerminalFileLink(context, ref, link),
                     );
                   },
                 ),

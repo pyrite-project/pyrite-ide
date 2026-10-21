@@ -10,6 +10,8 @@ import 'package:flutter_pty/flutter_pty.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/features/terminal/shell_profile.dart' as profile;
 import 'package:xterm/xterm.dart';
 
 class DesktopTerminalSession {
@@ -90,7 +92,8 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     final backgroundColor = ValueNotifier<Color?>(null);
     configureTerminal?.call(terminal, backgroundColor);
     final controller = TerminalController();
-    final shell = _defaultShell();
+    final shell = _resolveShell();
+    final startDirectory = _resolveStartDirectory(defaultDir);
 
     try {
       final session = _startSessionProcess(
@@ -102,7 +105,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
-        defaultDir: defaultDir?.path,
+        defaultDir: startDirectory,
         backgroundColor: backgroundColor,
       );
       state = state.copyWith(
@@ -165,6 +168,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         controller: controller,
         pty: pty,
         shell: shell,
+        startDirectory: defaultDir ?? Directory.current.path,
         code: code,
       ),
     );
@@ -187,6 +191,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     required TerminalController controller,
     required Pty pty,
     required _ShellCommand shell,
+    required String startDirectory,
     required int code,
   }) async {
     final current = state.sessions.where((item) => item.id == id).firstOrNull;
@@ -212,6 +217,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
+        defaultDir: startDirectory,
         backgroundColor: current.backgroundColor,
       );
       final sessions = [
@@ -268,6 +274,37 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       session.backgroundColor.dispose();
     }
     state = const DesktopTerminalState();
+  }
+
+  /// Resolves the launch line from the saved shell profile.
+  ///
+  /// The profile providers are read (not watched): a PTY is started once and
+  /// later setting changes must not try to reconfigure a live shell, so an
+  /// existing session keeps the command it was started with while a new tab
+  /// picks up the current settings.
+  _ShellCommand _resolveShell() {
+    final fallback = _defaultShell();
+    final resolved = profile.resolveShellCommand(
+      executableOverride: ref.read(terminalShellExecutable),
+      arguments: ref.read(terminalShellArguments),
+      fallbackExecutable: fallback.executable,
+      fallbackArguments: fallback.arguments,
+    );
+    return _ShellCommand(resolved.executable, resolved.arguments);
+  }
+
+  /// Picks the working directory for a new session.
+  ///
+  /// The configured directory wins only while it still exists, so a project
+  /// that was moved does not turn every new terminal into a launch failure;
+  /// the workspace root and the process directory are the fallbacks.
+  String _resolveStartDirectory(Directory? workspace) {
+    return profile.resolveStartDirectory(
+      configured: ref.read(terminalWorkingDirectory),
+      workspaceDirectory: workspace?.path,
+      currentDirectory: Directory.current.path,
+      exists: (candidate) => Directory(candidate).existsSync(),
+    );
   }
 
   _ShellCommand _defaultShell() {

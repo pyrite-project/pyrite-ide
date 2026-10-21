@@ -5,6 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xterm/src/ui/painter.dart';
 import 'package:xterm/xterm.dart';
 
+/// 这个文件逐像素验证 xterm 自绘字形（powerline、块元素、制表符）的几何。
+///
+/// 注意：期望值描述的是**当前渲染出的实际几何**，不是“字形设计上应该长
+/// 什么样”。xterm 是 git submodule（xterm.dart/**），不在 PyriteIDE 的可改
+/// 范围内，因此当自绘实现改变了某种字形的画法时，测试按真实行为更新并注明
+/// 理由，而不是反过来要求渲染器迁就旧断言。下面 0xE0B2 / 0xE0B3 的差异
+/// 就是这么来的（实心三角形 vs 细描边三角形）。
 void main() {
   final painter = TerminalPainter(
     theme: TerminalThemes.defaultTheme,
@@ -168,10 +175,41 @@ void main() {
         final image = await _paintGeneratedGlyph(painter, charCode);
 
         expect(await _hasPaintAt(image, x: 0, y: image.height ~/ 2), isTrue);
-        expect(
-          await _hasPaintAt(image, x: image.width - 2, y: image.height ~/ 2),
-          isTrue,
-        );
+        // 为什么这里的期望值是“实际几何”而不是设计文案：
+        //
+        // xterm 的 `_paintPowerlineSymbol` 对 powerline 做了两套画法：
+        // 0xE0B0/0xE0B2 是实心三角形（fill，path.close()），而
+        // 0xE0B1/0xE0B3 这对 “thin” 变体是**描边**三角形
+        // （PaintingStyle.stroke，strokeWidth = cellWidth/8 且上限 2.0）。
+        // 描边只画三角形的边，不作为实心块覆盖整格：在格子中间那一行，
+        // 0xE0B2 的实心填充从左边缘一直铺到右边缘（含 bleed），而 0xE0B3
+        // 只有那条斜边的描边宽度碰到格子两端的角落，右边缘的中间行本来就是
+        // 透明的。
+        //
+        // 也就是说，“左向 powerline 在中间行覆盖左右两个格子边缘”只对
+        // 实心变体 0xE0B2 成立；0xE0B3 作为细描边变体，它的两端覆盖点在
+        // 靠上/靠下的角落，而不是中间行。这是 xterm 自绘字形（第三方
+        // submodule，本次不可改）的既有几何，不是 PyriteIDE 的 bug，因此
+        // 期望值按实际渲染结果区分两个变体。
+        if (charCode == 0xe0b2) {
+          expect(
+            await _hasPaintAt(image, x: image.width - 2, y: image.height ~/ 2),
+            isTrue,
+          );
+        } else {
+          // 细描边变体：中间行右边缘没有实心覆盖，但描边必须落在格子内，
+          // 即这条斜边在右端确实被画到了（靠角落的那两行）。
+          expect(
+            await _hasPaintAt(image, x: image.width - 2, y: 1),
+            isTrue,
+            reason: '0xE0B3 的描边斜边应到达右端角落（y=1）',
+          );
+          expect(
+            await _hasPaintAt(image, x: image.width - 2, y: image.height ~/ 2),
+            isFalse,
+            reason: '0xE0B3 是描边三角形，中间行右边缘不填充',
+          );
+        }
       },
     );
   }

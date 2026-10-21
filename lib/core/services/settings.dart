@@ -153,6 +153,23 @@ StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
 
 StateProvider<TerminalAppearance> terminalAppearance =
     StateProvider<TerminalAppearance>((ref) => TerminalAppearance.dark);
+
+/// Desktop shell profile.
+///
+/// Empty means "not configured": the provider falls back to $SHELL /
+/// powershell.exe, so an untouched setting can never produce a broken launch
+/// line. Stored as one string rather than a list because the settings dialog
+/// edits a single text field and the split rules live next to the launch code
+/// (`features/terminal/shell_profile.dart`).
+StateProvider<String> terminalShellExecutable = StateProvider<String>(
+  (ref) => '',
+);
+StateProvider<String> terminalShellArguments = StateProvider<String>(
+  (ref) => '',
+);
+StateProvider<String> terminalWorkingDirectory = StateProvider<String>(
+  (ref) => '',
+);
 StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
   (ref) => false,
 );
