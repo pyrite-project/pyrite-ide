@@ -113,9 +113,15 @@ class _ToolsState extends ConsumerState<Tools> {
                 title: Text(portInfo.path),
                 subtitle: Text(
                   isActive
-                      ? '已连接 · 当前设备'
+                      ? translateInContext(
+                          context,
+                          I18nKey.devicesSessionActive,
+                        )
                       : session != null
-                      ? '已连接 · 点击切换'
+                      ? translateInContext(
+                          context,
+                          I18nKey.devicesSessionInactive,
+                        )
                       : identity.isKnown
                       ? identity.label
                       : portInfo.description,
@@ -155,14 +161,24 @@ class _ToolsState extends ConsumerState<Tools> {
                                   .read(serialProvider.notifier)
                                   .activateSession(session.id),
                               icon: const Icon(Icons.swap_horiz),
-                              label: const Text('切换到此设备'),
+                              label: Text(
+                                translateInContext(
+                                  context,
+                                  I18nKey.devicesSessionSwitch,
+                                ),
+                              ),
                             ),
                           )
                         else
-                          const Expanded(
+                          Expanded(
                             child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Text('当前正在使用此设备'),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                translateInContext(
+                                  context,
+                                  I18nKey.devicesSessionInUse,
+                                ),
+                              ),
                             ),
                           ),
                         const SizedBox(width: 8),
@@ -171,7 +187,12 @@ class _ToolsState extends ConsumerState<Tools> {
                               .read(serialProvider.notifier)
                               .closeSessionFor(portInfo.path),
                           icon: const Icon(Icons.link_off),
-                          label: const Text('断开'),
+                          label: Text(
+                            translateInContext(
+                              context,
+                              I18nKey.devicesSessionDisconnect,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -351,15 +372,27 @@ class _ToolsState extends ConsumerState<Tools> {
           ),
           const SizedBox(height: 2),
           Text(
-            '芯片家族: ${boardFamilyLabel(identity.family)}',
+            translateInContextWithReplacements(
+              context,
+              I18nKey.devicesBoardFamilyChip,
+              {'family': boardFamilyLabel(identity.family)},
+            ),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           Text(
-            '建议波特率: ${identity.likelyBaud} · 复位方式: $resetLabel',
+            translateInContextWithReplacements(
+              context,
+              I18nKey.devicesBoardDetectedBaud,
+              {'baud': '${identity.likelyBaud}', 'reset': resetLabel},
+            ),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           Text(
-            '识别来源: ${boardIdentityConfidenceLabel(identity.confidence)}',
+            translateInContextWithReplacements(
+              context,
+              I18nKey.devicesBoardIdentitySource,
+              {'source': boardIdentityConfidenceLabel(identity.confidence)},
+            ),
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
@@ -368,7 +401,7 @@ class _ToolsState extends ConsumerState<Tools> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                '未匹配到已知板卡，连接时使用已保存的波特率与复位设置。',
+                translateInContext(context, I18nKey.devicesBoardUnknownHint),
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
@@ -382,11 +415,12 @@ class _ToolsState extends ConsumerState<Tools> {
 
 /// Formats USB ids for display, keeping an unknown value explicit.
 String identifyUsbIdLabel(int? vid, int? pid) {
+  final unknown = I18nKey.devicesBoardUnknown.fallback;
   final vidText = vid == null
-      ? '未知'
+      ? unknown
       : '0x${vid.toRadixString(16).padLeft(4, '0').toUpperCase()}';
   final pidText = pid == null
-      ? '未知'
+      ? unknown
       : '0x${pid.toRadixString(16).padLeft(4, '0').toUpperCase()}';
   return '$vidText / $pidText';
 }
@@ -413,7 +447,7 @@ String boardFamilyLabel(BoardFamily family) {
     case BoardFamily.k230:
       return 'K230';
     case BoardFamily.unknown:
-      return '未知';
+      return I18nKey.devicesBoardUnknown.fallback;
   }
 }
 
@@ -421,15 +455,15 @@ String boardFamilyLabel(BoardFamily family) {
 String boardResetStrategyLabel(BoardResetStrategy strategy) {
   switch (strategy) {
     case BoardResetStrategy.none:
-      return '不自动复位';
+      return I18nKey.devicesBoardResetNone.fallback;
     case BoardResetStrategy.dtrPulse:
-      return 'DTR 脉冲';
+      return I18nKey.devicesBoardResetDtrPulse.fallback;
     case BoardResetStrategy.rtsPulse:
-      return 'RTS 脉冲';
+      return I18nKey.devicesBoardResetRtsPulse.fallback;
     case BoardResetStrategy.esp32:
-      return 'ESP32 自动复位';
+      return I18nKey.devicesBoardResetEsp32.fallback;
     case BoardResetStrategy.reopenPort:
-      return '重开端口';
+      return I18nKey.devicesBoardResetReopenPort.fallback;
   }
 }
 
@@ -437,12 +471,12 @@ String boardResetStrategyLabel(BoardResetStrategy strategy) {
 String boardIdentityConfidenceLabel(BoardIdentityConfidence confidence) {
   switch (confidence) {
     case BoardIdentityConfidence.exact:
-      return 'USB VID/PID 精确匹配';
+      return I18nKey.devicesBoardConfidenceUsbIds.fallback;
     case BoardIdentityConfidence.description:
-      return '端口描述匹配';
+      return I18nKey.devicesBoardConfidenceDescription.fallback;
     case BoardIdentityConfidence.transportOnly:
-      return '仅识别到 USB 转串口芯片';
+      return I18nKey.devicesBoardConfidenceBridgeChip.fallback;
     case BoardIdentityConfidence.unknown:
-      return '未识别';
+      return I18nKey.devicesBoardConfidenceUnknown.fallback;
   }
 }

@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// Builds a [SyncTreeSnapshot] from a local directory tree.
 ///
@@ -167,9 +168,17 @@ class BoardSyncExecutionResult {
   bool get hasFailures => failed.isNotEmpty;
 
   String get summary =>
-      '已上传 $uploaded 个、下载 $downloaded 个、跳过 $skipped 个'
-      '${failed.isEmpty ? '' : '、失败 ${failed.length} 个'}'
-      '${cancelled ? '（已取消）' : ''}';
+      I18nKey.devicesSyncRunSummary.fallback
+          .replaceAll('{uploaded}', '$uploaded')
+          .replaceAll('{downloaded}', '$downloaded')
+          .replaceAll('{skipped}', '$skipped') +
+      (failed.isEmpty
+          ? ''
+          : I18nKey.devicesSyncRunSummaryFailed.fallback.replaceAll(
+              '{count}',
+              '${failed.length}',
+            )) +
+      (cancelled ? I18nKey.devicesSyncRunSummaryCancelled.fallback : '');
 }
 
 /// One file that failed during execution.
@@ -218,7 +227,7 @@ class BoardSyncExecutor {
       direction: FileTransferDirection.upload,
       scope: FileTransferScope.folder,
       totalFiles: entries.length,
-      message: '正在同步本地工作区与设备…',
+      message: I18nKey.devicesSyncRunning.fallback,
     );
     // `start()` publishes a fresh token. The executor must read that one (or
     // the caller's explicit token) instead of a token captured before the call,
@@ -288,11 +297,18 @@ class BoardSyncExecutor {
       }
 
       if (cancelled) {
-        progress.cancelledByUser(message: '同步已取消');
+        progress.cancelledByUser(
+          message: I18nKey.devicesSyncCancelled.fallback,
+        );
       } else if (failures.isEmpty) {
-        progress.complete(message: '同步完成');
+        progress.complete(message: I18nKey.devicesSyncDone.fallback);
       } else {
-        progress.fail('同步完成但有 ${failures.length} 个文件失败');
+        progress.fail(
+          I18nKey.devicesSyncDoneWithFailures.fallback.replaceAll(
+            '{count}',
+            '${failures.length}',
+          ),
+        );
       }
       return BoardSyncExecutionResult(
         uploaded: uploaded,
@@ -302,7 +318,9 @@ class BoardSyncExecutor {
         cancelled: cancelled,
       );
     } catch (error) {
-      progress.fail('同步失败：$error');
+      progress.fail(
+        I18nKey.devicesSyncFailed.fallback.replaceAll('{error}', '$error'),
+      );
       return BoardSyncExecutionResult(
         uploaded: uploaded,
         downloaded: downloaded,

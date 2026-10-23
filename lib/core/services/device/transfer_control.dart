@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// Cooperative cancellation token for a long transfer.
 ///
@@ -134,15 +135,17 @@ class SpaceBudgetResult {
   String get message {
     switch (status) {
       case SpaceBudgetStatus.insufficient:
-        return '设备空间不足：需要 ${formatTransferBytes(requiredBytes)}'
-            '（$requiredBytes 字节），'
-            '可用 ${formatTransferBytes(freeBytes ?? 0)}'
-            '（${freeBytes ?? 0} 字节）';
+        return I18nKey.devicesSpaceInsufficient.fallback
+            .replaceAll('{required}', formatTransferBytes(requiredBytes))
+            .replaceAll('{requiredBytes}', '$requiredBytes')
+            .replaceAll('{free}', formatTransferBytes(freeBytes ?? 0))
+            .replaceAll('{freeBytes}', '${freeBytes ?? 0}');
       case SpaceBudgetStatus.unknown:
-        return '设备未上报可用空间，已跳过上传前空间预检';
+        return I18nKey.devicesSpaceUnknown.fallback;
       case SpaceBudgetStatus.fits:
-        return '空间充足：需要 ${formatTransferBytes(requiredBytes)}，'
-            '可用 ${formatTransferBytes(freeBytes ?? 0)}';
+        return I18nKey.devicesSpaceSufficient.fallback
+            .replaceAll('{required}', formatTransferBytes(requiredBytes))
+            .replaceAll('{free}', formatTransferBytes(freeBytes ?? 0));
     }
   }
 }

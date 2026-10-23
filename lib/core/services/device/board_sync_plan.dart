@@ -1,4 +1,5 @@
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// What a single planned entry will do during a project sync.
 enum BoardSyncAction {
@@ -329,7 +330,7 @@ BoardSyncEntry buildSyncEntry({
       local: localInfo,
       board: boardInfo,
       baseline: baseline,
-      reason: '大小相同但修改时间不同',
+      reason: I18nKey.devicesSyncReasonSameSize.fallback,
     );
   }
 
@@ -338,7 +339,7 @@ BoardSyncEntry buildSyncEntry({
     local: localInfo,
     board: boardInfo,
     baseline: baseline,
-    reason: '大小不同',
+    reason: I18nKey.devicesSyncReasonSizeMismatch.fallback,
   );
 }
 
@@ -364,7 +365,10 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.localToBoard,
       local: local,
       board: board,
-      note: '$reason；其中一方未提供修改时间，按本地较新处理',
+      note: I18nKey.devicesSyncNoteMissingMtime.fallback.replaceAll(
+        '{reason}',
+        reason,
+      ),
     );
   }
 
@@ -384,7 +388,10 @@ BoardSyncEntry _decideByMtime({
         direction: BoardSyncDirection.localToBoard,
         local: local,
         board: board,
-        note: '$reason；本地在上次同步后修改过',
+        note: I18nKey.devicesSyncNoteLocalChanged.fallback.replaceAll(
+          '{reason}',
+          reason,
+        ),
       );
     }
     if (boardChanged && !localChanged) {
@@ -394,7 +401,10 @@ BoardSyncEntry _decideByMtime({
         direction: BoardSyncDirection.boardToLocal,
         local: local,
         board: board,
-        note: '$reason；板端在上次同步后修改过',
+        note: I18nKey.devicesSyncNoteBoardChanged.fallback.replaceAll(
+          '{reason}',
+          reason,
+        ),
       );
     }
     return BoardSyncEntry(
@@ -403,7 +413,10 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.none,
       local: local,
       board: board,
-      note: '$reason；两侧在上次同步后都修改过，需要选择保留哪一侧',
+      note: I18nKey.devicesSyncNoteBothChanged.fallback.replaceAll(
+        '{reason}',
+        reason,
+      ),
     );
   }
 
@@ -415,7 +428,10 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.none,
       local: local,
       board: board,
-      note: '$reason；修改时间相近，需要选择保留哪一侧',
+      note: I18nKey.devicesSyncNoteMtimeClose.fallback.replaceAll(
+        '{reason}',
+        reason,
+      ),
     );
   }
 
@@ -426,7 +442,10 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.localToBoard,
       local: local,
       board: board,
-      note: '$reason；本地更新时间较新',
+      note: I18nKey.devicesSyncNoteLocalNewer.fallback.replaceAll(
+        '{reason}',
+        reason,
+      ),
     );
   }
   return BoardSyncEntry(
@@ -435,7 +454,10 @@ BoardSyncEntry _decideByMtime({
     direction: BoardSyncDirection.boardToLocal,
     local: local,
     board: board,
-    note: '$reason；板端更新时间较新',
+    note: I18nKey.devicesSyncNoteBoardNewer.fallback.replaceAll(
+      '{reason}',
+      reason,
+    ),
   );
 }
 

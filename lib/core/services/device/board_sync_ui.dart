@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Board sync UI
@@ -105,7 +107,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     final actionable = _selected.length;
     return AlertDialog(
       icon: const Icon(Icons.sync_alt),
-      title: const Text('同步本地工作区到设备'),
+      title: Text(translateInContext(context, I18nKey.devicesSyncTitle)),
       content: SizedBox(
         width: 640,
         height: 460,
@@ -113,7 +115,11 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '本地：${widget.localRoot}\n设备：${widget.plan.boardRoot}',
+              translateInContextWithReplacements(
+                context,
+                I18nKey.devicesSyncRoots,
+                {'local': widget.localRoot, 'board': widget.plan.boardRoot},
+              ),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontFamily: 'monospace',
                 color: scheme.onSurfaceVariant,
@@ -126,11 +132,17 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
               children: [
                 Expanded(
                   child: Text(
-                    '共 ${widget.plan.entries.length} 个文件：'
-                    '上传 ${widget.plan.uploadCount} · '
-                    '下载 ${widget.plan.downloadCount} · '
-                    '相同 ${widget.plan.unchangedCount} · '
-                    '冲突 ${widget.plan.conflicts.length}',
+                    translateInContextWithReplacements(
+                      context,
+                      I18nKey.devicesSyncSummary,
+                      {
+                        'count': '${widget.plan.entries.length}',
+                        'upload': '${widget.plan.uploadCount}',
+                        'download': '${widget.plan.downloadCount}',
+                        'unchanged': '${widget.plan.unchangedCount}',
+                        'conflict': '${widget.plan.conflicts.length}',
+                      },
+                    ),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -150,14 +162,20 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                             }
                           });
                         },
-                  child: const Text('全选/全不选'),
+                  child: Text(
+                    translateInContext(context, I18nKey.devicesSyncToggleAll),
+                  ),
                 ),
               ],
             ),
             const Divider(height: 1),
             Expanded(
               child: entries.isEmpty
-                  ? const Center(child: Text('没有可同步的文件'))
+                  ? Center(
+                      child: Text(
+                        translateInContext(context, I18nKey.devicesSyncEmpty),
+                      ),
+                    )
                   : ListView.builder(
                       itemCount: entries.length,
                       itemBuilder: (context, index) =>
@@ -167,8 +185,14 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
             const Divider(height: 1),
             const SizedBox(height: 6),
             Text(
-              '已选择 $actionable 个文件，'
-              '约 ${formatTransferBytes(_selectedBytes)}',
+              translateInContextWithReplacements(
+                context,
+                I18nKey.devicesSyncSelected,
+                {
+                  'count': '$actionable',
+                  'size': formatTransferBytes(_selectedBytes),
+                },
+              ),
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
@@ -179,7 +203,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(translateInContext(context, I18nKey.devicesSyncCancel)),
         ),
         FilledButton.icon(
           onPressed: actionable == 0
@@ -200,7 +224,13 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                   ),
                 ),
           icon: const Icon(Icons.play_arrow),
-          label: Text('同步 $actionable 个'),
+          label: Text(
+            translateInContextWithReplacements(
+              context,
+              I18nKey.devicesSyncApply,
+              {'count': '$actionable'},
+            ),
+          ),
         ),
       ],
     );
@@ -211,19 +241,25 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
       spacing: 8,
       children: [
         ChoiceChip(
-          label: const Text('双向（默认）'),
+          label: Text(
+            translateInContext(context, I18nKey.devicesSyncDirectionBoth),
+          ),
           selected: _direction == BoardSyncDirection.none,
           onSelected: (_) =>
               setState(() => _direction = BoardSyncDirection.none),
         ),
         ChoiceChip(
-          label: const Text('仅本地 → 设备'),
+          label: Text(
+            translateInContext(context, I18nKey.devicesSyncDirectionLocal),
+          ),
           selected: _direction == BoardSyncDirection.localToBoard,
           onSelected: (_) =>
               setState(() => _direction = BoardSyncDirection.localToBoard),
         ),
         ChoiceChip(
-          label: const Text('仅设备 → 本地'),
+          label: Text(
+            translateInContext(context, I18nKey.devicesSyncDirectionBoard),
+          ),
           selected: _direction == BoardSyncDirection.boardToLocal,
           onSelected: (_) =>
               setState(() => _direction = BoardSyncDirection.boardToLocal),
@@ -287,17 +323,41 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   ) {
     switch (action) {
       case BoardSyncAction.uploadNew:
-        return (Icons.upload_outlined, scheme.primary, '新增（上传）');
+        return (
+          Icons.upload_outlined,
+          scheme.primary,
+          I18nKey.devicesSyncRowAdded.fallback,
+        );
       case BoardSyncAction.uploadChanged:
-        return (Icons.arrow_upward, scheme.primary, '修改（上传）');
+        return (
+          Icons.arrow_upward,
+          scheme.primary,
+          I18nKey.devicesSyncRowModifiedUpload.fallback,
+        );
       case BoardSyncAction.downloadNew:
-        return (Icons.download_outlined, scheme.tertiary, '仅设备端存在（下载）');
+        return (
+          Icons.download_outlined,
+          scheme.tertiary,
+          I18nKey.devicesSyncRowBoardOnly.fallback,
+        );
       case BoardSyncAction.downloadChanged:
-        return (Icons.arrow_downward, scheme.tertiary, '修改（下载）');
+        return (
+          Icons.arrow_downward,
+          scheme.tertiary,
+          I18nKey.devicesSyncRowModifiedDownload.fallback,
+        );
       case BoardSyncAction.unchanged:
-        return (Icons.check, scheme.onSurfaceVariant, '相同');
+        return (
+          Icons.check,
+          scheme.onSurfaceVariant,
+          I18nKey.devicesSyncRowUnchanged.fallback,
+        );
       case BoardSyncAction.conflict:
-        return (Icons.warning_amber_rounded, scheme.error, '冲突（需选择）');
+        return (
+          Icons.warning_amber_rounded,
+          scheme.error,
+          I18nKey.devicesSyncRowConflict.fallback,
+        );
     }
   }
 }
@@ -396,7 +456,7 @@ class FileTransferProgressBar extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                '取消中…',
+                I18nKey.devicesSyncCancelling.fallback,
                 style: TextStyle(fontSize: 12, color: scheme.tertiary),
               ),
             ),

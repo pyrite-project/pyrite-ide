@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
@@ -99,4 +100,33 @@ String resolveI18nText(WidgetRef ref, Object value) {
 String? _lookup(DataRegistry registry, String locale, String key) {
   final value = registry.getLocale(locale)?[key];
   return value?.toString();
+}
+
+/// Translates [key] from a plain [BuildContext].
+///
+/// For `State` widgets that are not `ConsumerState`: they have a context but no
+/// `WidgetRef`. Reaching the container this way — instead of converting the
+/// widget — keeps a pure text change from altering a widget's type.
+String translateInContext(BuildContext context, I18nKey key) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  return translateFromRegistry(
+    container.read(dataRegistryProvider),
+    container.read(activeLocaleProvider),
+    key,
+  );
+}
+
+/// [translateInContext] with `{placeholder}` values.
+String translateInContextWithReplacements(
+  BuildContext context,
+  I18nKey key, [
+  Map<String, String> replacements = const {},
+]) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  return translateWithReplacementsFromRegistry(
+    container.read(dataRegistryProvider),
+    container.read(activeLocaleProvider),
+    key,
+    replacements,
+  );
 }

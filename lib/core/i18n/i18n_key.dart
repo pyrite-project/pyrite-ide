@@ -1988,6 +1988,122 @@ enum I18nKey {
   gitErrorBranchIsCurrent(
     'git.error.branch_is_current',
     '不能删除当前分支 {name}，请先切换到其他分支。',
+  ),
+
+  // ── 设备：板卡识别、同步预览与传输 ──
+  devicesBoardFamilyChip('devices.board.chip_family', '芯片家族: {family}'),
+  devicesBoardDetectedBaud(
+    'devices.board.detected_baud',
+    '建议波特率: {baud} · 复位方式: {reset}',
+  ),
+  devicesBoardIdentitySource('devices.board.identity_source', '识别来源: {source}'),
+  devicesBoardUnknownHint(
+    'devices.board.unknown_hint',
+    '未匹配到已知板卡，连接时使用已保存的波特率与复位设置。',
+  ),
+  devicesBoardUnknown('devices.board.unknown', '未知'),
+  devicesBoardResetNone('devices.board.reset.none', '不自动复位'),
+  devicesBoardResetDtrPulse('devices.board.reset.dtr_pulse', 'DTR 脉冲'),
+  devicesBoardResetRtsPulse('devices.board.reset.rts_pulse', 'RTS 脉冲'),
+  devicesBoardResetEsp32('devices.board.reset.esp32', 'ESP32 自动复位'),
+  devicesBoardResetReopenPort('devices.board.reset.reopen_port', '重开端口'),
+  devicesBoardConfidenceUsbIds(
+    'devices.board.confidence.usb_ids',
+    'USB VID/PID 精确匹配',
+  ),
+  devicesBoardConfidenceDescription(
+    'devices.board.confidence.description',
+    '端口描述匹配',
+  ),
+  devicesBoardConfidenceBridgeChip(
+    'devices.board.confidence.bridge_chip',
+    '仅识别到 USB 转串口芯片',
+  ),
+  devicesBoardConfidenceUnknown('devices.board.confidence.unknown', '未识别'),
+  devicesSessionActive('devices.session.active', '已连接 · 当前设备'),
+  devicesSessionInactive('devices.session.inactive', '已连接 · 点击切换'),
+  devicesSessionSwitch('devices.session.switch', '切换到此设备'),
+  devicesSessionInUse('devices.session.in_use', '当前正在使用此设备'),
+  devicesSessionDisconnect('devices.session.disconnect', '断开'),
+  devicesSyncTitle('devices.sync.title', '同步本地工作区到设备'),
+  devicesSyncRoots('devices.sync.roots', '本地：{local} 设备：{board}'),
+  devicesSyncSummary(
+    'devices.sync.summary',
+    '共 {count} 个文件：上传 {upload} · 下载 {download} · 相同 {unchanged} · 冲突 {conflict}',
+  ),
+  devicesSyncToggleAll('devices.sync.toggle_all', '全选/全不选'),
+  devicesSyncEmpty('devices.sync.empty', '没有可同步的文件'),
+  devicesSyncSelected('devices.sync.selected', '已选择 {count} 个文件，约 {size}'),
+  devicesSyncCancel('devices.sync.cancel', '取消'),
+  devicesSyncCancelling('devices.sync.cancelling', '取消中…'),
+  devicesSyncApply('devices.sync.apply', '同步 {count} 个'),
+  devicesSyncDirectionBoth('devices.sync.direction.both', '双向（默认）'),
+  devicesSyncDirectionLocal('devices.sync.direction.local', '仅本地 → 设备'),
+  devicesSyncDirectionBoard('devices.sync.direction.board', '仅设备 → 本地'),
+  devicesSyncRowAdded('devices.sync.row.added', '新增（上传）'),
+  devicesSyncRowModifiedUpload('devices.sync.row.modified_upload', '修改（上传）'),
+  devicesSyncRowBoardOnly('devices.sync.row.board_only', '仅设备端存在（下载）'),
+  devicesSyncRowModifiedDownload(
+    'devices.sync.row.modified_download',
+    '修改（下载）',
+  ),
+  devicesSyncRowUnchanged('devices.sync.row.unchanged', '相同'),
+  devicesSyncRowConflict('devices.sync.row.conflict', '冲突（需选择）'),
+  devicesSyncReasonSizeMismatch('devices.sync.reason.size_mismatch', '大小不同'),
+  devicesSyncReasonSameSize('devices.sync.reason.same_size', '大小相同但修改时间不同'),
+  devicesSyncNoteMissingMtime(
+    'devices.sync.note.missing_mtime',
+    '{reason}；其中一方未提供修改时间，按本地较新处理',
+  ),
+  devicesSyncNoteLocalChanged(
+    'devices.sync.note.local_changed',
+    '{reason}；本地在上次同步后修改过',
+  ),
+  devicesSyncNoteBoardChanged(
+    'devices.sync.note.board_changed',
+    '{reason}；板端在上次同步后修改过',
+  ),
+  devicesSyncNoteBothChanged(
+    'devices.sync.note.both_changed',
+    '{reason}；两侧在上次同步后都修改过，需要选择保留哪一侧',
+  ),
+  devicesSyncNoteMtimeClose(
+    'devices.sync.note.mtime_close',
+    '{reason}；修改时间相近，需要选择保留哪一侧',
+  ),
+  devicesSyncNoteLocalNewer(
+    'devices.sync.note.local_newer',
+    '{reason}；本地更新时间较新',
+  ),
+  devicesSyncNoteBoardNewer(
+    'devices.sync.note.board_newer',
+    '{reason}；板端更新时间较新',
+  ),
+  devicesSyncRunning('devices.sync.run.running', '正在同步本地工作区与设备…'),
+  devicesSyncDone('devices.sync.run.done', '同步完成'),
+  devicesSyncCancelled('devices.sync.run.cancelled', '同步已取消'),
+  devicesSyncDoneWithFailures(
+    'devices.sync.run.done_with_failures',
+    '同步完成但有 {count} 个文件失败',
+  ),
+  devicesSyncFailed('devices.sync.run.failed', '同步失败：{error}'),
+  devicesSyncRunSummary(
+    'devices.sync.run.summary',
+    '已上传 {uploaded} 个、下载 {downloaded} 个、跳过 {skipped} 个',
+  ),
+  devicesSyncRunSummaryFailed(
+    'devices.sync.run.summary_failed',
+    '、失败 {count} 个',
+  ),
+  devicesSyncRunSummaryCancelled('devices.sync.run.summary_cancelled', '（已取消）'),
+  devicesSpaceInsufficient(
+    'devices.transfer.space_insufficient',
+    '设备空间不足：需要 {required}（{requiredBytes} 字节），可用 {free}（{freeBytes} 字节）',
+  ),
+  devicesSpaceUnknown('devices.transfer.space_unknown', '设备未上报可用空间，已跳过上传前空间预检'),
+  devicesSpaceSufficient(
+    'devices.transfer.space_sufficient',
+    '空间充足：需要 {required}，可用 {free}',
   );
 
   const I18nKey(this.key, this.fallback);
