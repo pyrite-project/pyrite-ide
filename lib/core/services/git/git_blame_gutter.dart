@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// Git blame gutter：按行显示 author / 时间 / 短 sha，可折叠。
 ///
@@ -78,7 +79,10 @@ class _GitBlameGutterState extends ConsumerState<GitBlameGutter> {
                   ),
                   if (_expanded && lines.isNotEmpty)
                     Text(
-                      '${lines.length} 行',
+                      I18nKey.gitBlameLineCount.fallback.replaceAll(
+                        '{count}',
+                        '${lines.length}',
+                      ),
                       style: textTheme.labelSmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
@@ -103,7 +107,10 @@ class _GitBlameGutterState extends ConsumerState<GitBlameGutter> {
                   ? Padding(
                       padding: const EdgeInsets.fromLTRB(30, 0, 10, 10),
                       child: Text(
-                        '${widget.filePath} 还没有 commit 可以归因。',
+                        I18nKey.gitBlameNoCommit.fallback.replaceAll(
+                          '{path}',
+                          widget.filePath,
+                        ),
                         style: textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
@@ -124,9 +131,9 @@ class _GitBlameGutterState extends ConsumerState<GitBlameGutter> {
   }
 
   String _headerLabel(List<GitBlameLine> lines) {
-    // i18n key 表不在本次改动范围内，这里沿用页面既有做法用中文字面量；
-    // 后续统一抽 key 时只需要替换这两处文案。
-    final label = _expanded ? '隐藏 blame' : '显示 blame';
+    final label = _expanded
+        ? I18nKey.gitBlameHide.fallback
+        : I18nKey.gitBlameShow.fallback;
     if (lines.isEmpty && !_expanded) return label;
     return '$label · ${widget.filePath}';
   }

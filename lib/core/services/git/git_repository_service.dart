@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_isolate_runner.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 const _maxUntrackedScanEntries = 20000;
 const _maxUntrackedStatusEntries = 1000;
@@ -365,7 +366,10 @@ class GitRepositoryService {
           handle.free();
         }
         _pruneRemoteTrackingBranch(repo, remote, branch);
-        return '已删除远端分支 $remote/$branch';
+        return applyI18nFallback(I18nKey.gitMessageRemoteBranchDeletedFull, {
+          'remote': remote,
+          'branch': branch,
+        });
       }),
     );
   }
@@ -429,8 +433,11 @@ class GitRepositoryService {
         }
         Tag.delete(repo: repo, tagName: tagName);
         return remote.isEmpty
-            ? '已删除标签 $tagName'
-            : '已删除本地与 $remote 上的标签 $tagName';
+            ? applyI18nFallback(I18nKey.gitMessageTagDeleted, {'name': tagName})
+            : applyI18nFallback(I18nKey.gitMessageTagDeletedLocalAndRemote, {
+                'remote': remote,
+                'name': tagName,
+              });
       }),
     );
   }
@@ -458,7 +465,10 @@ class GitRepositoryService {
         } finally {
           handle.free();
         }
-        return '已将标签 $tag 推送到 $remote';
+        return applyI18nFallback(I18nKey.gitMessageTagPushed, {
+          'tag': tag,
+          'remote': remote,
+        });
       }),
     );
   }
@@ -630,7 +640,9 @@ class GitRepositoryService {
         } finally {
           remote.free();
         }
-        return '已从 $remoteName 获取更新';
+        return applyI18nFallback(I18nKey.gitMessageFetched, {
+          'remote': remoteName,
+        });
       }),
     );
   }
@@ -659,7 +671,10 @@ class GitRepositoryService {
         // 等价 `git push -u`：首次推送后记录 upstream，否则分支列表永远显示
         // 不出 ahead/behind。已有 upstream 时保持不动。
         _ensureBranchUpstream(repo, branch, remoteName);
-        return '已推送 $branch 到 $remoteName';
+        return applyI18nFallback(I18nKey.gitMessagePushed, {
+          'branch': branch,
+          'remote': remoteName,
+        });
       }),
     );
   }
@@ -687,7 +702,10 @@ class GitRepositoryService {
         final upstreamSpec =
             _upstreamSpec(repo, branch) ?? '$remoteName/$branch';
         _merge(repo, upstreamSpec);
-        return '已从 $remoteName 拉取并合并到 $branch';
+        return applyI18nFallback(I18nKey.gitMessagePulled, {
+          'remote': remoteName,
+          'branch': branch,
+        });
       }),
     );
   }
@@ -1301,7 +1319,9 @@ class GitRepositoryService {
     if (branch != null) return branch;
 
     final headOid = _headOidOrNull(repo);
-    return headOid == null ? '未提交仓库' : 'HEAD@${headOid.toStrN(7)}';
+    return headOid == null
+        ? I18nKey.gitStatusUnbornHead.fallback
+        : 'HEAD@${headOid.toStrN(7)}';
   }
 
   String? _currentBranch(Repository repo) {
@@ -1707,19 +1727,33 @@ class GitRepositoryService {
   }
 
   List<String> _statusLabels(Set<GitStatus> statuses) {
-    if (statuses.contains(GitStatus.conflicted)) return const ['冲突'];
+    if (statuses.contains(GitStatus.conflicted))
+      return const [
+        I18nKey.gitStatusConflicted,
+      ].map((k) => k.fallback).toList();
     return [
-      if (statuses.contains(GitStatus.indexNew)) '已暂存新增',
-      if (statuses.contains(GitStatus.indexModified)) '已暂存修改',
-      if (statuses.contains(GitStatus.indexDeleted)) '已暂存删除',
-      if (statuses.contains(GitStatus.indexRenamed)) '已暂存重命名',
-      if (statuses.contains(GitStatus.indexTypeChange)) '已暂存类型变化',
-      if (statuses.contains(GitStatus.wtNew)) '未跟踪',
-      if (statuses.contains(GitStatus.wtModified)) '工作区修改',
-      if (statuses.contains(GitStatus.wtDeleted)) '工作区删除',
-      if (statuses.contains(GitStatus.wtRenamed)) '工作区重命名',
-      if (statuses.contains(GitStatus.wtTypeChange)) '工作区类型变化',
-      if (statuses.contains(GitStatus.ignored)) '已忽略',
+      if (statuses.contains(GitStatus.indexNew))
+        I18nKey.gitStatusStagedNew.fallback,
+      if (statuses.contains(GitStatus.indexModified))
+        I18nKey.gitStatusStagedModified.fallback,
+      if (statuses.contains(GitStatus.indexDeleted))
+        I18nKey.gitStatusStagedDeleted.fallback,
+      if (statuses.contains(GitStatus.indexRenamed))
+        I18nKey.gitStatusStagedRenamed.fallback,
+      if (statuses.contains(GitStatus.indexTypeChange))
+        I18nKey.gitStatusStagedTypeChange.fallback,
+      if (statuses.contains(GitStatus.wtNew))
+        I18nKey.gitStatusUntracked.fallback,
+      if (statuses.contains(GitStatus.wtModified))
+        I18nKey.gitStatusWorktreeModified.fallback,
+      if (statuses.contains(GitStatus.wtDeleted))
+        I18nKey.gitStatusWorktreeDeleted.fallback,
+      if (statuses.contains(GitStatus.wtRenamed))
+        I18nKey.gitStatusWorktreeRenamed.fallback,
+      if (statuses.contains(GitStatus.wtTypeChange))
+        I18nKey.gitStatusWorktreeTypeChange.fallback,
+      if (statuses.contains(GitStatus.ignored))
+        I18nKey.gitStatusIgnored.fallback,
     ];
   }
 
@@ -2396,18 +2430,19 @@ class GitRepositoryService {
 
   String _repositoryStateLabel(Repository repo) {
     return switch (repo.state) {
-      GitRepositoryState.none => '空闲',
-      GitRepositoryState.merge => '合并中',
-      GitRepositoryState.cherrypick ||
-      GitRepositoryState.cherrypickSequence => 'Cherry-pick 中',
+      GitRepositoryState.none => I18nKey.gitStateIdle.fallback,
+      GitRepositoryState.merge => I18nKey.gitStateMerging.fallback,
+      GitRepositoryState.cherrypick || GitRepositoryState.cherrypickSequence =>
+        I18nKey.gitStateCherryPicking.fallback,
       GitRepositoryState.rebase ||
       GitRepositoryState.rebaseInteractive ||
       GitRepositoryState.rebaseMerge ||
-      GitRepositoryState.applyMailboxOrRebase => 'Rebase 中',
+      GitRepositoryState.applyMailboxOrRebase =>
+        I18nKey.gitStateRebasing.fallback,
       GitRepositoryState.revert ||
-      GitRepositoryState.revertSequence => 'Revert 中',
-      GitRepositoryState.bisect => 'Bisect 中',
-      GitRepositoryState.applyMailbox => 'Apply mailbox 中',
+      GitRepositoryState.revertSequence => I18nKey.gitStateReverting.fallback,
+      GitRepositoryState.bisect => I18nKey.gitStateBisecting.fallback,
+      GitRepositoryState.applyMailbox => I18nKey.gitStateApplyMailbox.fallback,
     };
   }
 
@@ -2443,7 +2478,7 @@ class GitRepositoryService {
       final blockedPaths = _checkoutBlockedPaths(repo, targetCommit);
       if (blockedPaths.isNotEmpty) {
         throw GitCheckoutBlockedException(
-          message: '以下本地更改会被切换分支覆盖，请先处理后重试。',
+          message: I18nKey.gitErrorCheckoutBlockedLocalChanges.fallback,
           paths: blockedPaths,
         );
       }

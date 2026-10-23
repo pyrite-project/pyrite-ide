@@ -5,6 +5,7 @@ import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 final gitStatusSummaryProvider = Provider<GitStatusSummary?>((ref) {
   final workspacePath = ref.watch(localWorkspaceProvider)?.path;
@@ -69,7 +70,7 @@ class GitStatusSummary {
 
   static String _branchLabel(Repository repo) {
     try {
-      if (repo.isEmpty) return 'Git 仓库';
+      if (repo.isEmpty) return I18nKey.gitStatusSummaryFallback.fallback;
       final head = repo.head;
       try {
         if (head.isBranch) return head.shorthand;
@@ -78,7 +79,7 @@ class GitStatusSummary {
         head.free();
       }
     } catch (_) {
-      return 'Git 仓库';
+      return I18nKey.gitStatusSummaryFallback.fallback;
     }
   }
 }

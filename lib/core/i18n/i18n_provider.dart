@@ -60,6 +60,25 @@ String translateForWidget(WidgetRef ref, I18nKey key) {
   return translateFromRegistry(registry, locale, key);
 }
 
+/// The widget form of [translateWithReplacements].
+///
+/// [translateWithReplacements] takes a provider `Ref`; a widget only has a
+/// `WidgetRef`, and they are unrelated types.
+String translateForWidgetWithReplacements(
+  WidgetRef ref,
+  I18nKey key, [
+  Map<String, String> replacements = const {},
+]) {
+  final locale = ref.watch(activeLocaleProvider);
+  final registry = ref.watch(dataRegistryProvider);
+  return translateWithReplacementsFromRegistry(
+    registry,
+    locale,
+    key,
+    replacements,
+  );
+}
+
 String translateFromRegistry(
   DataRegistry registry,
   String locale,

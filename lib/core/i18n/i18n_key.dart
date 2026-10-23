@@ -1777,10 +1777,235 @@ enum I18nKey {
     'search.confirm_replace.body',
     '将在 {files} 个文件中替换 {matches} 处匹配。此操作会直接写回磁盘，且不可撤销。',
   ),
-  searchReplaceDone('search.replace_done', '已替换 {matches} 处');
+  searchReplaceDone('search.replace_done', '已替换 {matches} 处'),
+
+  // ── Git：操作结果、错误与状态标签 ──
+  gitMessageOpenFolderFirst('git.message.open_folder_first', '请先打开一个本地文件夹。'),
+  gitMessageRepositoryInitialized(
+    'git.message.repository_initialized',
+    '已初始化 Git 仓库',
+  ),
+  gitMessageStaged('git.message.staged', '已暂存 {path}'),
+  gitMessageUnstaged('git.message.unstaged', '已取消暂存 {path}'),
+  gitMessageDiscarded('git.message.discarded', '已放弃 {path} 的工作区更改'),
+  gitMessageStagedAll('git.message.staged_all', '已暂存全部更改'),
+  gitMessageUnstagedAll('git.message.unstaged_all', '已取消暂存全部更改'),
+  gitMessageCommitted('git.message.committed', '提交完成'),
+  gitMessageBranchCreated('git.message.branch_created', '已创建分支 {name}'),
+  gitMessageBranchCheckedOut('git.message.branch_checked_out', '已切换到 {name}'),
+  gitMessageBranchStashedAndCheckedOut(
+    'git.message.branch_stashed_checked_out',
+    '已储藏更改并切换到 {name}',
+  ),
+  gitMessageBranchMigratedAndCheckedOut(
+    'git.message.branch_migrated_checked_out',
+    '已切换到 {name}，并尝试迁移更改',
+  ),
+  gitMessageBranchForceCheckedOut(
+    'git.message.branch_force_checked_out',
+    '已强制切换到 {name}',
+  ),
+  gitMessageBranchDiscardedAndCheckedOut(
+    'git.message.branch_discarded_checked_out',
+    '已放弃冲突文件并切换到 {name}',
+  ),
+  gitMessageStashCreated('git.message.stash_created', '已储藏更改'),
+  gitMessageStashApplied('git.message.stash_applied', '已应用 stash #{index}'),
+  gitMessageStashPopped('git.message.stash_popped', '已弹出 stash #{index}'),
+  gitMessageStashDropped('git.message.stash_dropped', '已删除 stash #{index}'),
+  gitMessageRemoteAdded('git.message.remote_added', '已添加远端 {name}'),
+  gitMessageMergeStarted('git.message.merge_started', '已开始合并 {target}'),
+  gitMessageRebaseStarted(
+    'git.message.rebase_started',
+    '已执行 rebase 到 {target}',
+  ),
+  gitMessageRebaseContinued('git.message.rebase_continued', '已继续 rebase'),
+  gitMessageRebaseAborted('git.message.rebase_aborted', '已中止 rebase'),
+  gitMessageCherryPicked('git.message.cherry_picked', '已 cherry-pick {target}'),
+  gitMessageMarkedResolved('git.message.marked_resolved', '已标记 {path} 为已解决'),
+  gitMessageConflictResolvedApplied(
+    'git.message.conflict_resolved_applied',
+    '已应用冲突解决结果',
+  ),
+  gitMessageTagCreated('git.message.tag_created', '已创建标签 {name}'),
+  gitMessageTagCreatedAnnotated(
+    'git.message.tag_created_annotated',
+    '已创建 annotated 标签 {name}',
+  ),
+  gitMessageTagDeleted('git.message.tag_deleted', '已删除标签 {name}'),
+  gitMessageTagDeletedLocalAndRemote(
+    'git.message.tag_deleted_local_remote',
+    '已删除本地与 {remote} 上的标签 {name}',
+  ),
+  gitMessageRemoteBranchDeleted(
+    'git.message.remote_branch_deleted',
+    '已删除远端分支 {branch}',
+  ),
+  gitMessageRemoteBranchDeletedFull(
+    'git.message.remote_branch_deleted_full',
+    '已删除远端分支 {remote}/{branch}',
+  ),
+  gitMessageBranchDeleted('git.message.branch_deleted', '已删除分支 {name}'),
+  gitMessageBranchDeletedWithRemote(
+    'git.message.branch_deleted_with_remote',
+    '已删除本地与 {name} 分支',
+  ),
+  gitMessageBranchRenamed('git.message.branch_renamed', '已重命名为 {name}'),
+  gitMessageRemoteUrlUpdated(
+    'git.message.remote_url_updated',
+    '已更新远端 {name} 的 URL',
+  ),
+  gitMessageRemoteRenamed(
+    'git.message.remote_renamed',
+    '已将远端 {from} 重命名为 {to}',
+  ),
+  gitMessageRemoteDeleted('git.message.remote_deleted', '已删除远端 {name}'),
+  gitMessageBlameEmpty('git.message.blame_empty', '{path} 还没有 blame 信息'),
+  gitMessageBlameLoaded(
+    'git.message.blame_loaded',
+    '已读取 {path} 的 blame（{count} 段）',
+  ),
+  gitMessageWorktreeCreated(
+    'git.message.worktree_created',
+    '已创建 worktree {name}',
+  ),
+  gitMessageWorktreePruned(
+    'git.message.worktree_pruned',
+    '已清理 worktree {name}',
+  ),
+  gitMessageSubmoduleUpdated(
+    'git.message.submodule_updated',
+    '已更新 submodule {name}',
+  ),
+  gitMessageCommitGraphWritten(
+    'git.message.commit_graph_written',
+    '已写入 commit graph 索引',
+  ),
+  gitMessagePathSelected('git.message.path_selected', '已选择 {path}'),
+  gitMessagePathHistoryFound(
+    'git.message.path_history_found',
+    '已选择 {path}，找到 {count} 条文件历史',
+  ),
+  gitMessageTagPushed('git.message.tag_pushed', '已将标签 {tag} 推送到 {remote}'),
+  gitMessageFetched('git.message.fetched', '已从 {remote} 获取更新'),
+  gitMessagePushed('git.message.pushed', '已推送 {branch} 到 {remote}'),
+  gitMessagePulled('git.message.pulled', '已从 {remote} 拉取并合并到 {branch}'),
+  gitErrorNotARepository('git.error.not_a_repository', '当前工作区不是 Git 仓库。'),
+  gitErrorCannotResolveRemoteBranch(
+    'git.error.cannot_resolve_remote_branch',
+    '无法解析远端分支：{name}',
+  ),
+  gitStatusUnbornHead('git.status.unborn_head', '未提交仓库'),
+  gitStatusConflicted('git.status.conflicted', '冲突'),
+  gitStatusStagedNew('git.status.staged_new', '已暂存新增'),
+  gitStatusStagedModified('git.status.staged_modified', '已暂存修改'),
+  gitStatusStagedDeleted('git.status.staged_deleted', '已暂存删除'),
+  gitStatusStagedRenamed('git.status.staged_renamed', '已暂存重命名'),
+  gitStatusStagedTypeChange('git.status.staged_type_change', '已暂存类型变化'),
+  gitStatusUntracked('git.status.untracked', '未跟踪'),
+  gitStatusWorktreeModified('git.status.worktree_modified', '工作区修改'),
+  gitStatusWorktreeDeleted('git.status.worktree_deleted', '工作区删除'),
+  gitStatusWorktreeRenamed('git.status.worktree_renamed', '工作区重命名'),
+  gitStatusWorktreeTypeChange('git.status.worktree_type_change', '工作区类型变化'),
+  gitStatusIgnored('git.status.ignored', '已忽略'),
+  gitStateIdle('git.state.idle', '空闲'),
+  gitStateMerging('git.state.merging', '合并中'),
+  gitStateCherryPicking('git.state.cherry_picking', 'Cherry-pick 中'),
+  gitStateRebasing('git.state.rebasing', 'Rebase 中'),
+  gitStateReverting('git.state.reverting', 'Revert 中'),
+  gitStateBisecting('git.state.bisecting', 'Bisect 中'),
+  gitStateApplyMailbox('git.state.apply_mailbox', 'Apply mailbox 中'),
+  gitErrorCheckoutBlockedLocalChanges(
+    'git.error.checkout_blocked_local_changes',
+    '以下本地更改会被切换分支覆盖，请先处理后重试。',
+  ),
+  gitBlameShow('git.blame.show', '显示 blame'),
+  gitBlameHide('git.blame.hide', '隐藏 blame'),
+  gitBlameLineCount('git.blame.line_count', '{count} 行'),
+  gitBlameNoCommit('git.blame.no_commit', '{path} 还没有 commit 可以归因。'),
+  gitIsolateTimeout('git.isolate.timeout', 'Git 操作超时（{seconds} 秒）：{label}'),
+  gitStatusSummaryFallback('git.status.summary_fallback', 'Git 仓库'),
+  gitDialogRenameBranch('git.dialog.rename_branch', '重命名分支'),
+  gitDialogDeleteRemoteBranch('git.dialog.delete_remote_branch', '删除远端分支'),
+  gitDialogDeleteRemoteBranchBody(
+    'git.dialog.delete_remote_branch.body',
+    '确定在远端删除分支 {branch}？该操作会影响其他协作者。',
+  ),
+  gitDialogDeleteLocalBranch(
+    'git.dialog.delete_local_branch',
+    '删除本地分支 {branch}',
+  ),
+  gitDialogDeleteLocalBranchBody(
+    'git.dialog.delete_local_branch.body',
+    '已合并的分支会直接删除；未合并分支需要勾选强制删除。',
+  ),
+  gitDialogDeleteLocalBranchForce(
+    'git.dialog.delete_local_branch.force',
+    '强制删除（丢弃未合并的提交）',
+  ),
+  gitDialogDeleteAlsoRemote(
+    'git.dialog.delete_also_remote',
+    '同时删除远端分支 {branch}',
+  ),
+  gitDialogDeleteNoRemote('git.dialog.delete_no_remote', '远端没有同名分支'),
+  gitDialogTagMessage(
+    'git.dialog.tag.message',
+    'Tag 消息（留空则创建 lightweight tag）',
+  ),
+  gitDialogDeleteTag('git.dialog.delete_tag', '删除标签'),
+  gitDialogDeleteTagBody('git.dialog.delete_tag.body', '确定删除本地标签 {name}？'),
+  gitDialogDeleteTagRemote('git.dialog.delete_tag.remote', '同时删除远端标签'),
+  gitDialogDeleteTagRemoteBody(
+    'git.dialog.delete_tag.remote_body',
+    '是否同时删除远端（{remotes}）上的同名标签 {name}？取消则只删除本地标签。',
+  ),
+  gitDialogEditRemoteUrl('git.dialog.edit_remote_url', '编辑远端 URL'),
+  gitDialogEditRemoteUrlConfirm(
+    'git.dialog.edit_remote_url.confirm',
+    '修改远端 URL',
+  ),
+  gitDialogEditRemoteUrlBody(
+    'git.dialog.edit_remote_url.body',
+    '把 {remote} 的 URL 从 {from} 改为 {to} ?',
+  ),
+  gitDialogRenameRemote('git.dialog.rename_remote', '重命名远端'),
+  gitDialogRenameRemoteBody(
+    'git.dialog.rename_remote.body',
+    '把远端 {from} 重命名为 {to} ? 所有 remote-tracking 分支与配置会一起更新。',
+  ),
+  gitDialogDeleteRemote('git.dialog.delete_remote', '删除远端'),
+  gitDialogDeleteRemoteBody(
+    'git.dialog.delete_remote.body',
+    '确定删除远端 {name}？这会移除 {name} 的配置与所有 remote-tracking 分支，本地提交不会受影响。',
+  ),
+  gitTooltipRenameBranch('git.tooltip.rename_branch', '重命名分支'),
+  gitTooltipDeleteBranch('git.tooltip.delete_branch', '删除分支'),
+  gitTooltipRemoteSettings('git.tooltip.remote_settings', '远端设置'),
+  gitMenuRenameBranch('git.menu.rename_branch', '重命名分支'),
+  gitMenuDeleteBranch('git.menu.delete_branch', '删除分支'),
+  gitMenuEditUrl('git.menu.edit_url', '编辑 URL'),
+  gitMenuRenameRemote('git.menu.rename_remote', '重命名远端'),
+  gitErrorBranchIsCurrent(
+    'git.error.branch_is_current',
+    '不能删除当前分支 {name}，请先切换到其他分支。',
+  );
 
   const I18nKey(this.key, this.fallback);
 
   final String key;
   final String fallback;
+}
+
+/// Fills `{placeholder}` values into a key's fallback text.
+///
+/// For layers with no `Ref` — a pure-Dart service, an isolate job — that still
+/// need to produce a message. The result is the fallback language, which is the
+/// honest answer there: the layer that finally shows it can translate the key
+/// itself when it has a registry.
+String applyI18nFallback(I18nKey key, [Map<String, String> values = const {}]) {
+  var text = key.fallback;
+  for (final entry in values.entries) {
+    text = text.replaceAll('{${entry.key}}', entry.value);
+  }
+  return text;
 }

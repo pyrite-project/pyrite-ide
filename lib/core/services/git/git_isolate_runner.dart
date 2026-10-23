@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// 跨 isolate 传递的失败描述。
 ///
@@ -145,7 +146,9 @@ Future<T> runGitJob<T>(
       'runGitJob timeout label=$debugLabel timeout=${timeout.inMilliseconds}ms',
     );
     throw TimeoutException(
-      'Git 操作超时（${timeout.inSeconds} 秒）：$debugLabel',
+      I18nKey.gitIsolateTimeout.fallback
+          .replaceAll('{seconds}', '${timeout.inSeconds}')
+          .replaceAll('{label}', debugLabel),
       timeout,
     );
   } finally {

@@ -420,7 +420,7 @@ class _GitPageState extends ConsumerState<GitPage> {
   /// 一起迁移到新名字）。
   Future<void> _renameBranchDialog(GitBranchInfo branch) async {
     await _textDialog(
-      title: '重命名分支',
+      title: translateForWidget(ref, I18nKey.gitDialogRenameBranch),
       label: I18nKey.gitBranchName,
       initialValue: branch.name,
       selectAll: true,
@@ -438,8 +438,12 @@ class _GitPageState extends ConsumerState<GitPage> {
     final notifier = ref.read(gitProvider.notifier);
     if (branch.isRemote) {
       final confirmed = await _confirmDeletion(
-        title: '删除远端分支',
-        message: '确定在远端删除分支 ${branch.name}？该操作会影响其他协作者。',
+        title: translateForWidget(ref, I18nKey.gitDialogDeleteRemoteBranch),
+        message: translateForWidgetWithReplacements(
+          ref,
+          I18nKey.gitDialogDeleteRemoteBranchBody,
+          {'branch': branch.name},
+        ),
         confirmKey: I18nKey.gitDelete,
       );
       if (!mounted || !confirmed) return;
@@ -450,7 +454,14 @@ class _GitPageState extends ConsumerState<GitPage> {
     final target = await notifier.inspectBranchDeletionTarget(branch.name);
     if (!mounted) return;
     if (target != null && target.isCurrent) {
-      showIdeError(context, '不能删除当前分支 ${branch.name}，请先切换到其他分支。');
+      showIdeError(
+        context,
+        translateForWidgetWithReplacements(
+          ref,
+          I18nKey.gitErrorBranchIsCurrent,
+          {'name': branch.name},
+        ),
+      );
       return;
     }
     final hasRemote = target?.hasRemote ?? false;
@@ -480,21 +491,37 @@ class _GitPageState extends ConsumerState<GitPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             icon: const Icon(Icons.warning_amber_outlined),
-            title: Text('删除本地分支 ${branch.name}'),
+            title: Text(
+              translateForWidgetWithReplacements(
+                ref,
+                I18nKey.gitDialogDeleteLocalBranch,
+                {'branch': branch.name},
+              ),
+            ),
             content: SizedBox(
               width: 460,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('已合并的分支会直接删除；未合并分支需要勾选强制删除。'),
+                  Text(
+                    translateForWidget(
+                      ref,
+                      I18nKey.gitDialogDeleteLocalBranchBody,
+                    ),
+                  ),
                   CheckboxListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     value: force,
                     onChanged: (value) =>
                         setDialogState(() => force = value ?? false),
-                    title: const Text('强制删除（丢弃未合并的提交）'),
+                    title: Text(
+                      translateForWidget(
+                        ref,
+                        I18nKey.gitDialogDeleteLocalBranchForce,
+                      ),
+                    ),
                   ),
                   CheckboxListTile(
                     dense: true,
@@ -506,7 +533,16 @@ class _GitPageState extends ConsumerState<GitPage> {
                           )
                         : null,
                     title: Text(
-                      hasRemote ? '同时删除远端分支 $remoteBranchName' : '远端没有同名分支',
+                      hasRemote
+                          ? translateForWidgetWithReplacements(
+                              ref,
+                              I18nKey.gitDialogDeleteAlsoRemote,
+                              {'branch': remoteBranchName},
+                            )
+                          : translateForWidget(
+                              ref,
+                              I18nKey.gitDialogDeleteNoRemote,
+                            ),
                     ),
                   ),
                 ],
@@ -629,8 +665,10 @@ class _GitPageState extends ConsumerState<GitPage> {
                   controller: c[1],
                   minLines: 1,
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                    label: Text('Tag 消息（留空则创建 lightweight tag）'),
+                  decoration: InputDecoration(
+                    label: Text(
+                      translateForWidget(ref, I18nKey.gitDialogTagMessage),
+                    ),
                   ),
                 ),
               ],
@@ -662,18 +700,27 @@ class _GitPageState extends ConsumerState<GitPage> {
     GitRepositorySnapshot snapshot,
   ) async {
     final confirmed = await _confirmDeletion(
-      title: '删除标签',
-      message: '确定删除本地标签 ${tag.name}？',
+      title: translateForWidget(ref, I18nKey.gitDialogDeleteTag),
+      message: translateForWidgetWithReplacements(
+        ref,
+        I18nKey.gitDialogDeleteTagBody,
+        {'name': tag.name},
+      ),
       confirmKey: I18nKey.gitDelete,
     );
     if (!confirmed) return;
 
     final remoteConfirmed = snapshot.remotes.isNotEmpty
         ? await _confirmDeletion(
-            title: '同时删除远端标签',
-            message:
-                '是否同时删除远端（${snapshot.remotes.map((r) => r.name).join(' / ')}）'
-                '上的同名标签 ${tag.name}？\n取消则只删除本地标签。',
+            title: translateForWidget(ref, I18nKey.gitDialogDeleteTagRemote),
+            message: translateForWidgetWithReplacements(
+              ref,
+              I18nKey.gitDialogDeleteTagRemoteBody,
+              {
+                'remotes': snapshot.remotes.map((r) => r.name).join(' / '),
+                'name': tag.name,
+              },
+            ),
             confirmKey: I18nKey.gitDelete,
           )
         : false;
@@ -687,14 +734,18 @@ class _GitPageState extends ConsumerState<GitPage> {
   /// 编辑远端 URL。保存前二次确认：URL 会影响后续 fetch/push 的目标。
   Future<void> _editRemoteUrlDialog(GitRemoteInfo remote) async {
     await _textDialog(
-      title: '编辑远端 URL',
+      title: translateForWidget(ref, I18nKey.gitDialogEditRemoteUrl),
       label: I18nKey.gitRemoteUrl,
       initialValue: remote.url,
       selectAll: true,
       onSubmit: (value) async {
         final confirmed = await _confirmDeletion(
-          title: '修改远端 URL',
-          message: '把 ${remote.name} 的 URL 从\n${remote.url}\n改为\n$value ?',
+          title: translateForWidget(ref, I18nKey.gitDialogEditRemoteUrlConfirm),
+          message: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.gitDialogEditRemoteUrlBody,
+            {'remote': remote.name, 'from': remote.url, 'to': value},
+          ),
           confirmKey: I18nKey.commonConfirm,
         );
         if (!confirmed) return;
@@ -708,16 +759,18 @@ class _GitPageState extends ConsumerState<GitPage> {
   /// 重命名远端：libgit2 会同步迁移 remote-tracking 分支与配置。
   Future<void> _renameRemoteDialog(GitRemoteInfo remote) async {
     await _textDialog(
-      title: '重命名远端',
+      title: translateForWidget(ref, I18nKey.gitDialogRenameRemote),
       label: I18nKey.gitRemoteName,
       initialValue: remote.name,
       selectAll: true,
       onSubmit: (value) async {
         final confirmed = await _confirmDeletion(
-          title: '重命名远端',
-          message:
-              '把远端 ${remote.name} 重命名为 $value ?\n'
-              '所有 remote-tracking 分支与配置会一起更新。',
+          title: translateForWidget(ref, I18nKey.gitDialogRenameRemote),
+          message: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.gitDialogRenameRemoteBody,
+            {'from': remote.name, 'to': value},
+          ),
           confirmKey: I18nKey.commonConfirm,
         );
         if (!confirmed) return;
@@ -729,11 +782,12 @@ class _GitPageState extends ConsumerState<GitPage> {
   /// 删除远端：明确提示会移除 tracking 分支与配置，二次确认后才执行。
   Future<void> _deleteRemoteDialog(GitRemoteInfo remote) async {
     final confirmed = await _confirmDeletion(
-      title: '删除远端',
-      message:
-          '确定删除远端 ${remote.name}？\n'
-          '这会移除 ${remote.name} 的配置与所有 remote-tracking 分支，'
-          '本地提交不会受影响。',
+      title: translateForWidget(ref, I18nKey.gitDialogDeleteRemote),
+      message: translateForWidgetWithReplacements(
+        ref,
+        I18nKey.gitDialogDeleteRemoteBody,
+        {'name': remote.name},
+      ),
       confirmKey: I18nKey.gitDelete,
     );
     if (!confirmed) return;
