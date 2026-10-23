@@ -469,7 +469,10 @@ class FileTransferProgressNotifier
   void requestCancel() {
     if (!state.isActive || state.failed) return;
     _cancelToken?.cancel();
-    state = state.copyWith(cancelRequested: true, message: '正在取消，将在当前文件完成后停止…');
+    state = state.copyWith(
+      cancelRequested: true,
+      message: I18nKey.fileTransferCancelling.fallback,
+    );
   }
 
   /// Marks the batch as cancelled and resets the state so the UI clears.
@@ -483,7 +486,7 @@ class FileTransferProgressNotifier
       cancelled: true,
       cancelRequested: false,
       bytesDone: 0,
-      message: message ?? '传输已取消',
+      message: message ?? I18nKey.fileTransferCancelled.fallback,
     );
     _scheduleClear();
   }

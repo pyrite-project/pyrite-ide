@@ -1778,12 +1778,18 @@ class _BranchTile extends ConsumerWidget {
               ),
             if (!branch.isRemote)
               IconButton(
-                tooltip: '重命名分支',
+                tooltip: translateInContext(
+                  context,
+                  I18nKey.gitTooltipRenameBranch,
+                ),
                 onPressed: isBusy || onRename == null ? null : onRename,
                 icon: const Icon(Icons.drive_file_rename_outline),
               ),
             IconButton(
-              tooltip: '删除分支',
+              tooltip: translateInContext(
+                context,
+                I18nKey.gitTooltipDeleteBranch,
+              ),
               onPressed: isBusy ? null : onDelete,
               icon: const Icon(Icons.delete_outline),
             ),
@@ -1806,7 +1812,7 @@ class _BranchTile extends ConsumerWidget {
             ),
             if (!branch.isRemote)
               MenuAction(
-                title: '重命名分支',
+                title: translateInContext(context, I18nKey.gitMenuRenameBranch),
                 callback: onRename ?? () {},
                 attributes: MenuActionAttributes(
                   disabled: isBusy || onRename == null,
@@ -1814,7 +1820,7 @@ class _BranchTile extends ConsumerWidget {
               ),
             MenuSeparator(),
             MenuAction(
-              title: '删除分支',
+              title: translateInContext(context, I18nKey.gitMenuDeleteBranch),
               callback: onDelete,
               attributes: MenuActionAttributes(disabled: isBusy),
             ),
@@ -1894,19 +1900,25 @@ class _RemoteTile extends ConsumerWidget {
             ),
             PyriteContextMenuWidget(
               child: IconButton(
-                tooltip: '远端设置',
+                tooltip: translateInContext(
+                  context,
+                  I18nKey.gitTooltipRemoteSettings,
+                ),
                 onPressed: isBusy ? null : onEditUrl,
                 icon: const Icon(Icons.more_vert),
               ),
               menuProvider: (request) => Menu(
                 children: [
                   MenuAction(
-                    title: '编辑 URL',
+                    title: translateInContext(context, I18nKey.gitMenuEditUrl),
                     callback: onEditUrl,
                     attributes: MenuActionAttributes(disabled: isBusy),
                   ),
                   MenuAction(
-                    title: '重命名远端',
+                    title: translateInContext(
+                      context,
+                      I18nKey.gitMenuRenameRemote,
+                    ),
                     callback: onRename,
                     attributes: MenuActionAttributes(disabled: isBusy),
                   ),

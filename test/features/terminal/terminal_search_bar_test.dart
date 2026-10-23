@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/features/terminal/terminal_search.dart';
 import 'package:pyrite_ide/features/terminal/terminal_search_bar.dart';
@@ -19,19 +20,22 @@ void main() {
     final focusNode = FocusNode();
     addTearDown(focusNode.dispose);
 
+    // The bar reads its labels from the registry now, so it needs a scope.
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: TerminalSearchBar(
-              controller: textController,
-              focusNode: focusNode,
-              state: state,
-              onChanged: onChanged ?? (_) {},
-              onPrevious: onPrevious ?? () {},
-              onNext: onNext ?? () {},
-              onToggleCase: onToggleCase ?? () {},
-              onClose: onClose ?? () {},
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: TerminalSearchBar(
+                controller: textController,
+                focusNode: focusNode,
+                state: state,
+                onChanged: onChanged ?? (_) {},
+                onPrevious: onPrevious ?? () {},
+                onNext: onNext ?? () {},
+                onToggleCase: onToggleCase ?? () {},
+                onClose: onClose ?? () {},
+              ),
             ),
           ),
         ),

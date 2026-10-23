@@ -17,7 +17,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-import 'package:pyrite_ide/features/terminal/terminal_strings.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// Restricts what a terminal print can hand to the OS.
 ///
@@ -96,9 +96,9 @@ Future<TerminalUrlOpenResult> openTerminalUrl(String url) async {
 String? terminalLinkOpenMessage(TerminalUrlOpenResult result) {
   return switch (result) {
     TerminalUrlOpenResult.opened => null,
-    TerminalUrlOpenResult.copied => terminalUrlCopied,
-    TerminalUrlOpenResult.rejected => terminalUrlRejected,
-    TerminalUrlOpenResult.failed => terminalUrlOpenFailed,
+    TerminalUrlOpenResult.copied => I18nKey.terminalUrlCopied.fallback,
+    TerminalUrlOpenResult.rejected => I18nKey.terminalUrlRejected.fallback,
+    TerminalUrlOpenResult.failed => I18nKey.terminalUrlOpenFailed.fallback,
   };
 }
 

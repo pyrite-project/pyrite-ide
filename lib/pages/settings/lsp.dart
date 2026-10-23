@@ -635,7 +635,7 @@ class LspSettings extends ConsumerWidget {
               label: const UseText(I18nKey.settingsLspVirtualEnvironment),
               helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
               suffixIcon: IconButton(
-                tooltip: '选择虚拟环境目录',
+                tooltip: translateInContext(context, I18nKey.lspPickVirtualEnv),
                 icon: const Icon(Icons.folder_open_outlined),
                 onPressed: () async {
                   final directoryPath = await getDirectoryPath();
@@ -655,7 +655,7 @@ class LspSettings extends ConsumerWidget {
                 refreshOpenLspConfiguration(ref.read);
                 context.pop();
               },
-              child: const Text('清空'),
+              child: const UseText(I18nKey.lspClearEnvironment),
             ),
             FilledButton(
               onPressed: () {

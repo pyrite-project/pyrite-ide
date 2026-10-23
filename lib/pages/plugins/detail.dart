@@ -103,36 +103,40 @@ class _MetricsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metrics = ref.watch(pluginMetricsProvider).forPlugin(pluginId);
     return _Section(
-      title: const Text('运行诊断'),
+      title: const UseText(I18nKey.pluginsDiagnostics),
       children: [
         if (metrics == null)
-          const Text('暂无会话诊断数据')
+          const UseText(I18nKey.pluginsDiagnosticsEmpty)
         else ...[
-          _Row(label: const Text('状态'), value: metrics.state),
+          _Row(
+            label: const UseText(I18nKey.pluginsMetricState),
+            value: metrics.state,
+          ),
           _Row(label: const Text('Session'), value: metrics.sessionId),
           _Row(label: const Text('Generation'), value: '${metrics.generation}'),
           _Row(
-            label: const Text('激活耗时'),
+            label: const UseText(I18nKey.pluginsMetricActivation),
             value: '${metrics.activationDuration?.inMilliseconds ?? '-'} ms',
           ),
           _Row(
-            label: const Text('消息'),
-            value:
-                '发送 ${metrics.messagesSent} / 接收 ${metrics.messagesReceived}',
+            label: const UseText(I18nKey.pluginsMetricMessages),
+            value: I18nKey.pluginsMetricMessagesValue.fallback
+                .replaceAll('{sent}', '${metrics.messagesSent}')
+                .replaceAll('{received}', '${metrics.messagesReceived}'),
           ),
           _Row(
             label: const Text('RPC p50 / p95'),
             value: '${metrics.rpcP50Ms ?? '-'} / ${metrics.rpcP95Ms ?? '-'} ms',
           ),
           _Row(
-            label: const Text('队列'),
+            label: const UseText(I18nKey.pluginsMetricQueue),
             value:
                 'event ${metrics.eventQueueDepth}/${metrics.eventQueueHighWater}, '
                 'control ${metrics.controlQueueDepth}/${metrics.controlQueueHighWater}, '
                 'patch ${metrics.patchQueueDepth}/${metrics.patchQueueHighWater}',
           ),
           _Row(
-            label: const Text('故障计数'),
+            label: const UseText(I18nKey.pluginsMetricFailures),
             value:
                 'timeout ${metrics.timeouts}, cancel ${metrics.cancellations}, '
                 'drop ${metrics.drops}, error ${metrics.errors}',

@@ -10,7 +10,8 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:pyrite_ide/features/terminal/terminal_search.dart';
-import 'package:pyrite_ide/features/terminal/terminal_strings.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 class TerminalSearchBar extends StatelessWidget {
   const TerminalSearchBar({
@@ -44,7 +45,7 @@ class TerminalSearchBar extends StatelessWidget {
     // "无结果" is shown instead of "第 0 / 共 0 个": the latter reads like an
     // off-by-one bug even though it is correct.
     final counter = state.isActive && !state.hasMatches
-        ? terminalSearchNoResults
+        ? translateInContext(context, I18nKey.terminalSearchNoResults)
         : state.counterLabel;
 
     return Material(
@@ -62,8 +63,11 @@ class TerminalSearchBar extends StatelessWidget {
                 controller: controller,
                 focusNode: focusNode,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: terminalSearchHint,
+                decoration: InputDecoration(
+                  hintText: translateInContext(
+                    context,
+                    I18nKey.terminalSearchHint,
+                  ),
                   isDense: true,
                   border: InputBorder.none,
                 ),
@@ -84,26 +88,32 @@ class TerminalSearchBar extends StatelessWidget {
             _barButton(
               context,
               icon: Icons.text_fields,
-              tooltip: terminalSearchCaseSensitive,
+              tooltip: translateInContext(
+                context,
+                I18nKey.terminalSearchCaseSensitive,
+              ),
               selected: state.caseSensitive,
               onPressed: onToggleCase,
             ),
             _barButton(
               context,
               icon: Icons.keyboard_arrow_up,
-              tooltip: terminalSearchPrevious,
+              tooltip: translateInContext(
+                context,
+                I18nKey.terminalSearchPrevious,
+              ),
               onPressed: state.hasMatches ? onPrevious : null,
             ),
             _barButton(
               context,
               icon: Icons.keyboard_arrow_down,
-              tooltip: terminalSearchNext,
+              tooltip: translateInContext(context, I18nKey.terminalSearchNext),
               onPressed: state.hasMatches ? onNext : null,
             ),
             _barButton(
               context,
               icon: Icons.close,
-              tooltip: terminalSearchClose,
+              tooltip: translateInContext(context, I18nKey.terminalSearchClose),
               onPressed: onClose,
             ),
           ],

@@ -2104,7 +2104,139 @@ enum I18nKey {
   devicesSpaceSufficient(
     'devices.transfer.space_sufficient',
     '空间充足：需要 {required}，可用 {free}',
-  );
+  ),
+
+  // ── 终端：搜索、右键菜单、链接与桌面 Shell ──
+  terminalSearchHint('terminal.search.hint', '搜索终端输出（Ctrl/Cmd+F）'),
+  terminalSearchPrevious('terminal.search.previous', '上一个匹配项'),
+  terminalSearchNext('terminal.search.next', '下一个匹配项'),
+  terminalSearchCaseSensitive('terminal.search.case_sensitive', '区分大小写'),
+  terminalSearchClose('terminal.search.close', '关闭搜索'),
+  terminalSearchNoResults('terminal.search.no_results', '无结果'),
+  terminalSearchCounter('terminal.search.counter', '第 {current} / 共 {total} 个'),
+  terminalMenuCopy('terminal.menu.copy', '复制'),
+  terminalMenuPaste('terminal.menu.paste', '粘贴'),
+  terminalMenuSelectAll('terminal.menu.select_all', '全选'),
+  terminalMenuClear('terminal.menu.clear', '清屏'),
+  terminalMenuSearch('terminal.menu.search', '搜索'),
+  terminalUrlCopied('terminal.link.url_copied', '已复制链接到剪贴板'),
+  terminalUrlRejected('terminal.link.url_rejected', '不支持打开该链接'),
+  terminalUrlOpenFailed('terminal.link.url_open_failed', '无法打开链接，已复制到剪贴板'),
+  terminalFileNotFound('terminal.link.file_not_found', '找不到链接指向的文件：{path}'),
+  terminalShellSection('terminal.shell.section', '桌面 Shell'),
+  terminalShellSectionDescription(
+    'terminal.shell.description',
+    '新建终端时启动的可执行文件、参数和工作目录。留空则使用系统默认 Shell。',
+  ),
+  terminalShellExecutable('terminal.shell.executable', 'Shell 可执行文件'),
+  terminalShellExecutableFallback(
+    'terminal.shell.executable_fallback',
+    r'跟随系统（$SHELL / powershell.exe）',
+  ),
+  terminalShellExecutableHint(
+    'terminal.shell.executable_hint',
+    '例如 /bin/zsh 或 C:\Program Files\Git\bin\bash.exe',
+  ),
+  terminalShellArguments('terminal.shell.arguments', '启动参数'),
+  terminalShellArgumentsHint(
+    'terminal.shell.arguments_hint',
+    '例如 -l  或  -NoLogo -NoExit',
+  ),
+  terminalWorkingDirectory('terminal.shell.working_directory', '工作目录'),
+  terminalWorkingDirectoryFallback(
+    'terminal.shell.working_directory_fallback',
+    '跟随工作区',
+  ),
+  terminalWorkingDirectoryHint(
+    'terminal.shell.working_directory_hint',
+    '例如 /Users/me/project',
+  ),
+
+  // ── 插件、输出源与其余零散文案 ──
+  pluginsDiagnostics('plugins.diagnostics.title', '运行诊断'),
+  pluginsDiagnosticsEmpty('plugins.diagnostics.empty', '暂无会话诊断数据'),
+  pluginsMetricState('plugins.metric.state', '状态'),
+  pluginsMetricActivation('plugins.metric.activation', '激活耗时'),
+  pluginsMetricMessages('plugins.metric.messages', '消息'),
+  pluginsMetricMessagesValue(
+    'plugins.metric.messages_value',
+    '发送 {sent} / 接收 {received}',
+  ),
+  pluginsMetricQueue('plugins.metric.queue', '队列'),
+  pluginsMetricFailures('plugins.metric.failures', '故障计数'),
+  pluginsMonitorRestartRuntime(
+    'plugins.monitor.restart_runtime',
+    '重启 Python runtime',
+  ),
+  pluginsMonitorTabState('plugins.monitor.tab.state', '运行状态'),
+  pluginsMonitorTabOutput('plugins.monitor.tab.output', '输出'),
+  pluginsMonitorTabPermissions('plugins.monitor.tab.permissions', '权限'),
+  pluginsMonitorRestarted('plugins.monitor.restarted', 'Python runtime 已重启'),
+  pluginsMonitorRestartFailed(
+    'plugins.monitor.restart_failed',
+    'Python runtime 重启失败: {error}',
+  ),
+  pluginsMonitorRestartCount('plugins.monitor.restart_count', '{count} 次重启'),
+  pluginsMonitorNoSession('plugins.monitor.no_session', '暂无插件会话诊断数据'),
+  pluginsMonitorNoOutput('plugins.monitor.no_output', '暂无插件输出'),
+  pluginsMonitorHealthFailed(
+    'plugins.monitor.health_failed',
+    '健康检查失败: {error}',
+  ),
+  pluginsMonitorDeliveryPaused(
+    'plugins.monitor.delivery_paused',
+    '事件和 patch 投递已暂停',
+  ),
+  pluginsMonitorMetricLatency(
+    'plugins.monitor.metric.latency',
+    '激活 / RPC p50 / p95',
+  ),
+  pluginsMonitorMetricTraffic('plugins.monitor.metric.traffic', '发送 / 接收'),
+  pluginsMonitorMetricMessages(
+    'plugins.monitor.metric.messages',
+    '{sent} / {received} 消息',
+  ),
+  pluginsMonitorMetricQueueDepth(
+    'plugins.monitor.metric.queue_depth',
+    '队列 当前 / 高水位',
+  ),
+  pluginsMonitorMetricFaults(
+    'plugins.monitor.metric.faults',
+    '超时 / 取消 / 丢弃 / 错误',
+  ),
+  pluginsMonitorHealthUnchecked('plugins.monitor.health_unchecked', '未检查'),
+  pluginsMonitorHealthFailedShort('plugins.monitor.health_failed_short', '失败'),
+  pluginsMonitorResume('plugins.monitor.resume', '恢复事件和 View 投递'),
+  pluginsMonitorRestart('plugins.monitor.restart', '重启插件'),
+  pluginsMonitorAll('plugins.monitor.all', '全部'),
+  pluginsMonitorClear('plugins.monitor.clear', '清空输出'),
+  pluginsViewUnavailable('plugins.view.unavailable', '插件视图不可用'),
+  pluginsStartFailed('plugins.start_failed', '插件启动失败'),
+  pluginsNotFound('plugins.not_found', '插件不存在'),
+  commonRetryInline('common.retry_inline', '重试'),
+  appThemeStandard('app.theme.standard', '标准'),
+  appThemeCompact('app.theme.compact', '紧凑'),
+  appThemeComfortable('app.theme.comfortable', '舒适'),
+  outputSourcePlugin('output.source.plugin', '插件'),
+  outputSourceTerminal('output.source.terminal', '终端'),
+  fileTransferCancelling('file.transfer.cancelling', '正在取消，将在当前文件完成后停止…'),
+  fileTransferCancelled('file.transfer.cancelled', '传输已取消'),
+  fileTransferProgressSuffix(
+    'file.transfer.progress_suffix',
+    '（已完成 {done}，跳过 {skipped}）',
+  ),
+  gitPageLoadFailed('git.page.load_failed', '无法加载 Git 页面：{error}'),
+  lspPickVirtualEnv('lsp.pick_virtual_env', '选择虚拟环境目录'),
+  lspClearEnvironment('lsp.clear_environment', '清空'),
+  fileSyncToDeviceTooltip('file.sync.to_device_tooltip', '同步到设备…（先预览差异清单）'),
+  fileSyncNothingLocal('file.sync.nothing_local', '本地工作区没有可同步的文件'),
+  fileSyncNothingBoth('file.sync.nothing_both', '两侧内容一致，无需同步'),
+  fileSyncFirstFailure(
+    'file.sync.first_failure',
+    '{summary} 首个失败：{path} — {error}',
+  ),
+  fileMessageSyncFailed('file.message.sync_failed', '同步失败：{error}'),
+  gitStatusRepositoryFallback('git.status.repository_fallback', 'Git 仓库');
 
   const I18nKey(this.key, this.fallback);
 

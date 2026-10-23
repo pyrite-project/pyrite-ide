@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
@@ -99,7 +100,9 @@ GoRouter routes = GoRouter(
               builder: (context, state) {
                 final id = state.uri.queryParameters['id'];
                 if (id == null || id.isEmpty) {
-                  return const Scaffold(body: Center(child: Text('插件不存在')));
+                  return Scaffold(
+                    body: Center(child: Text(I18nKey.pluginsNotFound.fallback)),
+                  );
                 }
                 return PluginDetailPage(pluginId: id);
               },
@@ -120,7 +123,11 @@ GoRouter routes = GoRouter(
                 containerId == null ||
                 containerId.isEmpty) {
               return topCustomTransitionPage(
-                child: Scaffold(body: Center(child: Text('插件视图不可用'))),
+                child: Scaffold(
+                  body: Center(
+                    child: Text(I18nKey.pluginsViewUnavailable.fallback),
+                  ),
+                ),
                 state: state,
               );
             }
@@ -215,7 +222,12 @@ class _DeferredGitPageState extends State<_DeferredGitPage> {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('无法加载 Git 页面：${snapshot.error}'),
+              child: Text(
+                I18nKey.gitPageLoadFailed.fallback.replaceAll(
+                  '{error}',
+                  '${snapshot.error}',
+                ),
+              ),
             ),
           );
         }

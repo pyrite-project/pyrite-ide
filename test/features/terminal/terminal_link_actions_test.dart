@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_actions.dart';
-import 'package:pyrite_ide/features/terminal/terminal_strings.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 void main() {
   group('isSafeTerminalUrl', () {
@@ -105,15 +105,15 @@ void main() {
     test('explains every fallback', () {
       expect(
         terminalLinkOpenMessage(TerminalUrlOpenResult.copied),
-        terminalUrlCopied,
+        I18nKey.terminalUrlCopied.fallback,
       );
       expect(
         terminalLinkOpenMessage(TerminalUrlOpenResult.rejected),
-        terminalUrlRejected,
+        I18nKey.terminalUrlRejected.fallback,
       );
       expect(
         terminalLinkOpenMessage(TerminalUrlOpenResult.failed),
-        terminalUrlOpenFailed,
+        I18nKey.terminalUrlOpenFailed.fallback,
       );
     });
   });

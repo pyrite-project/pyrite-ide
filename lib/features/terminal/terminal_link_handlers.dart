@@ -17,7 +17,7 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_actions.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_parser.dart';
-import 'package:pyrite_ide/features/terminal/terminal_strings.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// Opens [url] in the platform browser, falling back to the clipboard.
 Future<void> openTerminalUrlLink(
@@ -53,7 +53,12 @@ Future<void> revealTerminalFileLink(
   if (resolved == null) {
     ref
         .read(ideMessageProvider.notifier)
-        .warning(terminalFileNotFound.replaceAll('{path}', link.path ?? ''));
+        .warning(
+          I18nKey.terminalFileNotFound.fallback.replaceAll(
+            '{path}',
+            link.path ?? '',
+          ),
+        );
     return;
   }
   await revealLspLocation(

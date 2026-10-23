@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:xterm/xterm.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 enum IdeOutputSource { ide, plugin, terminal }
 
@@ -116,8 +117,8 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
   String _sourceLabel(IdeOutputSource source) {
     return switch (source) {
       IdeOutputSource.ide => 'IDE',
-      IdeOutputSource.plugin => '插件',
-      IdeOutputSource.terminal => '终端',
+      IdeOutputSource.plugin => I18nKey.outputSourcePlugin.fallback,
+      IdeOutputSource.terminal => I18nKey.outputSourceTerminal.fallback,
     };
   }
 }

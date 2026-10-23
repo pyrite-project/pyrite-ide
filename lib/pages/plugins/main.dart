@@ -521,11 +521,15 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
         )
         .firstOrNull;
     if (container == null) {
-      return const Scaffold(body: Center(child: Text('插件视图不可用')));
+      return Scaffold(
+        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+      );
     }
     final plugin = ref.watch(pluginManagerProvider)[widget.pluginId];
     if (plugin == null) {
-      return const Scaffold(body: Center(child: Text('插件视图不可用')));
+      return Scaffold(
+        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+      );
     }
     final views = ref
         .watch(contributionRegistryProvider)
@@ -544,7 +548,9 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     });
     final targetView = _resolvedViewId(views);
     if (targetView == null) {
-      return const Scaffold(body: Center(child: Text('插件视图不可用')));
+      return Scaffold(
+        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+      );
     }
     if (_activeViewId != targetView) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _activateSelected());
@@ -561,11 +567,11 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('插件启动失败'),
+              const UseText(I18nKey.pluginsStartFailed),
               const SizedBox(height: 8),
               FilledButton(
                 onPressed: _activateSelected,
-                child: const Text('重试'),
+                child: const UseText(I18nKey.commonRetry),
               ),
             ],
           ),
@@ -587,7 +593,9 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     // container-level route still lands somewhere sensible.
     final view = views.where((entry) => entry.id == targetView).firstOrNull;
     if (view == null) {
-      return const Scaffold(body: Center(child: Text('插件视图不可用')));
+      return Scaffold(
+        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+      );
     }
 
     final manager = ref

@@ -364,7 +364,7 @@ class BoardNotifier {
       showEditorSnackBar(
         context,
         '${translate(ref, I18nKey.fileMessageCanceledDownload)}'
-        '（已完成 $downloaded，跳过 $skipped）',
+        '${I18nKey.fileTransferProgressSuffix.fallback.replaceAll('{done}', '$downloaded').replaceAll('{skipped}', '$skipped')}',
       );
       return;
     } finally {

@@ -10,6 +10,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 
 enum TerminalContextAction { copy, paste, selectAll, clear, search }
@@ -36,35 +37,35 @@ List<TerminalContextItem> terminalContextMenuItems({
   return [
     (
       action: TerminalContextAction.copy,
-      label: '复制',
+      label: I18nKey.terminalMenuCopy.fallback,
       icon: Icons.copy,
       shortcut: '$modifier+Shift+C',
       enabled: hasSelection,
     ),
     (
       action: TerminalContextAction.paste,
-      label: '粘贴',
+      label: I18nKey.terminalMenuPaste.fallback,
       icon: Icons.paste,
       shortcut: '$modifier+V',
       enabled: true,
     ),
     (
       action: TerminalContextAction.selectAll,
-      label: '全选',
+      label: I18nKey.terminalMenuSelectAll.fallback,
       icon: Icons.select_all,
       shortcut: '$modifier+A',
       enabled: true,
     ),
     (
       action: TerminalContextAction.clear,
-      label: '清屏',
+      label: I18nKey.terminalMenuClear.fallback,
       icon: Icons.cleaning_services_outlined,
       shortcut: '',
       enabled: true,
     ),
     (
       action: TerminalContextAction.search,
-      label: '搜索',
+      label: I18nKey.terminalMenuSearch.fallback,
       icon: Icons.search,
       shortcut: findShortcutLabel(),
       enabled: true,

@@ -462,7 +462,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       showEditorSnackBar(
         context,
         '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
-        '（已完成 $uploaded，跳过 $skipped）',
+        '${I18nKey.fileTransferProgressSuffix.fallback.replaceAll('{done}', '$uploaded').replaceAll('{skipped}', '$skipped')}',
       );
     } catch (error) {
       ref
@@ -621,7 +621,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       showEditorSnackBar(
         context,
         '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
-        '（已完成 $uploaded，跳过 $skipped）',
+        '${I18nKey.fileTransferProgressSuffix.fallback.replaceAll('{done}', '$uploaded').replaceAll('{skipped}', '$skipped')}',
       );
     } catch (error) {
       ref

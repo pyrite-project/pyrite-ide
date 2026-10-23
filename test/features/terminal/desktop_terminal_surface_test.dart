@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/features/terminal/desktop_terminal_surface.dart';
@@ -16,14 +17,18 @@ void main() {
   });
 
   Future<void> pumpSurface(WidgetTester tester) async {
+    // The search bar reads its labels from the registry, so the surface needs
+    // a scope even though the surface itself adds none.
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: DesktopTerminalSurface(
-            terminal: terminal,
-            controller: controller,
-            theme: TerminalThemes.defaultTheme,
-            textStyle: const TerminalStyle(fontSize: 12),
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: DesktopTerminalSurface(
+              terminal: terminal,
+              controller: controller,
+              theme: TerminalThemes.defaultTheme,
+              textStyle: const TerminalStyle(fontSize: 12),
+            ),
           ),
         ),
       ),

@@ -450,7 +450,9 @@ class FileTransferProgressBar extends ConsumerWidget {
                   .read(fileTransferProgressProvider.notifier)
                   .requestCancel(),
               icon: const Icon(Icons.stop_circle_outlined, size: 16),
-              label: const Text('取消'),
+              label: Text(
+                translateInContext(context, I18nKey.devicesSyncCancel),
+              ),
             )
           else if (state.cancelRequested)
             Padding(

@@ -26,15 +26,36 @@ class PermissionMonitor extends ConsumerWidget {
           actions: [
             IconButton(
               icon: const Icon(Icons.restart_alt),
-              tooltip: '重启 Python runtime',
+              tooltip: translateInContext(
+                context,
+                I18nKey.pluginsMonitorRestartRuntime,
+              ),
               onPressed: () => unawaited(_restartRuntime(context, ref)),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.monitor_heart_outlined), text: '运行状态'),
-              Tab(icon: Icon(Icons.subject), text: '输出'),
-              Tab(icon: Icon(Icons.policy_outlined), text: '权限'),
+              Tab(
+                icon: const Icon(Icons.monitor_heart_outlined),
+                text: translateInContext(
+                  context,
+                  I18nKey.pluginsMonitorTabState,
+                ),
+              ),
+              Tab(
+                icon: Icon(Icons.subject),
+                text: translateInContext(
+                  context,
+                  I18nKey.pluginsMonitorTabOutput,
+                ),
+              ),
+              Tab(
+                icon: Icon(Icons.policy_outlined),
+                text: translateInContext(
+                  context,
+                  I18nKey.pluginsMonitorTabPermissions,
+                ),
+              ),
             ],
           ),
         ),
@@ -53,15 +74,26 @@ class PermissionMonitor extends ConsumerWidget {
     try {
       await ref.read(pluginRunManagerProvider.notifier).restartRuntime();
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Python runtime 已重启')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              translateInContext(context, I18nKey.pluginsMonitorRestarted),
+            ),
+          ),
+        );
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Python runtime 重启失败: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              I18nKey.pluginsMonitorRestartFailed.fallback.replaceAll(
+                '{error}',
+                '$error',
+              ),
+            ),
+          ),
+        );
       }
     }
   }
@@ -88,13 +120,25 @@ class _MetricsTab extends ConsumerWidget {
             'Runtime generation ${metrics.runtimeGeneration}',
             style: const TextStyle(fontFamily: 'monospace'),
           ),
-          subtitle: Text('${metrics.runtimeRestarts} 次重启'),
+          subtitle: Text(
+            I18nKey.pluginsMonitorRestartCount.fallback.replaceAll(
+              '{count}',
+              '${metrics.runtimeRestarts}',
+            ),
+          ),
           trailing: Text('$activeManagers active'),
         ),
         const Divider(height: 1),
         Expanded(
           child: sessions.isEmpty
-              ? const Center(child: Text('暂无插件会话诊断数据'))
+              ? Center(
+                  child: Text(
+                    translateInContext(
+                      context,
+                      I18nKey.pluginsMonitorNoSession,
+                    ),
+                  ),
+                )
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: sessions.length,
@@ -123,7 +167,14 @@ class _MetricsTab extends ConsumerWidget {
                               } catch (error) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('健康检查失败: $error')),
+                                    SnackBar(
+                                      content: Text(
+                                        I18nKey
+                                            .pluginsMonitorHealthFailed
+                                            .fallback
+                                            .replaceAll('{error}', '$error'),
+                                      ),
+                                    ),
                                   );
                                 }
                               }
@@ -184,34 +235,52 @@ class _SessionMetricsCard extends StatelessWidget {
           style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
         ),
         trailing: session.eventDeliveryPaused
-            ? const Tooltip(
-                message: '事件和 patch 投递已暂停',
-                child: Icon(Icons.pause_circle, color: Colors.orange),
+            ? Tooltip(
+                message: translateInContext(
+                  context,
+                  I18nKey.pluginsMonitorDeliveryPaused,
+                ),
+                child: const Icon(Icons.pause_circle, color: Colors.orange),
               )
             : null,
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         children: [
           _MetricLine(
-            label: '激活 / RPC p50 / p95',
+            label: translateInContext(
+              context,
+              I18nKey.pluginsMonitorMetricLatency,
+            ),
             value:
                 '${session.activationDuration?.inMilliseconds ?? '-'} / '
                 '${session.rpcP50Ms ?? '-'} / ${session.rpcP95Ms ?? '-'} ms',
           ),
           _MetricLine(
-            label: '发送 / 接收',
+            label: translateInContext(
+              context,
+              I18nKey.pluginsMonitorMetricTraffic,
+            ),
             value:
-                '${session.messagesSent} / ${session.messagesReceived} 消息, '
-                '${_bytes(session.bytesSent)} / ${_bytes(session.bytesReceived)}',
+                I18nKey.pluginsMonitorMetricMessages.fallback
+                    .replaceAll('{sent}', '${session.messagesSent}')
+                    .replaceAll('{received}', '${session.messagesReceived}') +
+                ', '
+                    '${_bytes(session.bytesSent)} / ${_bytes(session.bytesReceived)}',
           ),
           _MetricLine(
-            label: '队列 当前 / 高水位',
+            label: translateInContext(
+              context,
+              I18nKey.pluginsMonitorMetricQueueDepth,
+            ),
             value:
                 'event ${session.eventQueueDepth}/${session.eventQueueHighWater}, '
                 'control ${session.controlQueueDepth}/${session.controlQueueHighWater}, '
                 'patch ${session.patchQueueDepth}/${session.patchQueueHighWater}',
           ),
           _MetricLine(
-            label: '超时 / 取消 / 丢弃 / 错误',
+            label: translateInContext(
+              context,
+              I18nKey.pluginsMonitorMetricFaults,
+            ),
             value:
                 '${session.timeouts} / ${session.cancellations} / '
                 '${session.drops} / ${session.errors}',
@@ -223,10 +292,10 @@ class _SessionMetricsCard extends StatelessWidget {
           _MetricLine(
             label: 'Health',
             value: session.lastHealthAt == null
-                ? '未检查'
+                ? I18nKey.pluginsMonitorHealthUnchecked.fallback
                 : session.healthOk
                 ? '${session.lastHealthLatencyMs ?? '-'} ms'
-                : '失败',
+                : I18nKey.pluginsMonitorHealthFailedShort.fallback,
           ),
           if (session.lastError != null)
             Align(
@@ -253,14 +322,20 @@ class _SessionMetricsCard extends StatelessWidget {
               if (onResume != null)
                 IconButton.filledTonal(
                   onPressed: onResume,
-                  tooltip: '恢复事件和 View 投递',
+                  tooltip: translateInContext(
+                    context,
+                    I18nKey.pluginsMonitorResume,
+                  ),
                   icon: const Icon(Icons.play_arrow),
                 ),
               IconButton.filledTonal(
                 onPressed: onRestart == null
                     ? null
                     : () => unawaited(onRestart!()),
-                tooltip: '重启插件',
+                tooltip: translateInContext(
+                  context,
+                  I18nKey.pluginsMonitorRestart,
+                ),
                 icon: const Icon(Icons.refresh),
               ),
             ],
@@ -360,7 +435,10 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
                       : null,
                   decoration: const InputDecoration(labelText: 'Plugin'),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('全部')),
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(I18nKey.pluginsMonitorAll.fallback),
+                    ),
                     for (final id in pluginIds)
                       DropdownMenuItem(value: id, child: Text(id)),
                   ],
@@ -378,7 +456,10 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
                       : null,
                   decoration: const InputDecoration(labelText: 'Session'),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('全部')),
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(I18nKey.pluginsMonitorAll.fallback),
+                    ),
                     for (final id in sessionIds)
                       DropdownMenuItem(value: id, child: Text(_shortId(id))),
                   ],
@@ -388,7 +469,10 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
               IconButton(
                 onPressed: () =>
                     ref.read(ideOutputLogProvider.notifier).clear(),
-                tooltip: '清空输出',
+                tooltip: translateInContext(
+                  context,
+                  I18nKey.pluginsMonitorClear,
+                ),
                 icon: const Icon(Icons.delete_sweep),
               ),
             ],
@@ -397,7 +481,11 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
         const Divider(height: 1),
         Expanded(
           child: entries.isEmpty
-              ? const Center(child: Text('暂无插件输出'))
+              ? Center(
+                  child: Text(
+                    translateInContext(context, I18nKey.pluginsMonitorNoOutput),
+                  ),
+                )
               : ListView.builder(
                   itemCount: entries.length,
                   itemBuilder: (context, index) {

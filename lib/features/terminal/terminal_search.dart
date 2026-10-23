@@ -12,6 +12,7 @@ import 'package:flutter/painting.dart';
 import 'package:xterm/xterm.dart';
 
 import 'terminal_link_parser.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// One match, in cell-buffer coordinates.
 class TerminalSearchMatch {
@@ -120,8 +121,11 @@ class TerminalSearchState {
   /// `第 3 / 共 17 个`, or an empty string when nothing matched. The UI shows
   /// the counter only when it has a number to show, so the "0 / 0" case never
   /// reaches the user.
-  String get counterLabel =>
-      hasMatches ? '第 ${currentIndex + 1} / 共 ${matches.length} 个' : '';
+  String get counterLabel => hasMatches
+      ? I18nKey.terminalSearchCounter.fallback
+            .replaceAll('{current}', '${currentIndex + 1}')
+            .replaceAll('{total}', '${matches.length}')
+      : '';
 
   /// Recomputes the matches for a new [query], keeping the caret at the first
   /// match. `currentIndex` resets because the old index refers to the old

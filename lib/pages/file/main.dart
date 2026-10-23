@@ -1442,7 +1442,10 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),
                   IconButton(
-                    tooltip: '同步到设备…（先预览差异清单）',
+                    tooltip: translateInContext(
+                      context,
+                      I18nKey.fileSyncToDeviceTooltip,
+                    ),
                     onPressed: isConnected
                         ? () => _openBoardSyncPreview(context, ref)
                         : null,
@@ -1868,7 +1871,12 @@ class ProjectFiles extends ConsumerWidget {
     if (!plan.hasWork) {
       showEditorSnackBar(
         context,
-        plan.isEmpty ? '本地工作区没有可同步的文件' : '两侧内容一致，无需同步',
+        translateInContext(
+          context,
+          plan.isEmpty
+              ? I18nKey.fileSyncNothingLocal
+              : I18nKey.fileSyncNothingBoth,
+        ),
       );
       return;
     }
@@ -1902,7 +1910,10 @@ class ProjectFiles extends ConsumerWidget {
       final first = outcome.failed.first;
       showIdeError(
         context,
-        '${outcome.summary}\n首个失败：${first.entry.relativePath} — ${first.error}',
+        I18nKey.fileSyncFirstFailure.fallback
+            .replaceAll('{summary}', outcome.summary)
+            .replaceAll('{path}', first.entry.relativePath)
+            .replaceAll('{error}', '${first.error}'),
       );
     } else {
       showEditorSnackBar(context, outcome.summary);

@@ -33,22 +33,8 @@ const List<int> kAvailableBaudRates = [
   921600,
 ];
 
-/// Copy for the desktop shell profile section.
-///
-/// These are kept out of [I18nKey] because that file is owned elsewhere in this
-/// change set; moving them there later is a mechanical edit, and until then a
-/// hardcoded Chinese label is consistent with the settings page's fallbacks.
-const _shellSectionTitle = '桌面 Shell';
-const _shellSectionDescription = '新建终端时启动的可执行文件、参数和工作目录。留空则使用系统默认 Shell。';
-const _shellExecutableTitle = 'Shell 可执行文件';
-const _shellExecutableFallback = r'跟随系统（$SHELL / powershell.exe）';
-const _shellExecutableHint =
-    '例如 /bin/zsh 或 C:\\Program Files\\Git\\bin\\bash.exe';
-const _shellArgumentsTitle = '启动参数';
-const _shellArgumentsHint = '例如 -l  或  -NoLogo -NoExit';
-const _workingDirectoryTitle = '工作目录';
-const _workingDirectoryFallback = '跟随工作区';
-const _workingDirectoryHint = '例如 /Users/me/project';
+// The desktop-shell copy lives in [I18nKey] under `terminal.shell.*` with the
+// rest of the terminal's strings.
 
 class TerminalSettings extends ConsumerWidget {
   const TerminalSettings({super.key});
@@ -78,30 +64,39 @@ class TerminalSettings extends ConsumerWidget {
         // offer a switch that can never take effect.
         if (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
           SettingsSection(
-            title: _shellSectionTitle,
-            description: _shellSectionDescription,
+            title: I18nKey.terminalShellSection,
+            description: I18nKey.terminalShellSectionDescription,
             children: [
               ListTile(
                 leading: const Icon(Icons.terminal_outlined),
-                title: Text(_shellExecutableTitle),
+                title: const UseText(I18nKey.terminalShellExecutable),
                 subtitle: Text(
                   ref.watch(terminalShellExecutable).isEmpty
-                      ? _shellExecutableFallback
+                      ? translateForWidget(
+                          ref,
+                          I18nKey.terminalShellExecutableFallback,
+                        )
                       : ref.watch(terminalShellExecutable),
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showShellValueDialog(
                   context,
                   ref,
-                  title: _shellExecutableTitle,
-                  hint: _shellExecutableHint,
+                  title: translateForWidget(
+                    ref,
+                    I18nKey.terminalShellExecutable,
+                  ),
+                  hint: translateForWidget(
+                    ref,
+                    I18nKey.terminalShellExecutableHint,
+                  ),
                   current: ref.read(terminalShellExecutable),
                   provider: terminalShellExecutable,
                 ),
               ),
               ListTile(
                 leading: const Icon(Icons.shortcut_outlined),
-                title: Text(_shellArgumentsTitle),
+                title: const UseText(I18nKey.terminalShellArguments),
                 subtitle: Text(
                   ref.watch(terminalShellArguments).isEmpty
                       ? I18nKey.settingsTerminalUnset.fallback
@@ -111,26 +106,41 @@ class TerminalSettings extends ConsumerWidget {
                 onTap: () => _showShellValueDialog(
                   context,
                   ref,
-                  title: _shellArgumentsTitle,
-                  hint: _shellArgumentsHint,
+                  title: translateForWidget(
+                    ref,
+                    I18nKey.terminalShellArguments,
+                  ),
+                  hint: translateForWidget(
+                    ref,
+                    I18nKey.terminalShellArgumentsHint,
+                  ),
                   current: ref.read(terminalShellArguments),
                   provider: terminalShellArguments,
                 ),
               ),
               ListTile(
                 leading: const Icon(Icons.folder_open_outlined),
-                title: Text(_workingDirectoryTitle),
+                title: const UseText(I18nKey.terminalWorkingDirectory),
                 subtitle: Text(
                   ref.watch(terminalWorkingDirectory).isEmpty
-                      ? _workingDirectoryFallback
+                      ? translateForWidget(
+                          ref,
+                          I18nKey.terminalWorkingDirectoryFallback,
+                        )
                       : ref.watch(terminalWorkingDirectory),
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showShellValueDialog(
                   context,
                   ref,
-                  title: _workingDirectoryTitle,
-                  hint: _workingDirectoryHint,
+                  title: translateForWidget(
+                    ref,
+                    I18nKey.terminalWorkingDirectory,
+                  ),
+                  hint: translateForWidget(
+                    ref,
+                    I18nKey.terminalWorkingDirectoryHint,
+                  ),
                   current: ref.read(terminalWorkingDirectory),
                   provider: terminalWorkingDirectory,
                 ),
@@ -403,7 +413,7 @@ class TerminalSettings extends ConsumerWidget {
         ? ''
         : ' ${resolved.arguments.join(' ')}';
     final directory = ref.watch(terminalWorkingDirectory).isEmpty
-        ? _workingDirectoryFallback
+        ? translateForWidget(ref, I18nKey.terminalWorkingDirectoryFallback)
         : ref.watch(terminalWorkingDirectory);
     return '$directory > ${resolved.executable}$arguments';
   }
