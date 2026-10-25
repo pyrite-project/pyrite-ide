@@ -160,7 +160,10 @@ Future<List<ScannedFile>> scanProject(
 }) async {
   final filePaths = <String>[];
 
-  await for (final entity in root.list(recursive: true)) {
+  // `followLinks: false` because a recursive walk does not detect cycles: one
+  // symlink pointing back at an ancestor would expand forever and leave the
+  // search stuck in `running` with no way out but a restart.
+  await for (final entity in root.list(recursive: true, followLinks: false)) {
     if (cancel?.cancelled ?? false) return const [];
     if (entity is! File) continue;
     final normalized = path.normalize(entity.path);
@@ -268,7 +271,13 @@ List<SearchMatch> _collectLineMatches(String content, RegExp regex) {
     if (match.start == match.end) continue;
     final line = _lineIndexFor(lineStarts, match.start);
     final lineStart = lineStarts[line];
-    final length = lineText(line).length;
+    // Measured arithmetically rather than via `lineText(line).length`: the
+    // substring would be allocated once per match just to be discarded, and
+    // the length is exactly the span between the two offsets.
+    final lineEnd = line + 1 < lineStarts.length
+        ? lineStarts[line + 1] - 1
+        : content.length;
+    final length = lineEnd - lineStart;
     final start = match.start - lineStart;
     var end = match.end - lineStart;
     // A match may span lines (e.g. [\s\S]); display clamps it to its first
@@ -444,10 +453,14 @@ String _expandReplacement(Match match, SearchOptions options) {
 }
 
 /// Replaces every match of [regex] in [content] with [options.replaceText].
+///
+/// Both modes go through [regex] rather than `String.replaceAll(pattern, …)`:
+/// the pattern the user saw in the results list was produced by
+/// [SearchOptions.toRegExp], which folds in case-insensitivity and the
+/// whole-word `\b` wrapping. Replacing with the raw literal would edit
+/// substrings that were never shown as matches — `cat` would also rewrite
+/// `concat` — and would silently miss case-differing hits.
 String _replaceContent(String content, RegExp regex, SearchOptions options) {
-  if (!options.isRegExp) {
-    return content.replaceAll(options.pattern, options.replaceText);
-  }
   return content.replaceAllMapped(
     regex,
     (match) => _expandReplacement(match, options),

@@ -257,6 +257,36 @@ void main() {
       expect(replaced, 1);
       expect(await file.readAsString(), 'tint: red');
     });
+
+    test('replaces only whole words when wholeWord is set', () async {
+      // The preview only lists `cat` as a whole word, so `concat` must survive
+      // the replace — otherwise the edit rewrites text nobody approved.
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('cat concat cat\n');
+
+      final options = const SearchOptions(
+        pattern: 'cat',
+        wholeWord: true,
+        replaceText: 'dog',
+      );
+      final results = await searchInDirectory(temp, options);
+      final replaced = await replaceAllInResults(results, options);
+
+      expect(replaced, 2);
+      expect(await file.readAsString(), 'dog concat dog\n');
+    });
+
+    test('replaces case-insensitively when caseSensitive is false', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('Foo foo FOO\n');
+
+      final options = const SearchOptions(pattern: 'foo', replaceText: 'bar');
+      final results = await searchInDirectory(temp, options);
+      final replaced = await replaceAllInResults(results, options);
+
+      expect(replaced, 3);
+      expect(await file.readAsString(), 'bar bar bar\n');
+    });
   });
 
   group('replaceOneOccurrence', () {

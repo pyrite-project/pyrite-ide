@@ -884,7 +884,7 @@ class MobileView extends ConsumerWidget {
     final pluginItems = _pluginNavigationItems(ref);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 7);
       if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
         selectedIndexValue = 0;
         ref.read(mobileSelectedIndex.notifier).state = 0;
@@ -935,7 +935,7 @@ class MobileView extends ConsumerWidget {
       ...drawerItems,
       ...pluginNavigationDrawerDestinations(ref),
     ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 7);
     return Builder(
       builder: (drawerContext) {
         return NavigationDrawer(
@@ -992,7 +992,7 @@ class TabletView extends ConsumerWidget {
     final pluginItems = _pluginNavigationItems(ref);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 7);
       if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
         selectedIndexValue = 0;
         ref.read(tabletSelectedIndex.notifier).state = 0;
@@ -1046,7 +1046,7 @@ class TabletView extends ConsumerWidget {
       ])
         _tooltippedDestination(context, ref, destination),
     ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 7);
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
@@ -1097,10 +1097,10 @@ class DesktopView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pluginItems = _pluginNavigationItems(ref);
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 5);
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
       if (routeIndex == -1 || routeIndex >= navigationRoutes.length) {
@@ -1141,7 +1141,7 @@ class DesktopView extends ConsumerWidget {
       ])
         _tooltippedDestination(context, ref, destination),
     ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
@@ -1192,14 +1192,17 @@ class DesktopView extends ConsumerWidget {
     final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
     final showExpansionPanel = ref.watch(expansionPageShow);
     final isGitRoute = state.matchedLocation.startsWith('/git');
+    // Search and source control both render a dense list of file paths, so
+    // they get a wider left pane than the file tree.
+    final isWideRoute = isGitRoute || state.matchedLocation.startsWith('/search');
 
     // The desktop workspace already owns the central editor pane. Mounting the
     // /editor route child here would render the same tab controller twice.
     if (showFunctionPanel) {
       children.add(
         shadcn.ResizablePane.flex(
-          initialFlex: isGitRoute ? 3 : 2,
-          minSize: isGitRoute ? 340 : 220,
+          initialFlex: isWideRoute ? 3 : 2,
+          minSize: isWideRoute ? 340 : 220,
           child: child,
         ),
       );
