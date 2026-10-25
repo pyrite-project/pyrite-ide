@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
@@ -21,6 +24,7 @@ import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:tabbed_view/tabbed_view.dart' show TabbedViewController;
 
 class PersistenceManager {
   final AppPersistence appPersistence = AppPersistence();
@@ -90,12 +94,14 @@ class PersistenceManager {
       tabletSelectedIndex: functionPage?.tabletSelectedIndex ?? 0,
       functionPageShow: functionPage?.functionPageShow ?? true,
       consolePageShow: functionPage?.consolePageShow ?? true,
-      expansionPageShow: functionPage?.expansionPageShow ?? true,
+      consoleDockSide: functionPage?.consoleDockSide ?? 'bottom',
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
+      tabGroups: tabsData?.groups ?? const [],
+      tabLayout: tabsData?.layout,
+      tabPrimaryGroupIndex: tabsData?.primaryGroupIndex ?? 0,
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       selectedTabPath: tabsData?.selectedTabPath,
-      outlineColumnTabs: tabsData?.outlineColumnTabs ?? 0,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       ensureBoardFilesystemOnConnect:
@@ -246,7 +252,7 @@ class PersistenceManager {
           tabletSelectedIndex: container.read(tabletSelectedIndex),
           functionPageShow: container.read(functionPageShow),
           consolePageShow: container.read(consolePageShow),
-          expansionPageShow: container.read(expansionPageShow),
+          consoleDockSide: container.read(consoleDockSideProvider).name,
         ),
       ),
       _saveProject(container),
@@ -263,56 +269,102 @@ class PersistenceManager {
   }
 
   Future<void> _saveTabs(ProviderContainer container) async {
-    final tabController = container.read(tabbedViewControllerProvider);
-    final List<PersistedTab> tabs = [];
-    String? selectedTabPath;
-    for (final tab in tabController.tabs) {
-      final value = tab.value;
-      if (value is OutlineTabValue) {
-        // Outline tabs persist as markers so a saved outline keeps its
-        // position in the strip, even one dragged out of its birth column.
-        tabs.add(PersistedTab(filePath: '', isOutline: true));
-        continue;
-      }
-      if (value is TabDataValue && value.type == "file") {
-        tabs.add(
-          PersistedTab(
-            filePath: value.filePath,
-            isBoardFile: value.isBoardFile ?? false,
-            boardFilePath: value.boardFilePath,
-            isSaved: value.isSaved,
-            unsavedContent: (!value.isSaved && value.editorController != null)
-                ? value.editorController!.text
-                : null,
-            cursorOffset: value.editorController?.selection.extentOffset,
-            scrollLine: value.editorController?.firstVisibleLine,
-            foldedRanges: _persistFoldedRanges(value.editorController),
-          ),
-        );
-      }
+    final primary = container.read(tabbedViewControllerProvider);
+    final layout = container.read(editorLayoutProvider);
+    if (layout is SplitLayout) {
+      // The tree is persisted as it stands, so any number of nested groups
+      // reopens exactly as it was left -- including which of them is the
+      // primary one.
+      final persisted = persistEditorLayout(
+        layout,
+        primary: primary,
+        convert: _persistGroup,
+      );
+      await tabsPersistence.save(
+        TabsPersistedData(
+          tabs: const [],
+          selectedTabIndex: 0,
+          groups: persisted.groups,
+          layout: persisted.node,
+          primaryGroupIndex: persisted.primaryIndex,
+        ),
+      );
+      return;
     }
-    final selectedIndex = tabController.selectedIndex;
-    if (selectedIndex != null &&
-        selectedIndex >= 0 &&
-        selectedIndex < tabController.tabs.length) {
-      final selectedValue = tabController.tabs[selectedIndex].value;
-      if (selectedValue is TabDataValue) {
-        selectedTabPath = selectedValue.filePath;
-      }
-    }
-    // The outline column holds nothing but outline tabs, so a count is its
-    // whole layout.
-    final column = container.read(editorOutlineColumnProvider);
-    final outlineColumnTabs = column?.tabs.length ?? 0;
+    // A single group needs no tree: the flat list restores it, and it is the
+    // only place its tabs are written, so no buffer is serialized twice.
+    final group = _persistGroup(primary);
     await tabsPersistence.save(
       TabsPersistedData(
-        tabs: tabs,
-        selectedTabIndex: selectedIndex ?? 0,
-        selectedTabPath: selectedTabPath,
-        outlineColumnTabs: outlineColumnTabs,
+        tabs: group.tabs,
+        selectedTabIndex: primary.selectedIndex ?? 0,
+        selectedTabPath: group.selectedTabPath,
       ),
     );
   }
+
+  PersistedEditorGroup _persistGroup(TabbedViewController group) {
+    return PersistedEditorGroup(
+      tabs: [
+        for (final tab in group.tabs)
+          if (tab.value is OutlineTabValue)
+            // Outline tabs persist as markers so a saved outline keeps its
+            // position inside its group, wherever the tab was dragged to.
+            PersistedTab(filePath: '', isOutline: true)
+          else if (editorTabValueOf(tab) case final value?
+              when value.type == 'file')
+            _persistTab(value),
+      ],
+      selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
+    );
+  }
+
+  PersistedTab _persistTab(TabDataValue value) {
+    return PersistedTab(
+      filePath: value.filePath,
+      isBoardFile: value.isBoardFile ?? false,
+      boardFilePath: value.boardFilePath,
+      isSaved: value.isSaved,
+      unsavedContent: (!value.isSaved && value.editorController != null)
+          ? value.editorController!.text
+          : null,
+      cursorOffset: value.editorController?.selection.extentOffset,
+      scrollLine: value.editorController?.firstVisibleLine,
+      foldedRanges: _persistFoldedRanges(value.editorController),
+    );
+  }
+}
+
+/// A fingerprint of what [PersistenceManager] writes for the editor area,
+/// leaving out the buffers themselves.
+///
+/// Cheap enough to compute on every tab notification, so the session is only
+/// saved when this changes: re-selecting the selected tab or a title refresh
+/// writes nothing, while opening, closing, moving or selecting a tab, saving
+/// one or reshaping the groups does.
+String persistedEditorAreaKey(ProviderContainer container) {
+  final persisted = persistEditorLayout(
+    container.read(editorLayoutProvider),
+    primary: container.read(tabbedViewControllerProvider),
+    convert: (group) => PersistedEditorGroup(
+      tabs: [
+        for (final tab in group.tabs)
+          if (editorTabValueOf(tab) case final value? when value.type == 'file')
+            PersistedTab(
+              filePath: value.filePath,
+              isBoardFile: value.isBoardFile ?? false,
+              boardFilePath: value.boardFilePath,
+              isSaved: value.isSaved,
+            ),
+      ],
+      selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
+    ),
+  );
+  return jsonEncode({
+    'groups': [for (final group in persisted.groups) group.toJson()],
+    'layout': persisted.node.toJson(),
+    'primary': persisted.primaryIndex,
+  });
 }
 
 List<PersistedFoldRange> _persistFoldedRanges(CodeForgeController? controller) {

@@ -39,12 +39,27 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // 让环境通知器的防抖布局上报发出：否则这个计时器会活过用例，
+    // 触发 "A Timer is still pending" 断言。
+    await tester.pump(const Duration(milliseconds: 200));
   }
 
   /// 停掉应用注册的定期任务（串口轮询等）：容器在用例之间共享，但组件树
   /// 不是，否则计时器会活过测试并触发 "A Timer is still pending"。
   void stopPeriodicTasks() =>
       app.container.read(periodicTaskManagerProvider).dispose();
+
+  testWidgets(
+    'a first launch starts on the onboarding page',
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    (WidgetTester tester) async {
+      await pumpApp(tester, onboarded: false);
+
+      expect(find.text('欢迎使用 PyriteIDE'), findsOneWidget);
+      expect(find.text('开始'), findsOneWidget);
+      stopPeriodicTasks();
+    },
+  );
 
   testWidgets(
     'Pyrite IDE starts on the editor welcome page',

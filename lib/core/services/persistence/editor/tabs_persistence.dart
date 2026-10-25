@@ -5,7 +5,22 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 class TabsPersistedData {
+  /// The tabs of a session saved with a single group.
+  ///
+  /// Empty when the editor area was split: [groups] holds every tab then, so
+  /// no buffer is written twice.
   final List<PersistedTab> tabs;
+
+  /// One entry per group, in layout order; empty for a single group.
+  final List<PersistedEditorGroup> groups;
+
+  /// The layout tree [groups] are placed by, or null for a single group.
+  final PersistedEditorLayout? layout;
+
+  /// Which of [groups] is the primary group -- the one holding the welcome
+  /// page, where new tabs fall back to while no group has focus.
+  final int primaryGroupIndex;
+
   final int selectedTabIndex;
 
   /// File path of the tab that was selected at save time.
@@ -19,26 +34,22 @@ class TabsPersistedData {
   /// saved before this field existed.
   final String? selectedTabPath;
 
-  /// How many outline tabs lived in the outline column at save time.
-  ///
-  /// The column holds nothing but outline tabs, so a count rebuilds it
-  /// exactly. Zero for sessions written before this field existed, which
-  /// restores no column — a fresh outline then takes its usual birth
-  /// position at the far right.
-  final int outlineColumnTabs;
-
   TabsPersistedData({
     required this.tabs,
     required this.selectedTabIndex,
     this.selectedTabPath,
-    this.outlineColumnTabs = 0,
+    this.groups = const [],
+    this.layout,
+    this.primaryGroupIndex = 0,
   });
 
   Map<String, dynamic> toJson() => {
     'tabs': tabs.map((t) => t.toJson()).toList(),
     'selectedTabIndex': selectedTabIndex,
     'selectedTabPath': selectedTabPath,
-    'outlineColumnTabs': outlineColumnTabs,
+    if (groups.isNotEmpty) 'groups': groups.map((g) => g.toJson()).toList(),
+    if (layout != null) 'layout': layout!.toJson(),
+    if (layout != null) 'primaryGroupIndex': primaryGroupIndex,
   };
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -50,7 +61,18 @@ class TabsPersistedData {
             [],
         selectedTabIndex: json['selectedTabIndex'] as int? ?? 0,
         selectedTabPath: json['selectedTabPath'] as String?,
-        outlineColumnTabs: json['outlineColumnTabs'] as int? ?? 0,
+        groups:
+            (json['groups'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(PersistedEditorGroup.fromJson)
+                .toList() ??
+            const [],
+        layout: json['layout'] is Map<String, dynamic>
+            ? PersistedEditorLayout.fromJson(
+                json['layout'] as Map<String, dynamic>,
+              )
+            : null,
+        primaryGroupIndex: (json['primaryGroupIndex'] as num?)?.toInt() ?? 0,
       );
 }
 

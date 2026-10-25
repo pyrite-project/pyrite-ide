@@ -1,7 +1,7 @@
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/edit_core/editor_outline_panel.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
@@ -18,19 +18,13 @@ class OutlineTabValue {
 /// Whether [tab] is an outline tab.
 bool isOutlineTab(TabData tab) => tab.value is OutlineTabValue;
 
-/// The tab group column the outline is born into, docked to the right of the
-/// editor tabs. Null while no outline column exists.
-///
-/// The column only ever holds outline tabs — its [TabbedView] rejects drops
-/// of anything else — so a plain count is all its persistence needs.
-final StateProvider<TabbedViewController?> editorOutlineColumnProvider =
-    StateProvider<TabbedViewController?>((ref) => null);
-
 /// Builds an outline tab.
 ///
 /// An ordinary tab — draggable, closable, [TabData.keepAlive] like a file tab
 /// so its collapse state survives being deselected — whose content is the
-/// outline panel.
+/// outline panel. It lives in whatever editor group holds it, so it splits,
+/// drags and persists exactly like a file tab does; persistence stores it as
+/// an outline marker in its group's tab list.
 TabData buildOutlineTab(String title) {
   return TabData(
     value: const OutlineTabValue(),
@@ -40,21 +34,16 @@ TabData buildOutlineTab(String title) {
   );
 }
 
-/// Opens another outline tab, born into the rightmost outline column.
+/// Opens another outline tab in the group the user is working in.
 ///
-/// The column is created on first use; while it exists the new tab joins it
-/// as a sibling, which is what makes several outlines possible. Tabs dragged
-/// out into the editor bar keep living there — the saved layout wins over the
-/// birth position, and a column whose tabs are all gone closes itself.
-void openOutlineTab(BuildContext context, WidgetRef ref) {
-  final column = ref.read(editorOutlineColumnProvider);
-  if (column != null && column.tabs.isNotEmpty) {
-    column.addTab(
-      buildOutlineTab(translateInContext(context, I18nKey.editorOutlineTitle)),
-    );
-    return;
-  }
-  ref.read(editorOutlineColumnProvider.notifier).state = TabbedViewController([
-    buildOutlineTab(translateInContext(context, I18nKey.editorOutlineTitle)),
-  ]);
+/// The outline is an ordinary member of the editor layout: the new tab joins
+/// the active group like any file tab would, and from there it can be dragged
+/// into another group or used to split one. Several outlines can coexist, in
+/// the same or in different groups.
+void openOutlineTab(WidgetRef ref) {
+  ref
+      .read(tabbedViewControllerProvider.notifier)
+      .openTab(
+        buildOutlineTab(translateForWidget(ref, I18nKey.editorOutlineTitle)),
+      );
 }

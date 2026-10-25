@@ -11,6 +11,7 @@ import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -514,7 +515,10 @@ class BoardNotifier {
   }
 
   Future<void> saveFile() async {
-    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
+    // The tab the editor is acting on, in whichever group has focus.
+    final TabData? nowTab = ref
+        .read(activeEditorControllerProvider)
+        .selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
       if (value.isBoardFile == true && value.boardFilePath != null) {

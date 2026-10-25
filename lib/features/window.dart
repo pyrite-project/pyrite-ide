@@ -11,11 +11,12 @@ import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -186,8 +187,8 @@ class UseWindow with WindowListener {
 
   List<TabData> _collectUnsavedTabs(ProviderContainer container) {
     final tabs = <TabData>[
-      ...container.read(tabbedViewControllerProvider).tabs,
-      ...container.read(expansionViewController).tabs,
+      for (final controller in allEditorControllers(container))
+        ...controller.tabs,
     ];
     return tabs.where(isTabUnsaved).toList();
   }
@@ -417,17 +418,13 @@ class AppActionBar extends ConsumerWidget {
               ),
               child: const UseText(I18nKey.menuConsolePanel),
             ),
+            // Always reachable, unlike the console tab's own menu: once every
+            // surface was dragged out, the panel and its strip are gone.
             MenuItemButton(
-              onPressed: () {},
-              leadingIcon: Icon(Icons.expand),
-              trailingIcon: Checkbox(
-                value: ref.watch(expansionPageShow),
-                onChanged: (value) =>
-                    ref.read(expansionPageShow.notifier).state = !ref.read(
-                      expansionPageShow,
-                    ),
-              ),
-              child: const UseText(I18nKey.menuExpansionPanel),
+              onPressed: () =>
+                  resetTerminalLayout(ProviderScope.containerOf(context)),
+              leadingIcon: const Icon(Icons.settings_backup_restore),
+              child: const UseText(I18nKey.consoleResetLayout),
             ),
           ],
           child: const UseText(I18nKey.menuView),

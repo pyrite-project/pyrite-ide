@@ -111,9 +111,104 @@ class PersistedTab {
   );
 }
 
+/// One editor group as persisted: its tabs and which of them was selected.
+class PersistedEditorGroup {
+  final List<PersistedTab> tabs;
+
+  /// File path of the tab selected in this group at save time, resolved the
+  /// same way [PersistedTab] selection is: by path, never by index.
+  final String? selectedTabPath;
+
+  PersistedEditorGroup({required this.tabs, this.selectedTabPath});
+
+  Map<String, dynamic> toJson() => {
+    'tabs': tabs.map((t) => t.toJson()).toList(),
+    'selectedTabPath': selectedTabPath,
+  };
+
+  factory PersistedEditorGroup.fromJson(Map<String, dynamic> json) =>
+      PersistedEditorGroup(
+        tabs:
+            (json['tabs'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(PersistedTab.fromJson)
+                .toList() ??
+            const [],
+        selectedTabPath: json['selectedTabPath'] as String?,
+      );
+}
+
+/// The editor area's layout as persisted.
+///
+/// A group is a leaf pointing into [TabsPersistedData.groups]; a split holds an
+/// axis and its children. The tree is written nested, exactly as it stands, so
+/// any number of nested splits restores as it was left.
+class PersistedEditorLayout {
+  /// Axis of a split node: `horizontal` or `vertical`. Null for a group leaf.
+  final String? axis;
+
+  /// Index into [TabsPersistedData.groups] for a group leaf.
+  final int? groupIndex;
+
+  /// Children of a split node, empty for a group leaf.
+  final List<PersistedEditorLayout> children;
+
+  /// The children's relative sizes, or null for equal shares.
+  final List<double>? weights;
+
+  PersistedEditorLayout.split(this.axis, this.children, {this.weights})
+    : groupIndex = null;
+
+  PersistedEditorLayout.group(this.groupIndex)
+    : axis = null,
+      children = const [],
+      weights = null;
+
+  bool get isSplit => axis != null;
+
+  Map<String, dynamic> toJson() => {
+    if (axis != null) 'axis': axis,
+    if (groupIndex != null) 'groupIndex': groupIndex,
+    if (isSplit) 'children': children.map((c) => c.toJson()).toList(),
+    if (weights != null) 'weights': weights,
+  };
+
+  factory PersistedEditorLayout.fromJson(Map<String, dynamic> json) {
+    final axis = json['axis'] as String?;
+    // A split node carries `axis`; a group leaf carries `groupIndex`. The group
+    // index is absent on splits, so the axis is the only reliable discriminant.
+    if (axis != null) {
+      return PersistedEditorLayout.split(
+        axis,
+        (json['children'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(PersistedEditorLayout.fromJson)
+            .toList(),
+        weights: (json['weights'] as List<dynamic>?)
+            ?.whereType<num>()
+            .map((weight) => weight.toDouble())
+            .toList(),
+      );
+    }
+    final groupIndex = (json['groupIndex'] as num?)?.toInt() ?? 0;
+    return PersistedEditorLayout.group(groupIndex);
+  }
+}
+
 class PersistedData {
   final String? projectPath;
+
+  /// The tabs of a session saved with a single editor group.
   final List<PersistedTab> tabs;
+
+  /// One entry per editor group of a split session, in layout order.
+  final List<PersistedEditorGroup> tabGroups;
+
+  /// The editor area's layout tree, or null for a single group.
+  final PersistedEditorLayout? tabLayout;
+
+  /// Which of [tabGroups] is the primary group.
+  final int tabPrimaryGroupIndex;
   final int selectedTabIndex;
 
   /// File path of the tab that was selected, preferred over [selectedTabIndex]
@@ -121,9 +216,6 @@ class PersistedData {
   /// index space. See `TabsPersistedData.selectedTabPath`.
   final String? selectedTabPath;
 
-  /// Outline tabs that lived in the outline column at save time. See
-  /// `TabsPersistedData.outlineColumnTabs`.
-  final int outlineColumnTabs;
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
@@ -172,7 +264,7 @@ class PersistedData {
   final int tabletSelectedIndex;
   final bool functionPageShow;
   final bool consolePageShow;
-  final bool expansionPageShow;
+  final String consoleDockSide;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
@@ -214,9 +306,11 @@ class PersistedData {
   PersistedData({
     this.projectPath,
     this.tabs = const [],
+    this.tabGroups = const [],
+    this.tabLayout,
+    this.tabPrimaryGroupIndex = 0,
     this.selectedTabIndex = 0,
     this.selectedTabPath,
-    this.outlineColumnTabs = 0,
     this.themeMode = 'system',
     this.themeStyle = 'standard',
     this.themeColorValue,
@@ -265,7 +359,7 @@ class PersistedData {
     this.tabletSelectedIndex = 0,
     this.functionPageShow = true,
     this.consolePageShow = true,
-    this.expansionPageShow = true,
+    this.consoleDockSide = 'bottom',
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,

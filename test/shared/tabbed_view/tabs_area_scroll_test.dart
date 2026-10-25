@@ -30,6 +30,7 @@ void main() {
     );
     addTearDown(controller.dispose);
 
+    // The tab widgets read the problem counts, which needs a ProviderScope.
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(

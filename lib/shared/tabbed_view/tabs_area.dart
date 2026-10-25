@@ -19,27 +19,26 @@ import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/src/internal/tabs_area/hidden_tabs.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
-/// Widget for the tabs and buttons.
-class TabsArea extends StatefulWidget {
-  const TabsArea({super.key, required this.provider});
-
-  final TabbedViewProvider provider;
-
-  @override
-  State<StatefulWidget> createState() => _TabsAreaState();
-}
-
-/// The [TabsArea] state.
+/// How far into the strip, from either end, a drag held still scrolls it.
 const double _autoScrollEdgeExtent = 56;
 const double _autoScrollMaxVelocity = 480;
 
+/// How long a drag has to rest in an edge zone before the strip scrolls.
+///
+/// A drag passing through on its way out of the strip -- which is how a tab is
+/// split off into a new group -- never waits that long, so the strip stays put
+/// under it. A drag that stops there is reaching for an overflowed tab.
+const Duration nativeTabAutoScrollDwell = Duration(milliseconds: 350);
+
+/// Signed scroll speed for a drag at [coordinate] along a strip whose visible
+/// extent is [viewportExtent]: zero away from the ends, easing up to
+/// [_autoScrollMaxVelocity] at the very edge.
 @visibleForTesting
 double nativeTabAutoScrollVelocity({
   required double coordinate,
   required double viewportExtent,
 }) {
   if (viewportExtent <= 0) return 0;
-
   final edgeExtent = math.min(_autoScrollEdgeExtent, viewportExtent / 3);
   final double direction;
   final double depth;
@@ -55,9 +54,18 @@ double nativeTabAutoScrollVelocity({
   } else {
     return 0;
   }
-
   final easedDepth = depth * depth * (3 - 2 * depth);
   return direction * _autoScrollMaxVelocity * easedDepth;
+}
+
+/// Widget for the tabs and buttons.
+class TabsArea extends StatefulWidget {
+  const TabsArea({super.key, required this.provider});
+
+  final TabbedViewProvider provider;
+
+  @override
+  State<StatefulWidget> createState() => _TabsAreaState();
 }
 
 class _TabsAreaState extends State<TabsArea>
@@ -68,24 +76,27 @@ class _TabsAreaState extends State<TabsArea>
 
   final ScrollController _scrollController = ScrollController();
   final Map<Key, BuildContext> _tabContexts = {};
-  late final Ticker _autoScrollTicker;
-  Duration? _lastAutoScrollTick;
-  double _autoScrollVelocity = 0;
   NativeTabDragRegistration? _trackedDragRegistration;
   Offset? _trackedDragGlobalPosition;
   TabBarPosition? _trackedDragTabBarPosition;
 
   final HiddenTabs _hiddenTabs = HiddenTabs();
 
+  late final Ticker _autoScrollTicker;
+  Duration? _lastAutoScrollTick;
+  double _autoScrollVelocity = 0;
+
+  /// When the drag entered the edge zone it is resting in, or null outside it.
+  Duration? _edgeZoneEnteredAt;
+
   @override
   void initState() {
     super.initState();
-    _autoScrollTicker = createTicker(_handleAutoScrollTick);
+    _autoScrollTicker = createTicker(_onAutoScrollTick);
   }
 
   @override
   void dispose() {
-    _stopAutoScroll();
     _autoScrollTicker.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -263,8 +274,10 @@ class _TabsAreaState extends State<TabsArea>
     return DropMonitor(
       formats: const [],
       hitTestBehavior: HitTestBehavior.opaque,
-      onDropOver: (event) =>
-          _updateAutoScroll(event, scrollDirection, tabsAreaTheme.position),
+      onDropOver: (event) {
+        _trackNativeTabDrag(event, tabsAreaTheme.position);
+        _updateAutoScroll(event, scrollDirection);
+      },
       onDropLeave: (_) => _clearTrackedDrag(),
       onDropEnded: (_) => _clearTrackedDrag(),
       child: scrollView,
@@ -352,9 +365,9 @@ class _TabsAreaState extends State<TabsArea>
     _scrollController.jumpTo(target);
   }
 
-  void _updateAutoScroll(
+  /// Tracks the drag that is currently over this strip.
+  void _trackNativeTabDrag(
     MonitorDropOverEvent event,
-    Axis axis,
     TabBarPosition tabBarPosition,
   ) {
     final registration = NativeTabDragRegistry.registrationForSession(
@@ -369,60 +382,6 @@ class _TabsAreaState extends State<TabsArea>
     _trackedDragGlobalPosition = event.position.global;
     _trackedDragTabBarPosition = tabBarPosition;
     _updateTrackedDragIntent();
-
-    if (!_scrollController.hasClients) {
-      _stopAutoScroll();
-      return;
-    }
-
-    final double viewportExtent = _scrollController.position.viewportDimension;
-    final double coordinate = axis == Axis.horizontal
-        ? event.position.local.dx
-        : event.position.local.dy;
-    _setAutoScrollVelocity(
-      nativeTabAutoScrollVelocity(
-        coordinate: coordinate,
-        viewportExtent: viewportExtent,
-      ),
-    );
-  }
-
-  void _setAutoScrollVelocity(double velocity) {
-    if (velocity == 0) {
-      _stopAutoScroll();
-      return;
-    }
-
-    _autoScrollVelocity = velocity;
-    if (!_autoScrollTicker.isActive) {
-      _lastAutoScrollTick = null;
-      _autoScrollTicker.start();
-    }
-  }
-
-  void _handleAutoScrollTick(Duration elapsed) {
-    if (!mounted || !_scrollController.hasClients) {
-      _stopAutoScroll();
-      return;
-    }
-
-    final previousTick = _lastAutoScrollTick;
-    _lastAutoScrollTick = elapsed;
-    if (previousTick == null) return;
-
-    final elapsedSeconds = ((elapsed - previousTick).inMicroseconds / 1000000)
-        .clamp(0.0, 0.05);
-    final position = _scrollController.position;
-    final target = (position.pixels + _autoScrollVelocity * elapsedSeconds)
-        .clamp(position.minScrollExtent, position.maxScrollExtent);
-    if (target == position.pixels) {
-      _stopAutoScroll();
-      return;
-    }
-    _scrollController.jumpTo(target);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateTrackedDragIntent();
-    });
   }
 
   void _updateTrackedDragIntent() {
@@ -457,9 +416,67 @@ class _TabsAreaState extends State<TabsArea>
     _trackedDragTabBarPosition = null;
   }
 
+  /// Scrolls the strip while a drag rests near one of its ends.
+  ///
+  /// Only after [nativeTabAutoScrollDwell]: a drag crossing an end on its way
+  /// out of the strip must not drag the tabs along with it.
+  void _updateAutoScroll(MonitorDropOverEvent event, Axis axis) {
+    if (!_scrollController.hasClients ||
+        NativeTabDragRegistry.registrationForSession(event.session) == null) {
+      _stopAutoScroll();
+      return;
+    }
+    final velocity = nativeTabAutoScrollVelocity(
+      coordinate: axis == Axis.horizontal
+          ? event.position.local.dx
+          : event.position.local.dy,
+      viewportExtent: _scrollController.position.viewportDimension,
+    );
+    if (velocity == 0) {
+      _stopAutoScroll();
+      return;
+    }
+    _autoScrollVelocity = velocity;
+    if (!_autoScrollTicker.isActive) {
+      _lastAutoScrollTick = null;
+      _edgeZoneEnteredAt = null;
+      _autoScrollTicker.start();
+    }
+  }
+
+  void _onAutoScrollTick(Duration elapsed) {
+    if (!mounted || !_scrollController.hasClients) {
+      _stopAutoScroll();
+      return;
+    }
+    final entered = _edgeZoneEnteredAt ??= elapsed;
+    final previous = _lastAutoScrollTick;
+    _lastAutoScrollTick = elapsed;
+    if (elapsed - entered < nativeTabAutoScrollDwell || previous == null) {
+      return;
+    }
+    final seconds = ((elapsed - previous).inMicroseconds / 1000000).clamp(
+      0.0,
+      0.05,
+    );
+    final position = _scrollController.position;
+    final target = (position.pixels + _autoScrollVelocity * seconds).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target == position.pixels) return;
+    _scrollController.jumpTo(target);
+    // The tabs moved under a pointer that did not, so the insertion point the
+    // drag resolves to has to be recomputed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateTrackedDragIntent();
+    });
+  }
+
   void _stopAutoScroll() {
-    _autoScrollTicker.stop();
+    if (_autoScrollTicker.isActive) _autoScrollTicker.stop();
     _lastAutoScrollTick = null;
+    _edgeZoneEnteredAt = null;
     _autoScrollVelocity = 0;
   }
 
