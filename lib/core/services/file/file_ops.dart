@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
@@ -28,6 +29,42 @@ class DiffInfo {
     required this.unifiedLines,
     required this.addCount,
     required this.removeCount,
+  });
+
+  /// Zero-based line in the *new* text where the first change shows up.
+  ///
+  /// Added lines sit at their own index; a removed block is rendered as a
+  /// virtual block after `afterLine`, so its visible position is the line
+  /// that follows (the top of the document when `afterLine` is -1). Returns
+  /// null when the texts do not differ.
+  int? get firstChangedLine {
+    int? line;
+    if (addedRanges.isNotEmpty) line = addedRanges.first.$1;
+    for (final range in removedRanges) {
+      final visible = range.afterLine < 0 ? 0 : range.afterLine + 1;
+      if (line == null || visible < line) line = visible;
+    }
+    return line;
+  }
+}
+
+/// Moves the editor caret to the diff's first change and scrolls it into view.
+///
+/// Call right after the diff decorations are applied; the scroll is deferred
+/// one frame because the editor for a just-opened tab is not mounted yet.
+void revealFirstDifference(CodeForgeController? controller, DiffInfo diff) {
+  final line = diff.firstChangedLine;
+  if (controller == null || line == null) return;
+  final offset = controller
+      .getLineStartOffset(line)
+      .clamp(0, controller.length);
+  controller.selection = TextSelection.collapsed(offset: offset);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    try {
+      controller.scrollToLine(line);
+    } on StateError {
+      // The tab may have been closed before its editor was mounted.
+    }
   });
 }
 
@@ -414,7 +451,12 @@ class FileTransferProgressState {
 
 class FileTransferProgressNotifier
     extends StateNotifier<FileTransferProgressState> {
-  FileTransferProgressNotifier() : super(const FileTransferProgressState());
+  FileTransferProgressNotifier({I18nTranslate? translate})
+    : _tr = translate ?? fallbackTranslate,
+      super(const FileTransferProgressState());
+
+  /// Renders the default progress messages in the active locale.
+  final I18nTranslate _tr;
 
   Timer? _clearTimer;
   DateTime? _transferStartTime;
@@ -471,7 +513,7 @@ class FileTransferProgressNotifier
     _cancelToken?.cancel();
     state = state.copyWith(
       cancelRequested: true,
-      message: I18nKey.fileTransferCancelling.fallback,
+      message: _tr(I18nKey.fileTransferCancelling),
     );
   }
 
@@ -486,7 +528,7 @@ class FileTransferProgressNotifier
       cancelled: true,
       cancelRequested: false,
       bytesDone: 0,
-      message: message ?? I18nKey.fileTransferCancelled.fallback,
+      message: message ?? _tr(I18nKey.fileTransferCancelled),
     );
     _scheduleClear();
   }
@@ -580,7 +622,7 @@ final fileTransferProgressProvider =
     StateNotifierProvider<
       FileTransferProgressNotifier,
       FileTransferProgressState
-    >((ref) => FileTransferProgressNotifier());
+    >((ref) => FileTransferProgressNotifier(translate: translateFor(ref)));
 
 // ---------------------------------------------------------------------------
 // Conflict resolution

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 
 SyncFileInfo _local(String path, int size, DateTime? modified) =>
     SyncFileInfo(relativePath: path, size: size, modified: modified);
@@ -309,6 +310,59 @@ void main() {
     });
   });
 
+  group('buildSyncPlan: .pyrsyncignore', () {
+    test('flags the ignore file and every matched path', () {
+      final plan = buildSyncPlan(
+        local: _snapshot({
+          '.pyrsyncignore': _local('.pyrsyncignore', 24, _at(2000)),
+          'main.py': _local('main.py', 10, _at(2000)),
+          'build/out.bin': _local('build/out.bin', 5, _at(2000)),
+        }),
+        board: _snapshot(const {}),
+        ignore: SyncIgnoreRules.parse('# keep the board small\nbuild\n'),
+      );
+
+      expect(
+        plan.entries
+            .where((entry) => entry.ignoredByDefault)
+            .map((entry) => entry.relativePath),
+        ['.pyrsyncignore', 'build/out.bin'],
+      );
+      // Ignored rows stay in the diff, they are only pre-unticked.
+      expect(plan.actionable.length, 3);
+      expect(plan.defaultSelection.map((entry) => entry.relativePath), [
+        'main.py',
+      ]);
+      expect(plan.ignoredCount, 2);
+    });
+
+    test('the same rules match board-only rows', () {
+      final plan = buildSyncPlan(
+        local: _snapshot(const {}),
+        board: _snapshot({
+          'vendor/lib.py': _board('vendor/lib.py', 10, _at(2000)),
+          'main.py': _board('main.py', 10, _at(2000)),
+        }),
+        ignore: SyncIgnoreRules.parse('vendor\n'),
+      );
+
+      expect(plan.defaultSelection.map((entry) => entry.relativePath), [
+        'main.py',
+      ]);
+      expect(plan.ignoredEntries.single.relativePath, 'vendor/lib.py');
+    });
+
+    test('no rules leave the default selection untouched', () {
+      final plan = buildSyncPlan(
+        local: _snapshot({'main.py': _local('main.py', 10, _at(2000))}),
+        board: _snapshot(const {}),
+      );
+
+      expect(plan.ignoredEntries, isEmpty);
+      expect(plan.defaultSelection.single.relativePath, 'main.py');
+    });
+  });
+
   group('normalizeSyncRelativePath', () {
     test('normalizes separators and leading markers', () {
       expect(normalizeSyncRelativePath('lib\\a.py'), 'lib/a.py');
@@ -336,6 +390,20 @@ void main() {
       expect(overridden.direction, BoardSyncDirection.localToBoard);
       expect(overridden.selectable, isTrue);
       expect(overridden.note, isNull);
+    });
+
+    test('keeps the ignore flag when the action is overridden', () {
+      final ignored = buildSyncEntry(
+        relativePath: 'build/a.py',
+        local: _local('build/a.py', 10, _at(2000)),
+        board: _board('build/a.py', 20, _at(2000)),
+      ).copyWith(ignoredByDefault: true);
+
+      final overridden = ignored.copyWith(
+        action: BoardSyncAction.uploadChanged,
+      );
+
+      expect(overridden.ignoredByDefault, isTrue);
     });
   });
 }

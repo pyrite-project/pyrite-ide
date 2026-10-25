@@ -297,6 +297,7 @@ class ProjectFiles extends ConsumerWidget {
 
           final paths = await _externalFilePaths(event.session);
           if (paths.isEmpty) return;
+          if (!context.mounted) return;
           await _importExternalPaths(
             context,
             ref,
@@ -364,6 +365,7 @@ class ProjectFiles extends ConsumerWidget {
 
           final paths = await _externalFilePaths(event.session);
           if (paths.isEmpty) return;
+          if (!context.mounted) return;
           await _uploadLocalPaths(
             context,
             ref,
@@ -549,6 +551,7 @@ class ProjectFiles extends ConsumerWidget {
     if (!context.mounted) return;
     if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
+      if (!context.mounted) return;
       await ref
           .read(fileProvider.notifier)
           .moveLocalNodes(context, nodes, targetFolder);
@@ -595,6 +598,7 @@ class ProjectFiles extends ConsumerWidget {
     if (!context.mounted) return;
     if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
+      if (!context.mounted) return;
       await ref
           .read(boardProvider)
           .moveBoardNodes(context, nodes, targetFolder);
@@ -1036,6 +1040,7 @@ class ProjectFiles extends ConsumerWidget {
                     })
                   : node.data.name,
             )) {
+              if (!context.mounted) return;
               await ref
                   .read(fileProvider.notifier)
                   .deleteSelectedLocalItems(context);
@@ -1211,6 +1216,7 @@ class ProjectFiles extends ConsumerWidget {
                   : node.data.name,
             )) {
               try {
+                if (!context.mounted) return;
                 await ref.read(boardProvider).deleteSelectedBoardItems(context);
               } on DeviceNotReadyException catch (_) {
                 if (!context.mounted) return;
@@ -1348,6 +1354,7 @@ class ProjectFiles extends ConsumerWidget {
                                 I18nKey.fileSelectedItemsName,
                               ).replaceAll('{count}', selectedCount.toString()),
                             )) {
+                              if (!context.mounted) return;
                               await ref
                                   .read(fileProvider.notifier)
                                   .deleteSelectedLocalItems(context);
@@ -1522,6 +1529,7 @@ class ProjectFiles extends ConsumerWidget {
                               ).replaceAll('{count}', selectedCount.toString()),
                             )) {
                               try {
+                                if (!context.mounted) return;
                                 await ref
                                     .read(boardProvider)
                                     .deleteSelectedBoardItems(context);
@@ -1635,10 +1643,6 @@ class ProjectFiles extends ConsumerWidget {
       return Column(
         children: [
           buildLocalHeader(context, ref, localWorkspace),
-          // The cancel affordance must be visible while the batch runs, so the
-          // progress row lives in the pane it belongs to rather than only in the
-          // status bar.
-          const FileTransferProgressBar(),
           // buildLocalActionStrip(context, ref),
           Expanded(
             child: SuperTreeView<FileSystemItem>(
@@ -1842,6 +1846,12 @@ class ProjectFiles extends ConsumerWidget {
 
     final boardOps = ref.read(boardProvider).ops;
     final boardRoot = ref.read(boardProvider).getFocusFolderNode()?.id ?? '/';
+    // The plan walks the board synchronously with the progress UI; reading the
+    // locale through the container keeps the note text out of widget rebuilds.
+    String translateSync(
+      I18nKey key, [
+      Map<String, String> replacements = const {},
+    ]) => translateInContextWithReplacements(context, key, replacements);
 
     BoardSyncPlan plan;
     try {
@@ -1849,6 +1859,7 @@ class ProjectFiles extends ConsumerWidget {
         ops: boardOps,
         localRoot: localWorkspace.path,
         boardRoot: boardRoot,
+        translate: translateSync,
       );
     } on DeviceNotReadyException catch (_) {
       if (!context.mounted) return;
@@ -1863,7 +1874,14 @@ class ProjectFiles extends ConsumerWidget {
       return;
     } catch (error) {
       if (!context.mounted) return;
-      showIdeError(context, '生成同步清单失败：$error');
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileMessageSyncPlanFailed,
+          {'error': '$error'},
+        ),
+      );
       return;
     }
 
@@ -1892,7 +1910,11 @@ class ProjectFiles extends ConsumerWidget {
 
     final filtered = _restrictPlanToDirection(plan, result.direction);
     final progress = ref.read(fileTransferProgressProvider.notifier);
-    final executor = BoardSyncExecutor(ops: boardOps, progress: progress);
+    final executor = BoardSyncExecutor(
+      ops: boardOps,
+      progress: progress,
+      translate: translateSync,
+    );
     // No token is passed in: the executor creates it right after `start()`, so
     // the progress bar's cancel button cancels exactly the token being polled.
     final outcome = await executor.execute(
@@ -1905,15 +1927,27 @@ class ProjectFiles extends ConsumerWidget {
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
     if (outcome.error != null) {
-      showIdeError(context, '同步失败：${outcome.error}');
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileMessageSyncFailed,
+          {'error': '${outcome.error}'},
+        ),
+      );
     } else if (outcome.hasFailures) {
       final first = outcome.failed.first;
       showIdeError(
         context,
-        I18nKey.fileSyncFirstFailure.fallback
-            .replaceAll('{summary}', outcome.summary)
-            .replaceAll('{path}', first.entry.relativePath)
-            .replaceAll('{error}', '${first.error}'),
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileSyncFirstFailure,
+          {
+            'summary': outcome.summary,
+            'path': first.entry.relativePath,
+            'error': '${first.error}',
+          },
+        ),
       );
     } else {
       showEditorSnackBar(context, outcome.summary);
@@ -1943,7 +1977,10 @@ class ProjectFiles extends ConsumerWidget {
 
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
     if (ref.watch(deviceConnectedProvider) &&
-        ref.watch(boardFileItemsProvider).isNotEmpty) {
+        (ref.watch(boardFileItemsProvider).isNotEmpty ||
+            // A successful refresh proved the listing is empty, so show the
+            // empty list instead of the refresh prompt.
+            ref.watch(boardFileListLoadedProvider))) {
       final deviceLabel = ref.watch(activeDeviceLabelProvider);
       final selectionMode = ref.watch(boardFileSelectionModeProvider);
       final compact = ref.watch(themeStyle) == ThemeStyle.compact;

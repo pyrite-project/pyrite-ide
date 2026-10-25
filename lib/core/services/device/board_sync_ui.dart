@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
-import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
@@ -61,13 +59,18 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   late Set<String> _selected;
   late BoardSyncDirection _direction;
 
+  /// The `.pyrsyncignore` group starts folded: the rows the user asked us to
+  /// leave alone must not push the rows that need a decision off screen.
+  bool _ignoredExpanded = false;
+
   @override
   void initState() {
     super.initState();
-    // Default selection: every actionable row. Conflicts start unchecked
-    // because silently overwriting either side would lose user edits.
+    // Default selection: every actionable row the ignore file does not cover.
+    // Conflicts start unchecked because silently overwriting either side would
+    // lose user edits.
     _selected = {
-      for (final entry in widget.plan.actionable) entry.relativePath,
+      for (final entry in widget.plan.defaultSelection) entry.relativePath,
     };
     _direction = BoardSyncDirection.none;
   }
@@ -96,6 +99,16 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     return widget.plan.entries;
   }
 
+  /// Rows listed one by one, in path order.
+  List<BoardSyncEntry> get _regularEntries => _visibleEntries
+      .where((entry) => !entry.ignoredByDefault)
+      .toList(growable: false);
+
+  /// Rows folded into the single `.pyrsyncignore` group.
+  List<BoardSyncEntry> get _ignoredEntries => _visibleEntries
+      .where((entry) => entry.ignoredByDefault)
+      .toList(growable: false);
+
   int get _selectedBytes => widget.plan.actionable
       .where((entry) => _selected.contains(entry.relativePath))
       .fold(0, (sum, entry) => sum + entry.transferBytes);
@@ -104,6 +117,8 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final entries = _visibleEntries;
+    final regular = _regularEntries;
+    final ignored = _ignoredEntries;
     final actionable = _selected.length;
     return AlertDialog(
       icon: const Icon(Icons.sync_alt),
@@ -150,15 +165,20 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                   onPressed: entries.isEmpty
                       ? null
                       : () {
-                          final selectable = entries
+                          // Deliberately scoped to the rows listed one by one:
+                          // selecting paths that `.pyrsyncignore` asked us to
+                          // skip must stay a per-row or per-group decision, not
+                          // a side effect of "select all".
+                          final selectable = regular
                               .where((entry) => entry.isChanged)
                               .map((entry) => entry.relativePath)
                               .toSet();
                           setState(() {
-                            if (_selected.containsAll(selectable)) {
-                              _selected = {};
+                            if (selectable.isNotEmpty &&
+                                _selected.containsAll(selectable)) {
+                              _selected.removeAll(selectable);
                             } else {
-                              _selected = {..._selected, ...selectable};
+                              _selected.addAll(selectable);
                             }
                           });
                         },
@@ -177,9 +197,29 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                       ),
                     )
                   : ListView.builder(
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) =>
-                          _buildEntryRow(context, entries[index], scheme),
+                      // Folded ignored rows cost exactly one header line.
+                      itemCount:
+                          regular.length +
+                          (ignored.isEmpty ? 0 : 1) +
+                          (_ignoredExpanded ? ignored.length : 0),
+                      itemBuilder: (context, index) {
+                        if (index < regular.length) {
+                          return _buildEntryRow(
+                            context,
+                            regular[index],
+                            scheme,
+                          );
+                        }
+                        final groupIndex = index - regular.length;
+                        if (groupIndex == 0) {
+                          return _buildIgnoredGroup(context, ignored, scheme);
+                        }
+                        return _buildEntryRow(
+                          context,
+                          ignored[groupIndex - 1],
+                          scheme,
+                        );
+                      },
                     ),
             ),
             const Divider(height: 1),
@@ -268,6 +308,70 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     );
   }
 
+  /// Header that folds every `.pyrsyncignore` row into one collapsed group.
+  ///
+  /// Tapping the row toggles the fold; the tri-state checkbox is a separate
+  /// control so the whole group can be opted back in without expanding it.
+  Widget _buildIgnoredGroup(
+    BuildContext context,
+    List<BoardSyncEntry> ignored,
+    ColorScheme scheme,
+  ) {
+    final selectable = ignored
+        .where((entry) => entry.isChanged)
+        .toList(growable: false);
+    final selectedCount = selectable
+        .where((entry) => _selected.contains(entry.relativePath))
+        .length;
+    // Tri-state: nothing ticked, everything ticked, or a mix. An empty group
+    // reads as "nothing ticked" because there is nothing to opt in to.
+    final bool? groupValue = switch (selectedCount) {
+      0 => false,
+      _ when selectedCount == selectable.length => true,
+      _ => null,
+    };
+    return ListTile(
+      dense: true,
+      onTap: () => setState(() => _ignoredExpanded = !_ignoredExpanded),
+      leading: Checkbox(
+        tristate: true,
+        value: groupValue,
+        onChanged: selectable.isEmpty
+            ? null
+            : (_) {
+                setState(() {
+                  if (selectedCount == selectable.length) {
+                    _selected.removeAll(
+                      selectable.map((entry) => entry.relativePath),
+                    );
+                  } else {
+                    _selected.addAll(
+                      selectable.map((entry) => entry.relativePath),
+                    );
+                  }
+                });
+              },
+      ),
+      title: Text(
+        translateInContextWithReplacements(
+          context,
+          I18nKey.devicesSyncIgnoredGroup,
+          {'count': '${ignored.length}'},
+        ),
+        style: const TextStyle(fontSize: 13),
+      ),
+      subtitle: Text(
+        translateInContext(context, I18nKey.devicesSyncIgnoredHint),
+        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+      ),
+      trailing: Icon(
+        _ignoredExpanded ? Icons.expand_less : Icons.expand_more,
+        size: 20,
+        color: scheme.onSurfaceVariant,
+      ),
+    );
+  }
+
   Widget _buildEntryRow(
     BuildContext context,
     BoardSyncEntry entry,
@@ -326,144 +430,38 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
         return (
           Icons.upload_outlined,
           scheme.primary,
-          I18nKey.devicesSyncRowAdded.fallback,
+          translateInContext(context, I18nKey.devicesSyncRowAdded),
         );
       case BoardSyncAction.uploadChanged:
         return (
           Icons.arrow_upward,
           scheme.primary,
-          I18nKey.devicesSyncRowModifiedUpload.fallback,
+          translateInContext(context, I18nKey.devicesSyncRowModifiedUpload),
         );
       case BoardSyncAction.downloadNew:
         return (
           Icons.download_outlined,
           scheme.tertiary,
-          I18nKey.devicesSyncRowBoardOnly.fallback,
+          translateInContext(context, I18nKey.devicesSyncRowBoardOnly),
         );
       case BoardSyncAction.downloadChanged:
         return (
           Icons.arrow_downward,
           scheme.tertiary,
-          I18nKey.devicesSyncRowModifiedDownload.fallback,
+          translateInContext(context, I18nKey.devicesSyncRowModifiedDownload),
         );
       case BoardSyncAction.unchanged:
         return (
           Icons.check,
           scheme.onSurfaceVariant,
-          I18nKey.devicesSyncRowUnchanged.fallback,
+          translateInContext(context, I18nKey.devicesSyncRowUnchanged),
         );
       case BoardSyncAction.conflict:
         return (
           Icons.warning_amber_rounded,
           scheme.error,
-          I18nKey.devicesSyncRowConflict.fallback,
+          translateInContext(context, I18nKey.devicesSyncRowConflict),
         );
     }
-  }
-}
-
-/// Transfer progress row with a cancel button.
-///
-/// Kept in the file page's module because the cancel affordance belongs to the
-/// batch that the page started; the token itself lives in
-/// [FileTransferProgressNotifier] so other call sites share the same cancel.
-class FileTransferProgressBar extends ConsumerWidget {
-  const FileTransferProgressBar({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(fileTransferProgressProvider);
-    final scheme = Theme.of(context).colorScheme;
-    if (!state.isActive) return const SizedBox.shrink();
-
-    final color = state.failed
-        ? scheme.error
-        : state.cancelled || state.cancelRequested
-        ? scheme.tertiary
-        : scheme.primary;
-    final label = state.message ?? '';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: state.failed
-            ? scheme.errorContainer.withValues(alpha: 0.35)
-            : scheme.surfaceContainerLow,
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            state.direction == FileTransferDirection.download
-                ? Icons.file_download_outlined
-                : Icons.file_upload_outlined,
-            size: 18,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: state.failed ? scheme.error : null,
-                        ),
-                      ),
-                    ),
-                    if (state.currentFile != null)
-                      Flexible(
-                        child: Text(
-                          state.currentFile!.split(RegExp(r'[\\/]')).last,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: state.progress,
-                  minHeight: 3,
-                  color: color,
-                  backgroundColor: scheme.surfaceContainerHighest,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Cancel is only offered while a batch is running. Pressing it sets a
-          // flag; the running loop stops at the next whole-file boundary so the
-          // device and its REPL stay usable.
-          if (state.canCancel)
-            TextButton.icon(
-              onPressed: () => ref
-                  .read(fileTransferProgressProvider.notifier)
-                  .requestCancel(),
-              icon: const Icon(Icons.stop_circle_outlined, size: 16),
-              label: Text(
-                translateInContext(context, I18nKey.devicesSyncCancel),
-              ),
-            )
-          else if (state.cancelRequested)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                I18nKey.devicesSyncCancelling.fallback,
-                style: TextStyle(fontSize: 12, color: scheme.tertiary),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
@@ -111,6 +112,13 @@ abstract class BoardFileBackend {
   /// Returning `null` is a normal outcome, not an error: callers degrade to
   /// skipping the space pre-flight instead of blocking the transfer.
   Future<int?> freeSpaceBytes({String path = '/'});
+
+  /// CRC-32 checksums of the given board files, keyed by path as given.
+  ///
+  /// Files that are missing or unreadable are omitted. Throws when the device
+  /// cannot compute checksums at all; callers treat that as "cannot compare"
+  /// and transfer normally.
+  Future<Map<String, int>> hashFiles(Iterable<String> paths);
 }
 
 class BoardFileBackendException implements Exception {
@@ -882,6 +890,58 @@ _emit_ok(True)
     return result.freeBytes;
   }
 
+  @override
+  Future<Map<String, int>> hashFiles(Iterable<String> paths) async {
+    final all = paths.toSet().toList();
+    final result = <String, int>{};
+    // One REPL transaction per batch keeps the device-side checksum dict
+    // small; embedded heaps cannot always hold a whole workspace at once.
+    const batchSize = 50;
+    for (var start = 0; start < all.length; start += batchSize) {
+      final batch = all.sublist(start, math.min(start + batchSize, all.length));
+      final value = await _runJsonValue(
+        _wrapSimplePython('''
+paths = [${batch.map(boardFileTextExpression).join(', ')}]
+
+def _crc32_of_file(file_path):
+  crc = 0
+  fp = open(file_path, 'rb')
+  try:
+    while True:
+      chunk = fp.read(1024)
+      if not chunk:
+        break
+      crc = ubinascii.crc32(chunk, crc)
+  finally:
+    fp.close()
+  return crc
+
+checksums = {}
+for _p in paths:
+  try:
+    checksums[_encode_text(_p)] = _crc32_of_file(_p)
+  except Exception:
+    pass
+_emit_ok(checksums)
+'''),
+        timeout: _longTimeout,
+      );
+      if (value is! Map) {
+        throw const BoardFileProtocolException(
+          'Checksum response is not a map',
+        );
+      }
+      for (final entry in value.entries) {
+        final checksum = entry.value;
+        if (checksum is num) {
+          result[decodeBoardFileText(entry.key.toString())] =
+              checksum.toInt() & 0xFFFFFFFF;
+        }
+      }
+    }
+    return result;
+  }
+
   Future<dynamic> _runJsonValue(
     String python, {
     Duration timeout = const Duration(seconds: 20),
@@ -1312,6 +1372,22 @@ class BoardFileOps {
     return ref.read(boardFileBackendProvider).freeSpaceBytes(path: path);
   }
 
+  /// CRC-32 checksums of board files, keyed by board path.
+  ///
+  /// Missing or unreadable files are omitted; an empty map also covers a
+  /// device that cannot compute checksums, so callers skip the optimization
+  /// and transfer instead of failing the transfer.
+  Future<Map<String, int>> boardFileHashes(Iterable<String> paths) async {
+    final all = paths.toList();
+    if (all.isEmpty) return const {};
+    try {
+      return await ref.read(boardFileBackendProvider).hashFiles(all);
+    } catch (error) {
+      debugPrint('[board-backend] hash probe failed: $error');
+      return const {};
+    }
+  }
+
   /// Runs the upload pre-flight for [requiredBytes].
   ///
   /// Returns the [SpaceBudgetResult] instead of throwing so batch callers can
@@ -1320,12 +1396,16 @@ class BoardFileOps {
   /// proceeds: blocking on a missing `statvfs` would make several MicroPython
   /// ports unusable.
   Future<SpaceBudgetResult> preflightUploadSpace(int requiredBytes) async {
+    String translateBudget(
+      I18nKey key, [
+      Map<String, String> replacements = const {},
+    ]) => translateWithReplacements(ref, key, replacements);
     try {
       final free = await freeSpaceBytes();
-      return checkSpaceBudget(free, requiredBytes);
+      return checkSpaceBudget(free, requiredBytes, translate: translateBudget);
     } catch (error) {
       debugPrint('[board-backend] upload pre-flight skipped: $error');
-      return checkSpaceBudget(null, requiredBytes);
+      return checkSpaceBudget(null, requiredBytes, translate: translateBudget);
     }
   }
 
@@ -1374,7 +1454,11 @@ class BoardTransfer {
   /// [cancel] is checked at every file boundary (never inside a write) so a
   /// cancelled folder upload stops before the next file starts and leaves the
   /// REPL in its normal prompt state: no CTRL-C or transaction abort is needed.
-  Future<void> uploadFolder(
+  ///
+  /// Files whose board copy already holds the same bytes (same size and
+  /// CRC-32) are skipped; the return value is how many files were skipped so
+  /// batch callers can fold it into their own skipped counters.
+  Future<int> uploadFolder(
     String localPath,
     String remotePath, {
     FileTransferCancelToken? cancel,
@@ -1396,9 +1480,23 @@ class BoardTransfer {
           ),
         );
 
+    final alreadyUploaded = await _boardFilesAlreadyIdentical(
+      files,
+      localPath,
+      remotePath,
+    );
+
     if (preflightSpace) {
       var totalBytes = 0;
       for (final file in files) {
+        final relativePath = path
+            .relative(file.path, from: localPath)
+            .replaceAll('\\', '/');
+        if (alreadyUploaded.contains(
+          _boardTargetPath(remotePath, relativePath),
+        )) {
+          continue;
+        }
         try {
           totalBytes += await file.length();
         } catch (_) {}
@@ -1424,6 +1522,7 @@ class BoardTransfer {
       }
     }
 
+    var skipped = 0;
     for (var i = 0; i < files.length; i++) {
       throwIfTransferCancelled(cancel);
       final entity = files[i];
@@ -1436,6 +1535,13 @@ class BoardTransfer {
         debugPrint('[BoardWS] Creating parent dir: $parentDir');
         await _ensureBoardFolder(parentDir, createdDirs);
       }
+      if (alreadyUploaded.contains(
+        _boardTargetPath(remotePath, relativePath),
+      )) {
+        skipped++;
+        debugPrint('[BoardWS] Skipping identical file: $remoteEntityPath');
+        continue;
+      }
       debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
       await _ops.writeFileBytesWithProgress(
         remoteEntityPath,
@@ -1446,6 +1552,62 @@ class BoardTransfer {
       );
       debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
     }
+    return skipped;
+  }
+
+  String _boardTargetPath(String remotePath, String relativePath) =>
+      _ops.normalizeBoardPath(_boardPath.join(remotePath, relativePath));
+
+  /// Board paths whose content already equals the local file (same size and
+  /// CRC-32).
+  ///
+  /// Only same-size pairs are hashed, because identical content implies
+  /// identical length. An empty set means "cannot compare" (destination not
+  /// listed, checksums unsupported, ...) and the upload proceeds unchanged.
+  Future<Set<String>> _boardFilesAlreadyIdentical(
+    List<io.File> files,
+    String localPath,
+    String remotePath,
+  ) async {
+    final boardSizes = <String, int>{};
+    try {
+      for (final entry in await _ops.lisFolderRecursive(
+        path: remotePath,
+        includeMetadata: true,
+      )) {
+        if (!entry.isFolder && entry.size != null) {
+          boardSizes[entry.path] = entry.size!;
+        }
+      }
+    } catch (_) {
+      // The destination may not exist yet; nothing can be compared.
+      return const {};
+    }
+    if (boardSizes.isEmpty) return const {};
+
+    final localChecksums = <String, int>{};
+    for (final file in files) {
+      final relativePath = path
+          .relative(file.path, from: localPath)
+          .replaceAll('\\', '/');
+      final boardPath = _boardTargetPath(remotePath, relativePath);
+      final boardSize = boardSizes[boardPath];
+      if (boardSize == null) continue;
+      try {
+        final bytes = await file.readAsBytes();
+        if (bytes.length != boardSize) continue;
+        localChecksums[boardPath] = crc32OfBytes(bytes);
+      } on io.FileSystemException {
+        // Unreadable locally; the upload itself will report it as before.
+      }
+    }
+    if (localChecksums.isEmpty) return const {};
+
+    final boardChecksums = await _ops.boardFileHashes(localChecksums.keys);
+    return {
+      for (final entry in localChecksums.entries)
+        if (boardChecksums[entry.key] == entry.value) entry.key,
+    };
   }
 
   Future<void> _ensureBoardFolder(
@@ -1479,12 +1641,19 @@ class BoardTransfer {
   ///
   /// [cancel] is checked before each file so cancelling stops the loop at a
   /// clean boundary; the in-flight file is always completed first.
-  Future<void> downloadFolder(
+  ///
+  /// Files whose local copy already holds the same bytes (same size and
+  /// CRC-32) are skipped; the return value is how many files were skipped so
+  /// batch callers can fold it into their own skipped counters.
+  Future<int> downloadFolder(
     String remotePath,
     String localPath, {
     FileTransferCancelToken? cancel,
   }) async {
-    final items = await _ops.lisFolderRecursive(path: remotePath);
+    final items = await _ops.lisFolderRecursive(
+      path: remotePath,
+      includeMetadata: true,
+    );
     final folders = items
         .where((item) => item.isFolder)
         .toList(growable: false);
@@ -1501,6 +1670,12 @@ class BoardTransfer {
           ),
         );
 
+    final alreadyDownloaded = await _localFilesAlreadyIdentical(
+      files,
+      remotePath,
+      localPath,
+    );
+
     final localDir = io.Directory(localPath);
     if (!await localDir.exists()) {
       await localDir.create(recursive: true);
@@ -1514,6 +1689,7 @@ class BoardTransfer {
       await io.Directory(localItemPath).create(recursive: true);
     }
 
+    var skipped = 0;
     for (var i = 0; i < files.length; i++) {
       throwIfTransferCancelled(cancel);
       final item = files[i];
@@ -1521,6 +1697,11 @@ class BoardTransfer {
           .relative(item.path, from: remotePath)
           .replaceAll('\\', '/');
       final localItemPath = path.join(localPath, relativePath);
+      if (alreadyDownloaded.contains(localItemPath)) {
+        skipped++;
+        debugPrint('[BoardWS] Skipping identical file: ${item.path}');
+        continue;
+      }
       debugPrint('[BoardWS] Downloading: ${item.path}');
       final bytes = await _ops.getFileBytesWithProgress(
         item.path,
@@ -1533,6 +1714,45 @@ class BoardTransfer {
       await file.writeAsBytes(bytes);
       debugPrint('[BoardWS] Downloaded: $localItemPath');
     }
+    return skipped;
+  }
+
+  /// Local paths whose content already equals the board file (same size and
+  /// CRC-32), keyed by local target path so the download loop can skip them.
+  ///
+  /// Empty when nothing can be compared (no metadata, checksums unsupported).
+  Future<Set<String>> _localFilesAlreadyIdentical(
+    List<BoardFileEntry> files,
+    String remotePath,
+    String localPath,
+  ) async {
+    final localChecksums = <String, int>{};
+    final localPathsByBoardPath = <String, String>{};
+    for (final item in files) {
+      if (item.size == null) continue;
+      final relativePath = _boardPath
+          .relative(item.path, from: remotePath)
+          .replaceAll('\\', '/');
+      final localItemPath = path.join(localPath, relativePath);
+      try {
+        final file = io.File(localItemPath);
+        if (!await file.exists()) continue;
+        final bytes = await file.readAsBytes();
+        if (bytes.length != item.size) continue;
+        localChecksums[item.path] = crc32OfBytes(bytes);
+        localPathsByBoardPath[item.path] = localItemPath;
+      } on io.FileSystemException {
+        continue;
+      }
+    }
+    if (localChecksums.isEmpty) return const {};
+
+    final boardChecksums = await _ops.boardFileHashes(localChecksums.keys);
+    return {
+      for (final entry in localChecksums.entries)
+        if (boardChecksums[entry.key] == entry.value)
+          localPathsByBoardPath[entry.key]!,
+    };
   }
 }
 

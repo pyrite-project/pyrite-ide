@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_service.dart';
+import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -94,6 +95,12 @@ class _FakeBoardBackend implements BoardFileBackend {
 
   @override
   Future<void> createFolder(String path) async {
+    // Matches a real device: `os.mkdir` cannot create missing parents and
+    // reports them as ENOENT (only EEXIST is tolerated, via the ops layer).
+    final parent = _boardPath.dirname(path);
+    if (parent != '/' && !folders.contains(parent)) {
+      throw const BoardFileBackendException('OSError: [Errno 2] ENOENT');
+    }
     folders.add(path);
   }
 
@@ -102,6 +109,25 @@ class _FakeBoardBackend implements BoardFileBackend {
 
   @override
   Future<int?> freeSpaceBytes({String path = '/'}) async => null;
+
+  @override
+  Future<Map<String, int>> hashFiles(Iterable<String> paths) async {
+    final checksums = <String, int>{};
+    for (final boardPath in paths) {
+      final data = files[boardPath.replaceFirst('/', '')];
+      if (data != null) checksums[boardPath] = crc32OfBytes(data);
+    }
+    return checksums;
+  }
+}
+
+/// A device that cannot answer checksum queries at all; the executor must
+/// fall back to transferring everything.
+class _NoChecksumBackend extends _FakeBoardBackend {
+  @override
+  Future<Map<String, int>> hashFiles(Iterable<String> paths) async {
+    throw const BoardFileBackendException('no binascii on this port');
+  }
 }
 
 final _boardPath = path.Context(style: path.Style.posix);
@@ -143,6 +169,24 @@ void main() {
     direction: BoardSyncDirection.boardToLocal,
     board: SyncFileInfo(relativePath: relative, size: size),
   );
+
+  BoardSyncEntry changedUploadEntry(String relative, int size) =>
+      BoardSyncEntry(
+        relativePath: relative,
+        action: BoardSyncAction.uploadChanged,
+        direction: BoardSyncDirection.localToBoard,
+        local: SyncFileInfo(relativePath: relative, size: size),
+        board: SyncFileInfo(relativePath: relative, size: size),
+      );
+
+  BoardSyncEntry changedDownloadEntry(String relative, int size) =>
+      BoardSyncEntry(
+        relativePath: relative,
+        action: BoardSyncAction.downloadChanged,
+        direction: BoardSyncDirection.boardToLocal,
+        local: SyncFileInfo(relativePath: relative, size: size),
+        board: SyncFileInfo(relativePath: relative, size: size),
+      );
 
   BoardSyncPlan planOf(List<BoardSyncEntry> entries) =>
       BoardSyncPlan(entries: entries, localRoot: tempDir.path);
@@ -223,9 +267,12 @@ void main() {
       progress: container.read(fileTransferProgressProvider.notifier),
     );
 
-    await executor.execute(plan: plan, localRoot: tempDir.path);
+    final result = await executor.execute(plan: plan, localRoot: tempDir.path);
 
-    expect(backend.folders, containsAll(['/lib', '/lib/deep']));
+    // Parents must be created before their children; a device-side ENOENT on
+    // mkdir would otherwise abort the whole sync as a fatal error.
+    expect(result.error, isNull);
+    expect(backend.folders.toList(), ['/lib', '/lib/deep']);
     expect(backend.writtenPaths, ['lib/deep/a.py']);
   });
 
@@ -314,4 +361,136 @@ void main() {
     expect(result.failed.single.entry.relativePath, 'bad.py');
     expect(backend.writtenPaths, ['ok.py']);
   });
+
+  test(
+    'skips an upload when the board copy already matches byte for byte',
+    () async {
+      await writeLocal('main.py', 'print(1)');
+      final backend = _FakeBoardBackend();
+      backend.files['main.py'] = Uint8List.fromList('print(1)'.codeUnits);
+      final container = ProviderContainer(
+        overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+      );
+      addTearDown(container.dispose);
+
+      final executor = BoardSyncExecutor(
+        ops: container.read(_testOpsProvider),
+        progress: container.read(fileTransferProgressProvider.notifier),
+      );
+
+      final result = await executor.execute(
+        plan: planOf([changedUploadEntry('main.py', 8)]),
+        localRoot: tempDir.path,
+      );
+
+      expect(result.uploaded, 0);
+      expect(result.skipped, 1);
+      expect(backend.writtenPaths, isEmpty);
+    },
+  );
+
+  test('uploads when same-size content differs', () async {
+    await writeLocal('main.py', 'print(2)');
+    final backend = _FakeBoardBackend();
+    backend.files['main.py'] = Uint8List.fromList('print(1)'.codeUnits);
+    final container = ProviderContainer(
+      overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+    );
+    addTearDown(container.dispose);
+
+    final executor = BoardSyncExecutor(
+      ops: container.read(_testOpsProvider),
+      progress: container.read(fileTransferProgressProvider.notifier),
+    );
+
+    final result = await executor.execute(
+      plan: planOf([changedUploadEntry('main.py', 8)]),
+      localRoot: tempDir.path,
+    );
+
+    expect(result.uploaded, 1);
+    expect(result.skipped, 0);
+    expect(String.fromCharCodes(backend.files['main.py']!), 'print(2)');
+  });
+
+  test('skips a download when the local copy already matches', () async {
+    await writeLocal('boot.py', 'import sys');
+    final backend = _FakeBoardBackend();
+    backend.files['boot.py'] = Uint8List.fromList('import sys'.codeUnits);
+    final container = ProviderContainer(
+      overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+    );
+    addTearDown(container.dispose);
+
+    final executor = BoardSyncExecutor(
+      ops: container.read(_testOpsProvider),
+      progress: container.read(fileTransferProgressProvider.notifier),
+    );
+
+    final result = await executor.execute(
+      plan: planOf([changedDownloadEntry('boot.py', 10)]),
+      localRoot: tempDir.path,
+    );
+
+    expect(result.downloaded, 0);
+    expect(result.skipped, 1);
+    expect(
+      await File(path.join(tempDir.path, 'boot.py')).readAsString(),
+      'import sys',
+    );
+  });
+
+  test('downloads when same-size content differs', () async {
+    await writeLocal('boot.py', 'import os!');
+    final backend = _FakeBoardBackend();
+    backend.files['boot.py'] = Uint8List.fromList('import sys'.codeUnits);
+    final container = ProviderContainer(
+      overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+    );
+    addTearDown(container.dispose);
+
+    final executor = BoardSyncExecutor(
+      ops: container.read(_testOpsProvider),
+      progress: container.read(fileTransferProgressProvider.notifier),
+    );
+
+    final result = await executor.execute(
+      plan: planOf([changedDownloadEntry('boot.py', 10)]),
+      localRoot: tempDir.path,
+    );
+
+    expect(result.downloaded, 1);
+    expect(result.skipped, 0);
+    expect(
+      await File(path.join(tempDir.path, 'boot.py')).readAsString(),
+      'import sys',
+    );
+  });
+
+  test(
+    'transfers everything when the device cannot report checksums',
+    () async {
+      await writeLocal('main.py', 'print(1)');
+      final backend = _NoChecksumBackend();
+      backend.files['main.py'] = Uint8List.fromList('print(1)'.codeUnits);
+      final container = ProviderContainer(
+        overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+      );
+      addTearDown(container.dispose);
+
+      final executor = BoardSyncExecutor(
+        ops: container.read(_testOpsProvider),
+        progress: container.read(fileTransferProgressProvider.notifier),
+      );
+
+      final result = await executor.execute(
+        plan: planOf([changedUploadEntry('main.py', 8)]),
+        localRoot: tempDir.path,
+      );
+
+      expect(result.uploaded, 1);
+      expect(result.skipped, 0);
+      expect(backend.writtenPaths, ['main.py']);
+    },
+  );
 }

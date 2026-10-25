@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Cooperative cancellation token for a long transfer.
 ///
@@ -111,11 +112,12 @@ enum SpaceBudgetStatus {
 
 /// Result of [checkSpaceBudget].
 class SpaceBudgetResult {
-  const SpaceBudgetResult({
+  SpaceBudgetResult({
     required this.status,
     required this.freeBytes,
     required this.requiredBytes,
-  });
+    I18nTranslate? translate,
+  }) : _translate = translate ?? fallbackTranslate;
 
   final SpaceBudgetStatus status;
 
@@ -125,27 +127,29 @@ class SpaceBudgetResult {
   /// Bytes the pending upload needs.
   final int requiredBytes;
 
+  final I18nTranslate _translate;
+
   bool get canProceed => status != SpaceBudgetStatus.insufficient;
 
   /// Message for the UI.
   ///
   /// Deliberately states both numbers so the user can decide what to delete.
-  /// The i18n catalogue is owned by another module, so the text is built here
-  /// and surfaced by callers as a normal error message.
   String get message {
     switch (status) {
       case SpaceBudgetStatus.insufficient:
-        return I18nKey.devicesSpaceInsufficient.fallback
-            .replaceAll('{required}', formatTransferBytes(requiredBytes))
-            .replaceAll('{requiredBytes}', '$requiredBytes')
-            .replaceAll('{free}', formatTransferBytes(freeBytes ?? 0))
-            .replaceAll('{freeBytes}', '${freeBytes ?? 0}');
+        return _translate(I18nKey.devicesSpaceInsufficient, {
+          'required': formatTransferBytes(requiredBytes),
+          'requiredBytes': '$requiredBytes',
+          'free': formatTransferBytes(freeBytes ?? 0),
+          'freeBytes': '${freeBytes ?? 0}',
+        });
       case SpaceBudgetStatus.unknown:
-        return I18nKey.devicesSpaceUnknown.fallback;
+        return _translate(I18nKey.devicesSpaceUnknown);
       case SpaceBudgetStatus.fits:
-        return I18nKey.devicesSpaceSufficient.fallback
-            .replaceAll('{required}', formatTransferBytes(requiredBytes))
-            .replaceAll('{free}', formatTransferBytes(freeBytes ?? 0));
+        return _translate(I18nKey.devicesSpaceSufficient, {
+          'required': formatTransferBytes(requiredBytes),
+          'free': formatTransferBytes(freeBytes ?? 0),
+        });
     }
   }
 }
@@ -156,12 +160,17 @@ class SpaceBudgetResult {
 /// `os.statvfs` or return a zeroed tuple, and blocking uploads in that case
 /// would be worse than skipping the check. A zero-byte requirement always
 /// fits.
-SpaceBudgetResult checkSpaceBudget(int? freeBytes, int requiredBytes) {
+SpaceBudgetResult checkSpaceBudget(
+  int? freeBytes,
+  int requiredBytes, {
+  I18nTranslate? translate,
+}) {
   if (requiredBytes <= 0) {
     return SpaceBudgetResult(
       status: SpaceBudgetStatus.fits,
       freeBytes: freeBytes,
       requiredBytes: requiredBytes,
+      translate: translate,
     );
   }
   if (freeBytes == null || freeBytes <= 0) {
@@ -169,6 +178,7 @@ SpaceBudgetResult checkSpaceBudget(int? freeBytes, int requiredBytes) {
       status: SpaceBudgetStatus.unknown,
       freeBytes: freeBytes,
       requiredBytes: requiredBytes,
+      translate: translate,
     );
   }
   return SpaceBudgetResult(
@@ -177,6 +187,7 @@ SpaceBudgetResult checkSpaceBudget(int? freeBytes, int requiredBytes) {
         : SpaceBudgetStatus.insufficient,
     freeBytes: freeBytes,
     requiredBytes: requiredBytes,
+    translate: translate,
   );
 }
 

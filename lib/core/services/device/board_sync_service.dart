@@ -3,10 +3,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
+import 'package:pyrite_ide/core/services/device/file_hash.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Builds a [SyncTreeSnapshot] from a local directory tree.
 ///
@@ -128,15 +131,28 @@ Future<SyncTreeSnapshot> scanBoardWorkspace(
 /// Kept as a standalone function so the preview and the executor share exactly
 /// the same diff, and so the pure [buildSyncPlan] stays testable without a
 /// device.
+///
+/// The workspace's `.pyrsyncignore` is read here rather than inside
+/// [scanLocalWorkspace]: the ignored paths must stay in the snapshot so the
+/// preview can list them in a collapsed group, they are only flagged as
+/// "not selected by default".
 Future<BoardSyncPlan> buildWorkspaceSyncPlan({
   required BoardFileOps ops,
   required String localRoot,
   String boardRoot = '/',
   SyncTimestampPolicy policy = SyncTimestampPolicy.sizeAndMtime,
+  I18nTranslate? translate,
 }) async {
   final local = await scanLocalWorkspace(localRoot);
+  final ignore = await loadSyncIgnoreRules(localRoot);
   final board = await scanBoardWorkspace(ops, boardRoot: boardRoot);
-  return buildSyncPlan(local: local, board: board, policy: policy);
+  return buildSyncPlan(
+    local: local,
+    board: board,
+    policy: policy,
+    ignore: ignore,
+    translate: translate,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +168,7 @@ class BoardSyncExecutionResult {
     required this.failed,
     required this.cancelled,
     this.error,
+    this.translate,
   });
 
   final int uploaded;
@@ -163,22 +180,27 @@ class BoardSyncExecutionResult {
   /// First fatal error, if execution aborted.
   final Object? error;
 
+  /// Localized the [summary] text; null keeps the fallback language.
+  final I18nTranslate? translate;
+
   int get transferred => uploaded + downloaded;
 
   bool get hasFailures => failed.isNotEmpty;
 
-  String get summary =>
-      I18nKey.devicesSyncRunSummary.fallback
-          .replaceAll('{uploaded}', '$uploaded')
-          .replaceAll('{downloaded}', '$downloaded')
-          .replaceAll('{skipped}', '$skipped') +
-      (failed.isEmpty
-          ? ''
-          : I18nKey.devicesSyncRunSummaryFailed.fallback.replaceAll(
-              '{count}',
-              '${failed.length}',
-            )) +
-      (cancelled ? I18nKey.devicesSyncRunSummaryCancelled.fallback : '');
+  String get summary {
+    final tr = translate ?? fallbackTranslate;
+    return tr(I18nKey.devicesSyncRunSummary, {
+          'uploaded': '$uploaded',
+          'downloaded': '$downloaded',
+          'skipped': '$skipped',
+        }) +
+        (failed.isEmpty
+            ? ''
+            : tr(I18nKey.devicesSyncRunSummaryFailed, {
+                'count': '${failed.length}',
+              })) +
+        (cancelled ? tr(I18nKey.devicesSyncRunSummaryCancelled) : '');
+  }
 }
 
 /// One file that failed during execution.
@@ -194,13 +216,17 @@ class BoardSyncEntryFailure {
 /// Rules that keep the device usable:
 /// * the cancellation token is checked at every file boundary, so a cancel
 ///   never interrupts a write in progress (no CTRL-C, no aborted transaction);
+/// * entries whose board copy already holds the same bytes (same size and
+///   CRC-32) are counted as skipped instead of being re-transferred, which is
+///   what keeps an mtime-driven plan from rewriting unchanged files;
 /// * uploads go through [BoardFileOps.writeFileBytesWithProgress] and downloads
 ///   through [BoardFileOps.getFileBytesWithProgress], i.e. exactly the paths
 ///   the rest of the file page already uses;
 /// * the plan's directory sets are created before the first file so a nested
 ///   tree does not fail halfway.
 class BoardSyncExecutor {
-  BoardSyncExecutor({required this.ops, required this.progress});
+  BoardSyncExecutor({required this.ops, required this.progress, this.translate})
+    : _tr = translate ?? fallbackTranslate;
 
   /// File I/O against the active device; also gives access to the repository
   /// without threading a `Ref` through the UI layer.
@@ -208,6 +234,11 @@ class BoardSyncExecutor {
 
   /// Progress sink shared with the rest of the file page.
   final FileTransferProgressNotifier progress;
+
+  /// Localized the progress/summary text; null keeps the fallback language.
+  final I18nTranslate? translate;
+
+  final I18nTranslate _tr;
 
   Future<BoardSyncExecutionResult> execute({
     required BoardSyncPlan plan,
@@ -227,12 +258,15 @@ class BoardSyncExecutor {
       direction: FileTransferDirection.upload,
       scope: FileTransferScope.folder,
       totalFiles: entries.length,
-      message: I18nKey.devicesSyncRunning.fallback,
+      message: _tr(I18nKey.devicesSyncRunning),
     );
     // `start()` publishes a fresh token. The executor must read that one (or
     // the caller's explicit token) instead of a token captured before the call,
     // otherwise the progress bar's cancel button would flip a flag nobody reads.
     final token = cancel ?? progress.beginCancelToken();
+    final boardChecksums = token.isCancelled
+        ? const <String, int>{}
+        : await _boardChecksumsFor(entries);
 
     var uploaded = 0;
     var downloaded = 0;
@@ -241,7 +275,11 @@ class BoardSyncExecutor {
     final failures = <BoardSyncEntryFailure>[];
 
     try {
-      final boardDirectories = plan.requiredBoardDirectories;
+      // `requiredBoardDirectories` collects parents deepest-first, and the
+      // device's `os.mkdir` does not create missing parents: creating
+      // shallowest-first keeps nested trees from failing with ENOENT.
+      final boardDirectories = plan.requiredBoardDirectories.toList()
+        ..sort((a, b) => a.split('/').length.compareTo(b.split('/').length));
       for (final directory in boardDirectories) {
         final target = ops.normalizeBoardPath('/$directory');
         try {
@@ -259,11 +297,28 @@ class BoardSyncExecutor {
         }
         final entry = entries[index];
         try {
+          // The relative path on the download side comes from the board's own
+          // listing, i.e. from outside this process. `normalizeSyncRelativePath`
+          // keeps a leading `..`, so without this check a board that reports
+          // `../../.bashrc` would have us write outside the workspace.
+          if (!path.isWithin(
+            localRoot,
+            path.normalize(path.join(localRoot, entry.relativePath)),
+          )) {
+            throw StateError(
+              'refusing to write outside the workspace: ${entry.relativePath}',
+            );
+          }
           switch (entry.action) {
             case BoardSyncAction.uploadNew:
             case BoardSyncAction.uploadChanged:
               final localFile = File(path.join(localRoot, entry.relativePath));
               final bytes = await localFile.readAsBytes();
+              if (_boardCopyMatches(boardChecksums, entry, bytes)) {
+                skipped++;
+                debugPrint('[sync] skipping identical ${entry.relativePath}');
+                continue;
+              }
               await ops.writeFileBytesWithProgress(
                 ops.normalizeBoardPath('/${entry.relativePath}'),
                 bytes,
@@ -274,8 +329,22 @@ class BoardSyncExecutor {
               uploaded++;
             case BoardSyncAction.downloadNew:
             case BoardSyncAction.downloadChanged:
+              final boardPath = ops.normalizeBoardPath(
+                '/${entry.relativePath}',
+              );
+              final boardChecksum = boardChecksums[boardPath];
+              if (boardChecksum != null) {
+                final localChecksum = await crc32OfFile(
+                  path.join(localRoot, entry.relativePath),
+                );
+                if (localChecksum == boardChecksum) {
+                  skipped++;
+                  debugPrint('[sync] skipping identical ${entry.relativePath}');
+                  continue;
+                }
+              }
               final bytes = await ops.getFileBytesWithProgress(
-                ops.normalizeBoardPath('/${entry.relativePath}'),
+                boardPath,
                 currentFile: entry.relativePath,
                 index: index + 1,
                 totalFiles: entries.length,
@@ -297,17 +366,14 @@ class BoardSyncExecutor {
       }
 
       if (cancelled) {
-        progress.cancelledByUser(
-          message: I18nKey.devicesSyncCancelled.fallback,
-        );
+        progress.cancelledByUser(message: _tr(I18nKey.devicesSyncCancelled));
       } else if (failures.isEmpty) {
-        progress.complete(message: I18nKey.devicesSyncDone.fallback);
+        progress.complete(message: _tr(I18nKey.devicesSyncDone));
       } else {
         progress.fail(
-          I18nKey.devicesSyncDoneWithFailures.fallback.replaceAll(
-            '{count}',
-            '${failures.length}',
-          ),
+          _tr(I18nKey.devicesSyncDoneWithFailures, {
+            'count': '${failures.length}',
+          }),
         );
       }
       return BoardSyncExecutionResult(
@@ -316,11 +382,10 @@ class BoardSyncExecutor {
         skipped: skipped,
         failed: failures,
         cancelled: cancelled,
+        translate: translate,
       );
     } catch (error) {
-      progress.fail(
-        I18nKey.devicesSyncFailed.fallback.replaceAll('{error}', '$error'),
-      );
+      progress.fail(_tr(I18nKey.devicesSyncFailed, {'error': '$error'}));
       return BoardSyncExecutionResult(
         uploaded: uploaded,
         downloaded: downloaded,
@@ -328,7 +393,46 @@ class BoardSyncExecutor {
         failed: failures,
         cancelled: cancelled,
         error: error,
+        translate: translate,
       );
     }
+  }
+
+  /// CRC-32 checksums of the board copies that may already match local files.
+  ///
+  /// Only entries with both sides reporting the same size can be identical —
+  /// same content implies same length — which keeps the device-side reads
+  /// limited to files worth comparing. An empty map (device without usable
+  /// `binascii.crc32`, listing failure, ...) simply disables the skip.
+  Future<Map<String, int>> _boardChecksumsFor(
+    List<BoardSyncEntry> entries,
+  ) async {
+    final candidates = <String>{};
+    for (final entry in entries) {
+      final action = entry.action;
+      if (action != BoardSyncAction.uploadChanged &&
+          action != BoardSyncAction.downloadChanged) {
+        continue;
+      }
+      final localSize = entry.local?.size;
+      final boardSize = entry.board?.size;
+      if (localSize == null || localSize != boardSize) continue;
+      candidates.add(ops.normalizeBoardPath('/${entry.relativePath}'));
+    }
+    return ops.boardFileHashes(candidates);
+  }
+
+  /// Whether the board copy of [entry] already holds exactly [bytes].
+  ///
+  /// A checksum is only present when both sides reported the same size, so a
+  /// match here means "same length and same CRC-32".
+  bool _boardCopyMatches(
+    Map<String, int> boardChecksums,
+    BoardSyncEntry entry,
+    List<int> bytes,
+  ) {
+    final boardChecksum =
+        boardChecksums[ops.normalizeBoardPath('/${entry.relativePath}')];
+    return boardChecksum != null && boardChecksum == crc32OfBytes(bytes);
   }
 }

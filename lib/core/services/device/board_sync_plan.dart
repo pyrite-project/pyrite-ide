@@ -1,5 +1,7 @@
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 
 /// What a single planned entry will do during a project sync.
 enum BoardSyncAction {
@@ -83,6 +85,7 @@ class BoardSyncEntry {
     this.local,
     this.board,
     this.selectable = true,
+    this.ignoredByDefault = false,
     this.note,
   });
 
@@ -98,6 +101,13 @@ class BoardSyncEntry {
 
   /// Whether the preview shows a checkbox for this row.
   final bool selectable;
+
+  /// Whether `.pyrsyncignore` covers this path.
+  ///
+  /// Ignored rows stay in the plan (the user must be able to see what is being
+  /// left out and to opt back in), but the preview starts with them unchecked
+  /// and folds them into a single collapsed group.
+  final bool ignoredByDefault;
 
   /// Extra explanation shown under the row (e.g. why it is a conflict).
   final String? note;
@@ -120,8 +130,10 @@ class BoardSyncEntry {
   }
 
   /// Returns a copy with a different [action] (used when the user overrides a
-  /// conflict in the preview). The direction is recomputed from the action.
-  BoardSyncEntry copyWith({BoardSyncAction? action}) {
+  /// conflict in the preview) or a different [ignoredByDefault] flag (used when
+  /// `.pyrsyncignore` is applied to a freshly built entry). The direction is
+  /// recomputed from the action.
+  BoardSyncEntry copyWith({BoardSyncAction? action, bool? ignoredByDefault}) {
     final nextAction = action ?? this.action;
     return BoardSyncEntry(
       relativePath: relativePath,
@@ -130,6 +142,7 @@ class BoardSyncEntry {
       local: local,
       board: board,
       selectable: nextAction != BoardSyncAction.unchanged,
+      ignoredByDefault: ignoredByDefault ?? this.ignoredByDefault,
       note: nextAction == this.action ? note : null,
     );
   }
@@ -172,6 +185,23 @@ class BoardSyncPlan {
       )
       .toList(growable: false);
 
+  /// Rows the preview ticks when it opens.
+  ///
+  /// Everything actionable except the paths `.pyrsyncignore` covers: those are
+  /// still transferable, they just have to be ticked on purpose.
+  List<BoardSyncEntry> get defaultSelection => actionable
+      .where((entry) => !entry.ignoredByDefault)
+      .toList(growable: false);
+
+  /// Rows folded into the `.pyrsyncignore` group, unchanged ones included.
+  ///
+  /// Unchanged rows carry no work but still explain why a path is listed, so
+  /// the group shows the same set the ignore file describes.
+  List<BoardSyncEntry> get ignoredEntries =>
+      entries.where((entry) => entry.ignoredByDefault).toList(growable: false);
+
+  int get ignoredCount => ignoredEntries.length;
+
   List<BoardSyncEntry> get conflicts => entries
       .where((entry) => entry.action == BoardSyncAction.conflict)
       .toList(growable: false);
@@ -210,7 +240,9 @@ class BoardSyncPlan {
   /// Directory paths that must exist on the board before uploading.
   ///
   /// Derived from local-only directories plus the parents of every upload so
-  /// the executor never has to guess.
+  /// the executor never has to guess. Insertion walks deepest-first, so the
+  /// iteration order must not be fed straight to `os.mkdir`, which cannot
+  /// create missing parents; sort shallowest-first before creating.
   Set<String> get requiredBoardDirectories {
     final result = <String>{};
     for (final entry in uploads) {
@@ -277,7 +309,9 @@ BoardSyncEntry buildSyncEntry({
   required SyncFileInfo? board,
   SyncTimestampPolicy policy = SyncTimestampPolicy.sizeAndMtime,
   DateTime? baseline,
+  I18nTranslate? translate,
 }) {
+  final tr = translate ?? fallbackTranslate;
   if (local == null && board == null) {
     return BoardSyncEntry(
       relativePath: relativePath,
@@ -330,7 +364,8 @@ BoardSyncEntry buildSyncEntry({
       local: localInfo,
       board: boardInfo,
       baseline: baseline,
-      reason: I18nKey.devicesSyncReasonSameSize.fallback,
+      reason: tr(I18nKey.devicesSyncReasonSameSize),
+      tr: tr,
     );
   }
 
@@ -339,7 +374,8 @@ BoardSyncEntry buildSyncEntry({
     local: localInfo,
     board: boardInfo,
     baseline: baseline,
-    reason: I18nKey.devicesSyncReasonSizeMismatch.fallback,
+    reason: tr(I18nKey.devicesSyncReasonSizeMismatch),
+    tr: tr,
   );
 }
 
@@ -352,6 +388,7 @@ BoardSyncEntry _decideByMtime({
   required SyncFileInfo board,
   required DateTime? baseline,
   required String reason,
+  required I18nTranslate tr,
 }) {
   final localHasMtime = local.hasModified;
   final boardHasMtime = board.hasModified;
@@ -365,10 +402,7 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.localToBoard,
       local: local,
       board: board,
-      note: I18nKey.devicesSyncNoteMissingMtime.fallback.replaceAll(
-        '{reason}',
-        reason,
-      ),
+      note: tr(I18nKey.devicesSyncNoteMissingMtime, {'reason': reason}),
     );
   }
 
@@ -388,10 +422,7 @@ BoardSyncEntry _decideByMtime({
         direction: BoardSyncDirection.localToBoard,
         local: local,
         board: board,
-        note: I18nKey.devicesSyncNoteLocalChanged.fallback.replaceAll(
-          '{reason}',
-          reason,
-        ),
+        note: tr(I18nKey.devicesSyncNoteLocalChanged, {'reason': reason}),
       );
     }
     if (boardChanged && !localChanged) {
@@ -401,10 +432,7 @@ BoardSyncEntry _decideByMtime({
         direction: BoardSyncDirection.boardToLocal,
         local: local,
         board: board,
-        note: I18nKey.devicesSyncNoteBoardChanged.fallback.replaceAll(
-          '{reason}',
-          reason,
-        ),
+        note: tr(I18nKey.devicesSyncNoteBoardChanged, {'reason': reason}),
       );
     }
     return BoardSyncEntry(
@@ -413,10 +441,7 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.none,
       local: local,
       board: board,
-      note: I18nKey.devicesSyncNoteBothChanged.fallback.replaceAll(
-        '{reason}',
-        reason,
-      ),
+      note: tr(I18nKey.devicesSyncNoteBothChanged, {'reason': reason}),
     );
   }
 
@@ -428,10 +453,7 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.none,
       local: local,
       board: board,
-      note: I18nKey.devicesSyncNoteMtimeClose.fallback.replaceAll(
-        '{reason}',
-        reason,
-      ),
+      note: tr(I18nKey.devicesSyncNoteMtimeClose, {'reason': reason}),
     );
   }
 
@@ -442,10 +464,7 @@ BoardSyncEntry _decideByMtime({
       direction: BoardSyncDirection.localToBoard,
       local: local,
       board: board,
-      note: I18nKey.devicesSyncNoteLocalNewer.fallback.replaceAll(
-        '{reason}',
-        reason,
-      ),
+      note: tr(I18nKey.devicesSyncNoteLocalNewer, {'reason': reason}),
     );
   }
   return BoardSyncEntry(
@@ -454,10 +473,7 @@ BoardSyncEntry _decideByMtime({
     direction: BoardSyncDirection.boardToLocal,
     local: local,
     board: board,
-    note: I18nKey.devicesSyncNoteBoardNewer.fallback.replaceAll(
-      '{reason}',
-      reason,
-    ),
+    note: tr(I18nKey.devicesSyncNoteBoardNewer, {'reason': reason}),
   );
 }
 
@@ -466,6 +482,8 @@ BoardSyncEntry _decideByMtime({
 /// Union of both sides, sorted by path so the preview is stable between runs.
 /// [direction] restricts the plan to one direction; `both` keeps the full
 /// diff, which is what the preview shows before the user chooses.
+/// [ignore] only tags rows, it never drops them: the preview needs the ignored
+/// paths to render the group that explains what will not be synced.
 BoardSyncPlan buildSyncPlan({
   required SyncTreeSnapshot local,
   required SyncTreeSnapshot board,
@@ -473,19 +491,25 @@ BoardSyncPlan buildSyncPlan({
   Map<String, DateTime> baselines = const {},
   BoardSyncDirection direction = BoardSyncDirection.none,
   bool includeUnchanged = true,
+  SyncIgnoreRules ignore = const SyncIgnoreRules.empty(),
+  I18nTranslate? translate,
 }) {
   final allPaths = <String>{...local.files.keys, ...board.files.keys}.toList()
     ..sort();
 
   final entries = <BoardSyncEntry>[];
   for (final relativePath in allPaths) {
-    final entry = buildSyncEntry(
+    var entry = buildSyncEntry(
       relativePath: relativePath,
       local: local.files[relativePath],
       board: board.files[relativePath],
       policy: policy,
       baseline: baselines[relativePath],
+      translate: translate,
     );
+    if (ignore.shouldIgnore(relativePath)) {
+      entry = entry.copyWith(ignoredByDefault: true);
+    }
     if (!includeUnchanged && !entry.isChanged) continue;
     // A one-direction plan keeps unchanged rows (they explain what was
     // compared) but drops every entry that would move data the other way.
