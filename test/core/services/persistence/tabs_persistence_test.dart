@@ -96,5 +96,40 @@ void main() {
     expect(restored.tabs.first.foldedRanges.single.endLine, 2);
     expect(restored.selectedTabIndex, 2);
     expect(restored.selectedTabPath, '/w/b.py');
+    expect(restored.outlineColumnTabs, 0);
+  });
+
+  test('outline tabs round-trip with their strip positions', () {
+    final data = TabsPersistedData(
+      tabs: [
+        PersistedTab(filePath: '/w/a.py'),
+        // An outline dragged between two file tabs keeps that spot.
+        PersistedTab(filePath: '', isOutline: true),
+        PersistedTab(filePath: '/w/b.py'),
+      ],
+      selectedTabIndex: 1,
+      outlineColumnTabs: 2,
+    );
+
+    final restored = TabsPersistedData.fromJson(
+      jsonDecode(jsonEncode(data.toJson())) as Map<String, dynamic>,
+    );
+
+    expect(restored.tabs[1].isOutline, isTrue);
+    expect(restored.tabs.where((t) => t.isOutline), hasLength(1));
+    expect(restored.tabs[0].isOutline, isFalse);
+    expect(restored.outlineColumnTabs, 2);
+  });
+
+  test('sessions written before the outline fields restore without them', () {
+    final restored = TabsPersistedData.fromJson({
+      'tabs': [
+        {'filePath': '/w/old.py'},
+      ],
+      'selectedTabIndex': 0,
+    });
+
+    expect(restored.tabs.single.isOutline, isFalse);
+    expect(restored.outlineColumnTabs, 0);
   });
 }

@@ -5,6 +5,7 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
@@ -94,6 +95,7 @@ class PersistenceManager {
       tabs: tabsData?.tabs ?? [],
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       selectedTabPath: tabsData?.selectedTabPath,
+      outlineColumnTabs: tabsData?.outlineColumnTabs ?? 0,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       ensureBoardFilesystemOnConnect:
@@ -266,6 +268,12 @@ class PersistenceManager {
     String? selectedTabPath;
     for (final tab in tabController.tabs) {
       final value = tab.value;
+      if (value is OutlineTabValue) {
+        // Outline tabs persist as markers so a saved outline keeps its
+        // position in the strip, even one dragged out of its birth column.
+        tabs.add(PersistedTab(filePath: '', isOutline: true));
+        continue;
+      }
       if (value is TabDataValue && value.type == "file") {
         tabs.add(
           PersistedTab(
@@ -292,11 +300,16 @@ class PersistenceManager {
         selectedTabPath = selectedValue.filePath;
       }
     }
+    // The outline column holds nothing but outline tabs, so a count is its
+    // whole layout.
+    final column = container.read(editorOutlineColumnProvider);
+    final outlineColumnTabs = column?.tabs.length ?? 0;
     await tabsPersistence.save(
       TabsPersistedData(
         tabs: tabs,
         selectedTabIndex: selectedIndex ?? 0,
         selectedTabPath: selectedTabPath,
+        outlineColumnTabs: outlineColumnTabs,
       ),
     );
   }

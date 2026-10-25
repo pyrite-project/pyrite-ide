@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:super_context_menu/super_context_menu.dart';
+
+// The Material 3 desktop menu can only be customized by extending
+// DesktopMenuWidgetBuilder, which super_context_menu does not export from
+// its public library.
+// ignore: implementation_imports
 import 'package:super_context_menu/src/scaffold/desktop/menu_widget_builder.dart';
 
 import 'package:pyrite_ide/core/constants/corner_radius.dart';

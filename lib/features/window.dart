@@ -20,7 +20,7 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
-import 'package:tabbed_view/src/tab_data.dart';
+import 'package:tabbed_view/tabbed_view.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 

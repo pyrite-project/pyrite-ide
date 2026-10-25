@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
 import 'package:pyrite_ide/core/services/editor/external_file_change.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
@@ -79,6 +80,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// ignores this: it is about to destroy the other program's work, so it asks
   /// every time.
   final Map<String, FileDiskStamp> _declinedExternalChanges = {};
+
+  /// Paths already reported as missing from disk.
+  ///
+  /// A deleted file stays deleted until someone recreates it, so without this
+  /// every window activation would raise the same notice again. Cleared when
+  /// the path reappears or the tab closes, so a second deletion is announced
+  /// the second time rather than being swallowed by the first one's record.
+  final Set<String> _notifiedMissingFiles = {};
 
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
@@ -502,6 +511,17 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     state = newController;
   }
 
+  /// Republishes the tab list after the tabbed_view package mutated the live
+  /// controller in place.
+  ///
+  /// Native drag drops, tab reorders and tab closes go through the package's
+  /// own controller methods, which notify the widget but not this notifier —
+  /// the editor surface calls this once it has seen the tab list change, so
+  /// provider subscribers (document host, persistence, toolbar) follow along.
+  void republishTabs() {
+    _publishTabsPreservingSelection();
+  }
+
   void _replaceFileTab(
     TabData tab,
     TabDataValue value,
@@ -573,6 +593,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     if (declined != null) {
       _declinedExternalChanges[newPath] = declined;
     }
+    // A rename is not a deletion, and the new path is present by definition,
+    // so any "reported missing" record belongs to the path that no longer
+    // exists and must not follow the tab to its new name.
+    _notifiedMissingFiles.remove(oldPath);
   }
 
   void _publishRenamedTabs() {
@@ -810,6 +834,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     _lastSavedText.remove(filePath);
     _diskStamps.remove(filePath);
     _declinedExternalChanges.remove(filePath);
+    _notifiedMissingFiles.remove(filePath);
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
     value.undoRedoController?.dispose();
@@ -842,6 +867,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       return;
     }
     _diskStamps[file.path] = stamp;
+    // The path exists again — most often because the user just saved over the
+    // deletion. A later deletion deserves its own notice, so the record of the
+    // previous one goes away here rather than waiting for a full reconcile
+    // pass that the stamp shortcut would skip.
+    _notifiedMissingFiles.remove(file.path);
   }
 
   /// Reconciles every open local file with what is on disk now.
@@ -932,29 +962,44 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     switch (action) {
       case ExternalChangeAction.none:
         _declinedExternalChanges.remove(value.filePath);
+        _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
       case ExternalChangeAction.touchOnly:
         _declinedExternalChanges.remove(value.filePath);
+        _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
       case ExternalChangeAction.deleted:
         _diskStamps.remove(value.filePath);
         _declinedExternalChanges.remove(value.filePath);
-        // The buffer stays readable — the user may still want to copy out of it
-        // or undo — but a save must not recreate a file someone deliberately
-        // removed.
-        value.editorController?.readOnly = true;
-        ref
-            .read(ideMessageProvider.notifier)
-            .show(
-              translateWithReplacements(ref, I18nKey.editorFileDeletedOnDisk, {
-                'path': value.filePath,
-              }),
-              type: IdeMessageType.warning,
-              duration: const Duration(seconds: 12),
-              closeable: true,
-            );
+        // The buffer stays editable. Locking it was meant to stop a save from
+        // recreating a file someone deliberately removed, but the editor is in
+        // no position to know that: a branch switch, a stash pop or a formatter
+        // cleaning up can all make a path vanish and come back, and a save is
+        // an explicit user action, not an accident to be prevented. Writing
+        // here recreates the path, which is exactly what "save this file"
+        // means when the file is gone.
+        //
+        // Only the first discovery is worth a notice; repeating it on every
+        // focus change would nag about a state the user already knows. A save
+        // skips it entirely: the write that follows recreates the path, so a
+        // notice saying it is gone would be contradicted a moment later.
+        if (!onSaveConflict && _notifiedMissingFiles.add(value.filePath)) {
+          ref
+              .read(ideMessageProvider.notifier)
+              .show(
+                translateWithReplacements(
+                  ref,
+                  I18nKey.editorFileDeletedOnDisk,
+                  {'path': value.filePath},
+                ),
+                type: IdeMessageType.warning,
+                duration: const Duration(seconds: 12),
+                closeable: true,
+              );
+        }
       case ExternalChangeAction.reload:
         _declinedExternalChanges.remove(value.filePath);
+        _notifiedMissingFiles.remove(value.filePath);
         await _reloadTabFromDisk(tab, value, diskText!);
       case ExternalChangeAction.prompt:
         if (!context.mounted) return action;
@@ -1031,12 +1076,20 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     List<PersistedTab> persistedTabs,
     int selectedIndex, {
     String? selectedTabPath,
+    int outlineColumnTabs = 0,
   }) async {
     final List<TabData> tabs = [];
 
     tabs.addAll(_buildTabbedViewController(ref).tabs);
 
     for (final persisted in persistedTabs) {
+      // An outline tab carries no file: it restores in the position it was
+      // saved in, which is how a saved layout beats the outline's usual
+      // rightmost-column birth position.
+      if (persisted.isOutline) {
+        tabs.add(buildOutlineTab(translate(ref, I18nKey.editorOutlineTitle)));
+        continue;
+      }
       final file = File(persisted.filePath);
       final exists = await file.exists();
       if (!exists) continue;
@@ -1121,6 +1174,16 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       newController.selectedIndex = restoredIndex;
     }
     state = newController;
+
+    // The outline column is part of the saved layout: restore it with the
+    // outline count it held, in the shape it was saved in.
+    if (outlineColumnTabs > 0) {
+      ref.read(editorOutlineColumnProvider.notifier).state =
+          TabbedViewController([
+            for (var i = 0; i < outlineColumnTabs; i++)
+              buildOutlineTab(translate(ref, I18nKey.editorOutlineTitle)),
+          ]);
+    }
   }
 
   /// Puts the caret and viewport back where they were.

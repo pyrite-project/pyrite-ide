@@ -112,7 +112,10 @@ void _installIdeOutputLogger() {
       stackTrace: stack,
     );
     _appendIdeOutputLater('Unhandled exception: $error\n$stack');
-    return false;
+    // Returning true marks the error handled so a single uncaught async
+    // exception cannot terminate the whole IDE in release; the log and the
+    // output panel above keep it diagnosable.
+    return true;
   };
 }
 
@@ -487,6 +490,7 @@ void main() async {
           data.tabs,
           data.selectedTabIndex,
           selectedTabPath: data.selectedTabPath,
+          outlineColumnTabs: data.outlineColumnTabs,
         );
   }
 

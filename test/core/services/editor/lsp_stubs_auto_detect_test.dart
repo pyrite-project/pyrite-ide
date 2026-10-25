@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/services/device/board_identity.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_auto_detect.dart';
 
 StubsProfileCandidate _candidate(

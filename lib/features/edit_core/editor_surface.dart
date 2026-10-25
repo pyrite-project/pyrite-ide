@@ -2,32 +2,98 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/features/edit_core/editor_outline_panel.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
+import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 
-/// Whether the editor's outline column is showing.
+/// The editor page with the optional outline tab group beside the tabbed
+/// view.
 ///
-/// Kept in a provider rather than in the editor's widget state: the toggle
-/// lives in the toolbar and the panel lives in the workspace, and they are
-/// rebuilt independently as the layout changes.
-final StateProvider<bool> editorOutlineVisible = StateProvider<bool>(
-  (ref) => false,
-);
-
-/// The editor page with an optional outline column beside the tabbed view.
-///
-/// The outline answers a question the tab strip cannot: where in this file is
-/// the thing I want. It is opt-in because on a narrow window the column costs
-/// more width than the navigation is worth.
-class EditorSurface extends ConsumerWidget {
+/// The outline is an ordinary editor tab — draggable, closable, several can
+/// exist — that is born into its own column docked at the far right. The
+/// column is outline-only: a file tab dropped there would leave the editor
+/// controller whose state every consumer (document host, persistence, save
+/// actions) reads, so its [TabbedView.canDrop] rejects anything but outline
+/// tabs, while the editor bar accepts them like any other tab.
+class EditorSurface extends ConsumerStatefulWidget {
   const EditorSurface({super.key, required this.child});
 
   /// The tabbed editor area.
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final visible = ref.watch(editorOutlineVisible);
-    if (!visible) return child;
+  ConsumerState<EditorSurface> createState() => _EditorSurfaceState();
+}
+
+class _EditorSurfaceState extends ConsumerState<EditorSurface> {
+  /// The live controllers a change-listener is attached to.
+  ///
+  /// The tabbed_view package mutates its controller in place — native drag
+  /// drops, tab reorders and tab closes all bypass the copy-on-write
+  /// providers — so these listeners are what carry those mutations back into
+  /// provider state.
+  TabbedViewController? _listenedMain;
+  TabbedViewController? _listenedColumn;
+
+  /// Last-seen tab list for the editor bar, so a controller notification only
+  /// republishes when membership or order actually changed. Dirty-dot flips
+  /// and selection changes notify the same controller and already have their
+  /// own paths.
+  List<TabData>? _lastMainTabs;
+
+  @override
+  void dispose() {
+    _listenedMain?.removeListener(_onMainChanged);
+    _listenedColumn?.removeListener(_onColumnChanged);
+    super.dispose();
+  }
+
+  void _onMainChanged() {
+    final controller = _listenedMain;
+    if (controller == null || _sameTabs(controller.tabs, _lastMainTabs)) {
+      return;
+    }
+    _lastMainTabs = List<TabData>.from(controller.tabs);
+    ref.read(tabbedViewControllerProvider.notifier).republishTabs();
+  }
+
+  void _onColumnChanged() {
+    final controller = _listenedColumn;
+    if (controller == null) return;
+    if (controller.tabs.isEmpty) {
+      // The last outline was dragged (or closed) out of the column.
+      ref.read(editorOutlineColumnProvider.notifier).state = null;
+    }
+  }
+
+  bool _sameTabs(Iterable<TabData> tabs, List<TabData>? snapshot) {
+    if (snapshot == null || tabs.length != snapshot.length) return false;
+    var index = 0;
+    for (final tab in tabs) {
+      if (!identical(tab, snapshot[index])) return false;
+      index++;
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final main = ref.watch(tabbedViewControllerProvider);
+    if (!identical(_listenedMain, main)) {
+      _listenedMain?.removeListener(_onMainChanged);
+      _listenedMain = main;
+      _lastMainTabs = List<TabData>.from(main.tabs);
+      main.addListener(_onMainChanged);
+    }
+    final column = ref.watch(editorOutlineColumnProvider);
+    if (!identical(_listenedColumn, column)) {
+      _listenedColumn?.removeListener(_onColumnChanged);
+      _listenedColumn = column;
+      column?.addListener(_onColumnChanged);
+    }
+
+    if (column == null || column.tabs.isEmpty) return widget.child;
 
     final scheme = Theme.of(context).colorScheme;
     final isCompact = MediaQuery.sizeOf(context).width < 900;
@@ -35,19 +101,13 @@ class EditorSurface extends ConsumerWidget {
 
     return Row(
       children: [
-        Expanded(child: child),
+        Expanded(child: widget.child),
         VerticalDivider(width: 1, color: scheme.outlineVariant),
         SizedBox(
           width: width,
-          child: Column(
-            children: [
-              _OutlineHeaderBar(
-                onClose: () =>
-                    ref.read(editorOutlineVisible.notifier).state = false,
-              ),
-              const Divider(height: 1),
-              const Expanded(child: EditorOutlinePanel()),
-            ],
+          child: TabbedView(
+            controller: column,
+            canDrop: (source, _) => source.tabData.value is OutlineTabValue,
           ),
         ),
       ],
@@ -55,49 +115,26 @@ class EditorSurface extends ConsumerWidget {
   }
 }
 
-class _OutlineHeaderBar extends ConsumerWidget {
-  const _OutlineHeaderBar({required this.onClose});
-
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              translateForWidget(ref, I18nKey.editorOutlineTitle),
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            iconSize: 16,
-            tooltip: translateForWidget(ref, I18nKey.editorOutlineTitle),
-            onPressed: onClose,
-            icon: const Icon(Icons.close),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Toolbar button that shows or hides the outline column.
+/// Toolbar button that opens the outline.
+///
+/// Every press births another outline tab in the rightmost column; the
+/// selected state mirrors whether any outline tab exists, wherever the user
+/// has dragged them.
 class EditorOutlineToggle extends ConsumerWidget {
   const EditorOutlineToggle({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final visible = ref.watch(editorOutlineVisible);
+    final main = ref.watch(tabbedViewControllerProvider);
+    final column = ref.watch(editorOutlineColumnProvider);
+    final hasOutline =
+        main.tabs.any(isOutlineTab) || (column != null && column.tabs.any(isOutlineTab));
     return IconButton(
       tooltip: translateForWidget(ref, I18nKey.editorOutlineTitle),
-      isSelected: visible,
+      isSelected: hasOutline,
       icon: const Icon(Icons.account_tree_outlined),
       selectedIcon: const Icon(Icons.account_tree),
-      onPressed: () => ref.read(editorOutlineVisible.notifier).state = !visible,
+      onPressed: () => openOutlineTab(context, ref),
     );
   }
 }

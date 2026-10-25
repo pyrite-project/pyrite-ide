@@ -19,16 +19,26 @@ class TabsPersistedData {
   /// saved before this field existed.
   final String? selectedTabPath;
 
+  /// How many outline tabs lived in the outline column at save time.
+  ///
+  /// The column holds nothing but outline tabs, so a count rebuilds it
+  /// exactly. Zero for sessions written before this field existed, which
+  /// restores no column — a fresh outline then takes its usual birth
+  /// position at the far right.
+  final int outlineColumnTabs;
+
   TabsPersistedData({
     required this.tabs,
     required this.selectedTabIndex,
     this.selectedTabPath,
+    this.outlineColumnTabs = 0,
   });
 
   Map<String, dynamic> toJson() => {
     'tabs': tabs.map((t) => t.toJson()).toList(),
     'selectedTabIndex': selectedTabIndex,
     'selectedTabPath': selectedTabPath,
+    'outlineColumnTabs': outlineColumnTabs,
   };
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
@@ -40,6 +50,7 @@ class TabsPersistedData {
             [],
         selectedTabIndex: json['selectedTabIndex'] as int? ?? 0,
         selectedTabPath: json['selectedTabPath'] as String?,
+        outlineColumnTabs: json['outlineColumnTabs'] as int? ?? 0,
       );
 }
 

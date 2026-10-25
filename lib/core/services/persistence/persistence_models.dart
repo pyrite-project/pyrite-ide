@@ -61,6 +61,14 @@ class PersistedTab {
   /// that no longer match the restored document are applied best-effort.
   final List<PersistedFoldRange> foldedRanges;
 
+  /// Marks an outline tab in the saved strip.
+  ///
+  /// Outline tabs hold no file, so [filePath] is empty for them; they restore
+  /// in the position they were saved at, keeping a saved outline layout
+  /// (including one dragged into the editor bar) over the usual birth column.
+  /// False for sessions written before this field existed.
+  final bool isOutline;
+
   PersistedTab({
     required this.filePath,
     this.isBoardFile = false,
@@ -70,6 +78,7 @@ class PersistedTab {
     this.cursorOffset,
     this.scrollLine,
     this.foldedRanges = const [],
+    this.isOutline = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -81,6 +90,7 @@ class PersistedTab {
     'cursorOffset': cursorOffset,
     'scrollLine': scrollLine,
     'foldedRanges': foldedRanges.map((f) => f.toJson()).toList(),
+    'isOutline': isOutline,
   };
 
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
@@ -97,6 +107,7 @@ class PersistedTab {
             .map(PersistedFoldRange.fromJson)
             .toList() ??
         const [],
+    isOutline: json['isOutline'] as bool? ?? false,
   );
 }
 
@@ -109,6 +120,10 @@ class PersistedData {
   /// when restoring because the rebuilt tab list does not share the saved
   /// index space. See `TabsPersistedData.selectedTabPath`.
   final String? selectedTabPath;
+
+  /// Outline tabs that lived in the outline column at save time. See
+  /// `TabsPersistedData.outlineColumnTabs`.
+  final int outlineColumnTabs;
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
@@ -201,6 +216,7 @@ class PersistedData {
     this.tabs = const [],
     this.selectedTabIndex = 0,
     this.selectedTabPath,
+    this.outlineColumnTabs = 0,
     this.themeMode = 'system',
     this.themeStyle = 'standard',
     this.themeColorValue,
