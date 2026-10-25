@@ -281,6 +281,7 @@ class TabHeaderWidget extends StatelessWidget {
         onPressed: () async {
           final TabData tabData = provider.controller.tabs[index];
           if (!await confirmCloseUnsavedTab(context, tabData)) return;
+          if (!context.mounted) return;
           await _onClose(context, index);
         },
         toolTip: provider.closeButtonTooltip,
