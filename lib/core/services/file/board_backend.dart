@@ -692,7 +692,7 @@ tmp = $temp
 original_size = $remaining
 remaining = original_size
 ack_every = $ackEvery
-ack_count = 0
+chunks_since_ack = 0
 chunk_size = $chunkSize
 
 _log('start size=' + str(original_size) + ' chunk=' + str(chunk_size) + ' ack=' + str(ack_every))
@@ -721,23 +721,32 @@ try:
   except Exception:
     pass
   try:
+    buf = bytearray(chunk_size)
+    buf_len = 0
     while remaining:
       line = usb.readline()
       if not line:
         raise Exception('unexpected end of transfer')
-      d = ubinascii.a2b_base64(line)
-      if not d or len(d) > chunk_size or len(d) > remaining:
+      try:
+        d = ubinascii.a2b_base64(line)
+      except Exception as exc:
+        raise Exception('invalid transfer line: len=' + str(len(line)) + ' ' + str(exc))
+      if not d or buf_len + len(d) > chunk_size or len(d) > remaining:
         raise Exception('invalid transfer chunk')
-      f.write(d)
+      buf[buf_len:buf_len + len(d)] = d
+      buf_len += len(d)
       remaining -= len(d)
-      ack_count += 1
-      if ack_every and ack_count % ack_every == 0:
+      if buf_len >= chunk_size or not remaining:
+        f.write(buf[:buf_len])
         f.flush()
-        sys.stdout.write('+')
-        try:
-          sys.stdout.flush()
-        except Exception:
-          pass
+        buf_len = 0
+        chunks_since_ack += 1
+        if ack_every and chunks_since_ack % ack_every == 0:
+          sys.stdout.write('+')
+          try:
+            sys.stdout.flush()
+          except Exception:
+            pass
     f.flush()
   finally:
     f.close()
