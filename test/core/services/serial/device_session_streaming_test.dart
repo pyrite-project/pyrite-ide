@@ -89,6 +89,56 @@ void main() {
     );
   });
 
+  test(
+    'softReset sends CTRL-B + CTRL-D and waits for the reboot banner',
+    () async {
+      final queue = SerialByteQueue();
+      final writes = <List<int>>[];
+
+      void writeBytes(List<int> bytes) {
+        writes.add(List<int>.from(bytes));
+        if (bytes.length == 1 && bytes.single == 0x04) {
+          Timer(const Duration(milliseconds: 1), () {
+            queue.add(
+              Uint8List.fromList(utf8.encode('MPY: soft reboot\r\n>>> ')),
+            );
+          });
+        }
+      }
+
+      final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+      await session.softReset(timeout: const Duration(seconds: 2));
+
+      expect(
+        writes.any((bytes) => bytes.length == 1 && bytes.single == 0x02),
+        isTrue,
+      );
+      expect(
+        writes.any((bytes) => bytes.length == 1 && bytes.single == 0x04),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'softReset falls back to the prompt when the banner is missing',
+    () async {
+      final queue = SerialByteQueue();
+
+      void writeBytes(List<int> bytes) {
+        if (bytes.length == 1 && bytes.single == 0x04) {
+          // A quietly resetting build only answers with a fresh prompt.
+          Timer(const Duration(milliseconds: 1), () {
+            queue.add(Uint8List.fromList(utf8.encode('>>> ')));
+          });
+        }
+      }
+
+      final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+      await session.softReset(timeout: const Duration(milliseconds: 200));
+    },
+  );
+
   test('paste execution sends conservative WebREPL-sized blocks', () async {
     final queue = SerialByteQueue();
     final writes = <List<int>>[];

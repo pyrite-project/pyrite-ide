@@ -1681,6 +1681,10 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
     await runPythonOnActiveDeviceStreaming(
       ref,
       controller.text,
+      // A stale module imported by an earlier run would keep executing its
+      // cached bytecode even after the file was re-uploaded; soft reset
+      // clears sys.modules so every run starts from the on-device files.
+      softReset: true,
       onStarted: () {
         started = true;
         ref

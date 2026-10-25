@@ -99,6 +99,7 @@ Future<void> runPythonOnActiveDeviceStreaming(
   String python, {
   Duration startupTimeout = const Duration(seconds: 20),
   String runningOperationId = 'code-exec',
+  bool softReset = false,
   required void Function() onStarted,
   required void Function(Uint8List data) onStdout,
   required void Function(Uint8List data) onStderr,
@@ -110,6 +111,7 @@ Future<void> runPythonOnActiveDeviceStreaming(
           .executeStreaming(
             python,
             timeout: startupTimeout,
+            softReset: softReset,
             onStarted: onStarted,
             onStdout: onStdout,
             onStderr: onStderr,
@@ -120,6 +122,7 @@ Future<void> runPythonOnActiveDeviceStreaming(
         python,
         startupTimeout: startupTimeout,
         runningOperationId: runningOperationId,
+        softReset: softReset,
         onStarted: onStarted,
         onStdout: onStdout,
         onStderr: onStderr,
