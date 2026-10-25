@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
@@ -14,7 +16,28 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+
+/// Monospace family for identifiers, versions and raw setting values.
+///
+/// Anything a user might copy into a manifest or a bug report is rendered in
+/// it, so a value never reads as prose.
+const String _monoFont = 'JetBrainsMono';
+
+/// Width of the label column in a detail row, so values line up vertically.
+const double _labelWidth = 132;
+
+/// Width of the value control in a setting row. Fixed so every row's control
+/// edge lines up, the way a settings editor's input column does.
+const double _controlWidth = 160;
+
+/// Height of the settings filter bar's search field.
+///
+/// The field draws its own box, so this is the control's layout height rather
+/// than a measurement of whichever decoration slot happens to be tallest.
+const double _filterFieldHeight = 36;
 
 /// Full plugin detail page reached from the plugin center list.
 ///
@@ -44,114 +67,41 @@ class PluginDetailPage extends ConsumerWidget {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (manifest?.icons case final icons?) ...[
-              PluginAssetImage(
-                pluginId: plugin.id,
-                assetPath: icons.full,
-                revision: plugin.version,
-                width: 28,
-                height: 28,
-                fallback: const Icon(Icons.extension_outlined, size: 24),
-              ),
-              const SizedBox(width: 10),
-            ],
+            _PluginIcon(plugin: plugin, size: 26),
+            const SizedBox(width: 10),
             Flexible(child: Text(plugin.name)),
           ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _Actions(plugin: plugin, isRunning: isRunning),
-          const SizedBox(height: 8),
-          if (manifest == null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.orange),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: UseText(I18nKey.pluginsDetailManifestInvalid),
-                    ),
-                  ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 880),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _PluginHeader(plugin: plugin, isRunning: isRunning),
+                if (manifest == null) ...[
+                  const SizedBox(height: 12),
+                  const _InvalidManifestBanner(),
+                ],
+                const SizedBox(height: 20),
+                _MetadataSection(
+                  plugin: plugin,
+                  isRunning: isRunning,
+                  activation: activation,
                 ),
-              ),
+                if (manifest != null) _ConfigurationSection(pluginId: pluginId),
+                _PermissionsSection(plugin: plugin),
+                if (manifest != null) _ContributionsSection(pluginId: pluginId),
+                _MetricsSection(pluginId: pluginId),
+              ],
             ),
-          _MetadataSection(
-            plugin: plugin,
-            isRunning: isRunning,
-            activation: activation,
           ),
-          _MetricsSection(pluginId: pluginId),
-          _PermissionsSection(plugin: plugin),
-          if (manifest != null) _ContributionsSection(pluginId: pluginId),
-          if (manifest != null) _ConfigurationSection(pluginId: pluginId),
-        ],
+        ),
       ),
-    );
-  }
-}
-
-class _MetricsSection extends ConsumerWidget {
-  const _MetricsSection({required this.pluginId});
-
-  final String pluginId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final metrics = ref.watch(pluginMetricsProvider).forPlugin(pluginId);
-    return _Section(
-      title: const UseText(I18nKey.pluginsDiagnostics),
-      children: [
-        if (metrics == null)
-          const UseText(I18nKey.pluginsDiagnosticsEmpty)
-        else ...[
-          _Row(
-            label: const UseText(I18nKey.pluginsMetricState),
-            value: metrics.state,
-          ),
-          _Row(label: const Text('Session'), value: metrics.sessionId),
-          _Row(label: const Text('Generation'), value: '${metrics.generation}'),
-          _Row(
-            label: const UseText(I18nKey.pluginsMetricActivation),
-            value: '${metrics.activationDuration?.inMilliseconds ?? '-'} ms',
-          ),
-          _Row(
-            label: const UseText(I18nKey.pluginsMetricMessages),
-            value: I18nKey.pluginsMetricMessagesValue.fallback
-                .replaceAll('{sent}', '${metrics.messagesSent}')
-                .replaceAll('{received}', '${metrics.messagesReceived}'),
-          ),
-          _Row(
-            label: const Text('RPC p50 / p95'),
-            value: '${metrics.rpcP50Ms ?? '-'} / ${metrics.rpcP95Ms ?? '-'} ms',
-          ),
-          _Row(
-            label: const UseText(I18nKey.pluginsMetricQueue),
-            value:
-                'event ${metrics.eventQueueDepth}/${metrics.eventQueueHighWater}, '
-                'control ${metrics.controlQueueDepth}/${metrics.controlQueueHighWater}, '
-                'patch ${metrics.patchQueueDepth}/${metrics.patchQueueHighWater}',
-          ),
-          _Row(
-            label: const UseText(I18nKey.pluginsMetricFailures),
-            value:
-                'timeout ${metrics.timeouts}, cancel ${metrics.cancellations}, '
-                'drop ${metrics.drops}, error ${metrics.errors}',
-          ),
-          if (metrics.lastError != null)
-            SelectableText(
-              '${metrics.lastError}\n${metrics.lastTraceback ?? ''}',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
-                fontFamily: 'monospace',
-                fontSize: 12,
-              ),
-            ),
-        ],
-      ],
     );
   }
 }
@@ -175,57 +125,263 @@ String pluginTypeText(WidgetRef ref, PluginType type) {
   return translateForWidget(ref, key);
 }
 
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+/// The MD3 surface every section's rows sit on.
+///
+/// Shared by the read-only sections so they read as one family of panels
+/// instead of each inventing its own card.
+class _Surface extends StatelessWidget {
+  const _Surface({
+    this.padding = const EdgeInsets.all(16),
+    required this.child,
+  });
 
-  final Widget title;
-  final List<Widget> children;
+  final EdgeInsetsGeometry padding;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DefaultTextStyle.merge(
-              style: Theme.of(context).textTheme.titleMedium,
-              child: title,
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: context.outerCorners,
+      ),
+      child: child,
+    );
+  }
+}
+
+/// A label / value line used by the read-only sections.
+///
+/// Values are monospace by default because most of them are identifiers,
+/// versions or raw JSON; [mono] turns that off for prose such as a
+/// description.
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value, this.mono = true});
+
+  final Widget label;
+  final String value;
+  final bool mono;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _labelWidth,
+            child: DefaultTextStyle.merge(
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+              child: label,
             ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: mono ? _monoFont : null,
+                color: scheme.onSurface,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.value});
+class _PluginIcon extends StatelessWidget {
+  const _PluginIcon({required this.plugin, required this.size});
 
-  final Widget label;
-  final String value;
+  final Plugin plugin;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    final scheme = Theme.of(context).colorScheme;
+    final radius = context.innerCorners;
+    final icons = plugin.manifest?.icons;
+    if (icons == null) return _placeholder(scheme, radius);
+    return ClipRRect(
+      borderRadius: radius,
+      child: PluginAssetImage(
+        pluginId: plugin.id,
+        assetPath: icons.full,
+        revision: plugin.version,
+        width: size,
+        height: size,
+        fallback: _placeholder(scheme, radius),
+      ),
+    );
+  }
+
+  Widget _placeholder(ColorScheme scheme, BorderRadius radius) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: scheme.surfaceContainerHighest,
+      borderRadius: radius,
+    ),
+    child: Icon(
+      Icons.extension_outlined,
+      size: size * 0.55,
+      color: scheme.onSurfaceVariant,
+    ),
+  );
+}
+
+/// Extension-page style header: icon, name, status, publisher line and the
+/// lifecycle actions that used to float above the body.
+class _PluginHeader extends ConsumerWidget {
+  const _PluginHeader({required this.plugin, required this.isRunning});
+
+  final Plugin plugin;
+  final bool isRunning;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return _Surface(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 140,
-            child: DefaultTextStyle.merge(
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PluginIcon(plugin: plugin, size: 56),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Text(
+                          plugin.name,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        _statusBadge(context, ref),
+                        PillBadge(
+                          label: pluginTypeText(ref, plugin.type),
+                          containerColor: scheme.surfaceContainerHighest,
+                          foregroundColor: scheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _publisherLine,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (plugin.description.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        plugin.description,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              child: label,
+            ],
+          ),
+          const SizedBox(height: 14),
+          _Actions(plugin: plugin, isRunning: isRunning),
+        ],
+      ),
+    );
+  }
+
+  /// "author · version": the publisher line an extension page leads with.
+  String get _publisherLine {
+    final parts = <String>[
+      if (plugin.author.isNotEmpty) plugin.author,
+      plugin.version,
+    ];
+    return parts.join('  ·  ');
+  }
+
+  Widget _statusBadge(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    return switch (plugin.status) {
+      PluginStatus.disabled => PillBadge(
+        label: pluginStatusText(ref, plugin.status),
+        containerColor: scheme.surfaceContainerHighest,
+        foregroundColor: scheme.onSurfaceVariant,
+      ),
+      PluginStatus.installing => PillBadge(
+        label: pluginStatusText(ref, plugin.status),
+        containerColor: scheme.tertiaryContainer,
+        foregroundColor: scheme.onTertiaryContainer,
+      ),
+      PluginStatus.uninstalled => PillBadge(
+        label: pluginStatusText(ref, plugin.status),
+        containerColor: scheme.errorContainer,
+        foregroundColor: scheme.onErrorContainer,
+      ),
+      PluginStatus.usable =>
+        isRunning
+            ? PillBadge(
+                label: translateForWidget(ref, I18nKey.pluginsDetailRunning),
+                icon: Icons.bolt,
+                containerColor: scheme.primaryContainer,
+                foregroundColor: scheme.onPrimaryContainer,
+              )
+            : PillBadge(
+                label: pluginStatusText(ref, plugin.status),
+                containerColor: scheme.secondaryContainer,
+                foregroundColor: scheme.onSecondaryContainer,
+              ),
+    };
+  }
+}
+
+class _InvalidManifestBanner extends StatelessWidget {
+  const _InvalidManifestBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: context.outerCorners,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 20, color: scheme.onErrorContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: UseText(
+              I18nKey.pluginsDetailManifestInvalid,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onErrorContainer,
+              ),
             ),
           ),
-          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -245,52 +401,72 @@ class _MetadataSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final error = activation?.error;
-    return _Section(
-      title: UseText(I18nKey.pluginsDetailOverview),
+    return SettingsSection(
+      title: I18nKey.pluginsDetailOverview,
+      description: I18nKey.pluginsDetailOverviewDescription,
       children: [
-        _Row(label: UseText(I18nKey.pluginsDetailId), value: plugin.id),
-        _Row(
-          label: UseText(I18nKey.pluginsDetailVersion),
-          value: plugin.version,
-        ),
-        if (plugin.author.isNotEmpty)
-          _Row(
-            label: UseText(I18nKey.pluginsDetailAuthor),
-            value: plugin.author,
+        _Surface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InfoRow(
+                label: UseText(I18nKey.pluginsDetailId),
+                value: plugin.id,
+              ),
+              _InfoRow(
+                label: UseText(I18nKey.pluginsDetailVersion),
+                value: plugin.version,
+              ),
+              if (plugin.author.isNotEmpty)
+                _InfoRow(
+                  label: UseText(I18nKey.pluginsDetailAuthor),
+                  value: plugin.author,
+                  mono: false,
+                ),
+              _InfoRow(
+                label: UseText(I18nKey.pluginsDetailType),
+                value: pluginTypeText(ref, plugin.type),
+                mono: false,
+              ),
+              _InfoRow(
+                label: UseText(I18nKey.pluginsDetailStatus),
+                value: pluginStatusText(ref, plugin.status),
+                mono: false,
+              ),
+              _InfoRow(
+                label: UseText(I18nKey.pluginsDetailRunning),
+                value: isRunning
+                    ? translateForWidget(ref, I18nKey.commonYes)
+                    : translateForWidget(ref, I18nKey.commonNo),
+                mono: false,
+              ),
+              if (activation != null)
+                _InfoRow(
+                  label: UseText(I18nKey.pluginsDetailActivation),
+                  value: activation!.state.name,
+                ),
+              if (plugin.description.isNotEmpty)
+                _InfoRow(
+                  label: UseText(I18nKey.pluginsDetailDescription),
+                  value: plugin.description,
+                  mono: false,
+                ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '$error',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.error,
+                      fontFamily: _monoFont,
+                    ),
+                  ),
+                ),
+            ],
           ),
-        _Row(
-          label: UseText(I18nKey.pluginsDetailType),
-          value: pluginTypeText(ref, plugin.type),
         ),
-        _Row(
-          label: UseText(I18nKey.pluginsDetailStatus),
-          value: pluginStatusText(ref, plugin.status),
-        ),
-        _Row(
-          label: UseText(I18nKey.pluginsDetailRunning),
-          value: isRunning
-              ? translateForWidget(ref, I18nKey.commonYes)
-              : translateForWidget(ref, I18nKey.commonNo),
-        ),
-        if (activation != null)
-          _Row(
-            label: UseText(I18nKey.pluginsDetailActivation),
-            value: activation!.state.name,
-          ),
-        if (plugin.description.isNotEmpty)
-          _Row(
-            label: UseText(I18nKey.pluginsDetailDescription),
-            value: plugin.description,
-          ),
-        if (error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              '$error',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
       ],
     );
   }
@@ -304,17 +480,28 @@ class _PermissionsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final declared = plugin.declaredPermissions;
-    return _Section(
-      title: UseText(I18nKey.pluginsDetailPermissions),
+    return SettingsSection(
+      title: I18nKey.pluginsDetailPermissions,
+      description: I18nKey.pluginsDetailPermissionsDescription,
       children: [
-        if (declared.isEmpty)
-          UseText(I18nKey.pluginsDetailPermissionsNone)
-        else
-          for (final resource in declared.keys.toList()..sort())
-            _Row(
-              label: Text(resource),
-              value: (declared[resource]!.toList()..sort()).join(', '),
-            ),
+        _Surface(
+          child: declared.isEmpty
+              ? UseText(I18nKey.pluginsDetailPermissionsNone)
+              : Column(
+                  children: [
+                    for (final resource in declared.keys.toList()..sort())
+                      _InfoRow(
+                        label: Text(
+                          resource,
+                          style: const TextStyle(fontFamily: _monoFont),
+                        ),
+                        value: (declared[resource]!.toList()..sort()).join(
+                          ', ',
+                        ),
+                      ),
+                  ],
+                ),
+        ),
       ],
     );
   }
@@ -338,33 +525,129 @@ class _ContributionsSection extends ConsumerWidget {
         .where((entry) => entry.pluginId == pluginId)
         .toList();
 
-    return _Section(
-      title: UseText(I18nKey.pluginsDetailContributions),
+    return SettingsSection(
+      title: I18nKey.pluginsDetailContributions,
+      description: I18nKey.pluginsDetailContributionsDescription,
       children: [
-        if (navigation.isEmpty && views.isEmpty && commands.isEmpty)
-          UseText(I18nKey.pluginsDetailContributionsNone)
-        else ...[
-          for (final entry in navigation)
-            _Row(
-              label: UseText(I18nKey.pluginsDetailNavigation),
-              value: '${entry.value.title} (${entry.value.id})',
-            ),
-          for (final entry in views)
-            _Row(
-              label: UseText(I18nKey.pluginsDetailViews),
-              value: '${entry.value.title} (${entry.value.id})',
-            ),
-          for (final entry in commands)
-            _Row(
-              label: UseText(I18nKey.pluginsDetailCommands),
-              value: '${entry.value.title} (${entry.value.id})',
-            ),
-        ],
+        _Surface(
+          child: navigation.isEmpty && views.isEmpty && commands.isEmpty
+              ? UseText(I18nKey.pluginsDetailContributionsNone)
+              : Column(
+                  children: [
+                    for (final entry in navigation)
+                      _InfoRow(
+                        label: UseText(I18nKey.pluginsDetailNavigation),
+                        value: '${entry.value.title} (${entry.value.id})',
+                      ),
+                    for (final entry in views)
+                      _InfoRow(
+                        label: UseText(I18nKey.pluginsDetailViews),
+                        value: '${entry.value.title} (${entry.value.id})',
+                      ),
+                    for (final entry in commands)
+                      _InfoRow(
+                        label: UseText(I18nKey.pluginsDetailCommands),
+                        value: '${entry.value.title} (${entry.value.id})',
+                      ),
+                  ],
+                ),
+        ),
       ],
     );
   }
 }
 
+class _MetricsSection extends ConsumerWidget {
+  const _MetricsSection({required this.pluginId});
+
+  final String pluginId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metrics = ref.watch(pluginMetricsProvider).forPlugin(pluginId);
+    return SettingsSection(
+      title: I18nKey.pluginsDiagnostics,
+      description: I18nKey.pluginsDiagnosticsDescription,
+      children: [
+        _Surface(
+          child: metrics == null
+              ? UseText(I18nKey.pluginsDiagnosticsEmpty)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _InfoRow(
+                      label: UseText(I18nKey.pluginsMetricState),
+                      value: metrics.state,
+                    ),
+                    _InfoRow(
+                      label: const Text('Session'),
+                      value: metrics.sessionId,
+                    ),
+                    _InfoRow(
+                      label: const Text('Generation'),
+                      value: '${metrics.generation}',
+                    ),
+                    _InfoRow(
+                      label: UseText(I18nKey.pluginsMetricActivation),
+                      value:
+                          '${metrics.activationDuration?.inMilliseconds ?? '-'} ms',
+                    ),
+                    _InfoRow(
+                      label: UseText(I18nKey.pluginsMetricMessages),
+                      value: translateForWidgetWithReplacements(
+                        ref,
+                        I18nKey.pluginsMetricMessagesValue,
+                        {
+                          'sent': '${metrics.messagesSent}',
+                          'received': '${metrics.messagesReceived}',
+                        },
+                      ),
+                    ),
+                    _InfoRow(
+                      label: const Text('RPC p50 / p95'),
+                      value:
+                          '${metrics.rpcP50Ms ?? '-'} / ${metrics.rpcP95Ms ?? '-'} ms',
+                    ),
+                    _InfoRow(
+                      label: UseText(I18nKey.pluginsMetricQueue),
+                      value:
+                          'event ${metrics.eventQueueDepth}/${metrics.eventQueueHighWater}, '
+                          'control ${metrics.controlQueueDepth}/${metrics.controlQueueHighWater}, '
+                          'patch ${metrics.patchQueueDepth}/${metrics.patchQueueHighWater}',
+                    ),
+                    _InfoRow(
+                      label: UseText(I18nKey.pluginsMetricFailures),
+                      value:
+                          'timeout ${metrics.timeouts}, cancel ${metrics.cancellations}, '
+                          'drop ${metrics.drops}, error ${metrics.errors}',
+                    ),
+                    if (metrics.lastError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: SelectableText(
+                          '${metrics.lastError}\n${metrics.lastTraceback ?? ''}',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            fontFamily: _monoFont,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The plugin's own settings.
+///
+/// Laid out the way a settings editor is: a filter bar, then one row per
+/// setting with the title on the left, the control on the right, the
+/// description under the title and the setting id under that. Every row is
+/// editable according to its declared type, and a row whose value differs from
+/// its default is marked and can be reset.
 class _ConfigurationSection extends ConsumerStatefulWidget {
   const _ConfigurationSection({required this.pluginId});
 
@@ -376,25 +659,38 @@ class _ConfigurationSection extends ConsumerStatefulWidget {
 }
 
 class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
+  final TextEditingController _search = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+
   List<Map<String, dynamic>> _items = const [];
   var _loading = true;
+  var _onlyModified = false;
 
   @override
   void initState() {
     super.initState();
-    _reload();
+    _load(spinner: true);
   }
 
   @override
   void didUpdateWidget(covariant _ConfigurationSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.pluginId != widget.pluginId) {
-      _reload();
+      _search.clear();
+      _onlyModified = false;
+      _load(spinner: true);
     }
   }
 
-  Future<void> _reload() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _search.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({bool spinner = false}) async {
+    if (spinner && mounted) setState(() => _loading = true);
     try {
       final items = await ref
           .read(pluginConfigStoreProvider)
@@ -414,44 +710,745 @@ class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
   }
 
   Future<void> _set(String id, Object? value) async {
-    await ref.read(pluginConfigStoreProvider).set(widget.pluginId, id, value);
-    await _reload();
+    try {
+      await ref.read(pluginConfigStoreProvider).set(widget.pluginId, id, value);
+    } catch (error) {
+      if (!mounted) return;
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.pluginsDetailSaveFailed,
+          {'error': '$error'},
+        ),
+      );
+    }
+    await _load();
+  }
+
+  int get _modifiedCount => _items.where(_isModified).length;
+
+  List<Map<String, dynamic>> get _visible {
+    final query = _search.text.trim().toLowerCase();
+    return [
+      for (final item in _items)
+        if (!_onlyModified || _isModified(item))
+          if (query.isEmpty || _matches(item, query)) item,
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    return _Section(
-      title: UseText(I18nKey.pluginsDetailConfiguration),
+    final visible = _visible;
+    return SettingsSection(
+      title: I18nKey.pluginsDetailConfiguration,
+      description: I18nKey.pluginsDetailConfigDescription,
       children: [
-        if (_loading)
-          const SizedBox.shrink()
-        else if (_items.isEmpty)
-          UseText(I18nKey.pluginsDetailConfigurationNone)
-        else
-          for (final item in _items) _configurationTile(item),
+        _Surface(
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_items.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: _filterBar(context),
+                ),
+                const Divider(height: 1),
+              ],
+              // A static placeholder rather than a spinner: the settings load
+              // from a local file and finish in well under a frame in
+              // practice, and an indeterminate indicator would schedule frames
+              // for as long as it stays mounted.
+              if (_loading)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: UseText(
+                    I18nKey.pluginsDetailLoading,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              else if (_items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: UseText(I18nKey.pluginsDetailConfigurationNone),
+                )
+              else if (visible.isEmpty)
+                const _NoMatch()
+              else
+                ..._rows(visible),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _configurationTile(Map<String, dynamic> item) {
-    final id = item['id']?.toString() ?? '';
-    final title = item['title']?.toString() ?? id;
-    final type = item['type']?.toString() ?? 'string';
-    final value = item['value'];
-    if (type == 'boolean') {
-      return SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(title),
-        subtitle: Text(id, style: Theme.of(context).textTheme.bodySmall),
-        value: value == true,
-        onChanged: (next) => _set(id, next),
+  /// One row per visible setting, separated by a hairline.
+  ///
+  /// Each row closes over its own id and default rather than over a list
+  /// index, so a row's callbacks keep pointing at the setting they were built
+  /// for even if the visible list changes under them.
+  List<Widget> _rows(List<Map<String, dynamic>> items) {
+    final rows = <Widget>[];
+    for (final item in items) {
+      final id = item['id']?.toString() ?? '';
+      final fallback = item['default'];
+      if (rows.isNotEmpty) rows.add(const Divider(height: 1));
+      rows.add(
+        _SettingRow(
+          item: item,
+          onChanged: (value) => _set(id, value),
+          onReset: fallback == null ? null : () => _set(id, fallback),
+        ),
       );
     }
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(title),
-      subtitle: Text('$id = $value'),
+    return rows;
+  }
+
+  /// The settings search box.
+  ///
+  /// The magnifier and the clear button are plain [Row] children instead of
+  /// [InputDecoration] prefix/suffix icons: those slots take part in the
+  /// field's height, so a button that only exists while typing would resize
+  /// the box. With a collapsed decoration the row alone decides the layout,
+  /// and the box keeps one height in every state.
+  Widget _searchField(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return ListenableBuilder(
+      listenable: _searchFocus,
+      // Only the border colour depends on focus, so the row is built once and
+      // reused while the box decoration is rebuilt.
+      builder: (context, child) => Container(
+        height: _filterFieldHeight,
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: context.innerCorners,
+        ),
+        // Painted over the fill instead of insetting the child: gaining focus
+        // must not nudge the text by the border width.
+        foregroundDecoration: BoxDecoration(
+          borderRadius: context.innerCorners,
+          border: Border.all(
+            color: _searchFocus.hasFocus ? scheme.primary : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: child,
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 8),
+          Icon(Icons.search, size: 18, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _search,
+              focusNode: _searchFocus,
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration.collapsed(
+                hintText: translateForWidget(
+                  ref,
+                  I18nKey.pluginsDetailSearchSettings,
+                ),
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          if (_search.text.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              tooltip: translateForWidget(ref, I18nKey.commonClose),
+              onPressed: () {
+                _search.clear();
+                setState(() {});
+              },
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          const SizedBox(width: 8),
+        ],
+      ),
     );
+  }
+
+  Widget _filterBar(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Row(
+      children: [
+        Expanded(child: _searchField(context)),
+        const SizedBox(width: 10),
+        SegmentedButton<bool>(
+          showSelectedIcon: false,
+          style: SegmentedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            textStyle: theme.textTheme.labelSmall,
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            side: BorderSide(color: scheme.outlineVariant),
+          ),
+          segments: [
+            ButtonSegment<bool>(
+              value: false,
+              label: UseText(I18nKey.pluginsDetailFilterAll),
+            ),
+            ButtonSegment<bool>(
+              value: true,
+              label: Text(
+                '${translateForWidget(ref, I18nKey.pluginsDetailFilterModified)}'
+                ' · $_modifiedCount',
+              ),
+            ),
+          ],
+          selected: {_onlyModified},
+          onSelectionChanged: (next) =>
+              setState(() => _onlyModified = next.first),
+        ),
+      ],
+    );
+  }
+
+  static bool _isModified(Map<String, dynamic> item) =>
+      jsonEncode(item['value']) != jsonEncode(item['default']);
+
+  static bool _matches(Map<String, dynamic> item, String query) {
+    for (final key in const ['title', 'id', 'description', 'type']) {
+      if ((item[key]?.toString().toLowerCase() ?? '').contains(query)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+class _NoMatch extends StatelessWidget {
+  const _NoMatch();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 28, 16, 28),
+      child: Column(
+        children: [
+          Icon(
+            Icons.filter_alt_off_outlined,
+            size: 28,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 10),
+          UseText(
+            I18nKey.pluginsDetailNoMatch,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          UseText(
+            I18nKey.pluginsDetailNoMatchHint,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Uniform placeholder shown instead of a stored password. A fixed length so
+/// even the value's length is not revealed.
+const String _passwordMask = '••••••••';
+
+/// One setting: title, description, id, then the control for its type.
+///
+/// Visual hierarchy follows the settings editor: the title is the strongest
+/// element, the description is secondary, and the setting id is tertiary and
+/// dim. A row whose value differs from the declaration's default shows a
+/// leading reset affordance so it can be restored in one click.
+class _SettingRow extends StatelessWidget {
+  const _SettingRow({
+    required this.item,
+    required this.onChanged,
+    required this.onReset,
+  });
+
+  final Map<String, dynamic> item;
+  final ValueChanged<Object?> onChanged;
+  final VoidCallback? onReset;
+
+  String get _id => item['id']?.toString() ?? '';
+  String get _title => (item['title']?.toString() ?? '').isEmpty
+      ? _id
+      : item['title']!.toString();
+  String get _type => item['type']?.toString() ?? 'string';
+  String get _description => item['description']?.toString() ?? '';
+  Object? get _value => item['value'];
+  Object? get _default => item['default'];
+  bool get _isPassword => _type == 'password';
+
+  List<Object?> get _enumValues =>
+      (item['enum'] as List<dynamic>?)?.cast<Object?>() ?? const [];
+
+  bool get _modified => jsonEncode(_value) != jsonEncode(_default);
+
+  /// Text the row shows for its current value. Passwords never render their
+  /// underlying string.
+  String get _valueText {
+    if (_isPassword) {
+      final text = _value?.toString() ?? '';
+      return text.isEmpty ? '' : _passwordMask;
+    }
+    return _display(_value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final modified = _modified;
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(13, 10, 12, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (_description.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    _description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 5),
+                Text(
+                  _id,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: _monoFont,
+                    color: scheme.outline,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Reset sits immediately left of the control it restores; absent
+          // on untouched rows so only the gap distinguishes them.
+          if (modified && onReset != null) ...[
+            IconButton(
+              icon: const Icon(Icons.restart_alt, size: 18),
+              tooltip: translateInContext(
+                context,
+                I18nKey.pluginsDetailResetToDefault,
+              ),
+              onPressed: onReset,
+              color: scheme.primary,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          _control(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _control(BuildContext context) {
+    if (_type == 'boolean') {
+      return Switch(value: _value == true, onChanged: onChanged);
+    }
+    if (_enumValues.isNotEmpty) return _enumControl(context);
+    return _valueButton(context);
+  }
+
+  /// A select box for a declared `enum`, matching the values the store will
+  /// accept.
+  Widget _enumControl(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final encoded = jsonEncode(_value);
+    Object? selected;
+    for (final candidate in _enumValues) {
+      if (jsonEncode(candidate) == encoded) {
+        selected = candidate;
+        break;
+      }
+    }
+    return Container(
+      constraints: const BoxConstraints(
+        maxWidth: _controlWidth + 20,
+        minHeight: 28,
+      ),
+      padding: const EdgeInsetsDirectional.fromSTEB(10, 0, 4, 0),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: context.innerCorners,
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: DropdownButton<Object?>(
+        value: selected,
+        isDense: true,
+        isExpanded: true,
+        underline: const SizedBox.shrink(),
+        icon: Icon(
+          Icons.arrow_drop_down,
+          size: 18,
+          color: scheme.onSurfaceVariant,
+        ),
+        style: theme.textTheme.bodySmall?.copyWith(
+          fontFamily: _monoFont,
+          color: scheme.onSurface,
+        ),
+        hint: Text(
+          translateInContext(context, I18nKey.pluginsDetailUnset),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        items: [
+          for (final candidate in _enumValues)
+            DropdownMenuItem<Object?>(
+              value: candidate,
+              child: Text(
+                _display(candidate),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  /// An input-box-looking button for string / number / password / array /
+  /// object values.
+  ///
+  /// Long or structured values open a dialog; the row itself stays single
+  /// line so a settings list keeps a constant row height. Passwords render
+  /// their fixed mask instead of the stored string.
+  Widget _valueButton(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final empty =
+        _value == null || (_isPassword && (_value?.toString() ?? '').isEmpty);
+    return OutlinedButton(
+      onPressed: () => _openEditor(context),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: empty ? scheme.onSurfaceVariant : scheme.onSurface,
+        backgroundColor: scheme.surfaceContainerHighest,
+        minimumSize: const Size(0, 28),
+        padding: const EdgeInsetsDirectional.fromSTEB(10, 0, 8, 0),
+        side: BorderSide(color: scheme.outlineVariant),
+        shape: RoundedRectangleBorder(borderRadius: context.innerCorners),
+        textStyle: theme.textTheme.bodySmall?.copyWith(fontFamily: _monoFont),
+      ),
+      child: SizedBox(
+        width: _controlWidth,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                empty
+                    ? translateInContext(context, I18nKey.pluginsDetailUnset)
+                    : (_isPassword ? _passwordMask : _valueText),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              _isPassword ? Icons.key_outlined : Icons.edit_outlined,
+              size: 14,
+              color: scheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openEditor(BuildContext context) async {
+    if (_type == 'array' || _type == 'object') {
+      await _editJson(context);
+      return;
+    }
+    await _editScalar(context);
+  }
+
+  Future<void> _editScalar(BuildContext context) async {
+    final numeric = _type == 'integer' || _type == 'number';
+    // The reveal toggle lives in this closure so the dialog's StatefulBuilder
+    // can flip it without the row itself holding dialog-only state.
+    var revealPassword = false;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => DialogFormFields(
+        initialValues: [_value?.toString() ?? ''],
+        selectAll: true,
+        builder: (context, controllers) {
+          final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
+          return AlertDialog(
+            title: UseText(
+              _isPassword
+                  ? I18nKey.pluginsDetailEditPassword
+                  : I18nKey.pluginsDetailEditValue,
+            ),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _id,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontFamily: _monoFont,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (_description.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _description,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  StatefulBuilder(
+                    builder: (context, setDialogState) => TextField(
+                      controller: controllers[0],
+                      autofocus: true,
+                      obscureText: _isPassword && !revealPassword,
+                      autocorrect: false,
+                      enableSuggestions: !_isPassword,
+                      keyboardType: numeric ? TextInputType.number : null,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: context.innerCorners,
+                        ),
+                        suffixIcon: _isPassword
+                            ? IconButton(
+                                icon: Icon(
+                                  revealPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                ),
+                                tooltip: translateInContext(
+                                  context,
+                                  revealPassword
+                                      ? I18nKey.pluginsDetailHidePassword
+                                      : I18nKey.pluginsDetailShowPassword,
+                                ),
+                                onPressed: () => setDialogState(
+                                  () => revealPassword = !revealPassword,
+                                ),
+                              )
+                            : null,
+                      ),
+                      onSubmitted: (text) => Navigator.of(context).pop(text),
+                    ),
+                  ),
+                  if (_default != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      translateInContextWithReplacements(
+                        context,
+                        I18nKey.pluginsDetailDefaultValue,
+                        {
+                          'value': _isPassword
+                              ? _passwordMask
+                              : _display(_default),
+                        },
+                      ),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontFamily: _monoFont,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: UseText(I18nKey.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(controllers[0].text),
+                child: UseText(I18nKey.pluginsDetailSave),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (result == null || !context.mounted) return;
+    Object? parsed = result;
+    if (_type == 'integer') {
+      parsed = int.tryParse(result.trim());
+      if (parsed == null) {
+        showIdeError(
+          context,
+          translateInContext(context, I18nKey.pluginsDetailInvalidInteger),
+        );
+        return;
+      }
+    } else if (_type == 'number') {
+      parsed = num.tryParse(result.trim());
+      if (parsed == null) {
+        showIdeError(
+          context,
+          translateInContext(context, I18nKey.pluginsDetailInvalidNumber),
+        );
+        return;
+      }
+    }
+    onChanged(parsed);
+  }
+
+  Future<void> _editJson(BuildContext context) async {
+    const encoder = JsonEncoder.withIndent('  ');
+    final seed =
+        _value ?? (_type == 'array' ? <Object?>[] : <String, Object?>{});
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => DialogFormFields(
+        initialValues: [encoder.convert(seed)],
+        builder: (context, controllers) {
+          final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
+          return AlertDialog(
+            title: UseText(I18nKey.pluginsDetailEditJson),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _id,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontFamily: _monoFont,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 260,
+                    child: TextField(
+                      controller: controllers[0],
+                      autofocus: true,
+                      expands: true,
+                      maxLines: null,
+                      textAlignVertical: TextAlignVertical.top,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: _monoFont,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(
+                          borderRadius: context.innerCorners,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: UseText(I18nKey.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(controllers[0].text),
+                child: UseText(I18nKey.pluginsDetailSave),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (result == null || !context.mounted) return;
+    Object? decoded;
+    try {
+      decoded = jsonDecode(result);
+    } catch (error) {
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.pluginsDetailInvalidJson,
+          {'error': '$error'},
+        ),
+      );
+      return;
+    }
+    final wrongShape =
+        (_type == 'array' && decoded is! List) ||
+        (_type == 'object' && decoded is! Map);
+    if (wrongShape) {
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.pluginsDetailInvalidJson,
+          {'error': _type},
+        ),
+      );
+      return;
+    }
+    onChanged(decoded);
+  }
+
+  String _display(Object? value) {
+    if (value == null) return 'null';
+    if (value is String) return value;
+    return jsonEncode(value);
   }
 }
 
@@ -544,9 +1541,9 @@ class _Actions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final isUsable = plugin.status == PluginStatus.usable;
     final isService = plugin.type == PluginType.service;
-
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -595,6 +1592,7 @@ class _Actions extends ConsumerWidget {
           ),
         OutlinedButton.icon(
           onPressed: () => unawaited(_confirmDelete(context, ref)),
+          style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
           icon: const Icon(Icons.delete_outline, size: 18),
           label: UseText(I18nKey.pluginsActionDelete),
         ),
