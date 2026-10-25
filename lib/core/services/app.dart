@@ -33,13 +33,11 @@ enum ThemeStyle {
   compact(I18nKey.appThemeCompact, 'compact'),
   comfortable(I18nKey.appThemeComfortable, 'comfortable');
 
-  /// The key this style's display name lives under.
+  /// The key this style's display name lives under; the settings page renders
+  /// it with UseText so the name follows the active locale.
   final I18nKey labelKey;
   final String value;
   const ThemeStyle(this.labelKey, this.value);
-
-  /// Fallback display name, for callers with no registry in reach.
-  String get label => labelKey.fallback;
 
   static ThemeStyle fromValue(String? v) {
     return switch (v) {

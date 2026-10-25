@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_isolate_runner.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 const _maxUntrackedScanEntries = 20000;
 const _maxUntrackedStatusEntries = 1000;
@@ -53,13 +54,21 @@ class GitBranchDeletionTarget {
 }
 
 class GitRepositoryService {
-  GitRepositoryService({Duration commandTimeout = const Duration(seconds: 20)})
-    : _commandTimeout = commandTimeout;
+  GitRepositoryService({
+    Duration commandTimeout = const Duration(seconds: 20),
+    I18nTranslate? translate,
+  }) : _commandTimeout = commandTimeout,
+       // Defaulting to the fallback keeps the service testable without a
+       // live data registry; the provider wires real translations in.
+       _tr = translate ?? fallbackTranslate;
 
   /// 单次 Git 操作（含后台 isolate 调度）的超时。
   ///
   /// 由构造函数注入：测试里可以缩短它来验证超时路径，生产默认 20 秒。
   final Duration _commandTimeout;
+
+  /// Renders a status/state label in the active locale.
+  final I18nTranslate _tr;
 
   Duration get commandTimeout => _commandTimeout;
 
@@ -1069,6 +1078,7 @@ class GitRepositoryService {
         timeout: _commandTimeout,
         debugLabel: label,
         describeError: _describeJobError,
+        translate: _tr,
       );
       GitDebugLog.log(
         'GitRepositoryService.$label isolate end '
@@ -1320,7 +1330,7 @@ class GitRepositoryService {
 
     final headOid = _headOidOrNull(repo);
     return headOid == null
-        ? I18nKey.gitStatusUnbornHead.fallback
+        ? _tr(I18nKey.gitStatusUnbornHead)
         : 'HEAD@${headOid.toStrN(7)}';
   }
 
@@ -1727,33 +1737,30 @@ class GitRepositoryService {
   }
 
   List<String> _statusLabels(Set<GitStatus> statuses) {
-    if (statuses.contains(GitStatus.conflicted))
-      return const [
-        I18nKey.gitStatusConflicted,
-      ].map((k) => k.fallback).toList();
+    if (statuses.contains(GitStatus.conflicted)) {
+      return const [I18nKey.gitStatusConflicted].map(_tr).toList();
+    }
     return [
       if (statuses.contains(GitStatus.indexNew))
-        I18nKey.gitStatusStagedNew.fallback,
+        _tr(I18nKey.gitStatusStagedNew),
       if (statuses.contains(GitStatus.indexModified))
-        I18nKey.gitStatusStagedModified.fallback,
+        _tr(I18nKey.gitStatusStagedModified),
       if (statuses.contains(GitStatus.indexDeleted))
-        I18nKey.gitStatusStagedDeleted.fallback,
+        _tr(I18nKey.gitStatusStagedDeleted),
       if (statuses.contains(GitStatus.indexRenamed))
-        I18nKey.gitStatusStagedRenamed.fallback,
+        _tr(I18nKey.gitStatusStagedRenamed),
       if (statuses.contains(GitStatus.indexTypeChange))
-        I18nKey.gitStatusStagedTypeChange.fallback,
-      if (statuses.contains(GitStatus.wtNew))
-        I18nKey.gitStatusUntracked.fallback,
+        _tr(I18nKey.gitStatusStagedTypeChange),
+      if (statuses.contains(GitStatus.wtNew)) _tr(I18nKey.gitStatusUntracked),
       if (statuses.contains(GitStatus.wtModified))
-        I18nKey.gitStatusWorktreeModified.fallback,
+        _tr(I18nKey.gitStatusWorktreeModified),
       if (statuses.contains(GitStatus.wtDeleted))
-        I18nKey.gitStatusWorktreeDeleted.fallback,
+        _tr(I18nKey.gitStatusWorktreeDeleted),
       if (statuses.contains(GitStatus.wtRenamed))
-        I18nKey.gitStatusWorktreeRenamed.fallback,
+        _tr(I18nKey.gitStatusWorktreeRenamed),
       if (statuses.contains(GitStatus.wtTypeChange))
-        I18nKey.gitStatusWorktreeTypeChange.fallback,
-      if (statuses.contains(GitStatus.ignored))
-        I18nKey.gitStatusIgnored.fallback,
+        _tr(I18nKey.gitStatusWorktreeTypeChange),
+      if (statuses.contains(GitStatus.ignored)) _tr(I18nKey.gitStatusIgnored),
     ];
   }
 
@@ -2430,19 +2437,18 @@ class GitRepositoryService {
 
   String _repositoryStateLabel(Repository repo) {
     return switch (repo.state) {
-      GitRepositoryState.none => I18nKey.gitStateIdle.fallback,
-      GitRepositoryState.merge => I18nKey.gitStateMerging.fallback,
+      GitRepositoryState.none => _tr(I18nKey.gitStateIdle),
+      GitRepositoryState.merge => _tr(I18nKey.gitStateMerging),
       GitRepositoryState.cherrypick || GitRepositoryState.cherrypickSequence =>
-        I18nKey.gitStateCherryPicking.fallback,
+        _tr(I18nKey.gitStateCherryPicking),
       GitRepositoryState.rebase ||
       GitRepositoryState.rebaseInteractive ||
       GitRepositoryState.rebaseMerge ||
-      GitRepositoryState.applyMailboxOrRebase =>
-        I18nKey.gitStateRebasing.fallback,
+      GitRepositoryState.applyMailboxOrRebase => _tr(I18nKey.gitStateRebasing),
       GitRepositoryState.revert ||
-      GitRepositoryState.revertSequence => I18nKey.gitStateReverting.fallback,
-      GitRepositoryState.bisect => I18nKey.gitStateBisecting.fallback,
-      GitRepositoryState.applyMailbox => I18nKey.gitStateApplyMailbox.fallback,
+      GitRepositoryState.revertSequence => _tr(I18nKey.gitStateReverting),
+      GitRepositoryState.bisect => _tr(I18nKey.gitStateBisecting),
+      GitRepositoryState.applyMailbox => _tr(I18nKey.gitStateApplyMailbox),
     };
   }
 
@@ -2478,7 +2484,7 @@ class GitRepositoryService {
       final blockedPaths = _checkoutBlockedPaths(repo, targetCommit);
       if (blockedPaths.isNotEmpty) {
         throw GitCheckoutBlockedException(
-          message: I18nKey.gitErrorCheckoutBlockedLocalChanges.fallback,
+          message: _tr(I18nKey.gitErrorCheckoutBlockedLocalChanges),
           paths: blockedPaths,
         );
       }

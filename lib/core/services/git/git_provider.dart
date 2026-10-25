@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
@@ -12,7 +13,24 @@ import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 
 final gitRepositoryServiceProvider = Provider<GitRepositoryService>((ref) {
-  return GitRepositoryService();
+  // 服务实例（含 _tr 闭包）会作为 isolate 消息发送，translate 只能捕获纯数据
+  // 快照：translateFor(ref) 会让消息经由 ref 带上整个 ProviderContainer，
+  // 报 "object is unsendable"。locale / 注册表变化时重建服务以刷新快照。
+  final locale = ref.watch(activeLocaleProvider);
+  final registry = ref.watch(dataRegistryProvider);
+  return GitRepositoryService(
+    translate: translateFromLocaleSnapshot(
+      locale: locale,
+      packs: {
+        for (final name in {locale, defaultLocale})
+          name:
+              registry.getLocale(name)?.map(
+                (key, value) => MapEntry(key, '$value'),
+              ) ??
+              const {},
+      },
+    ),
+  );
 });
 
 final gitProvider = StateNotifierProvider<GitNotifier, GitViewState>((ref) {

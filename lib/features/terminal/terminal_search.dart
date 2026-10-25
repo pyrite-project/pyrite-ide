@@ -13,6 +13,7 @@ import 'package:xterm/xterm.dart';
 
 import 'terminal_link_parser.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// One match, in cell-buffer coordinates.
 class TerminalSearchMatch {
@@ -121,10 +122,16 @@ class TerminalSearchState {
   /// `第 3 / 共 17 个`, or an empty string when nothing matched. The UI shows
   /// the counter only when it has a number to show, so the "0 / 0" case never
   /// reaches the user.
-  String get counterLabel => hasMatches
-      ? I18nKey.terminalSearchCounter.fallback
-            .replaceAll('{current}', '${currentIndex + 1}')
-            .replaceAll('{total}', '${matches.length}')
+  ///
+  /// The no-argument getter keeps the fallback language for tests;
+  /// [counterLabelFor] is what the search bar renders with.
+  String get counterLabel => counterLabelFor(fallbackTranslate);
+
+  String counterLabelFor(I18nTranslate tr) => hasMatches
+      ? tr(I18nKey.terminalSearchCounter, {
+          'current': '${currentIndex + 1}',
+          'total': '${matches.length}',
+        })
       : '';
 
   /// Recomputes the matches for a new [query], keeping the caret at the first

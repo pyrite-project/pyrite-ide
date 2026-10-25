@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
@@ -87,9 +88,10 @@ class PermissionMonitor extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              I18nKey.pluginsMonitorRestartFailed.fallback.replaceAll(
-                '{error}',
-                '$error',
+              translateInContextWithReplacements(
+                context,
+                I18nKey.pluginsMonitorRestartFailed,
+                {'error': '$error'},
               ),
             ),
           ),
@@ -121,9 +123,10 @@ class _MetricsTab extends ConsumerWidget {
             style: const TextStyle(fontFamily: 'monospace'),
           ),
           subtitle: Text(
-            I18nKey.pluginsMonitorRestartCount.fallback.replaceAll(
-              '{count}',
-              '${metrics.runtimeRestarts}',
+            translateForWidgetWithReplacements(
+              ref,
+              I18nKey.pluginsMonitorRestartCount,
+              {'count': '${metrics.runtimeRestarts}'},
             ),
           ),
           trailing: Text('$activeManagers active'),
@@ -169,10 +172,11 @@ class _MetricsTab extends ConsumerWidget {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        I18nKey
-                                            .pluginsMonitorHealthFailed
-                                            .fallback
-                                            .replaceAll('{error}', '$error'),
+                                        translateInContextWithReplacements(
+                                          context,
+                                          I18nKey.pluginsMonitorHealthFailed,
+                                          {'error': '$error'},
+                                        ),
                                       ),
                                     ),
                                   );
@@ -260,11 +264,8 @@ class _SessionMetricsCard extends StatelessWidget {
               I18nKey.pluginsMonitorMetricTraffic,
             ),
             value:
-                I18nKey.pluginsMonitorMetricMessages.fallback
-                    .replaceAll('{sent}', '${session.messagesSent}')
-                    .replaceAll('{received}', '${session.messagesReceived}') +
-                ', '
-                    '${_bytes(session.bytesSent)} / ${_bytes(session.bytesReceived)}',
+                '${translateInContextWithReplacements(context, I18nKey.pluginsMonitorMetricMessages, {'sent': '${session.messagesSent}', 'received': '${session.messagesReceived}'})}'
+                ', ${_bytes(session.bytesSent)} / ${_bytes(session.bytesReceived)}',
           ),
           _MetricLine(
             label: translateInContext(
@@ -292,10 +293,16 @@ class _SessionMetricsCard extends StatelessWidget {
           _MetricLine(
             label: 'Health',
             value: session.lastHealthAt == null
-                ? I18nKey.pluginsMonitorHealthUnchecked.fallback
+                ? translateInContext(
+                    context,
+                    I18nKey.pluginsMonitorHealthUnchecked,
+                  )
                 : session.healthOk
                 ? '${session.lastHealthLatencyMs ?? '-'} ms'
-                : I18nKey.pluginsMonitorHealthFailedShort.fallback,
+                : translateInContext(
+                    context,
+                    I18nKey.pluginsMonitorHealthFailedShort,
+                  ),
           ),
           if (session.lastError != null)
             Align(
@@ -437,7 +444,7 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
                   items: [
                     DropdownMenuItem(
                       value: null,
-                      child: Text(I18nKey.pluginsMonitorAll.fallback),
+                      child: UseText(I18nKey.pluginsMonitorAll),
                     ),
                     for (final id in pluginIds)
                       DropdownMenuItem(value: id, child: Text(id)),
@@ -458,7 +465,7 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
                   items: [
                     DropdownMenuItem(
                       value: null,
-                      child: Text(I18nKey.pluginsMonitorAll.fallback),
+                      child: UseText(I18nKey.pluginsMonitorAll),
                     ),
                     for (final id in sessionIds)
                       DropdownMenuItem(value: id, child: Text(_shortId(id))),

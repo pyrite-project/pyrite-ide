@@ -381,7 +381,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
       autoReconnect: ref.read(serialAutoReconnect),
       stubsEnabled: ref.read(microPythonStubsEnabled),
       stubsLayersSummary: layers.isEmpty
-          ? I18nKey.settingsLspNotConfigured.fallback
+          ? translateForWidget(ref, I18nKey.settingsLspNotConfigured)
           : layers
                 .map((layer) => '${layer.provider}/${layer.profile}')
                 .join(', '),
@@ -823,7 +823,9 @@ class _CopyableInfoTile extends StatelessWidget {
         if (context.mounted) {
           showIdeSuccess(
             context,
-            I18nKey.aboutCopied.fallback.replaceAll('{title}', title.fallback),
+            translateInContextWithReplacements(context, I18nKey.aboutCopied, {
+              'title': translateInContext(context, title),
+            }),
           );
         }
       },
@@ -859,7 +861,10 @@ class _MaterialComponentShowcaseState
               FilledButton.icon(
                 onPressed: () => showIdeSuccess(
                   context,
-                  I18nKey.aboutFilledButtonAvailable.fallback,
+                  translateInContext(
+                    context,
+                    I18nKey.aboutFilledButtonAvailable,
+                  ),
                 ),
                 icon: const Icon(Icons.check),
                 label: const Text("Filled"),
@@ -867,7 +872,10 @@ class _MaterialComponentShowcaseState
               OutlinedButton.icon(
                 onPressed: () => showIdeMessage(
                   context,
-                  I18nKey.aboutOutlinedButtonAvailable.fallback,
+                  translateInContext(
+                    context,
+                    I18nKey.aboutOutlinedButtonAvailable,
+                  ),
                 ),
                 icon: const Icon(Icons.touch_app_outlined),
                 label: const Text("Outlined"),
@@ -883,7 +891,7 @@ class _MaterialComponentShowcaseState
                 label: const Text("ActionChip"),
                 onPressed: () => showIdeSuccess(
                   context,
-                  I18nKey.aboutActionChipTriggered.fallback,
+                  translateInContext(context, I18nKey.aboutActionChipTriggered),
                 ),
               ),
             ],
@@ -937,7 +945,7 @@ class _RuntimeSettingsSnapshot extends ConsumerWidget {
           icon: Icons.layers_outlined,
           title: "MicroPython Stubs Layers",
           subtitle: layers.isEmpty
-              ? I18nKey.settingsLspNotConfigured.fallback
+              ? translateForWidget(ref, I18nKey.settingsLspNotConfigured)
               : layers
                     .map((layer) => '${layer.provider}/${layer.profile}')
                     .join(', '),
@@ -946,16 +954,15 @@ class _RuntimeSettingsSnapshot extends ConsumerWidget {
         _InfoTile(
           icon: Icons.terminal_outlined,
           title: I18nKey.aboutTerminalDisplay,
-          subtitle: I18nKey.aboutTerminalDisplayValue.fallback
-              .replaceAll('{font}', ref.watch(terminalFontFamily))
-              .replaceAll(
-                '{size}',
-                ref.watch(terminalFontSize).toStringAsFixed(0),
-              )
-              .replaceAll(
-                '{height}',
-                ref.watch(terminalLineHeight).toStringAsFixed(1),
-              ),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutTerminalDisplayValue,
+            {
+              'font': ref.watch(terminalFontFamily),
+              'size': ref.watch(terminalFontSize).toStringAsFixed(0),
+              'height': ref.watch(terminalLineHeight).toStringAsFixed(1),
+            },
+          ),
         ),
       ],
     );
@@ -985,27 +992,34 @@ class _EcosystemSnapshot extends ConsumerWidget {
         _InfoTile(
           icon: Icons.extension_outlined,
           title: I18nKey.aboutPluginCount,
-          subtitle: I18nKey.aboutPluginStatsValue.fallback
-              .replaceAll('{installed}', plugins.length.toString())
-              .replaceAll('{enabled}', enabled.toString())
-              .replaceAll('{data}', dataPlugins.toString()),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutPluginStatsValue,
+            {
+              'installed': plugins.length.toString(),
+              'enabled': enabled.toString(),
+              'data': dataPlugins.toString(),
+            },
+          ),
         ),
         const SectionDivider(),
         _InfoTile(
           icon: Icons.layers_outlined,
           title: I18nKey.aboutContributionRecords,
-          subtitle: I18nKey.aboutContributionRecordsValue.fallback.replaceAll(
-            '{count}',
-            contributions.length.toString(),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutContributionRecordsValue,
+            {'count': contributions.length.toString()},
           ),
         ),
         const SectionDivider(),
         _InfoTile(
           icon: Icons.code_outlined,
           title: "Stubs Provider",
-          subtitle: I18nKey.aboutStubsProviderValue.fallback.replaceAll(
-            '{count}',
-            registry.allStubsProviders.length.toString(),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutStubsProviderValue,
+            {'count': registry.allStubsProviders.length.toString()},
           ),
         ),
       ],
@@ -1201,6 +1215,9 @@ class _EcosystemTile extends StatelessWidget {
 Future<void> _copyPath(BuildContext context, String path) async {
   await Clipboard.setData(ClipboardData(text: path));
   if (context.mounted) {
-    showIdeSuccess(context, I18nKey.aboutDocsPathCopied.fallback);
+    showIdeSuccess(
+      context,
+      translateInContext(context, I18nKey.aboutDocsPathCopied),
+    );
   }
 }

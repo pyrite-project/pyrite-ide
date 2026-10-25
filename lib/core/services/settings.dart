@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -13,9 +14,9 @@ const Map<String, String> editorTextFonts = {
   "custom": "custom",
 };
 
-String getFontDisplayName(String name) {
+String getFontDisplayName(String name, {I18nTranslate? translate}) {
   if (name == "custom") {
-    return I18nKey.settingsFontCustom.fallback;
+    return (translate ?? fallbackTranslate)(I18nKey.settingsFontCustom);
   }
   return name;
 }
@@ -191,17 +192,6 @@ const Map<String, String> uploadConfirmStyles = {
   "toolbar": "toolbar",
   "dialog": "dialog",
 };
-
-String getUploadConfirmStyleDisplayName(String key) {
-  switch (key) {
-    case "toolbar":
-      return I18nKey.settingsUploadConfirmToolbar.fallback;
-    case "dialog":
-      return I18nKey.settingsUploadConfirmDialog.fallback;
-    default:
-      return key;
-  }
-}
 
 StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
   (ref) => "toolbar",

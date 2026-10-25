@@ -11,6 +11,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 
 enum TerminalContextAction { copy, paste, selectAll, clear, search }
@@ -32,40 +33,42 @@ typedef TerminalContextItem = ({
 List<TerminalContextItem> terminalContextMenuItems({
   required bool hasSelection,
   bool isMacOS = false,
+  I18nTranslate? translate,
 }) {
+  final tr = translate ?? fallbackTranslate;
   final modifier = isMacOS ? 'Cmd' : 'Ctrl';
   return [
     (
       action: TerminalContextAction.copy,
-      label: I18nKey.terminalMenuCopy.fallback,
+      label: tr(I18nKey.terminalMenuCopy),
       icon: Icons.copy,
       shortcut: '$modifier+Shift+C',
       enabled: hasSelection,
     ),
     (
       action: TerminalContextAction.paste,
-      label: I18nKey.terminalMenuPaste.fallback,
+      label: tr(I18nKey.terminalMenuPaste),
       icon: Icons.paste,
       shortcut: '$modifier+V',
       enabled: true,
     ),
     (
       action: TerminalContextAction.selectAll,
-      label: I18nKey.terminalMenuSelectAll.fallback,
+      label: tr(I18nKey.terminalMenuSelectAll),
       icon: Icons.select_all,
       shortcut: '$modifier+A',
       enabled: true,
     ),
     (
       action: TerminalContextAction.clear,
-      label: I18nKey.terminalMenuClear.fallback,
+      label: tr(I18nKey.terminalMenuClear),
       icon: Icons.cleaning_services_outlined,
       shortcut: '',
       enabled: true,
     ),
     (
       action: TerminalContextAction.search,
-      label: I18nKey.terminalMenuSearch.fallback,
+      label: tr(I18nKey.terminalMenuSearch),
       icon: Icons.search,
       shortcut: findShortcutLabel(),
       enabled: true,
@@ -98,6 +101,8 @@ Future<TerminalContextAction?> showTerminalContextMenu(
   final items = terminalContextMenuItems(
     hasSelection: hasSelection,
     isMacOS: usesCommandShortcut,
+    translate: (key, [replacements = const {}]) =>
+        translateInContextWithReplacements(context, key, replacements),
   );
 
   return showMenu<TerminalContextAction>(

@@ -99,7 +99,7 @@ class TerminalSettings extends ConsumerWidget {
                 title: const UseText(I18nKey.terminalShellArguments),
                 subtitle: Text(
                   ref.watch(terminalShellArguments).isEmpty
-                      ? I18nKey.settingsTerminalUnset.fallback
+                      ? translateForWidget(ref, I18nKey.settingsTerminalUnset)
                       : ref.watch(terminalShellArguments),
                 ),
                 trailing: const Icon(Icons.chevron_right),
@@ -341,7 +341,8 @@ class TerminalSettings extends ConsumerWidget {
               leading: const Icon(Icons.wifi),
               title: const UseText(I18nKey.settingsTerminalDeviceIp),
               subtitle: Text(
-                webReplEndpoint ?? I18nKey.settingsTerminalUnset.fallback,
+                webReplEndpoint ??
+                    translateForWidget(ref, I18nKey.settingsTerminalUnset),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
@@ -367,8 +368,8 @@ class TerminalSettings extends ConsumerWidget {
               title: const UseText(I18nKey.settingsTerminalPassword),
               subtitle: Text(
                 ref.watch(webReplPassword).isEmpty
-                    ? I18nKey.settingsTerminalUnset.fallback
-                    : I18nKey.settingsTerminalSet.fallback,
+                    ? translateForWidget(ref, I18nKey.settingsTerminalUnset)
+                    : translateForWidget(ref, I18nKey.settingsTerminalSet),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
@@ -1025,7 +1026,7 @@ class _TerminalColorPreview extends StatelessWidget {
       height: 1.45,
     );
     return Semantics(
-      label: I18nKey.settingsTerminalCustomPreview.fallback,
+      label: translateInContext(context, I18nKey.settingsTerminalCustomPreview),
       child: Container(
         width: double.infinity,
         constraints: const BoxConstraints(minHeight: 88),

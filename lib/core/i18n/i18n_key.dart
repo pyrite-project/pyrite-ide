@@ -1,5 +1,6 @@
 enum I18nKey {
   navFiles('nav.files', '文件'),
+  navSearch('nav.search', '搜索'),
   navDevices('nav.devices', '设备'),
   navGit('nav.git', 'Git'),
   navPlugins('nav.plugins', '插件'),
@@ -124,6 +125,47 @@ enum I18nKey {
   pluginsDetailManifestInvalid(
     'plugins.detail.manifest_invalid',
     'Manifest 无效或未通过校验，插件无法运行',
+  ),
+  pluginsDetailOverviewDescription(
+    'plugins.detail.overview_description',
+    '标识、版本与当前运行状态。',
+  ),
+  pluginsDetailConfigDescription(
+    'plugins.detail.config_description',
+    '插件声明的设置项。改动会立即保存并通知插件。',
+  ),
+  pluginsDetailPermissionsDescription(
+    'plugins.detail.permissions_description',
+    '插件声明需要访问的宿主资源与操作。',
+  ),
+  pluginsDetailContributionsDescription(
+    'plugins.detail.contributions_description',
+    '插件注册到宿主的导航容器、视图与命令。',
+  ),
+  pluginsDetailSearchSettings('plugins.detail.search_settings', '搜索设置'),
+  pluginsDetailFilterAll('plugins.detail.filter_all', '全部'),
+  pluginsDetailFilterModified('plugins.detail.filter_modified', '已修改'),
+  pluginsDetailSettingCount('plugins.detail.setting_count', '{count} 项设置'),
+  pluginsDetailLoading('plugins.detail.loading', '正在加载设置…'),
+  pluginsDetailNoMatch('plugins.detail.no_match', '没有匹配的设置'),
+  pluginsDetailNoMatchHint('plugins.detail.no_match_hint', '换个关键词，或清除筛选条件后重试。'),
+  pluginsDetailModified('plugins.detail.modified', '已修改'),
+  pluginsDetailResetToDefault('plugins.detail.reset_to_default', '恢复默认值'),
+  pluginsDetailDefaultValue('plugins.detail.default_value', '默认值：{value}'),
+  pluginsDetailEditValue('plugins.detail.edit_value', '编辑值'),
+  pluginsDetailEditPassword('plugins.detail.edit_password', '编辑密码'),
+  pluginsDetailShowPassword('plugins.detail.show_password', '显示密码'),
+  pluginsDetailHidePassword('plugins.detail.hide_password', '隐藏密码'),
+  pluginsDetailEditJson('plugins.detail.edit_json', '编辑 JSON'),
+  pluginsDetailSave('plugins.detail.save', '保存'),
+  pluginsDetailUnset('plugins.detail.unset', '未设置'),
+  pluginsDetailInvalidNumber('plugins.detail.invalid_number', '不是有效的数字'),
+  pluginsDetailInvalidInteger('plugins.detail.invalid_integer', '不是有效的整数'),
+  pluginsDetailInvalidJson('plugins.detail.invalid_json', '不是有效的 JSON：{error}'),
+  pluginsDetailSaveFailed('plugins.detail.save_failed', '保存失败：{error}'),
+  pluginsDiagnosticsDescription(
+    'plugins.diagnostics.description',
+    '进程通信与激活的实时统计，随插件运行更新。',
   ),
   pluginsActionOpen('plugins.action.open', '打开'),
   commonYes('common.yes', '是'),
@@ -743,16 +785,6 @@ enum I18nKey {
     'settings.editor.shortcuts.description',
     '上传/下载确认的快捷键。',
   ),
-  settingsEditorShortcutReferenceSection(
-    'settings.editor.shortcut_reference.section',
-    '编辑器快捷键',
-  ),
-  settingsEditorShortcutReferenceDescription(
-    'settings.editor.shortcut_reference.description',
-    '编辑器内置的按键绑定。这些键目前不可自定义，列出以便查阅。',
-  ),
-  settingsEditorShortcutSave('settings.editor.shortcut.save', '保存当前文件'),
-  settingsEditorShortcutRun('settings.editor.shortcut.run', '运行当前文件'),
   settingsEditorConfirmAction('settings.editor.shortcuts.confirm', '确认操作'),
   settingsEditorCancelAction('settings.editor.shortcuts.cancel', '取消操作'),
   settingsEditorBehaviorSection('settings.editor.behavior.title', '编辑行为'),
@@ -1150,6 +1182,12 @@ enum I18nKey {
     'settings.lsp.stubs.extra_paths_helper',
     '每行一个本地路径，会追加给语言服务使用。',
   ),
+  settingsLspStubsRestartTitle('settings.lsp.stubs.restart.title', '需要重启语言服务器'),
+  settingsLspStubsRestartContent(
+    'settings.lsp.stubs.restart.content',
+    'MicroPython Stubs 设置已保存。当前打开的文件使用的 Zuban 通过环境变量读取 stubs，'
+        '重启 IDE，或关闭该工作区的全部文件后重新打开，新设置才会生效。',
+  ),
   settingsLspAddress('settings.lsp.websocket.address_label', '地址'),
   settingsLspAddressHint(
     'settings.lsp.websocket.address_hint',
@@ -1453,6 +1491,17 @@ enum I18nKey {
   editorOutlineLoading('editor.outline.loading', '正在读取符号…'),
   editorOutlineEmpty('editor.outline.empty', '这个文件没有可用的符号'),
   editorOutlineCount('editor.outline.count', '{count} 个符号'),
+  editorOutlineReveal('editor.outline.reveal', '跳转到 {name}'),
+  editorOutlineRefresh('editor.outline.refresh', '刷新大纲'),
+  editorOutlineError('editor.outline.error', '读取大纲失败：{error}'),
+  editorOutlineSourceUnavailable(
+    'editor.outline.source_unavailable',
+    '无法读取文件内容，大纲不可用',
+  ),
+  editorOutlineTooLarge(
+    'editor.outline.too_large',
+    '文件过大，无法生成大纲（限制 1 MiB / 20,000 行）',
+  ),
   editorFileBinaryDialogTitle('editor.file.binary.title', '无法编辑二进制文件'),
   editorFileBinaryDialogBody(
     'editor.file.binary.body',
@@ -1473,7 +1522,7 @@ enum I18nKey {
   editorFileReloadedFromDisk('editor.file.reloaded_from_disk', '已重新加载：{path}'),
   editorFileDeletedOnDisk(
     'editor.file.deleted_on_disk',
-    '{path} 已被外部删除，编辑器已切换为只读',
+    '{path} 已被外部删除，保存将重新创建该文件',
   ),
   editorFileSavedAs('file.message.saved_as', '已另存为：{path}'),
   editorCommentUnsupported('editor.comment.unsupported', '当前语言不支持注释切换'),
@@ -1990,36 +2039,7 @@ enum I18nKey {
     '不能删除当前分支 {name}，请先切换到其他分支。',
   ),
 
-  // ── 设备：板卡识别、同步预览与传输 ──
-  devicesBoardFamilyChip('devices.board.chip_family', '芯片家族: {family}'),
-  devicesBoardDetectedBaud(
-    'devices.board.detected_baud',
-    '建议波特率: {baud} · 复位方式: {reset}',
-  ),
-  devicesBoardIdentitySource('devices.board.identity_source', '识别来源: {source}'),
-  devicesBoardUnknownHint(
-    'devices.board.unknown_hint',
-    '未匹配到已知板卡，连接时使用已保存的波特率与复位设置。',
-  ),
-  devicesBoardUnknown('devices.board.unknown', '未知'),
-  devicesBoardResetNone('devices.board.reset.none', '不自动复位'),
-  devicesBoardResetDtrPulse('devices.board.reset.dtr_pulse', 'DTR 脉冲'),
-  devicesBoardResetRtsPulse('devices.board.reset.rts_pulse', 'RTS 脉冲'),
-  devicesBoardResetEsp32('devices.board.reset.esp32', 'ESP32 自动复位'),
-  devicesBoardResetReopenPort('devices.board.reset.reopen_port', '重开端口'),
-  devicesBoardConfidenceUsbIds(
-    'devices.board.confidence.usb_ids',
-    'USB VID/PID 精确匹配',
-  ),
-  devicesBoardConfidenceDescription(
-    'devices.board.confidence.description',
-    '端口描述匹配',
-  ),
-  devicesBoardConfidenceBridgeChip(
-    'devices.board.confidence.bridge_chip',
-    '仅识别到 USB 转串口芯片',
-  ),
-  devicesBoardConfidenceUnknown('devices.board.confidence.unknown', '未识别'),
+  // ── 设备：同步预览与传输 ──
   devicesSessionActive('devices.session.active', '已连接 · 当前设备'),
   devicesSessionInactive('devices.session.inactive', '已连接 · 点击切换'),
   devicesSessionSwitch('devices.session.switch', '切换到此设备'),
@@ -2033,6 +2053,11 @@ enum I18nKey {
   ),
   devicesSyncToggleAll('devices.sync.toggle_all', '全选/全不选'),
   devicesSyncEmpty('devices.sync.empty', '没有可同步的文件'),
+  devicesSyncIgnoredGroup(
+    'devices.sync.ignored.group',
+    '已按 .pyrsyncignore 忽略 {count} 项',
+  ),
+  devicesSyncIgnoredHint('devices.sync.ignored.hint', '默认不同步；展开后仍可单独勾选'),
   devicesSyncSelected('devices.sync.selected', '已选择 {count} 个文件，约 {size}'),
   devicesSyncCancel('devices.sync.cancel', '取消'),
   devicesSyncCancelling('devices.sync.cancelling', '取消中…'),
@@ -2135,7 +2160,7 @@ enum I18nKey {
   ),
   terminalShellExecutableHint(
     'terminal.shell.executable_hint',
-    '例如 /bin/zsh 或 C:\Program Files\Git\bin\bash.exe',
+    r'例如 /bin/zsh 或 C:\Program Files\Git\bin\bash.exe',
   ),
   terminalShellArguments('terminal.shell.arguments', '启动参数'),
   terminalShellArgumentsHint(
@@ -2228,7 +2253,7 @@ enum I18nKey {
   gitPageLoadFailed('git.page.load_failed', '无法加载 Git 页面：{error}'),
   lspPickVirtualEnv('lsp.pick_virtual_env', '选择虚拟环境目录'),
   lspClearEnvironment('lsp.clear_environment', '清空'),
-  fileSyncToDeviceTooltip('file.sync.to_device_tooltip', '同步到设备…（先预览差异清单）'),
+  fileSyncToDeviceTooltip('file.sync.to_device_tooltip', '同步到设备…'),
   fileSyncNothingLocal('file.sync.nothing_local', '本地工作区没有可同步的文件'),
   fileSyncNothingBoth('file.sync.nothing_both', '两侧内容一致，无需同步'),
   fileSyncFirstFailure(
@@ -2236,6 +2261,10 @@ enum I18nKey {
     '{summary} 首个失败：{path} — {error}',
   ),
   fileMessageSyncFailed('file.message.sync_failed', '同步失败：{error}'),
+  fileMessageSyncPlanFailed(
+    'file.message.sync_plan_failed',
+    '生成同步清单失败：{error}',
+  ),
   gitStatusRepositoryFallback('git.status.repository_fallback', 'Git 仓库');
 
   const I18nKey(this.key, this.fallback);

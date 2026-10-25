@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Git blame gutter：按行显示 author / 时间 / 短 sha，可折叠。
 ///
@@ -79,9 +80,10 @@ class _GitBlameGutterState extends ConsumerState<GitBlameGutter> {
                   ),
                   if (_expanded && lines.isNotEmpty)
                     Text(
-                      I18nKey.gitBlameLineCount.fallback.replaceAll(
-                        '{count}',
-                        '${lines.length}',
+                      translateForWidgetWithReplacements(
+                        ref,
+                        I18nKey.gitBlameLineCount,
+                        {'count': '${lines.length}'},
                       ),
                       style: textTheme.labelSmall?.copyWith(
                         color: scheme.onSurfaceVariant,
@@ -107,9 +109,10 @@ class _GitBlameGutterState extends ConsumerState<GitBlameGutter> {
                   ? Padding(
                       padding: const EdgeInsets.fromLTRB(30, 0, 10, 10),
                       child: Text(
-                        I18nKey.gitBlameNoCommit.fallback.replaceAll(
-                          '{path}',
-                          widget.filePath,
+                        translateForWidgetWithReplacements(
+                          ref,
+                          I18nKey.gitBlameNoCommit,
+                          {'path': widget.filePath},
                         ),
                         style: textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
@@ -132,8 +135,8 @@ class _GitBlameGutterState extends ConsumerState<GitBlameGutter> {
 
   String _headerLabel(List<GitBlameLine> lines) {
     final label = _expanded
-        ? I18nKey.gitBlameHide.fallback
-        : I18nKey.gitBlameShow.fallback;
+        ? translateForWidget(ref, I18nKey.gitBlameHide)
+        : translateForWidget(ref, I18nKey.gitBlameShow);
     if (lines.isEmpty && !_expanded) return label;
     return '$label · ${widget.filePath}';
   }
