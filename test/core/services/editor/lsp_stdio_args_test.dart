@@ -34,6 +34,24 @@ void main() {
       expect(splitLspStdioArgs(r'"a \"quoted\" word"'), ['a "quoted" word']);
     });
 
+    test('keeps Windows path separators inside double quotes', () {
+      // Only \", \\ and \$ are escapes inside double quotes; a backslash before
+      // an ordinary character is part of the path.
+      expect(
+        splitLspStdioArgs(r'--config "C:\Users\me\pyrightconfig.json"'),
+        ['--config', r'C:\Users\me\pyrightconfig.json'],
+      );
+    });
+
+    test('unescapes a quoted dollar and a quoted backslash', () {
+      expect(splitLspStdioArgs(r'"a \$b"'), [r'a $b']);
+      expect(splitLspStdioArgs(r'"a \\ b"'), [r'a \ b']);
+    });
+
+    test('keeps a trailing backslash inside an unterminated quote', () {
+      expect(splitLspStdioArgs('"C:\\dir\\'), ['C:\\dir\\']);
+    });
+
     test('treats a backslash outside quotes as an escape', () {
       expect(splitLspStdioArgs(r'a\ b'), ['a b']);
     });
