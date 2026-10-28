@@ -286,10 +286,8 @@ class ComponentBuilder {
           child: children.isEmpty ? null : _build(context, children.first),
         );
       case 'PageView':
-        return PageView(
-          controller: PageController(
-            initialPage: (props['initialPage'] as num?)?.toInt() ?? 0,
-          ),
+        return _PluginPageView(
+          initialPage: (props['initialPage'] as num?)?.toInt() ?? 0,
           scrollDirection: props['scrollDirection'] == 'vertical'
               ? Axis.vertical
               : Axis.horizontal,
@@ -2536,4 +2534,60 @@ class ComponentBuilder {
           ),
         ),
       );
+}
+
+/// A plugin-authored `PageView`.
+///
+/// The scroll controller has to outlive a rebuild. Building one inline handed
+/// every rebuild a fresh [PageController] at `initialPage`, which both reset the
+/// visible page whenever the plugin re-rendered and leaked the previous
+/// controller; owning it in a [State] keeps the page where the user left it and
+/// disposes it with the widget.
+class _PluginPageView extends StatefulWidget {
+  const _PluginPageView({
+    required this.initialPage,
+    required this.scrollDirection,
+    required this.onPageChanged,
+    required this.children,
+  });
+
+  final int initialPage;
+  final Axis scrollDirection;
+  final ValueChanged<int>? onPageChanged;
+  final List<Widget> children;
+
+  @override
+  State<_PluginPageView> createState() => _PluginPageViewState();
+}
+
+class _PluginPageViewState extends State<_PluginPageView> {
+  late final PageController _controller = PageController(
+    initialPage: widget.initialPage,
+  );
+
+  @override
+  void didUpdateWidget(covariant _PluginPageView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A changed `initialPage` is a new instruction from the plugin, not a
+    // rebuild: honor it without throwing away the controller.
+    if (widget.initialPage != oldWidget.initialPage &&
+        _controller.hasClients &&
+        _controller.page?.round() != widget.initialPage) {
+      _controller.jumpToPage(widget.initialPage);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PageView(
+    controller: _controller,
+    scrollDirection: widget.scrollDirection,
+    onPageChanged: widget.onPageChanged,
+    children: widget.children,
+  );
 }
