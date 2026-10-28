@@ -659,7 +659,9 @@ class TerminalSettings extends ConsumerWidget {
                   min: 10,
                   max: 28,
                   divisions: 18,
-                  value: size,
+                  // Clamp: a size persisted by an older build can fall outside
+                  // the range, and Slider asserts on that.
+                  value: size.clamp(10.0, 28.0),
                   label: size.toStringAsFixed(0),
                   onChanged: (value) =>
                       ref.read(terminalFontSize.notifier).state = value,
@@ -698,7 +700,9 @@ class TerminalSettings extends ConsumerWidget {
                   min: 1.0,
                   max: 1.8,
                   divisions: 8,
-                  value: lineHeight,
+                  // Same clamp as the font-size slider: persisted values are not
+                  // guaranteed to be inside the range.
+                  value: lineHeight.clamp(1.0, 1.8),
                   label: lineHeight.toStringAsFixed(1),
                   onChanged: (value) =>
                       ref.read(terminalLineHeight.notifier).state = value,

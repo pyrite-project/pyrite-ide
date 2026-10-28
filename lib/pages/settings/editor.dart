@@ -285,7 +285,9 @@ class EditorSettings extends ConsumerWidget {
                   min: min.toDouble(),
                   max: max.toDouble(),
                   divisions: max - min,
-                  value: current.toDouble(),
+                  // Same reason as the font-size slider: the value comes from
+                  // persisted settings and may predate the current range.
+                  value: current.clamp(min, max).toDouble(),
                   label: current.toString(),
                   onChanged: (next) {
                     setState(() => current = next.round());
@@ -372,7 +374,10 @@ class EditorSettings extends ConsumerWidget {
                   min: 10,
                   max: 28,
                   divisions: 18,
-                  value: size,
+                  // A size saved by an older build (or hand-edited in
+                  // settings.json) can sit outside the range; Slider asserts on
+                  // that instead of clamping for us.
+                  value: size.clamp(10.0, 28.0),
                   label: size.toStringAsFixed(0),
                   onChanged: (value) =>
                       ref.read(editorFontSize.notifier).state = value,
