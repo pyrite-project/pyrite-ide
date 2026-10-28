@@ -4,6 +4,7 @@ import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:tabbed_view/tabbed_view.dart';
@@ -50,6 +51,19 @@ void main() {
 
     // And a tab turning modified, since its buffer is then written too.
     editorTabValueOf(a)!.isSaved = false;
+    expect(persistedEditorAreaKey(container), isNot(key));
+  });
+
+  test('opening an outline tab changes the key', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final primary = container.read(tabbedViewControllerProvider);
+    primary.addTab(fileTab('/proj/a.py'));
+    final key = persistedEditorAreaKey(container);
+
+    // Outline tabs are persisted as markers, so the fingerprint has to move
+    // with them; otherwise the new layout waits for an unrelated edit.
+    primary.addTab(buildOutlineTab('Outline'));
     expect(persistedEditorAreaKey(container), isNot(key));
   });
 

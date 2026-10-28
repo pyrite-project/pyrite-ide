@@ -24,7 +24,7 @@ import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:tabbed_view/tabbed_view.dart' show TabbedViewController;
+import 'package:tabbed_view/tabbed_view.dart' show TabData, TabbedViewController;
 
 class PersistenceManager {
   final AppPersistence appPersistence = AppPersistence();
@@ -347,16 +347,7 @@ String persistedEditorAreaKey(ProviderContainer container) {
     container.read(editorLayoutProvider),
     primary: container.read(tabbedViewControllerProvider),
     convert: (group) => PersistedEditorGroup(
-      tabs: [
-        for (final tab in group.tabs)
-          if (editorTabValueOf(tab) case final value? when value.type == 'file')
-            PersistedTab(
-              filePath: value.filePath,
-              isBoardFile: value.isBoardFile ?? false,
-              boardFilePath: value.boardFilePath,
-              isSaved: value.isSaved,
-            ),
-      ],
+      tabs: [for (final tab in group.tabs) ?_persistedTabShape(tab)],
       selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
     ),
   );
@@ -365,6 +356,27 @@ String persistedEditorAreaKey(ProviderContainer container) {
     'layout': persisted.node.toJson(),
     'primary': persisted.primaryIndex,
   });
+}
+
+/// The part of one tab that [_persistGroup] writes, minus its buffer.
+///
+/// The list has to mirror the one [_persistGroup] produces, outline markers
+/// included: opening or closing an outline tab changes what a save records, so
+/// it has to change the key that decides whether a save happens at all. A key
+/// that ignored outline tabs left the new layout unwritten until some unrelated
+/// edit dirtied the session.
+PersistedTab? _persistedTabShape(TabData tab) {
+  if (tab.value is OutlineTabValue) {
+    return PersistedTab(filePath: '', isOutline: true);
+  }
+  final value = editorTabValueOf(tab);
+  if (value == null || value.type != 'file') return null;
+  return PersistedTab(
+    filePath: value.filePath,
+    isBoardFile: value.isBoardFile ?? false,
+    boardFilePath: value.boardFilePath,
+    isSaved: value.isSaved,
+  );
 }
 
 List<PersistedFoldRange> _persistFoldedRanges(CodeForgeController? controller) {
