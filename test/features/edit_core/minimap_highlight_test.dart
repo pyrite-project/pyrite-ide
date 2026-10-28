@@ -64,6 +64,40 @@ void main() {
       ]);
     });
 
+    test('a nested child advances the offset by its whole subtree', () {
+      // The middle child has no text of its own, only grandchildren. The run
+      // after it must start past those grandchildren, not at the same offset.
+      final spans = minimapColorSpans(
+        TextSpan(
+          children: [
+            const TextSpan(text: 'ab', style: TextStyle(color: Color(0xFF111111))),
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: 'cd',
+                  style: TextStyle(color: Color(0xFF222222)),
+                ),
+                const TextSpan(
+                  text: 'ef',
+                  style: TextStyle(color: Color(0xFF333333)),
+                ),
+              ],
+            ),
+            const TextSpan(text: 'gh', style: TextStyle(color: Color(0xFF444444))),
+          ],
+        ),
+        'abcdefgh',
+        plainColor: plain,
+      );
+
+      expect(spans, [
+        MinimapColorSpan(0, 2, const Color(0xFF111111)),
+        MinimapColorSpan(2, 4, const Color(0xFF222222)),
+        MinimapColorSpan(4, 6, const Color(0xFF333333)),
+        MinimapColorSpan(6, 8, const Color(0xFF444444)),
+      ]);
+    });
+
     test('merges neighbors that resolved to the same color', () {
       final spans = minimapColorSpans(
         TextSpan(
