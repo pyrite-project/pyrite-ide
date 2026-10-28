@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/closed_tab_history.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
@@ -272,12 +273,24 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
   }
 
+  /// Opens [file] -- or lets the user pick one -- as an editor tab.
+  ///
+  /// The optional restore arguments are for reopening a tab the user closed:
+  /// pass [initialText] and [savedBaseline] for a tab that had unsaved edits,
+  /// [isSaved] false so the modified dot comes back, [encoding] and
+  /// [byteOrderMark] so a later save reproduces the file's bytes, and
+  /// [initialCaretOffset] to put the caret back where it was.
   Future openFile(
     BuildContext context, {
     File? file,
     bool isBoardFile = false,
     String? boardFilePath,
     String? initialText,
+    String? savedBaseline,
+    bool isSaved = true,
+    String? encoding,
+    bool byteOrderMark = false,
+    int? initialCaretOffset,
   }) async {
     file ??= await local.sysGetFile();
     if (file != null) {
@@ -308,8 +321,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       // encoding retry; unreadable files fall through to the old no-op.
       var text = initialText;
       var openReadOnly = false;
-      String? encoding;
-      var byteOrderMark = false;
+      // A restored unsaved buffer has no bytes to classify, so the encoding it
+      // was closed with travels through untouched. A file read from disk is
+      // classified from what it holds now, which is what a save must write.
+      var fileEncoding = encoding;
+      var fileByteOrderMark = byteOrderMark;
       if (text == null) {
         final FileTextPreparation prepared;
         try {
@@ -338,12 +354,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             );
             if (decoded == null) return;
             text = decoded.text;
-            encoding = decoded.encoding;
+            fileEncoding = decoded.encoding;
           default:
             text = prepared.text;
             openReadOnly = prepared.readOnly;
-            encoding = prepared.encoding;
-            byteOrderMark = prepared.byteOrderMark;
+            fileEncoding = prepared.encoding;
+            fileByteOrderMark = prepared.byteOrderMark;
         }
       }
 
@@ -361,8 +377,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             .createNewUndoRedoController(),
         isBoardFile: isBoardFile,
         boardFilePath: boardFilePath,
-        encoding: encoding,
-        byteOrderMark: byteOrderMark,
+        isSaved: isSaved,
+        savedBaseline: savedBaseline,
+        encoding: fileEncoding,
+        byteOrderMark: fileByteOrderMark,
       );
 
       if (newTab == null) {
@@ -370,6 +388,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       }
 
       openTab(newTab);
+      if (initialCaretOffset != null) {
+        _restoreCaretAfterOpen(newTab, initialCaretOffset);
+      }
       if (context.mounted) {
         if (ResponsiveBreakpoints.of(context).isMobile) {
           ref.read(mobileSelectedIndex.notifier).state = 3;
@@ -378,6 +399,29 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         }
       }
     }
+  }
+
+  /// Puts the caret back in a tab that was just reopened.
+  ///
+  /// Deferred to after the frame that mounts the editor: the scroll needs its
+  /// viewport, and the selection is only meaningful once the tab is showing.
+  /// The offset is clamped to the buffer, which may have shrunk on disk while
+  /// the tab was closed.
+  void _restoreCaretAfterOpen(TabData tab, int caretOffset) {
+    final controller = editorTabValueOf(tab)?.editorController;
+    if (controller == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final offset = caretOffset.clamp(0, controller.length).toInt();
+      try {
+        controller.selection = TextSelection.collapsed(offset: offset);
+        controller.scrollToLine(controller.getLineAtOffset(offset));
+      } on StateError {
+        // The editor has no mounted viewport yet; the caret still applies.
+      } on RangeError {
+        // The document changed between the clamp and the scroll.
+      }
+    });
   }
 
   void renameLocalOpenPath(String oldPath, String newPath) {
@@ -862,6 +906,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
     if (value.type != 'file') return;
 
+    // Capture before anything below releases the buffer: reopening a closed
+    // tab needs the text the editor was showing, not what the file holds.
+    _rememberClosedTab(value);
+
     if (pendingUploadProviderMap[filePath] != null) {
       ref.read(pendingUploadProviderMap[filePath]!.notifier).state = null;
     }
@@ -888,6 +936,98 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
     value.undoRedoController?.dispose();
+  }
+
+  /// Remembers a closing local file tab so it can be reopened.
+  ///
+  /// Runs before the resources below are released: the record holds the buffer
+  /// itself, which is what lets an unsaved tab whose file was never written
+  /// come back. Board files are skipped -- closing one deletes its cache file,
+  /// so there is nothing meaningful to reopen -- as are git diffs and plugin
+  /// views, which return before this is reached.
+  void _rememberClosedTab(TabDataValue value) {
+    if (value.isBoardFile == true) return;
+    final controller = value.editorController;
+    if (controller == null) return;
+    final selection = controller.selection;
+    ref
+        .read(closedTabHistoryProvider)
+        .push(
+          ClosedTabRecord(
+            path: value.filePath,
+            text: controller.text,
+            savedText: _lastSavedText[value.filePath],
+            isSaved: value.isSaved,
+            encoding: value.encoding,
+            byteOrderMark: value.byteOrderMark,
+            caretOffset: selection.isValid ? selection.baseOffset : null,
+          ),
+        );
+  }
+
+  /// Reopens the local file tab that was closed most recently.
+  ///
+  /// Returns true when the file is open again or was already open. An empty
+  /// history, a file that no longer exists and a failed open are reported to
+  /// the user and return false: each is a distinct answer to "why did nothing
+  /// happen?", so they do not wear the same message.
+  Future<bool> reopenLastClosedTab(BuildContext context) async {
+    final record = ref.read(closedTabHistoryProvider).take();
+    if (record == null) {
+      if (context.mounted) {
+        showIdeWarning(context, translate(ref, I18nKey.editorNoClosedTab));
+      }
+      return false;
+    }
+
+    final file = File(record.path);
+    if (!await file.exists()) {
+      if (context.mounted) {
+        showIdeWarning(
+          context,
+          translateWithReplacements(ref, I18nKey.editorReopenMissing, {
+            'path': record.path,
+          }),
+        );
+      }
+      return false;
+    }
+
+    final open = _findOpenTab((value) => value.filePath == record.path);
+    if (open != null) {
+      focusTab(open);
+      return true;
+    }
+    if (!context.mounted) return false;
+
+    try {
+      // A clean tab opens from disk, exactly as the file tree would open it.
+      // A dirty one is rebuilt from its recorded buffer with the recorded
+      // saved text as the diff baseline, so its modified dot is honest.
+      await openFile(
+        context,
+        file: file,
+        initialText: record.isSaved ? null : record.text,
+        savedBaseline: record.isSaved ? null : record.savedText,
+        isSaved: record.isSaved,
+        encoding: record.encoding,
+        byteOrderMark: record.byteOrderMark,
+        initialCaretOffset: record.caretOffset,
+      );
+    } catch (error) {
+      if (context.mounted) {
+        showIdeError(
+          context,
+          translateWithReplacements(ref, I18nKey.editorReopenFailed, {
+            'path': record.path,
+            'error': '$error',
+          }),
+        );
+      }
+      return false;
+    }
+
+    return _findOpenTab((value) => value.filePath == record.path) != null;
   }
 
   /// Marks a tab clean after its buffer was written to the backing store.
@@ -1159,8 +1299,8 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     for (var i = 0; i < persistedTabs.length; i++) {
       final persisted = persistedTabs[i];
       // An outline tab carries no file: it restores in the position it was
-      // saved in, which is how a saved layout beats the outline's usual
-      // rightmost-column birth position.
+      // saved in, which is how a saved layout beats the outline's split-right
+      // birth position.
       if (persisted.isOutline) {
         tabs.add(buildOutlineTab(translate(ref, I18nKey.editorOutlineTitle)));
         continue;
@@ -1376,6 +1516,13 @@ final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>
 tabbedViewControllerProvider = StateNotifierProvider(
   (ref) => TabbedViewControllerNotifier(ref),
 );
+
+/// The local file tabs the user closed, most recent first.
+///
+/// The notifier captures a record as each tab closes; whatever offers "reopen
+/// closed tab" reads and takes from it.
+final Provider<ClosedTabHistory> closedTabHistoryProvider =
+    Provider<ClosedTabHistory>((ref) => ClosedTabHistory());
 
 final _boardTransferPath = path.Context(style: path.Style.posix);
 

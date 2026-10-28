@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +13,6 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/features/terminal/shell_profile.dart';
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -32,9 +29,6 @@ const List<int> kAvailableBaudRates = [
   460800,
   921600,
 ];
-
-// The desktop-shell copy lives in [I18nKey] under `terminal.shell.*` with the
-// rest of the terminal's strings.
 
 class TerminalSettings extends ConsumerWidget {
   const TerminalSettings({super.key});
@@ -59,107 +53,6 @@ class TerminalSettings extends ConsumerWidget {
     final body = ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        // Desktop-shell settings first: they only exist on the three desktop
-        // targets the PTY backend supports, so showing them on Android would
-        // offer a switch that can never take effect.
-        if (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-          SettingsSection(
-            title: I18nKey.terminalShellSection,
-            description: I18nKey.terminalShellSectionDescription,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.terminal_outlined),
-                title: const UseText(I18nKey.terminalShellExecutable),
-                subtitle: Text(
-                  ref.watch(terminalShellExecutable).isEmpty
-                      ? translateForWidget(
-                          ref,
-                          I18nKey.terminalShellExecutableFallback,
-                        )
-                      : ref.watch(terminalShellExecutable),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showShellValueDialog(
-                  context,
-                  ref,
-                  title: translateForWidget(
-                    ref,
-                    I18nKey.terminalShellExecutable,
-                  ),
-                  hint: translateForWidget(
-                    ref,
-                    I18nKey.terminalShellExecutableHint,
-                  ),
-                  current: ref.read(terminalShellExecutable),
-                  provider: terminalShellExecutable,
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.shortcut_outlined),
-                title: const UseText(I18nKey.terminalShellArguments),
-                subtitle: Text(
-                  ref.watch(terminalShellArguments).isEmpty
-                      ? translateForWidget(ref, I18nKey.settingsTerminalUnset)
-                      : ref.watch(terminalShellArguments),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showShellValueDialog(
-                  context,
-                  ref,
-                  title: translateForWidget(
-                    ref,
-                    I18nKey.terminalShellArguments,
-                  ),
-                  hint: translateForWidget(
-                    ref,
-                    I18nKey.terminalShellArgumentsHint,
-                  ),
-                  current: ref.read(terminalShellArguments),
-                  provider: terminalShellArguments,
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.folder_open_outlined),
-                title: const UseText(I18nKey.terminalWorkingDirectory),
-                subtitle: Text(
-                  ref.watch(terminalWorkingDirectory).isEmpty
-                      ? translateForWidget(
-                          ref,
-                          I18nKey.terminalWorkingDirectoryFallback,
-                        )
-                      : ref.watch(terminalWorkingDirectory),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showShellValueDialog(
-                  context,
-                  ref,
-                  title: translateForWidget(
-                    ref,
-                    I18nKey.terminalWorkingDirectory,
-                  ),
-                  hint: translateForWidget(
-                    ref,
-                    I18nKey.terminalWorkingDirectoryHint,
-                  ),
-                  current: ref.read(terminalWorkingDirectory),
-                  provider: terminalWorkingDirectory,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 12),
-                // The launch line is assembled from the three fields above, and
-                // showing the result is the only way to spot an argument that
-                // will be split differently than the user typed it.
-                child: Text(
-                  _shellPreview(ref),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontFamily: 'JetBrainsMapleMono',
-                  ),
-                ),
-              ),
-            ],
-          ),
         SettingsSection(
           title: I18nKey.settingsTerminalSerialSection,
           description: I18nKey.settingsTerminalSerialDescription,
@@ -207,6 +100,17 @@ class TerminalSettings extends ConsumerWidget {
               value: ref.watch(ensureBoardFilesystemOnConnect),
               onChanged: (value) {
                 ref.read(ensureBoardFilesystemOnConnect.notifier).state = value;
+              },
+            ),
+
+            SwitchListTile(
+              title: const UseText(I18nKey.settingsTerminalRunInScriptDir),
+              subtitle: const UseText(
+                I18nKey.settingsTerminalRunInScriptDirSubtitle,
+              ),
+              value: ref.watch(deviceRunChdirToScriptDir),
+              onChanged: (value) {
+                ref.read(deviceRunChdirToScriptDir.notifier).state = value;
               },
             ),
 
@@ -399,76 +303,6 @@ class TerminalSettings extends ConsumerWidget {
     } on FormatException {
       return host;
     }
-  }
-
-  /// Renders the effective launch line, so the argument splitting is visible
-  /// before a terminal is opened with it.
-  String _shellPreview(WidgetRef ref) {
-    final resolved = resolveShellCommand(
-      executableOverride: ref.watch(terminalShellExecutable),
-      arguments: ref.watch(terminalShellArguments),
-      fallbackExecutable: _fallbackShellExecutable(),
-      fallbackArguments: const [],
-    );
-    final arguments = resolved.arguments.isEmpty
-        ? ''
-        : ' ${resolved.arguments.join(' ')}';
-    final directory = ref.watch(terminalWorkingDirectory).isEmpty
-        ? translateForWidget(ref, I18nKey.terminalWorkingDirectoryFallback)
-        : ref.watch(terminalWorkingDirectory);
-    return '$directory > ${resolved.executable}$arguments';
-  }
-
-  /// Mirrors the provider's fallback so the preview matches what a new terminal
-  /// would actually run. Duplicated rather than imported because the provider's
-  /// helpers are private and the preview is a display concern.
-  String _fallbackShellExecutable() {
-    if (Platform.isWindows) return 'powershell.exe';
-    final systemShell = Platform.environment['SHELL'];
-    if (systemShell != null && systemShell.isNotEmpty) return systemShell;
-    return Platform.isMacOS || Platform.isLinux ? 'bash' : 'sh';
-  }
-
-  void _showShellValueDialog(
-    BuildContext context,
-    WidgetRef ref, {
-    required String title,
-    required String hint,
-    required String current,
-    required StateProvider<String> provider,
-  }) {
-    showDialog(
-      context: context,
-      builder: (context) => DialogFormFields(
-        initialValues: [current],
-        builder: (context, c) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: c[0],
-            decoration: InputDecoration(
-              hintText: hint,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const UseText(I18nKey.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                // Blank is meaningful: it restores the fallback. Trimming here
-                // also removes the stray space that a paste of a path usually
-                // carries.
-                ref.read(provider.notifier).state = c[0].text.trim();
-                Navigator.pop(context);
-              },
-              child: const UseText(I18nKey.commonSave),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _showBaudRateDialog(BuildContext context, WidgetRef ref, int current) {

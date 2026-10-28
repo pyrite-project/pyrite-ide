@@ -351,6 +351,13 @@ const double _iconButtonSize = 28;
 /// Side of the option toggles (`Aa` / `ab` / `.*`).
 const double _toggleSize = 24;
 
+/// Clear space an option toggle keeps between its painted square and the find
+/// input's top and bottom edges. Neighbouring toggles each carry half of it so
+/// their squares end up this far apart — the same room they keep from the
+/// edges — and the row closes with a half inset so the last square keeps the
+/// full distance from the input's right edge.
+const double _toggleInset = 3;
+
 /// Gap between the elements of a row.
 const double _barGap = 6;
 
@@ -523,6 +530,11 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
                           (o) => o.copyWith(isRegExp: !o.isRegExp),
                         ),
                       ),
+                      // The trailing half of the last toggle's side inset, so
+                      // the cluster ends the same distance from the input's
+                      // right edge that the squares keep from the top and
+                      // bottom edges.
+                      const SizedBox(width: _toggleInset / 2),
                     ],
                   ),
                 ),
@@ -698,9 +710,10 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
 
 /// One option button (`Aa` / `ab` / `.*`) inside the find input.
 ///
-/// The [Padding] keeps the painted square away from the input's outline on
-/// every side, so the hover and selected states never sit flush against the
-/// border.
+/// The [Padding] keeps the painted square away from the input's outline and
+/// from the neighbouring toggles, so the hover and selected states never sit
+/// flush against either. Horizontally each side carries half the inset, since
+/// adjacent paddings add up; vertical carries it whole.
 class _FindToggle extends StatefulWidget {
   const _FindToggle({
     required this.label,
@@ -743,7 +756,13 @@ class _FindToggleState extends State<_FindToggle> {
       child: Semantics(
         container: true,
         child: Padding(
-          padding: const EdgeInsets.all(3),
+          // Vertically the full inset — it is the square's only clearance from
+          // the input's edges. Horizontally half of it: the neighbouring
+          // toggle's half adds up to one full inset between the squares.
+          padding: const EdgeInsets.symmetric(
+            horizontal: _toggleInset / 2,
+            vertical: _toggleInset,
+          ),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) => setState(() => _hovered = true),

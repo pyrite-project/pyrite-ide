@@ -223,6 +223,34 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
     return true;
   }
 
+  /// Splits [target] towards [where] and puts a brand-new [tab] into the
+  /// group it creates, without parking the tab in [target] on the way.
+  ///
+  /// [splitGroup] moves a tab that already lives in a group; this one is for
+  /// a tab that has no group yet — the outline, say — so the strip the user
+  /// was working in never flashes the tab in and back out. [focusCreated]
+  /// keeps the created group from taking focus: the outline reads the focused
+  /// group's selected tab, so stealing focus at birth would leave a fresh
+  /// panel with no file to parse — and the user's typing elsewhere a beat
+  /// behind.
+  bool splitGroupWithNewTab({
+    required TabbedViewController target,
+    required TabData tab,
+    required PaneEdge where,
+    bool focusCreated = true,
+  }) {
+    if (!state.contains(target)) return false;
+    _apply(() {
+      final created = TabbedViewController([tab]);
+      final split = _beside(GroupLayout(target), created, where);
+      return (
+        layout: _replaceGroup(state, target, split),
+        focus: focusCreated ? created : null,
+      );
+    });
+    return true;
+  }
+
   /// Whether dropping [tab] on the editor area's boundary would split it.
   bool canSplitArea({
     required TabbedViewController from,
@@ -283,13 +311,45 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
     if (!state.contains(group)) return;
     final focused = _ref.read(focusedEditorGroupProvider.notifier);
     if (!identical(focused.state, group)) focused.state = group;
-    _ref
-        .read(focusedWorkspacePaneProvider.notifier)
-        .state = WorkspacePane.editor;
+    _ref.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.editor;
   }
 
   /// Replaces the whole tree, as a session restore does.
   void replace(EditorLayout layout) => _commit(layout);
+
+  /// Collapses the editor area back into the primary group.
+  ///
+  /// Every tab of every other group moves into the primary group in layout
+  /// order, so nothing is lost and the group that comes first in the tree
+  /// keeps its tabs first. Pinned tabs -- the welcome page -- never leave
+  /// their group. The primary group takes focus and, when anything moved,
+  /// shows the first moved tab.
+  ///
+  /// Idempotent: with a single group there is nothing to move, no selection
+  /// to change and no state write; the change signal still fires so anything
+  /// driving the editor from outside hears the command.
+  void resetLayout() {
+    _apply(() {
+      TabData? firstMoved;
+      for (final group in state.controllers.toList()) {
+        if (identical(group, primary)) continue;
+        for (final tab in group.tabs.toList()) {
+          if (!canTabLeaveGroup(tab)) continue;
+          final index = group.tabs.indexOf(tab);
+          if (index < 0) continue;
+          group.removeTab(index);
+          primary.addTab(tab);
+          firstMoved ??= tab;
+        }
+      }
+      if (firstMoved != null) {
+        primary.selectedIndex = primary.tabs.indexOf(firstMoved);
+      }
+      final EditorLayout collapsed = GroupLayout(primary);
+      return (layout: collapsed, focus: primary);
+    });
+  }
 
   /// Records the shares a resize left [split]'s children with.
   ///
@@ -338,9 +398,8 @@ class EditorLayoutNotifier extends StateNotifier<EditorLayout> {
       final current = focused.state;
       if (focus != null && state.contains(focus)) {
         if (!identical(current, focus)) focused.state = focus;
-        _ref
-            .read(focusedWorkspacePaneProvider.notifier)
-            .state = WorkspacePane.editor;
+        _ref.read(focusedWorkspacePaneProvider.notifier).state =
+            WorkspacePane.editor;
       } else if (current != null && !state.contains(current)) {
         focused.state = null;
       }

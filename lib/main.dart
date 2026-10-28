@@ -26,6 +26,7 @@ import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
 import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
@@ -146,6 +147,7 @@ void _applyData(PersistedData data) {
       data.welcomeCompleted;
   container.read(activeLocaleProvider.notifier).state = data.activeLocale;
   container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
+  container.read(windowPlacementProvider.notifier).state = data.windowPlacement;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
@@ -202,6 +204,8 @@ void _applyData(PersistedData data) {
       data.enableSignalDetection;
   container.read(ensureBoardFilesystemOnConnect.notifier).state =
       data.ensureBoardFilesystemOnConnect;
+  container.read(deviceRunChdirToScriptDir.notifier).state =
+      data.deviceRunChdirToScriptDir;
   container.read(serialDefaultBaudRate.notifier).state =
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
@@ -215,12 +219,6 @@ void _applyData(PersistedData data) {
       HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
       HardwareResetStrategy.disabled;
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
-  container.read(terminalShellExecutable.notifier).state =
-      data.terminalShellExecutable;
-  container.read(terminalShellArguments.notifier).state =
-      data.terminalShellArguments;
-  container.read(terminalWorkingDirectory.notifier).state =
-      data.terminalWorkingDirectory;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
   container.read(terminalLigatures.notifier).state = data.terminalLigatures;
@@ -405,6 +403,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   chineseToUnicodeConversion,
   enableSignalDetection,
   ensureBoardFilesystemOnConnect,
+  deviceRunChdirToScriptDir,
   serialDefaultBaudRate,
   serialAutoReconnect,
   terminalFontFamily,
@@ -427,6 +426,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   microPythonStubsAutoDetectLayers,
   microPythonStubsLayers,
   microPythonStubsExtraPaths,
+  windowPlacementProvider,
 ];
 
 Future<void> _startRuntimeAndPlugins() async {

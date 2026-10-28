@@ -24,6 +24,7 @@ import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
 import 'package:tabbed_view/tabbed_view.dart' show TabbedViewController;
 
 class PersistenceManager {
@@ -53,6 +54,7 @@ class PersistenceManager {
       welcomeCompleted: app?.welcomeCompleted ?? false,
       activeLocale: app?.activeLocale ?? defaultLocale,
       alwaysOnTop: app?.alwaysOnTop ?? false,
+      windowPlacement: app?.windowPlacement,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
       editorWordWrap: settings?.editorWordWrap ?? false,
@@ -106,15 +108,13 @@ class PersistenceManager {
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       ensureBoardFilesystemOnConnect:
           settings?.ensureBoardFilesystemOnConnect ?? false,
+      deviceRunChdirToScriptDir: settings?.deviceRunChdirToScriptDir ?? false,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
       serialActivePortPath: settings?.serialActivePortPath ?? '',
       terminalFontFamily:
           settings?.terminalFontFamily ?? 'JetBrains Maple Mono',
       terminalFontSize: settings?.terminalFontSize ?? 13,
-      terminalShellExecutable: settings?.terminalShellExecutable ?? '',
-      terminalShellArguments: settings?.terminalShellArguments ?? '',
-      terminalWorkingDirectory: settings?.terminalWorkingDirectory ?? '',
       terminalLineHeight: settings?.terminalLineHeight ?? 1.2,
       terminalLigatures: settings?.terminalLigatures ?? true,
       terminalAppearance: settings?.terminalAppearance ?? 'dark',
@@ -159,6 +159,7 @@ class PersistenceManager {
           welcomeCompleted: container.read(welcomeCompletedProvider),
           activeLocale: container.read(activeLocaleProvider),
           alwaysOnTop: container.read(alwaysOnTopProvider),
+          windowPlacement: container.read(windowPlacementProvider),
         ),
       ),
       settingsPersistence.save(
@@ -207,15 +208,13 @@ class PersistenceManager {
           ensureBoardFilesystemOnConnect: container.read(
             ensureBoardFilesystemOnConnect,
           ),
+          deviceRunChdirToScriptDir: container.read(deviceRunChdirToScriptDir),
           serialDefaultBaudRate: container.read(serialDefaultBaudRate),
           serialAutoReconnect: container.read(serialAutoReconnect),
           serialActivePortPath:
               container.read(serialProvider).selectedPortName ?? '',
           terminalFontFamily: container.read(terminalFontFamily),
           terminalFontSize: container.read(terminalFontSize),
-          terminalShellExecutable: container.read(terminalShellExecutable),
-          terminalShellArguments: container.read(terminalShellArguments),
-          terminalWorkingDirectory: container.read(terminalWorkingDirectory),
           terminalLineHeight: container.read(terminalLineHeight),
           terminalLigatures: container.read(terminalLigatures),
           terminalAppearance: container.read(terminalAppearance).name,

@@ -44,6 +44,7 @@ class SettingsPersistedData {
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
+  final bool deviceRunChdirToScriptDir;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
 
@@ -55,12 +56,6 @@ class SettingsPersistedData {
   final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
-
-  /// Desktop shell overrides. An empty string means "not configured", which
-  /// falls back to `$SHELL` / `powershell.exe` rather than launching nothing.
-  final String terminalShellExecutable;
-  final String terminalShellArguments;
-  final String terminalWorkingDirectory;
   final double terminalLineHeight;
   final bool terminalLigatures;
   final String terminalAppearance;
@@ -122,14 +117,12 @@ class SettingsPersistedData {
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,
+    this.deviceRunChdirToScriptDir = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
     this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
-    this.terminalShellExecutable = '',
-    this.terminalShellArguments = '',
-    this.terminalWorkingDirectory = '',
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
     this.terminalAppearance = 'dark',
@@ -192,14 +185,12 @@ class SettingsPersistedData {
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
     'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
+    'deviceRunChdirToScriptDir': deviceRunChdirToScriptDir,
     'serialDefaultBaudRate': serialDefaultBaudRate,
     'serialAutoReconnect': serialAutoReconnect,
     'serialActivePortPath': serialActivePortPath,
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
-    'terminalShellExecutable': terminalShellExecutable,
-    'terminalShellArguments': terminalShellArguments,
-    'terminalWorkingDirectory': terminalWorkingDirectory,
     'terminalLineHeight': terminalLineHeight,
     'terminalLigatures': terminalLigatures,
     'terminalAppearance': terminalAppearance,
@@ -274,15 +265,14 @@ class SettingsPersistedData {
     enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,
     ensureBoardFilesystemOnConnect:
         json['ensureBoardFilesystemOnConnect'] as bool? ?? false,
+    deviceRunChdirToScriptDir:
+        json['deviceRunChdirToScriptDir'] as bool? ?? false,
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
     serialActivePortPath: json['serialActivePortPath'] as String? ?? '',
     terminalFontFamily:
         json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
-    terminalShellExecutable: json['terminalShellExecutable'] as String? ?? '',
-    terminalShellArguments: json['terminalShellArguments'] as String? ?? '',
-    terminalWorkingDirectory: json['terminalWorkingDirectory'] as String? ?? '',
     terminalLineHeight: (json['terminalLineHeight'] as num?)?.toDouble() ?? 1.2,
     terminalLigatures: json['terminalLigatures'] as bool? ?? true,
     terminalAppearance: json['terminalAppearance'] as String? ?? 'dark',

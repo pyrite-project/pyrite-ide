@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_outline.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:code_forge/code_forge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
@@ -19,8 +19,9 @@ import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 /// stays navigable without a server. Edits refresh the tree after a short
 /// debounce and saving refreshes it immediately, like the plugin does.
 ///
-/// The panel follows the selected tab rather than owning a file of its own, so
-/// switching tabs updates it without any coordination.
+/// The panel follows the focused editor group's selected tab rather than
+/// owning a file of its own, so switching tabs — or focus, across a split —
+/// updates it without any coordination.
 class EditorOutlinePanel extends ConsumerStatefulWidget {
   const EditorOutlinePanel({super.key});
 
@@ -96,7 +97,11 @@ class _EditorOutlinePanelState extends ConsumerState<EditorOutlinePanel> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final tab = ref.watch(tabbedViewControllerProvider).selectedTab;
+    // The outline follows the tab the user is working on: the focused group's
+    // selected tab. Watching that provider — rather than one group's
+    // controller — is what makes a focus switch between split groups load
+    // that group's file, and a selection change inside a group do the same.
+    final tab = ref.watch(activeEditorTabProvider).tab;
     final value = tab?.value;
     final fileTab = value is TabDataValue && value.type == 'file'
         ? value

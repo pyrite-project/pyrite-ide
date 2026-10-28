@@ -200,6 +200,63 @@ void main() {
       expect(outline.single.children.single.children.single.name, 'render');
     });
 
+    test('a loop variable never swallows the statements inside its loop', () {
+      // What zuban answers for a module-level `for x in ...:`: the loop
+      // target's range is the whole statement, so every assignment in the
+      // body is enclosed by it. A variable is not a scope, so the body
+      // assignments stay out of `x` — and being block-level bindings, out of
+      // the roots entirely.
+      final outline = parseDocumentOutline([
+        _flatSymbol('x', 13, 2, 0, 10, 0),
+        _flatSymbol('h', 13, 4, 4, 4, 30),
+        _flatSymbol('r', 13, 5, 4, 5, 67),
+        _flatSymbol('g', 13, 6, 4, 6, 73),
+        _flatSymbol('b', 13, 7, 4, 7, 73),
+        _flatSymbol('c', 13, 8, 4, 8, 61),
+        _flatSymbol('ui', 13, 10, 0, 10, 6),
+      ]);
+
+      expect(outline.map((node) => node.name), ['x', 'ui']);
+      expect(outline.every((node) => !node.hasChildren), isTrue);
+    });
+
+    test('a constant bound inside a block is dropped like a variable', () {
+      final outline = parseDocumentOutline([
+        _flatSymbol('LIMIT', 14, 0, 0, 0, 12),
+        _flatSymbol('scaled', 14, 2, 4, 2, 24),
+      ]);
+
+      expect(outline.map((node) => node.name), ['LIMIT']);
+    });
+
+    test('a block-level definition stays even when indented', () {
+      // `def` inside an `if` is still structure a reader navigates by; only
+      // variable-ish bindings are filtered from the roots.
+      final outline = parseDocumentOutline([
+        _flatSymbol('helper', 12, 2, 4, 6, 0),
+      ]);
+
+      expect(outline.map((node) => node.name), ['helper']);
+    });
+
+    test('zuban-style class members nest under their class', () {
+      // Zuban reports a class member's range as its assignment or signature
+      // and attaches containerName; the class is a container kind, so the
+      // containment rebuild still hangs them on it.
+      final outline = parseDocumentOutline([
+        _flatSymbol('Panel', 5, 8, 0, 16, 0),
+        _flatSymbol('title', 8, 9, 4, 9, 15, containerName: 'Panel'),
+        _flatSymbol('render', 6, 11, 4, 16, 0, containerName: 'Panel'),
+      ]);
+
+      expect(outline, hasLength(1));
+      expect(outline.single.name, 'Panel');
+      expect(outline.single.children.map((node) => node.name), [
+        'title',
+        'render',
+      ]);
+    });
+
     test('falls back to containerName when no range encloses the symbol', () {
       final outline = parseDocumentOutline([
         _flatSymbol('Ui', 5, 4, 0, 4, 8),

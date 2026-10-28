@@ -157,17 +157,20 @@ class _GitPageState extends ConsumerState<GitPage> {
           child: Column(
             children: [
               _GitHeader(snapshot: snapshot, isBusy: state.isBusy),
-              const TabBar(
+              TabBar(
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 dividerHeight: 0,
+                // Same compact strip as the plugin view tabs: 38px tabs with
+                // labelMedium text, not Material's 46px titleSmall default.
+                labelStyle: Theme.of(context).textTheme.labelMedium,
                 // labelPadding: EdgeInsets.symmetric(horizontal: 10),
-                tabs: [
-                  Tab(child: UseText(I18nKey.gitTabChanges)),
-                  Tab(child: UseText(I18nKey.gitTabBranches)),
-                  Tab(child: UseText(I18nKey.gitTabRemotes)),
-                  Tab(child: UseText(I18nKey.gitTabHistory)),
-                  Tab(child: UseText(I18nKey.gitTabAdvanced)),
+                tabs: const [
+                  Tab(height: 38, child: UseText(I18nKey.gitTabChanges)),
+                  Tab(height: 38, child: UseText(I18nKey.gitTabBranches)),
+                  Tab(height: 38, child: UseText(I18nKey.gitTabRemotes)),
+                  Tab(height: 38, child: UseText(I18nKey.gitTabHistory)),
+                  Tab(height: 38, child: UseText(I18nKey.gitTabAdvanced)),
                 ],
               ),
               Expanded(

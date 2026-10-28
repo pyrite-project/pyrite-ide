@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart' show CodeForgeController;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
@@ -15,6 +17,8 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
+import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
@@ -40,6 +44,9 @@ import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/features/command_palette/command_palette.dart';
+import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
+import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
@@ -57,6 +64,19 @@ import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_strip_theme.dart';
 import 'package:xterm/xterm.dart';
+
+/// Keeps the status bar's horizontal scroll position across rebuilds.
+///
+/// The bar rebuilds on every language-server/device/transfer change. Creating
+/// a fresh [ScrollController] in `build` reset the offset each time, so a user
+/// who scrolled to a status item lost their place whenever any other item
+/// changed.
+final AutoDisposeProvider<ScrollController> statusBarScrollControllerProvider =
+    Provider.autoDispose<ScrollController>((ref) {
+      final controller = ScrollController();
+      ref.onDispose(controller.dispose);
+      return controller;
+    });
 
 Widget consolePage() {
   return const ConsolePage();
@@ -1568,16 +1588,109 @@ class FunctionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Widget body;
     if (ResponsiveBreakpoints.of(context).isDesktop) {
       nowViewSelectedIndex = desktopSelectedIndex;
-      return buildTitleBar(DesktopView(state: state, child: child));
+      body = buildTitleBar(DesktopView(state: state, child: child));
     } else if (ResponsiveBreakpoints.of(context).isTablet) {
       nowViewSelectedIndex = tabletSelectedIndex;
-      return buildTitleBar(TabletView(state: state, child: child));
+      body = buildTitleBar(TabletView(state: state, child: child));
     } else {
       nowViewSelectedIndex = mobileSelectedIndex;
-      return buildTitleBar(MobileView(state: state, child: child));
+      body = buildTitleBar(MobileView(state: state, child: child));
     }
+    return _WorkspaceShortcuts(child: body);
+  }
+}
+
+/// Workspace-level keyboard entry points.
+///
+/// These live above the route so they work from the file tree, the editor, the
+/// search page and every plugin surface. `CallbackShortcuts` still lets a
+/// focused text field or terminal consume a key it handles first, so typing
+/// `Ctrl+P` into a terminal remains the terminal's choice.
+class _WorkspaceShortcuts extends ConsumerWidget {
+  const _WorkspaceShortcuts({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void openPalette(PaletteLaunchMode mode) {
+      unawaited(
+        showCommandPalette(context, mode: mode, hooks: editorPaletteHooks()),
+      );
+    }
+
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        // Commands: Cmd/Ctrl+Shift+P.
+        const SingleActivator(
+          LogicalKeyboardKey.keyP,
+          meta: true,
+          shift: true,
+        ): () =>
+            openPalette(PaletteLaunchMode.commands),
+        const SingleActivator(
+          LogicalKeyboardKey.keyP,
+          control: true,
+          shift: true,
+        ): () =>
+            openPalette(PaletteLaunchMode.commands),
+        // Quick open: Cmd/Ctrl+P.
+        const SingleActivator(LogicalKeyboardKey.keyP, meta: true): () =>
+            openPalette(PaletteLaunchMode.files),
+        const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
+            openPalette(PaletteLaunchMode.files),
+        // Reopen the last closed tab.
+        const SingleActivator(
+          LogicalKeyboardKey.keyT,
+          meta: true,
+          shift: true,
+        ): () =>
+            unawaited(reopenClosedEditorTab(context, ref)),
+        const SingleActivator(
+          LogicalKeyboardKey.keyT,
+          control: true,
+          shift: true,
+        ): () =>
+            unawaited(reopenClosedEditorTab(context, ref)),
+        // Split the editor group right / down.
+        const SingleActivator(LogicalKeyboardKey.backslash, meta: true): () =>
+            splitActiveEditor(ref, PaneEdge.right),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          control: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.right),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          meta: true,
+          shift: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.bottom),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          control: true,
+          shift: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.bottom),
+        // Close the active editor group.
+        const SingleActivator(
+          LogicalKeyboardKey.keyW,
+          meta: true,
+          alt: true,
+        ): () =>
+            unawaited(closeActiveEditorGroup(context, ref)),
+        const SingleActivator(
+          LogicalKeyboardKey.keyW,
+          control: true,
+          alt: true,
+        ): () =>
+            unawaited(closeActiveEditorGroup(context, ref)),
+      },
+      child: child,
+    );
   }
 }
 
@@ -1592,7 +1705,7 @@ class EditorToolsBar extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final registryItems = ref.watch(statusBarRegistryProvider);
     final runningOps = ref.watch(runningOperationsProvider);
-    final scrollController = ScrollController();
+    final scrollController = ref.watch(statusBarScrollControllerProvider);
 
     return Container(
       width: double.infinity,
@@ -1625,6 +1738,20 @@ class EditorToolsBar extends ConsumerWidget {
                 const MobileNavigationDrawerButton(),
                 const SizedBox(width: 4),
               ],
+              // The palette has to be reachable without a keyboard: touch
+              // devices have no Cmd/Ctrl+P, and a terminal that consumes the
+              // shortcut would otherwise leave no way in.
+              StatusBarButton(
+                label: I18nKey.paletteOpen,
+                icon: Icons.keyboard_command_key,
+                compact: ref.watch(themeStyle) == ThemeStyle.compact,
+                tooltip:
+                    '${translateForWidget(ref, I18nKey.paletteOpen)} '
+                    '(${commandPaletteShortcutLabel()})',
+                onPressed: () =>
+                    showCommandPalette(context, hooks: editorPaletteHooks()),
+              ),
+              const SizedBox(width: 4),
               buildLspState(context, ref),
               const SizedBox(width: 4),
               buildFileState(context, ref),

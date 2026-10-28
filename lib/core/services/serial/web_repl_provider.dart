@@ -324,6 +324,7 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     String source, {
     Duration timeout = const Duration(seconds: 20),
     bool softReset = false,
+    String? workingDirectory,
     required void Function() onStarted,
     required void Function(Uint8List data) onStdout,
     required void Function(Uint8List data) onStderr,
@@ -335,6 +336,7 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
             source,
             timeout: timeout,
             softReset: softReset,
+            workingDirectory: workingDirectory,
             onStarted: onStarted,
             onStdout: onStdout,
             onStderr: onStderr,
@@ -346,6 +348,7 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     String source, {
     required Duration timeout,
     bool softReset = false,
+    String? workingDirectory,
     required void Function() onStarted,
     required void Function(Uint8List data) onStdout,
     required void Function(Uint8List data) onStderr,
@@ -382,6 +385,9 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
       }
       await session.enterRepl(mode);
       enteredRepl = true;
+      if (workingDirectory != null) {
+        await setDeviceWorkingDirectory(session, workingDirectory, mode: mode);
+      }
       await session.executeStreaming(
         source,
         timeout: timeout,

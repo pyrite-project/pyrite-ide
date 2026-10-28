@@ -1455,6 +1455,10 @@ Future<T> runPythonInReplSession<T>(
 
 /// Runs a Python script while forwarding stdout and stderr as the device
 /// emits them.
+///
+/// When [workingDirectory] is set, the device's working directory is switched
+/// there first — within the same transaction, so a preceding soft reset (which
+/// restores the firmware default directory) cannot undo it.
 Future<void> runPythonOnDeviceStreaming(
   WidgetRef ref,
   String python, {
@@ -1462,20 +1466,26 @@ Future<void> runPythonOnDeviceStreaming(
   ReplMode? forceMode,
   String runningOperationId = 'code-exec',
   bool softReset = false,
+  String? workingDirectory,
   required void Function() onStarted,
   required void Function(Uint8List data) onStdout,
   required void Function(Uint8List data) onStderr,
 }) {
   return _runTransaction(
     ref.read,
-    (session, mode) => session.executeStreaming(
-      python,
-      timeout: startupTimeout,
-      mode: mode,
-      onStarted: onStarted,
-      onStdout: onStdout,
-      onStderr: onStderr,
-    ),
+    (session, mode) async {
+      if (workingDirectory != null) {
+        await setDeviceWorkingDirectory(session, workingDirectory, mode: mode);
+      }
+      await session.executeStreaming(
+        python,
+        timeout: startupTimeout,
+        mode: mode,
+        onStarted: onStarted,
+        onStdout: onStdout,
+        onStderr: onStderr,
+      );
+    },
     onSetup: (queue) {
       final sub = ref.listenManual(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
@@ -1591,4 +1601,38 @@ Future<Uint8List> runPythonReadDeviceFile(
 
 String _boardFileExpr(String path) {
   return "'${path.replaceAll("'", "\\'")}'";
+}
+
+/// Marker printed after a successful working-directory switch, so a silent
+/// success is distinguishable from the traceback a failed one prints.
+const String kDeviceChdirOkMarker = '__PYRITE_CHDIR_OK__';
+
+/// Switches the device's working directory to [directory] inside the current
+/// transaction.
+///
+/// The switch must happen this way — as its own command before the script —
+/// rather than as a preamble on the script itself: prepending lines would
+/// shift every traceback line number, and the marker keeps a failed switch
+/// (missing directory, firmware without `os.chdir`) aborting the run with the
+/// real error instead of quietly running from the wrong directory.
+Future<void> setDeviceWorkingDirectory(
+  DeviceSession session,
+  String directory, {
+  required ReplMode mode,
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final output = await session.executeCommand(
+    'import os\n'
+    'os.chdir(${_boardFileExpr(directory)})\n'
+    "print('$kDeviceChdirOkMarker')\n",
+    timeout: timeout,
+    mode: mode,
+  );
+  if (!output.contains(kDeviceChdirOkMarker)) {
+    throw DeviceSessionException(
+      output.trim().isEmpty
+          ? "Switching the device working directory to '$directory' failed."
+          : output.trim(),
+    );
+  }
 }

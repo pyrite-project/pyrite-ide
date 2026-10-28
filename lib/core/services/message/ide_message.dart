@@ -25,26 +25,86 @@ class IdeMessageEntry {
 class IdeMessageNotifier extends StateNotifier<List<IdeMessageEntry>> {
   IdeMessageNotifier() : super(const []);
 
+  /// Maximum number of messages on screen at once; adding another evicts the
+  /// oldest one (and cancels its timer).
+  static const int maxVisible = 4;
+
+  /// The default lifetime for [type]: warnings and errors stay long enough to
+  /// read, successes leave quickly.
+  static Duration defaultDurationFor(IdeMessageType type) => switch (type) {
+    IdeMessageType.success => const Duration(seconds: 3),
+    IdeMessageType.info => const Duration(seconds: 4),
+    IdeMessageType.warning => const Duration(seconds: 6),
+    IdeMessageType.error => const Duration(seconds: 8),
+  };
+
+  /// Whether [type] can be dismissed by hand by default. Warnings and errors
+  /// are closeable; transient success/info toasts are not.
+  static bool defaultCloseableFor(IdeMessageType type) => switch (type) {
+    IdeMessageType.warning || IdeMessageType.error => true,
+    IdeMessageType.success || IdeMessageType.info => false,
+  };
+
   final Map<String, Timer> _timers = {};
   int _nextId = 0;
 
   void show(
     String message, {
     IdeMessageType type = IdeMessageType.info,
-    Duration duration = const Duration(seconds: 3),
-    bool closeable = false,
+    Duration? duration,
+    bool? closeable,
   }) {
     if (message.isEmpty) return;
+    final effectiveDuration = duration ?? defaultDurationFor(type);
+    final effectiveCloseable = closeable ?? defaultCloseableFor(type);
+
+    // Repeating the same message of the same type refreshes the visible entry
+    // and restarts its timer instead of stacking an identical panel.
+    final existingIndex = state.indexWhere(
+      (entry) => entry.type == type && entry.message == message,
+    );
+    if (existingIndex >= 0) {
+      final existing = state[existingIndex];
+      _timers.remove(existing.id)?.cancel();
+      state = [
+        for (var index = 0; index < state.length; index++)
+          if (index == existingIndex)
+            IdeMessageEntry(
+              id: existing.id,
+              type: type,
+              message: message,
+              duration: effectiveDuration,
+              closeable: effectiveCloseable,
+            )
+          else
+            state[index],
+      ];
+      _timers[existing.id] = Timer(
+        effectiveDuration,
+        () => dismiss(existing.id),
+      );
+      return;
+    }
+
     final id = 'ide_message_${_nextId++}';
     final entry = IdeMessageEntry(
       id: id,
       type: type,
       message: message,
-      duration: duration,
-      closeable: closeable,
+      duration: effectiveDuration,
+      closeable: effectiveCloseable,
     );
-    state = [...state, entry];
-    _timers[id] = Timer(duration, () => dismiss(id));
+
+    final overflow = state.length - maxVisible + 1;
+    if (overflow > 0) {
+      for (var index = 0; index < overflow; index++) {
+        _timers.remove(state[index].id)?.cancel();
+      }
+      state = [...state.sublist(overflow), entry];
+    } else {
+      state = [...state, entry];
+    }
+    _timers[id] = Timer(effectiveDuration, () => dismiss(id));
   }
 
   void info(String message) => show(message);
@@ -82,11 +142,12 @@ void showIdeMessage(
   BuildContext context,
   String message, {
   IdeMessageType type = IdeMessageType.info,
+  Duration? duration,
+  bool? closeable,
 }) {
-  ProviderScope.containerOf(
-    context,
-    listen: false,
-  ).read(ideMessageProvider.notifier).show(message, type: type);
+  ProviderScope.containerOf(context, listen: false)
+      .read(ideMessageProvider.notifier)
+      .show(message, type: type, duration: duration, closeable: closeable);
 }
 
 void showIdeSuccess(BuildContext context, String message) {

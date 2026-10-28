@@ -17,10 +17,19 @@ import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
+import 'package:pyrite_ide/core/models/window_placement.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
+import 'package:pyrite_ide/features/command_palette/command_palette.dart';
+import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
+import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:code_forge/code_forge.dart' show editorModifierKeys;
@@ -32,6 +41,15 @@ class UseWindow with WindowListener {
   /// Guards the unsaved-changes prompt against a second close request
   /// arriving while the first one is still showing its dialog.
   bool _confirmingUnsaved = false;
+
+  /// Below this the workspace layouts stop being usable on a desktop.
+  static const Size _minimumWindowSize = Size(900, 600);
+
+  /// The normal (unmaximized) bounds, kept even while the window is maximized
+  /// so restoring a maximized session does not later restore to the maximized
+  /// size as its "normal" size.
+  Rect? _lastNormalBounds;
+  Timer? _placementCaptureTimer;
 
   void init() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -47,10 +65,56 @@ class UseWindow with WindowListener {
       // actually recovers a modifier held across an Alt+Tab on Windows.
       editorModifierKeys.windowFocusProbe = windowManager.isFocused;
       windowManager.addListener(this);
-      windowManager.waitUntilReadyToShow(windowOptions, () async {
+      final restored = await _restoredPlacement();
+      try {
+        await windowManager.setMinimumSize(_minimumWindowSize);
+      } catch (error) {
+        debugPrint('[window] could not set minimum size: $error');
+      }
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        if (restored != null) {
+          try {
+            await windowManager.setBounds(restored.bounds);
+            _lastNormalBounds = restored.bounds;
+          } catch (error) {
+            debugPrint('[window] could not restore bounds: $error');
+          }
+        }
         await windowManager.show();
         await windowManager.focus();
+        if (restored?.maximized == true) {
+          try {
+            await windowManager.maximize();
+          } catch (error) {
+            debugPrint('[window] could not restore maximized state: $error');
+          }
+        }
       });
+    }
+  }
+
+  /// Validates the persisted placement against the displays that exist now.
+  ///
+  /// A monitor that was disconnected since the last run must not leave the
+  /// window off-screen, and a bad file must not prevent the app from opening.
+  Future<WindowPlacement?> _restoredPlacement() async {
+    final stored = _container?.read(windowPlacementProvider);
+    if (stored == null) return null;
+    try {
+      final displays = await screenRetriever.getAllDisplays();
+      final areas = <Rect>[
+        for (final display in displays)
+          Rect.fromLTWH(
+            (display.visiblePosition ?? Offset.zero).dx,
+            (display.visiblePosition ?? Offset.zero).dy,
+            (display.visibleSize ?? display.size).width,
+            (display.visibleSize ?? display.size).height,
+          ),
+      ];
+      return stored.clampToVisibleAreas(areas);
+    } catch (error) {
+      debugPrint('[window] could not read displays, centering: $error');
+      return null;
     }
   }
 
@@ -77,6 +141,9 @@ class UseWindow with WindowListener {
     }
     if (!mayClose) return;
     _closing = true;
+    _placementCaptureTimer?.cancel();
+    await _captureWindowPlacement(force: true);
+    await _persistWindowPlacement();
 
     try {
       await Future.wait([
@@ -225,6 +292,87 @@ class UseWindow with WindowListener {
     editorModifierKeys.onWindowBlur();
   }
 
+  @override
+  void onWindowResize() => _schedulePlacementCapture();
+
+  @override
+  void onWindowResized() => _schedulePlacementCapture();
+
+  @override
+  void onWindowMove() => _schedulePlacementCapture();
+
+  @override
+  void onWindowMoved() => _schedulePlacementCapture();
+
+  @override
+  void onWindowMaximize() {
+    final container = _container;
+    if (container == null) return;
+    final bounds =
+        container.read(windowPlacementProvider)?.bounds ?? _lastNormalBounds;
+    if (bounds == null) return;
+    container.read(windowPlacementProvider.notifier).state = WindowPlacement(
+      bounds: bounds,
+      maximized: true,
+    );
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    final container = _container;
+    if (container == null) return;
+    final current = container.read(windowPlacementProvider);
+    if (current != null) {
+      container.read(windowPlacementProvider.notifier).state = WindowPlacement(
+        bounds: current.bounds,
+        maximized: false,
+      );
+    }
+    _schedulePlacementCapture();
+  }
+
+  /// Debounces the resize/move burst a window drag produces.
+  void _schedulePlacementCapture() {
+    if (_closing) return;
+    _placementCaptureTimer?.cancel();
+    _placementCaptureTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(_captureWindowPlacement());
+    });
+  }
+
+  /// Records the current normal bounds in memory.
+  ///
+  /// While maximized the window manager reports the maximized rectangle, which
+  /// must not replace the normal bounds the user would return to.
+  Future<void> _captureWindowPlacement({bool force = false}) async {
+    final container = _container;
+    if (container == null) return;
+    try {
+      if (!force && await windowManager.isMaximized()) return;
+      final bounds = await windowManager.getBounds();
+      if (bounds.width < 200 || bounds.height < 200) return;
+      if (await windowManager.isMaximized()) return;
+      _lastNormalBounds = bounds;
+      container.read(windowPlacementProvider.notifier).state = WindowPlacement(
+        bounds: bounds,
+        maximized: false,
+      );
+    } catch (error) {
+      debugPrint('[window] could not capture bounds: $error');
+    }
+  }
+
+  /// Writes the placement into `app.json` without rewriting unrelated data.
+  Future<void> _persistWindowPlacement() async {
+    final placement = _container?.read(windowPlacementProvider);
+    if (placement == null) return;
+    try {
+      await AppPersistence().patch({'window': placement.toJson()});
+    } catch (error) {
+      debugPrint('[window] could not persist bounds: $error');
+    }
+  }
+
   Future<void> _closeDesktopTerminals() async {
     try {
       await _container
@@ -347,6 +495,33 @@ class AppActionBar extends ConsumerWidget {
               leadingIconData: Icons.save_as,
               shortcut: platformShortcut(LogicalKeyboardKey.keyS, shift: true),
             ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuReopenClosedTab,
+              () => reopenClosedEditorTab(context, ref),
+              leadingIconData: Icons.restore,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyT, shift: true),
+            ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuCommandPalette,
+              () => showCommandPalette(context, hooks: editorPaletteHooks()),
+              leadingIconData: Icons.terminal,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyP, shift: true),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuQuickOpen,
+              () => showCommandPalette(
+                context,
+                mode: PaletteLaunchMode.files,
+                hooks: editorPaletteHooks(),
+              ),
+              leadingIconData: Icons.search,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyP),
+            ),
           ],
           child: const UseText(I18nKey.menuFile),
         ),
@@ -426,6 +601,37 @@ class AppActionBar extends ConsumerWidget {
               leadingIcon: const Icon(Icons.settings_backup_restore),
               child: const UseText(I18nKey.consoleResetLayout),
             ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuSplitRight,
+              () => splitActiveEditor(ref, PaneEdge.right),
+              leadingIconData: Icons.vertical_split,
+              shortcut: platformShortcut(LogicalKeyboardKey.backslash),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuSplitDown,
+              () => splitActiveEditor(ref, PaneEdge.bottom),
+              leadingIconData: Icons.horizontal_split,
+              shortcut: platformShortcut(
+                LogicalKeyboardKey.backslash,
+                shift: true,
+              ),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuCloseGroup,
+              () => closeActiveEditorGroup(context, ref),
+              leadingIconData: Icons.close_fullscreen,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyW, alt: true),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuResetEditorLayout,
+              () => resetEditorLayout(ref),
+              leadingIconData: Icons.restart_alt,
+            ),
           ],
           child: const UseText(I18nKey.menuView),
         ),
@@ -459,12 +665,14 @@ class AppActionBar extends ConsumerWidget {
   SingleActivator platformShortcut(
     LogicalKeyboardKey key, {
     bool shift = false,
+    bool alt = false,
   }) {
     return SingleActivator(
       key,
       control: !Platform.isMacOS,
       meta: Platform.isMacOS,
       shift: shift,
+      alt: alt,
     );
   }
 }

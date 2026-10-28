@@ -74,6 +74,38 @@ class DocumentOutlineNode {
   }
 }
 
+/// Whether a symbol's extent is a scope a child can live in.
+///
+/// The flat rebuild hangs a symbol on the smallest range that encloses it.
+/// Only definitions have that kind of extent: mypy-family servers (zuban
+/// among them) report a variable's range as the statement that binds it, and
+/// a loop target's as the whole loop, so a variable or field must never act
+/// as the container — every assignment inside a loop body would otherwise
+/// nest under the loop variable.
+bool _isContainerKind(int kind) => switch (kind) {
+  2 || 3 || 4 || 5 || 6 || 9 || 10 || 11 || 12 || 23 => true,
+  _ => false,
+};
+
+/// The outline roots with statement-level bindings dropped.
+///
+/// A variable assigned inside a `for`/`while`/`if` body is a flow artifact
+/// of a script rather than structure a reader navigates by. Unlike a class
+/// member it arrives with no container to nest it under, so it would sit in
+/// the roots — recognizable by an anchor past column 0, since everything the
+/// outline holds as a root is otherwise top level. Genuinely top-level
+/// variables start at column 0 and stay; anything that carries children is
+/// structure, whatever kind it reports.
+List<DocumentOutlineNode> _dropBlockLevelBindings(
+  List<DocumentOutlineNode> roots,
+) => [
+  for (final node in roots)
+    if (!(!node.hasChildren &&
+        (node.kind == 13 || node.kind == 14) &&
+        node.character > 0))
+      node,
+];
+
 /// Parses the `result` of `textDocument/documentSymbol` into a tree.
 ///
 /// A flat `SymbolInformation` answer reports every symbol as a sibling, so
@@ -86,6 +118,8 @@ class DocumentOutlineNode {
 ///
 /// Entries that carry neither a range nor a resolvable location are dropped:
 /// they cannot be jumped to, so showing them would be a dead row.
+/// Statement-level bindings — the variables a loop or an `if` body binds —
+/// are dropped from the roots as well: they are flow, not structure.
 List<DocumentOutlineNode> parseDocumentOutline(Object? result) {
   if (result is! List) return const [];
   final entries = result.whereType<Map>().toList(growable: false);
@@ -98,8 +132,10 @@ List<DocumentOutlineNode> parseDocumentOutline(Object? result) {
   // is the shape whose hierarchy was lost and has to be rebuilt.
   final flatShape =
       parsed.isNotEmpty && parsed.every((entry) => entry.$2['location'] is Map);
-  if (!flatShape) return [for (final (node, _) in parsed) node];
-  return _rebuildFlatTree(parsed);
+  if (!flatShape) {
+    return _dropBlockLevelBindings([for (final (node, _) in parsed) node]);
+  }
+  return _dropBlockLevelBindings(_rebuildFlatTree(parsed));
 }
 
 /// Rebuilds parent/child nesting among flat `SymbolInformation` entries.
@@ -125,6 +161,7 @@ List<DocumentOutlineNode> _rebuildFlatTree(
       for (var candidate = 0; candidate < parsed.length; candidate++) {
         final candidateRange = ranges[candidate];
         if (candidate == child || candidateRange == null) continue;
+        if (!_isContainerKind(parsed[candidate].$1.kind)) continue;
         if (!_strictlyContains(candidateRange, childRange)) continue;
         final span = (
           candidateRange.$2.$1 - candidateRange.$1.$1,

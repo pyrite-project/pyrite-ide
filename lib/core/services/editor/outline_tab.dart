@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/edit_core/editor_outline_panel.dart';
 import 'package:tabbed_view/tabbed_view.dart';
@@ -34,16 +36,27 @@ TabData buildOutlineTab(String title) {
   );
 }
 
-/// Opens another outline tab in the group the user is working in.
+/// Opens the outline: shows the one that exists, or births a new group.
 ///
-/// The outline is an ordinary member of the editor layout: the new tab joins
-/// the active group like any file tab would, and from there it can be dragged
-/// into another group or used to split one. Several outlines can coexist, in
-/// the same or in different groups.
+/// With no outline anywhere, a fresh tab is born into a group split off the
+/// active group's right edge — the outline reads the tab the user is working
+/// on, so it belongs beside it. The split takes no focus: the panel watches
+/// the focused group's selected tab, so on its first build it must still see
+/// the file that had focus before the button press to parse anything at all.
+/// An outline that already exists, wherever the user has dragged it, is
+/// focused instead: a second press of the toolbar toggle must not stack a
+/// second outline group beside the first.
 void openOutlineTab(WidgetRef ref) {
-  ref
-      .read(tabbedViewControllerProvider.notifier)
-      .openTab(
-        buildOutlineTab(translateForWidget(ref, I18nKey.editorOutlineTitle)),
-      );
+  for (final tab in ref.read(editorLayoutProvider).tabs) {
+    if (isOutlineTab(tab)) {
+      ref.read(tabbedViewControllerProvider.notifier).focusTab(tab);
+      return;
+    }
+  }
+  ref.read(editorLayoutProvider.notifier).splitGroupWithNewTab(
+    target: ref.read(activeEditorControllerProvider),
+    tab: buildOutlineTab(translateForWidget(ref, I18nKey.editorOutlineTitle)),
+    where: PaneEdge.right,
+    focusCreated: false,
+  );
 }

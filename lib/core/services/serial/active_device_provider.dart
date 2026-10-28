@@ -100,6 +100,10 @@ Future<void> runPythonOnActiveDeviceStreaming(
   Duration startupTimeout = const Duration(seconds: 20),
   String runningOperationId = 'code-exec',
   bool softReset = false,
+
+  /// Device directory to switch into before the script runs, or null to keep
+  /// the device's working directory as-is.
+  String? workingDirectory,
   required void Function() onStarted,
   required void Function(Uint8List data) onStdout,
   required void Function(Uint8List data) onStderr,
@@ -112,6 +116,7 @@ Future<void> runPythonOnActiveDeviceStreaming(
             python,
             timeout: startupTimeout,
             softReset: softReset,
+            workingDirectory: workingDirectory,
             onStarted: onStarted,
             onStdout: onStdout,
             onStderr: onStderr,
@@ -123,6 +128,7 @@ Future<void> runPythonOnActiveDeviceStreaming(
         startupTimeout: startupTimeout,
         runningOperationId: runningOperationId,
         softReset: softReset,
+        workingDirectory: workingDirectory,
         onStarted: onStarted,
         onStdout: onStdout,
         onStderr: onStderr,

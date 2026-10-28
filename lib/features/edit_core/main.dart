@@ -28,6 +28,9 @@ import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/search/search_provider.dart';
 import 'package:pyrite_ide/core/services/search/search_service.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_run_directory.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart'
+    show activeEditorTabProvider;
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/pyrite_floating_toolbar.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -1152,8 +1155,10 @@ class _GoToLineDialogState extends ConsumerState<_GoToLineDialog> {
 ///
 /// The hover fill, the active fill and the border are all painted by the same
 /// [BoxDecoration] on the same square, so no state can draw a rectangle offset
-/// from the others. The gap between neighbouring buttons comes from padding
-/// around that square rather than a margin on it.
+/// from the others. The gaps between neighbouring buttons and around the
+/// cluster come from padding around that square rather than a margin on it;
+/// horizontally each side carries half the inset, since adjacent paddings add
+/// up.
 class _FindBarToggle extends StatefulWidget {
   const _FindBarToggle({
     required this.label,
@@ -1188,10 +1193,13 @@ class _FindBarToggleState extends State<_FindBarToggle> {
       child: Semantics(
         container: true,
         child: Padding(
-          // Breathing room on every side of the painted square, so the hover
-          // and active states never touch the neighbouring buttons or the row
-          // edges.
-          padding: const EdgeInsets.all(_EditorFindBar._toggleInset),
+          // Vertically the full inset — it is the square's only clearance from
+          // the row edges. Horizontally half of it: the neighbouring toggle's
+          // half adds up to one full inset between the squares.
+          padding: const EdgeInsets.symmetric(
+            horizontal: _EditorFindBar._toggleInset / 2,
+            vertical: _EditorFindBar._toggleInset,
+          ),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) => setState(() => _hovered = true),
@@ -1260,10 +1268,12 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   /// Side of the painted square of an option toggle (`Aa` / `ab` / `.*`).
   static const double _toggleSize = 24;
 
-  /// Space kept on every side of a toggle's painted square, so its hover and
-  /// selected states never sit flush against the row or its neighbours. Same
-  /// value the left search panel's toggles use, so both bars space their
-  /// toggles identically.
+  /// Clear space between a toggle's painted square and the input's top and
+  /// bottom edges. Neighbouring toggles each carry half of it so their squares
+  /// end up this far apart — the same room they keep from the edges — and the
+  /// row closes with a half inset so the last square keeps the full distance
+  /// from the input's right edge. Same value the left search panel's toggles
+  /// use, so both bars space their toggles identically.
   static const double _toggleInset = 3;
 
   /// Horizontal inset between the find bar surface and its children.
@@ -1417,6 +1427,13 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                                 tooltip: tr(I18nKey.editorFindRegex),
                                 active: controller.isRegex,
                                 onPressed: controller.toggleRegex,
+                              ),
+                              // The trailing half of the last toggle's side
+                              // inset, so the cluster ends the same distance
+                              // from the input's right edge that the squares
+                              // keep from the top and bottom edges.
+                              const SizedBox(
+                                width: _EditorFindBar._toggleInset / 2,
                               ),
                             ],
                           ),
@@ -1672,6 +1689,20 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   var started = false;
   beginReplRunOutput();
 
+  // With the setting on, the run executes from the file's own directory so
+  // relative imports and data paths work unchanged. Device files know their
+  // directory directly; workspace files follow the board-sync mapping of the
+  // workspace root onto the device root.
+  final activeTabValue = ref.read(activeEditorTabProvider).value;
+  final runDirectory = ref.read(deviceRunChdirToScriptDir)
+      ? resolveDeviceRunWorkingDirectory(
+          isBoardFile: activeTabValue?.isBoardFile,
+          boardFilePath: activeTabValue?.boardFilePath,
+          localFilePath: activeTabValue?.filePath,
+          workspaceRootPath: ref.read(fileProvider)?.path,
+        )
+      : null;
+
   try {
     // Running what is on screen is not the same as saving it. A quick
     // experiment should not rewrite the file, and with format-on-save enabled
@@ -1685,6 +1716,7 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
       // cached bytecode even after the file was re-uploaded; soft reset
       // clears sys.modules so every run starts from the on-device files.
       softReset: true,
+      workingDirectory: runDirectory,
       onStarted: () {
         started = true;
         ref

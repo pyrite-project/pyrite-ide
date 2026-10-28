@@ -1,5 +1,6 @@
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/models/window_placement.dart';
 
 /// A folded region captured for a session, keyed by document lines.
 ///
@@ -224,6 +225,10 @@ class PersistedData {
   final bool welcomeCompleted;
   final String activeLocale;
   final bool alwaysOnTop;
+
+  /// Window geometry restored at startup, or null when the previous session
+  /// did not persist one (or it failed validation).
+  final WindowPlacement? windowPlacement;
   final String editorTextFont;
   final double editorFontSize;
   final bool editorWordWrap;
@@ -268,6 +273,7 @@ class PersistedData {
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
+  final bool deviceRunChdirToScriptDir;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
 
@@ -275,11 +281,6 @@ class PersistedData {
   final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
-
-  /// Desktop shell overrides; empty means "use the platform default".
-  final String terminalShellExecutable;
-  final String terminalShellArguments;
-  final String terminalWorkingDirectory;
   final double terminalLineHeight;
   final bool terminalLigatures;
   final String terminalAppearance;
@@ -319,6 +320,7 @@ class PersistedData {
     this.welcomeCompleted = false,
     this.activeLocale = 'zh-CN',
     this.alwaysOnTop = false,
+    this.windowPlacement,
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,
     this.editorWordWrap = false,
@@ -363,14 +365,12 @@ class PersistedData {
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,
+    this.deviceRunChdirToScriptDir = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
     this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
-    this.terminalShellExecutable = '',
-    this.terminalShellArguments = '',
-    this.terminalWorkingDirectory = '',
     this.terminalLineHeight = 1.2,
     this.terminalLigatures = true,
     this.terminalAppearance = 'dark',

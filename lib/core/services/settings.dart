@@ -143,6 +143,16 @@ StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
 StateProvider<bool> ensureBoardFilesystemOnConnect = StateProvider<bool>(
   (ref) => false,
 );
+
+/// Run a device file from its own directory.
+///
+/// When on, a run first switches the device's working directory to the
+/// directory holding the file being run, so the script's relative imports and
+/// data paths resolve without the script knowing where the IDE launches it
+/// from. Off keeps the firmware default (the device root after a soft reset).
+StateProvider<bool> deviceRunChdirToScriptDir = StateProvider<bool>(
+  (ref) => false,
+);
 StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
 StateProvider<bool> serialAutoReconnect = StateProvider<bool>((ref) => false);
 StateProvider<String> terminalFontFamily = StateProvider<String>(
@@ -155,22 +165,6 @@ StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
 StateProvider<TerminalAppearance> terminalAppearance =
     StateProvider<TerminalAppearance>((ref) => TerminalAppearance.dark);
 
-/// Desktop shell profile.
-///
-/// Empty means "not configured": the provider falls back to $SHELL /
-/// powershell.exe, so an untouched setting can never produce a broken launch
-/// line. Stored as one string rather than a list because the settings dialog
-/// edits a single text field and the split rules live next to the launch code
-/// (`features/terminal/shell_profile.dart`).
-StateProvider<String> terminalShellExecutable = StateProvider<String>(
-  (ref) => '',
-);
-StateProvider<String> terminalShellArguments = StateProvider<String>(
-  (ref) => '',
-);
-StateProvider<String> terminalWorkingDirectory = StateProvider<String>(
-  (ref) => '',
-);
 StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
   (ref) => false,
 );

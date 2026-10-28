@@ -346,11 +346,12 @@ class EditorGroup extends ConsumerWidget {
 
 /// Toolbar button that opens the outline.
 ///
-/// Every press births another outline tab in the group the user is working
-/// in; the selected state mirrors whether any outline tab exists, wherever
-/// the user has dragged it. The active-tab watch covers selection, open and
-/// close in the focused group, and the layout watch covers every reshaping
-/// that moves tabs between groups.
+/// Pressing shows the outline: the existing outline tab, wherever the user
+/// has dragged it, or — when there is none — a new group split off the active
+/// group's right edge holding a fresh one. The selected state mirrors whether
+/// any outline tab exists, wherever the user has dragged it. The active-tab
+/// watch covers selection, open and close in the focused group, and the
+/// layout watch covers every reshaping that moves tabs between groups.
 class EditorOutlineToggle extends ConsumerWidget {
   const EditorOutlineToggle({super.key});
 

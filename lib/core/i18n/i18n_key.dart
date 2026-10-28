@@ -271,7 +271,7 @@ enum I18nKey {
     '无法在文件资源管理器中打开：{error}',
   ),
   fileMessageOpenInFinderFailed(
-    'file.message.open_in_file_manager_failed',
+    'file.message.open_in_finder_failed',
     '无法在访达中打开：{error}',
   ),
   fileMessageMoveFailed('file.message.move_failed', '移动失败：{error}'),
@@ -569,6 +569,14 @@ enum I18nKey {
   settingsTerminalEnsureFilesystemSubtitle(
     'settings.terminal.ensure_filesystem.subtitle',
     '尝试挂载尚未就绪的设备文件系统，默认关闭',
+  ),
+  settingsTerminalRunInScriptDir(
+    'settings.terminal.run_in_script_dir.title',
+    '运行时切换到脚本所在目录',
+  ),
+  settingsTerminalRunInScriptDirSubtitle(
+    'settings.terminal.run_in_script_dir.subtitle',
+    '运行前先在设备上切到该文件所在目录',
   ),
   settingsTerminalChineseToUnicode(
     'settings.terminal.chinese_to_unicode.title',
@@ -2126,7 +2134,7 @@ enum I18nKey {
     '空间充足：需要 {required}，可用 {free}',
   ),
 
-  // ── 终端：搜索、右键菜单、链接与桌面 Shell ──
+  // ── 终端：搜索、右键菜单与链接 ──
   terminalSearchHint('terminal.search.hint', '搜索终端输出（Ctrl/Cmd+F）'),
   terminalSearchPrevious('terminal.search.previous', '上一个匹配项'),
   terminalSearchNext('terminal.search.next', '下一个匹配项'),
@@ -2143,34 +2151,6 @@ enum I18nKey {
   terminalUrlRejected('terminal.link.url_rejected', '不支持打开该链接'),
   terminalUrlOpenFailed('terminal.link.url_open_failed', '无法打开链接，已复制到剪贴板'),
   terminalFileNotFound('terminal.link.file_not_found', '找不到链接指向的文件：{path}'),
-  terminalShellSection('terminal.shell.section', '桌面 Shell'),
-  terminalShellSectionDescription(
-    'terminal.shell.description',
-    '新建终端时启动的可执行文件、参数和工作目录。留空则使用系统默认 Shell。',
-  ),
-  terminalShellExecutable('terminal.shell.executable', 'Shell 可执行文件'),
-  terminalShellExecutableFallback(
-    'terminal.shell.executable_fallback',
-    r'跟随系统（$SHELL / powershell.exe）',
-  ),
-  terminalShellExecutableHint(
-    'terminal.shell.executable_hint',
-    r'例如 /bin/zsh 或 C:\Program Files\Git\bin\bash.exe',
-  ),
-  terminalShellArguments('terminal.shell.arguments', '启动参数'),
-  terminalShellArgumentsHint(
-    'terminal.shell.arguments_hint',
-    '例如 -l  或  -NoLogo -NoExit',
-  ),
-  terminalWorkingDirectory('terminal.shell.working_directory', '工作目录'),
-  terminalWorkingDirectoryFallback(
-    'terminal.shell.working_directory_fallback',
-    '跟随工作区',
-  ),
-  terminalWorkingDirectoryHint(
-    'terminal.shell.working_directory_hint',
-    '例如 /Users/me/project',
-  ),
 
   // ── 插件、输出源与其余零散文案 ──
   pluginsDiagnostics('plugins.diagnostics.title', '运行诊断'),
@@ -2260,7 +2240,44 @@ enum I18nKey {
     'file.message.sync_plan_failed',
     '生成同步清单失败：{error}',
   ),
-  gitStatusRepositoryFallback('git.status.repository_fallback', 'Git 仓库');
+  gitStatusRepositoryFallback('git.status.repository_fallback', 'Git 仓库'),
+  paletteOpen('palette.open', '命令面板'),
+  paletteSearchHint('palette.search_hint', '搜索命令、文件或设置'),
+  paletteCommandsOnlyHint('palette.commands_only_hint', '搜索命令'),
+  paletteEmpty('palette.empty', '没有匹配的命令或文件'),
+  paletteSectionRecent('palette.section.recent', '最近使用'),
+  paletteSectionCommands('palette.section.commands', '命令'),
+  paletteSectionFiles('palette.section.files', '项目文件'),
+  paletteSectionNavigation('palette.section.navigation', '导航'),
+  paletteSectionSettings('palette.section.settings', '设置'),
+  paletteFileIndexLoading('palette.file_index.loading', '正在索引项目文件…'),
+  paletteFileIndexEmpty('palette.file_index.empty', '当前项目没有可打开的文件'),
+  paletteFileIndexNoProject(
+    'palette.file_index.no_project',
+    '打开项目文件夹后可以快速打开文件',
+  ),
+  paletteFileIndexError('palette.file_index.error', '无法读取项目文件：{error}'),
+  paletteFileIndexRetry('palette.file_index.retry', '重试'),
+  paletteFileIndexTruncated('palette.file_index.truncated', '仅显示前 {limit} 个文件'),
+  paletteExecuteFailed('palette.execute_failed', '命令执行失败：{error}'),
+  paletteDisabled('palette.disabled', '当前不可用'),
+  paletteFileModeHint('palette.file_mode_hint', '快速打开项目文件'),
+  paletteShortcutHint('palette.shortcut_hint', '↑↓ 选择 · Enter 执行 · Esc 关闭'),
+  editorSplitRight('editor.split.right', '向右拆分编辑器'),
+  editorSplitDown('editor.split.down', '向下拆分编辑器'),
+  editorCloseGroup('editor.close_group', '关闭编辑器组'),
+  editorResetLayout('editor.reset_layout', '重置编辑器布局'),
+  editorReopenClosedTab('editor.reopen_closed_tab', '重新打开关闭的标签页'),
+  editorNoClosedTab('editor.no_closed_tab', '没有可重新打开的标签页'),
+  editorReopenMissing('editor.reopen_missing', '文件已被删除，无法重新打开：{path}'),
+  editorReopenFailed('editor.reopen_failed', '无法重新打开 {path}：{error}'),
+  menuReopenClosedTab('menu.reopen_closed_tab', '重新打开关闭的标签页'),
+  menuCommandPalette('menu.command_palette', '命令面板…'),
+  menuQuickOpen('menu.quick_open', '快速打开文件…'),
+  menuSplitRight('menu.split_right', '向右拆分'),
+  menuSplitDown('menu.split_down', '向下拆分'),
+  menuCloseGroup('menu.close_group', '关闭编辑器组'),
+  menuResetEditorLayout('menu.reset_editor_layout', '重置编辑器布局');
 
   const I18nKey(this.key, this.fallback);
 

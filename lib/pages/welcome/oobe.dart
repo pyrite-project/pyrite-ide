@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -67,18 +66,10 @@ class _WelcomeOobePageState extends ConsumerState<WelcomeOobePage> {
 
   Future<void> _complete() async {
     ref.read(welcomeCompletedProvider.notifier).state = true;
-    await AppPersistence().save(
-      AppPersistedData(
-        themeMode: ref.read(themeMode).name,
-        themeStyle: ref.read(themeStyle).value,
-        themeColorValue: ref.read(themeColor)?.toARGB32(),
-        editorThemeKey: ref.read(editorThemeKey),
-        activePluginThemeId: ref.read(activePluginThemeId),
-        welcomeCompleted: true,
-        activeLocale: ref.read(activeLocaleProvider),
-        alwaysOnTop: ref.read(alwaysOnTopProvider),
-      ),
-    );
+    // Merge only the welcome flag into the existing file: this flow is not the
+    // authority for theme, locale or window state, and overwriting app.json
+    // here would reset settings another part of the app just persisted.
+    await AppPersistence().patch({'welcomeCompleted': true});
     if (!mounted) return;
 
     final target = ResponsiveBreakpoints.of(context).isDesktop

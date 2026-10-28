@@ -88,6 +88,63 @@ void main() {
       expect(editor.container.read(focusedEditorGroupProvider), same(created));
     });
 
+    test('a brand-new tab opens straight into the split-off group', () {
+      final editor = _editor();
+      final outline = TabData(text: 'outline');
+
+      final split = editor.layout.splitGroupWithNewTab(
+        target: editor.primary,
+        tab: outline,
+        where: PaneEdge.right,
+      );
+
+      // The tab never touches the target group: it is born in the new one.
+      expect(split, isTrue);
+      expect(editor.primary.tabs, isNot(contains(outline)));
+      final layout = editor.container.read(editorLayoutProvider) as SplitLayout;
+      expect(layout.axis, Axis.horizontal);
+      expect(layout.children.first, GroupLayout(editor.primary));
+      final created = (layout.children[1] as GroupLayout).controller;
+      expect(created.tabs.single, same(outline));
+      expect(editor.container.read(focusedEditorGroupProvider), same(created));
+      // A target outside the tree has nothing to split beside.
+      expect(
+        editor.layout.splitGroupWithNewTab(
+          target: TabbedViewController([]),
+          tab: TabData(text: 'other'),
+          where: PaneEdge.right,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a brand-new tab can open without taking focus', () {
+      final editor = _editor();
+      editor.primary.addTab(_fileTab('/proj/a.py'));
+      editor.layout.focus(editor.primary);
+      final outline = TabData(text: 'outline');
+
+      final split = editor.layout.splitGroupWithNewTab(
+        target: editor.primary,
+        tab: outline,
+        where: PaneEdge.right,
+        focusCreated: false,
+      );
+
+      // The outline group is created and shown, but the user stays in the
+      // group they were working in: the fresh outline panel reads the focused
+      // group's selected tab, so stealing focus would leave it nothing to
+      // parse on its first build.
+      expect(split, isTrue);
+      expect(
+        editor.container.read(focusedEditorGroupProvider),
+        same(editor.primary),
+      );
+      final layout = editor.container.read(editorLayoutProvider) as SplitLayout;
+      final created = (layout.children[1] as GroupLayout).controller;
+      expect(created.tabs.single, same(outline));
+    });
+
     test('every group keeps one controller for the whole session', () {
       final editor = _editor();
       final a = _fileTab('/proj/a.py');
@@ -376,6 +433,82 @@ void main() {
         GroupLayout(editor.primary),
       );
       expect(editor.primary.selectedTab, same(moved));
+    });
+
+    test('resetLayout brings every tab home in layout order', () {
+      final editor = _editor();
+      final welcome = editor.primary.tabs.single;
+      final first = TabData(text: 'first');
+      final second = TabData(text: 'second');
+      final third = TabData(text: 'third');
+      // Layout order is primary, third's group, then first's group: splitting
+      // the primary a second time nests the new group beside it.
+      editor.primary.addTab(first);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: first,
+        where: PaneEdge.right,
+      );
+      final firstGroup = allEditorControllers(editor.container)[1];
+      firstGroup.addTab(second);
+      editor.primary.addTab(third);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: third,
+        where: PaneEdge.bottom,
+      );
+
+      editor.layout.resetLayout();
+
+      expect(allEditorControllers(editor.container), [editor.primary]);
+      expect(
+        editor.container.read(editorLayoutProvider),
+        GroupLayout(editor.primary),
+      );
+      // The welcome page keeps its place; the moved tabs follow in the order
+      // their groups were laid out.
+      expect(
+        editor.primary.tabs,
+        orderedEquals([welcome, third, first, second]),
+      );
+      expect(
+        editor.container.read(focusedEditorGroupProvider),
+        same(editor.primary),
+      );
+      expect(editor.primary.selectedTab, same(third));
+    });
+
+    test('resetLayout is idempotent but still signals the command', () {
+      final editor = _editor();
+      final moved = TabData(text: 'moved');
+      editor.primary.addTab(moved);
+      editor.layout.splitGroup(
+        from: editor.primary,
+        target: editor.primary,
+        tab: moved,
+        where: PaneEdge.right,
+      );
+
+      var changes = 0;
+      var writes = 0;
+      editor.layout.changes.addListener(() => changes++);
+      editor.container.listen(editorLayoutProvider, (_, _) => writes++);
+
+      editor.layout.resetLayout();
+      expect(changes, 1);
+      expect(writes, 1);
+      final collapsed = editor.container.read(editorLayoutProvider);
+      final selection = editor.primary.selectedIndex;
+
+      // Nothing left to move: the tree and the selection stay put, while the
+      // change signal still tells listeners the command ran.
+      editor.layout.resetLayout();
+      expect(changes, 2);
+      expect(writes, 1);
+      expect(editor.container.read(editorLayoutProvider), same(collapsed));
+      expect(editor.primary.selectedIndex, selection);
     });
 
     test('a new tab opens in the group that has focus', () {
