@@ -901,8 +901,7 @@ class ComponentBuilder {
           ],
         );
       case 'RangeSlider':
-        final min = (props['min'] as num?)?.toDouble() ?? 0;
-        final max = (props['max'] as num?)?.toDouble() ?? 100;
+        final (:min, :max) = _sliderRange(props);
         final start = ((props['start'] as num?)?.toDouble() ?? min).clamp(
           min,
           max,
@@ -2041,10 +2040,26 @@ class ComponentBuilder {
     );
   }
 
+  /// Normalizes a plugin-supplied slider range.
+  ///
+  /// The props come from the plugin, so `min` and `max` can arrive swapped,
+  /// equal or not a number. `num.clamp` throws when its bounds are inverted and
+  /// [Slider] asserts on `min <= max`, so one malformed prop used to take the
+  /// whole view down; sorting the pair and widening an empty range keeps the
+  /// control usable instead.
+  ({double min, double max}) _sliderRange(Map<String, dynamic> props) {
+    final first = (props['min'] as num?)?.toDouble() ?? 0;
+    final second = (props['max'] as num?)?.toDouble() ?? 100;
+    if (first.isNaN || second.isNaN) return (min: 0, max: 100);
+    final low = first <= second ? first : second;
+    final high = first <= second ? second : first;
+    if (low == high) return (min: low, max: low + 1);
+    return (min: low, max: high);
+  }
+
   Widget _buildSlider(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
-    final min = (props['min'] as num?)?.toDouble() ?? 0;
-    final max = (props['max'] as num?)?.toDouble() ?? 100;
+    final (:min, :max) = _sliderRange(props);
     final raw = hostState.displayValue(id, props['value']);
     final value = ((raw as num?)?.toDouble() ?? min).clamp(min, max);
     final style = _styleMap(props['style']);
