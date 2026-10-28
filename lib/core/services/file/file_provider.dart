@@ -126,7 +126,10 @@ class FileNotifier extends StateNotifier<Directory?> {
         // writer would transcode a GBK buffer and drop a UTF-16 byte order
         // mark, turning a save into silent data corruption.
         if (value.encoding == null && !value.byteOrderMark) {
-          await file.writeAsString(text);
+          // Flush like the encoded branch below: whether a save survives a
+          // crash must not depend on which character set the file happens to
+          // use.
+          await file.writeAsString(text, flush: true);
         } else {
           await file.writeAsBytes(
             encodeFileText(
