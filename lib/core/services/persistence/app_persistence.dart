@@ -74,7 +74,12 @@ class AppPersistence {
   Future<void> save(AppPersistedData data) async {
     try {
       final file = await _file;
-      await file.writeAsString(jsonEncode(data.toJson()));
+      // Temp file + rename, like the other JSON stores: a crash mid-write
+      // leaves truncated JSON behind, and load() turns a parse error into
+      // null, which silently resets this store to its defaults.
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.rename(file.path);
     } catch (e) {
       debugPrint('AppPersistence: Failed to save: $e');
     }
