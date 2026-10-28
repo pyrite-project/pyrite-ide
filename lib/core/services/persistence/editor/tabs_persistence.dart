@@ -54,11 +54,7 @@ class TabsPersistedData {
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
       TabsPersistedData(
-        tabs:
-            (json['tabs'] as List<dynamic>?)
-                ?.map((t) => PersistedTab.fromJson(t as Map<String, dynamic>))
-                .toList() ??
-            [],
+        tabs: PersistedTab.listFromJson(json['tabs']),
         selectedTabIndex: json['selectedTabIndex'] as int? ?? 0,
         selectedTabPath: json['selectedTabPath'] as String?,
         groups:

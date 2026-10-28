@@ -93,8 +93,28 @@ class PersistedTab {
     'isOutline': isOutline,
   };
 
+  /// Parses a persisted tab list, dropping entries that cannot describe a tab.
+  ///
+  /// `tabs.json` also carries every unsaved buffer, and `TabsPersistence.load`
+  /// turns a parse error into "no session at all". One corrupt entry therefore
+  /// used to cost the user every open tab and every unsaved edit, so unusable
+  /// entries are skipped and the rest still restore.
+  static List<PersistedTab> listFromJson(Object? value) {
+    if (value is! List) return const [];
+    final tabs = <PersistedTab>[];
+    for (final entry in value.whereType<Map<String, dynamic>>()) {
+      final tab = PersistedTab.fromJson(entry);
+      // An outline marker is the one tab allowed to have no file behind it.
+      if (tab.filePath.isEmpty && !tab.isOutline) continue;
+      tabs.add(tab);
+    }
+    return tabs;
+  }
+
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
-    filePath: json['filePath'] as String,
+    // A missing path is handled by [listFromJson]; reading it as empty here
+    // keeps one bad entry from throwing out of the whole parse.
+    filePath: json['filePath']?.toString() ?? '',
     isBoardFile: json['isBoardFile'] as bool? ?? false,
     boardFilePath: json['boardFilePath'] as String?,
     isSaved: json['isSaved'] as bool? ?? true,
@@ -128,12 +148,7 @@ class PersistedEditorGroup {
 
   factory PersistedEditorGroup.fromJson(Map<String, dynamic> json) =>
       PersistedEditorGroup(
-        tabs:
-            (json['tabs'] as List<dynamic>?)
-                ?.whereType<Map<String, dynamic>>()
-                .map(PersistedTab.fromJson)
-                .toList() ??
-            const [],
+        tabs: PersistedTab.listFromJson(json['tabs']),
         selectedTabPath: json['selectedTabPath'] as String?,
       );
 }

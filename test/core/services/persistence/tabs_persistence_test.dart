@@ -193,4 +193,45 @@ void main() {
 
     expect(restored.tabs.single.isOutline, isFalse);
   });
+
+  test('one malformed tab entry does not discard the whole session', () {
+    // tabs.json also holds every unsaved buffer, and a parse error makes the
+    // loader return no session at all, so a single bad entry must not throw.
+    final restored = TabsPersistedData.fromJson({
+      'tabs': [
+        {'filePath': '/w/a.py'},
+        'junk',
+        {'noFilePath': true},
+        {'filePath': '', 'isOutline': true},
+        {'filePath': '/w/b.py'},
+      ],
+      'selectedTabIndex': 0,
+    });
+
+    expect(restored.tabs.map((tab) => tab.filePath), [
+      '/w/a.py',
+      '',
+      '/w/b.py',
+    ]);
+    expect(restored.tabs[1].isOutline, isTrue);
+  });
+
+  test('a malformed entry inside a group is skipped too', () {
+    final restored = TabsPersistedData.fromJson({
+      'tabs': const [],
+      'selectedTabIndex': 0,
+      'groups': [
+        {
+          'tabs': [
+            {'filePath': '/w/a.py'},
+            42,
+          ],
+          'selectedTabPath': '/w/a.py',
+        },
+      ],
+      'layout': {'axis': 'horizontal', 'children': [{'groupIndex': 0}]},
+    });
+
+    expect(restored.groups.single.tabs.single.filePath, '/w/a.py');
+  });
 }
