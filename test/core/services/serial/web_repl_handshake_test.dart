@@ -38,5 +38,17 @@ void main() {
     test('ignores the arrow sequence inside text', () {
       expect(showsWebReplPrompt('print(">>>")\n'), isFalse);
     });
+
+    test('finds the prompt when the echoed command contains one too', () {
+      // The device echoes what was typed after the prompt; a command that
+      // itself prints or quotes ">>>" used to hide the prompt from a
+      // last-occurrence-wins search.
+      expect(showsWebReplPrompt('>>> print(">>>")\r\n'), isTrue);
+      expect(showsWebReplPrompt('>>> print(">>>")\r\noutput\r\n>>> '), isTrue);
+    });
+
+    test('ignores a quoted prompt after the last real prompt', () {
+      expect(showsWebReplPrompt('>>> x = ">>>"'), isTrue);
+    });
   });
 }
