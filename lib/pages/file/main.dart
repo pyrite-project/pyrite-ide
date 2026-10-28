@@ -674,9 +674,10 @@ class ProjectFiles extends ConsumerWidget {
   /// Whether moving [node] into [targetFolder] would put a folder inside
   /// itself or inside one of its own descendants.
   ///
-  /// `rename` refuses that with a bare "invalid argument" on POSIX and Windows
-  /// alike, which reached the user as a generic move failure. The tree can
-  /// answer the question before anything is attempted.
+  /// The move loops already refuse this, but only once the batch is running:
+  /// the drop is accepted, the progress panel opens and the row is skipped with
+  /// a snackbar. Answering the question here keeps the gesture from being
+  /// offered at all.
   bool _isLocalSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
     final source = path.normalize(path.absolute(node.id));
     final target = path.normalize(path.absolute(targetFolder));
