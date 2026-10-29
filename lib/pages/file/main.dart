@@ -671,11 +671,18 @@ class ProjectFiles extends ConsumerWidget {
     );
   }
 
+  /// Whether moving [node] into [targetFolder] would put a folder inside
+  /// itself or inside one of its own descendants.
+  ///
+  /// The move loops already refuse this, but only once the batch is running:
+  /// the drop is accepted, the progress panel opens and the row is skipped with
+  /// a snackbar. Answering the question here keeps the gesture from being
+  /// offered at all.
   bool _isLocalSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
-    return path.equals(
-      path.normalize(path.absolute(node.id)),
-      path.normalize(path.absolute(targetFolder)),
-    );
+    final source = path.normalize(path.absolute(node.id));
+    final target = path.normalize(path.absolute(targetFolder));
+    if (path.equals(source, target)) return true;
+    return node.data is FolderItem && path.isWithin(source, target);
   }
 
   bool _isBoardNodeAlreadyInFolder(
@@ -689,12 +696,16 @@ class ProjectFiles extends ConsumerWidget {
     return parent == target;
   }
 
+  /// The board-side counterpart of [_isLocalSelfMove]: a folder cannot be
+  /// moved into itself or into a path below it, which on the board would copy
+  /// the folder into its own subtree.
   bool _isBoardSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
     final self = path.posix.normalize(node.id);
     final target = path.posix.normalize(
       targetFolder.isEmpty ? '/' : targetFolder,
     );
-    return self == target;
+    if (self == target) return true;
+    return node.data is FolderItem && path.posix.isWithin(self, target);
   }
 
   Future<void> _downloadSelectedBoardItems(

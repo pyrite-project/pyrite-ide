@@ -32,14 +32,29 @@ final deviceConnectedProvider = Provider<bool>((ref) {
       ActiveDeviceTransport.disconnected;
 });
 
+/// Status-bar label for the WebREPL transport.
+///
+/// [buildWebReplUri] throws when the configured host is empty or unparseable,
+/// and a connected session outlives an edit to that setting — clearing the host
+/// field used to make the label provider throw while the status bar was
+/// building. The label degrades to whatever the setting still says instead.
+String webReplDeviceLabel(String host, int port) {
+  try {
+    final uri = buildWebReplUri(host, port);
+    return 'WebREPL ${uri.host}:${uri.port}';
+  } on FormatException {
+    final trimmed = host.trim();
+    return trimmed.isEmpty ? 'WebREPL' : 'WebREPL $trimmed';
+  }
+}
+
 final activeDeviceLabelProvider = Provider<String?>((ref) {
   switch (ref.watch(activeDeviceTransportProvider)) {
     case ActiveDeviceTransport.webRepl:
-      final uri = buildWebReplUri(
+      return webReplDeviceLabel(
         ref.watch(webReplHost),
         ref.watch(webReplPort),
       );
-      return 'WebREPL ${uri.host}:${uri.port}';
     case ActiveDeviceTransport.serial:
       return ref.watch(serialProvider).selectedPortName;
     case ActiveDeviceTransport.disconnected:

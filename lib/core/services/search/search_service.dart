@@ -443,11 +443,20 @@ Future<bool> replaceOneOccurrence(
 /// capture groups (Dart's [String.replaceAll] does not perform this expansion
 /// for a [RegExp]). In plain-text mode the replacement is verbatim, so `$1`
 /// is inserted literally.
+///
+/// A `$` followed by digits that do not name a capture group is kept as
+/// written. `int.tryParse` rather than `int.parse` matters here: the digits
+/// come straight from the user's replacement text, and `$12345678901234567890`
+/// overflows a 64-bit int, so parsing it would throw and abort the whole
+/// replace instead of inserting the literal text the user typed.
 String _expandReplacement(Match match, SearchOptions options) {
   if (!options.isRegExp) return options.replaceText;
   return options.replaceText.replaceAllMapped(RegExp(r'\$(\d+)'), (group) {
-    final index = int.parse(group.group(1)!);
+    final reference = group.group(0)!;
+    final index = int.tryParse(group.group(1)!);
+    if (index == null) return reference;
     if (index == 0) return match.group(0) ?? '';
+    if (index > match.groupCount) return reference;
     return match.group(index) ?? '';
   });
 }

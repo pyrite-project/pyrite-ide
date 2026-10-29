@@ -509,11 +509,15 @@ class _TabsAreaState extends State<TabsArea>
         return;
       }
 
-      final tabContext = _tabContexts[controller.tabs[selectedIndex].uniqueKey];
+      // The strip can lose tabs between the selection and this frame — the user
+      // closed the tab that was just selected, or the group was split — so the
+      // index is re-validated here rather than trusting the one captured above.
+      final tabs = controller.tabs;
+      if (selectedIndex >= tabs.length) return;
+      final tabContext = _tabContexts[tabs[selectedIndex].uniqueKey];
       if (tabContext == null || !_scrollController.hasClients) {
         return;
       }
-
       final RenderObject? renderObject = tabContext.findRenderObject();
       final ScrollableState? scrollable = Scrollable.maybeOf(tabContext);
       final BuildContext? scrollContext = scrollable?.context;

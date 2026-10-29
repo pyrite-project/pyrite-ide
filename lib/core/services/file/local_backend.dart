@@ -226,9 +226,13 @@ Future<void> _ensureRenameTargetAvailable(
     targetPath,
     followLinks: false,
   );
-  if (targetType != FileSystemEntityType.notFound) {
-    throw FileRenameTargetExistsException(targetPath);
-  }
+  if (targetType == FileSystemEntityType.notFound) return;
+  // On a case-insensitive filesystem — Windows, and the default macOS volume —
+  // a case-only rename finds the source itself at the target path. That is not
+  // a collision: the user is respelling one file, and treating it as a
+  // collision made renaming `Foo.py` to `foo.py` impossible.
+  if (await FileSystemEntity.identical(sourcePath, targetPath)) return;
+  throw FileRenameTargetExistsException(targetPath);
 }
 
 Future<void> deleteDir(String path) async {

@@ -29,14 +29,28 @@ bool awaitsWebReplPassword(String text) {
 /// True when [text] shows the interactive REPL prompt `>>>`.
 ///
 /// A line may carry output before the prompt (`MPY: soft reboot\r\n>>> `), so
-/// the prompt is searched for anywhere in the text, but it must be followed by
-/// the end of the chunk or by whitespace — `>>>` inside prose or a string is
-/// not a prompt.
+/// the prompt is searched for anywhere in the text, but it has to start a line
+/// and be followed by the end of the chunk or by whitespace. Both halves of that
+/// rule matter: `>>>` inside prose or a string is not a prompt, and neither is
+/// the one in an echoed command such as `>>> print(">>>")` — the prompt itself
+/// is the occurrence at the start of the line, which the previous
+/// last-occurrence-wins search skipped straight past.
 bool showsWebReplPrompt(String text) {
-  final index = text.lastIndexOf('>>>');
-  if (index == -1) return false;
-  final after = index + 3;
-  if (after == text.length) return true;
-  final next = text.codeUnitAt(after);
-  return next == 0x20 || next == 0x0a || next == 0x0d || next == 0x09;
+  var searchFrom = text.length;
+  while (searchFrom > 0) {
+    final index = text.lastIndexOf('>>>', searchFrom - 1);
+    if (index < 0) return false;
+    searchFrom = index;
+    if (index > 0) {
+      final before = text.codeUnitAt(index - 1);
+      if (before != 0x0a && before != 0x0d) continue;
+    }
+    final after = index + 3;
+    if (after == text.length) return true;
+    final next = text.codeUnitAt(after);
+    if (next == 0x20 || next == 0x0a || next == 0x0d || next == 0x09) {
+      return true;
+    }
+  }
+  return false;
 }

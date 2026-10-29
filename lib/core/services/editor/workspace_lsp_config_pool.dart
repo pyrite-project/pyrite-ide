@@ -74,8 +74,16 @@ class WorkspaceLspConfigPool<T> {
     }
     final bootstrap = _create(workspacePath);
     _bootstraps[workspacePath] = bootstrap;
-    final config = await bootstrap;
-    _bootstraps.remove(workspacePath);
+    final T? config;
+    try {
+      config = await bootstrap;
+    } finally {
+      // The in-flight entry has to go even when the start threw: leaving a
+      // failed future in the map makes every later acquire for this workspace
+      // await the same failure, so the server could never be started again for
+      // the rest of the session.
+      _bootstraps.remove(workspacePath);
+    }
     if (config == null) {
       // A failed start leaves no pooled entry, so the next file opens can
       // retry — potentially with different settings.
