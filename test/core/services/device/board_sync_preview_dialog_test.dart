@@ -318,6 +318,25 @@ void main() {
     expect(captured!.selectedPaths, {'main.py'});
   });
 
+  testWidgets('the dialog shrinks to a phone viewport without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 480);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.binding.setSurfaceSize(const Size(320, 480));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await openIgnoredPlan(tester);
+
+    expect(tester.takeException(), isNull);
+    // Compact layout keeps the words, drops the counts.
+    expect(find.text('全选'), findsOneWidget);
+    expect(find.text('双向'), findsOneWidget);
+    expect(find.text('上传'), findsOneWidget);
+    expect(find.text('下载'), findsOneWidget);
+  });
+
   testWidgets('expanding the group shows its rows unticked', (tester) async {
     await openIgnoredPlan(tester);
 

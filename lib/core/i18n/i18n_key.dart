@@ -1850,6 +1850,7 @@ enum I18nKey {
   devicesSyncDirectionBoth('devices.sync.direction.both', '双向同步'),
   devicesSyncDirectionLocal('devices.sync.direction.local', '仅本地 → 设备'),
   devicesSyncDirectionBoard('devices.sync.direction.board', '仅设备 → 本地'),
+  devicesSyncSelectAll('devices.sync.select_all', '全选'),
   devicesSyncDirBoth('devices.sync.dir.both', '双向'),
   devicesSyncDirUpload('devices.sync.dir.upload', '上传'),
   devicesSyncDirDownload('devices.sync.dir.download', '下载'),

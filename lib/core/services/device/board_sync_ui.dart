@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
@@ -251,16 +253,36 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     final itemCount =
         regular.length +
         (ignored.isEmpty ? 0 : 1 + (_ignoredExpanded ? ignored.length : 0));
-    // The dialog also runs on phones: shrink instead of overflowing when the
-    // window is narrower or shorter than the desktop size.
+    // The dialog also runs on phones: every size is derived from the viewport
+    // minus what AlertDialog and the content padding already reserve, so a
+    // 320dp window shrinks instead of overflowing. No artificial floor: a
+    // minimum wider than the screen is exactly how the old version broke when
+    // the desktop window was resized to a phone width.
     final media = MediaQuery.sizeOf(context);
+    final compact = media.width < 520;
+    final horizontalInset = compact ? 16.0 : 24.0;
+    final contentWidth = (media.width - 80 - horizontalInset * 2).clamp(
+      0.0,
+      620.0,
+    );
+    // 62% keeps the dialog off the window edges on short desktop windows; the
+    // subtraction reserves the icon, title, actions and the dialog's own insets
+    // so the list never squeezes them out.
+    final contentHeight = math
+        .min(media.height * 0.62, media.height - 284)
+        .clamp(160.0, 460.0);
     return AlertDialog(
       icon: const Icon(Icons.sync_alt),
       title: Text(translateInContext(context, I18nKey.devicesSyncTitle)),
-      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+      contentPadding: EdgeInsets.fromLTRB(
+        horizontalInset,
+        8,
+        horizontalInset,
+        12,
+      ),
       content: SizedBox(
-        width: (media.width - 120).clamp(240.0, 620.0),
-        height: (media.height - 280).clamp(220.0, 460.0),
+        width: contentWidth,
+        height: contentHeight,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -380,10 +402,11 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
 
   /// Master checkbox plus the direction switch.
   ///
-  /// The switch is filled rather than outlined: the outline colour of some
-  /// plugin themes is close to the dialog surface, which made the segments read
-  /// as plain labels. Filling the track with `surfaceContainerHighest` and the
-  /// selected segment with `primary` keeps the control visible in every theme.
+  /// Two layouts. On a wide dialog the switch sits beside the master checkbox
+  /// and each segment carries its count. Once the row can no longer hold three
+  /// labelled segments (phone widths) the checkbox moves to its own line and
+  /// the switch spans the full width; counts are the first thing to go, icons
+  /// the second, so the control never overflows from 280dp up.
   Widget _buildControlRow(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final uploads = _uploadTotal;
@@ -403,107 +426,146 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
         ? false
         : null;
 
-    Widget segmentLabel(I18nKey key, int count) => Text(
-      '${translateInContext(context, key)} $count',
-      style: _segmentLabelStyle,
+    final master = Tooltip(
+      message: translateInContext(context, I18nKey.devicesSyncToggleAll),
+      child: Checkbox(
+        value: masterValue,
+        tristate: true,
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onChanged: selectable.isEmpty
+            ? null
+            : (_) => _toggleAll(selectable, masterValue),
+      ),
     );
 
-    return Row(
-      children: [
-        SizedBox(
-          width: 40,
-          height: 40,
-          child: Center(
-            child: Tooltip(
-              message: translateInContext(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 460;
+        final showCounts = constraints.maxWidth >= 420;
+        final showIcons = constraints.maxWidth >= 260;
+
+        Widget segmentLabel(I18nKey key, int count) => Text(
+          showCounts
+              ? '${translateInContext(context, key)} $count'
+              : translateInContext(context, key),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: _segmentLabelStyle,
+        );
+
+        Widget segmentIcon(IconData icon) => Icon(icon, size: 16);
+
+        final segments = SegmentedButton<BoardSyncDirection>(
+          showSelectedIcon: false,
+          expandedInsets: stacked ? EdgeInsets.zero : null,
+          style: _segmentStyle(scheme, compact: stacked),
+          segments: [
+            ButtonSegment(
+              value: BoardSyncDirection.none,
+              icon: showIcons ? segmentIcon(Icons.swap_horiz) : null,
+              label: segmentLabel(
+                I18nKey.devicesSyncDirBoth,
+                uploads + downloads,
+              ),
+              tooltip: translateInContext(
                 context,
-                I18nKey.devicesSyncToggleAll,
-              ),
-              child: Checkbox(
-                value: masterValue,
-                tristate: true,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                onChanged: selectable.isEmpty
-                    ? null
-                    : (_) => _toggleAll(selectable, masterValue),
+                I18nKey.devicesSyncDirectionBoth,
               ),
             ),
-          ),
-        ),
-        Expanded(
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: SegmentedButton<BoardSyncDirection>(
-              showSelectedIcon: false,
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
-                padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 12),
-                ),
-                side: const WidgetStatePropertyAll(BorderSide.none),
-                backgroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? scheme.primary
-                      : scheme.surfaceContainerHighest,
-                ),
-                foregroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? scheme.onPrimary
-                      : scheme.onSurfaceVariant,
-                ),
-                iconColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? scheme.onPrimary
-                      : scheme.onSurfaceVariant,
-                ),
+            ButtonSegment(
+              value: BoardSyncDirection.localToBoard,
+              enabled: uploads > 0,
+              icon: showIcons ? segmentIcon(Icons.arrow_upward_rounded) : null,
+              label: segmentLabel(I18nKey.devicesSyncDirUpload, uploads),
+              tooltip: translateInContext(
+                context,
+                I18nKey.devicesSyncDirectionLocal,
               ),
-              segments: [
-                ButtonSegment(
-                  value: BoardSyncDirection.none,
-                  icon: const Icon(Icons.swap_horiz, size: 16),
-                  label: segmentLabel(
-                    I18nKey.devicesSyncDirBoth,
-                    uploads + downloads,
-                  ),
-                  tooltip: translateInContext(
-                    context,
-                    I18nKey.devicesSyncDirectionBoth,
-                  ),
-                ),
-                ButtonSegment(
-                  value: BoardSyncDirection.localToBoard,
-                  enabled: uploads > 0,
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 16),
-                  label: segmentLabel(I18nKey.devicesSyncDirUpload, uploads),
-                  tooltip: translateInContext(
-                    context,
-                    I18nKey.devicesSyncDirectionLocal,
-                  ),
-                ),
-                ButtonSegment(
-                  value: BoardSyncDirection.boardToLocal,
-                  enabled: downloads > 0,
-                  icon: const Icon(Icons.arrow_downward_rounded, size: 16),
-                  label: segmentLabel(
-                    I18nKey.devicesSyncDirDownload,
-                    downloads,
-                  ),
-                  tooltip: translateInContext(
-                    context,
-                    I18nKey.devicesSyncDirectionBoard,
-                  ),
-                ),
-              ],
-              selected: {_direction},
-              onSelectionChanged: (selection) =>
-                  setState(() => _direction = selection.first),
             ),
-          ),
-        ),
-      ],
+            ButtonSegment(
+              value: BoardSyncDirection.boardToLocal,
+              enabled: downloads > 0,
+              icon: showIcons
+                  ? segmentIcon(Icons.arrow_downward_rounded)
+                  : null,
+              label: segmentLabel(I18nKey.devicesSyncDirDownload, downloads),
+              tooltip: translateInContext(
+                context,
+                I18nKey.devicesSyncDirectionBoard,
+              ),
+            ),
+          ],
+          selected: {_direction},
+          onSelectionChanged: (selection) =>
+              setState(() => _direction = selection.first),
+        );
+
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  SizedBox(width: 40, height: 36, child: Center(child: master)),
+                  Text(
+                    translateInContext(context, I18nKey.devicesSyncSelectAll),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              segments,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            SizedBox(width: 40, height: 40, child: Center(child: master)),
+            Expanded(
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: segments,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Filled segment styling: `surfaceContainerHighest` track, `primary`
+  /// selection. Colours are resolved explicitly because some plugin themes
+  /// leave `outline` almost equal to the dialog surface, which made the
+  /// outlined default read as three plain labels.
+  ButtonStyle _segmentStyle(ColorScheme scheme, {required bool compact}) {
+    return ButtonStyle(
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+      ),
+      side: const WidgetStatePropertyAll(BorderSide.none),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.primary
+            : scheme.surfaceContainerHighest,
+      ),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.onPrimary
+            : scheme.onSurfaceVariant,
+      ),
+      iconColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.onPrimary
+            : scheme.onSurfaceVariant,
+      ),
     );
   }
 
