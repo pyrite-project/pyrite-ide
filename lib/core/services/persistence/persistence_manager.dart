@@ -25,7 +25,8 @@ import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/window_placement.dart';
-import 'package:tabbed_view/tabbed_view.dart' show TabData, TabbedViewController;
+import 'package:tabbed_view/tabbed_view.dart'
+    show TabData, TabbedViewController;
 
 class PersistenceManager {
   final AppPersistence appPersistence = AppPersistence();
@@ -129,6 +130,7 @@ class PersistenceManager {
           settings?.terminalCustomPalette ?? kDefaultTerminalCustomPalette,
       useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
+      fileSortMode: settings?.fileSortMode ?? 'name',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
       cancelShortcut: settings?.cancelShortcut ?? 'Esc',
       webReplHost: settings?.webReplHost ?? '',
@@ -224,6 +226,7 @@ class PersistenceManager {
           terminalCustomPalette: container.read(terminalCustomPalette),
           useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
+          fileSortMode: container.read(fileSortModeProvider).jsonName,
           confirmShortcut: container.read(confirmShortcutProvider),
           cancelShortcut: container.read(cancelShortcutProvider),
           webReplHost: container.read(webReplHost),

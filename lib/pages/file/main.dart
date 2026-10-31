@@ -359,6 +359,9 @@ class ProjectFiles extends ConsumerWidget {
               context,
               ref,
               boardFolderPath: targetFolderPath,
+              // A drop is already a deliberate gesture aimed at a folder; the
+              // toolbar button is the path that needs a confirmation.
+              confirm: false,
             );
             return;
           }
@@ -755,7 +758,20 @@ class ProjectFiles extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     String? boardFolderPath,
+    bool confirm = true,
   }) async {
+    final selectedCount = ref
+        .read(fileProvider.notifier)
+        .getSelectedNodes()
+        .length;
+    if (confirm && selectedCount > 0) {
+      final folder =
+          boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+      if (!await _confirmUpload(context, ref, selectedCount, folder ?? '/')) {
+        return;
+      }
+      if (!context.mounted) return;
+    }
     try {
       await ref
           .read(fileProvider.notifier)
@@ -779,6 +795,45 @@ class ProjectFiles extends ConsumerWidget {
         ).replaceAll('{error}', error.toString()),
       );
     }
+  }
+
+  /// Asks before a batch upload, whether or not a name clash exists.
+  ///
+  /// The conflict dialog only appears for files already on the board, so an
+  /// upload into an empty folder used to start without any prompt at all --
+  /// one stray click on the toolbar was enough. The count and the destination
+  /// are the two things worth confirming.
+  Future<bool> _confirmUpload(
+    BuildContext context,
+    WidgetRef ref,
+    int count,
+    String boardFolder,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.upload_outlined),
+        title: const UseText(I18nKey.fileConfirmUploadTitle),
+        content: Text(
+          tr(ref, I18nKey.fileConfirmUploadMessage, {
+            'count': count.toString(),
+            'folder': boardFolder,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => ctx.pop(false),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => ctx.pop(true),
+            child: const UseText(I18nKey.fileConfirmUploadAction),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Future<void> _importExternalPaths(

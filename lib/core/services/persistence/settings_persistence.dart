@@ -65,6 +65,9 @@ class SettingsPersistedData {
   final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
+
+  /// Ordering of both file trees: `name` or `type`.
+  final String fileSortMode;
   final String confirmShortcut;
   final String cancelShortcut;
   final String webReplHost;
@@ -132,6 +135,7 @@ class SettingsPersistedData {
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
+    this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
     this.webReplHost = '',
@@ -200,6 +204,7 @@ class SettingsPersistedData {
     'terminalCustomPalette': terminalCustomPalette,
     'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
+    'fileSortMode': fileSortMode,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
     'webReplHost': webReplHost,
@@ -291,6 +296,7 @@ class SettingsPersistedData {
         kDefaultTerminalCustomPalette,
     useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
+    fileSortMode: json['fileSortMode'] as String? ?? 'name',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
     cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',
     webReplHost: json['webReplHost'] as String? ?? '',

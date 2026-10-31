@@ -139,6 +139,15 @@ StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
   (ref) => true,
 );
 
+/// Ordering of sibling entries in both file trees.
+///
+/// One setting for the local workspace and the board: the two panes sit side
+/// by side, and having them disagree about where a file is would defeat the
+/// point of the mirrored view.
+StateProvider<FileSortMode> fileSortModeProvider = StateProvider<FileSortMode>(
+  (ref) => FileSortMode.byName,
+);
+
 StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
 StateProvider<bool> ensureBoardFilesystemOnConnect = StateProvider<bool>(
   (ref) => false,

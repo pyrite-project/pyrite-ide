@@ -252,6 +252,8 @@ void _applyData(PersistedData data) {
   }
   container.read(uploadConfirmStyleProvider.notifier).state =
       data.uploadConfirmStyle;
+  container.read(fileSortModeProvider.notifier).state =
+      FileSortMode.fromJsonName(data.fileSortMode);
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
   container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
   container.read(webReplHost.notifier).state = data.webReplHost;
@@ -417,6 +419,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   terminalCustomPalette,
   useMaterialContextMenu,
   uploadConfirmStyleProvider,
+  fileSortModeProvider,
   confirmShortcutProvider,
   cancelShortcutProvider,
   webReplHost,

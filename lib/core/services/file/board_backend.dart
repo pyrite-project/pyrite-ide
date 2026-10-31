@@ -7,10 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/file/file_sort.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
@@ -1770,8 +1772,9 @@ class BoardTransfer {
 // ---------------------------------------------------------------------------
 
 Future<List<TreeNode<FileSystemItem>>> buildBoardFileListItems(
-  List<BoardFileEntry> entries,
-) async {
+  List<BoardFileEntry> entries, {
+  FileSortMode sortMode = FileSortMode.byName,
+}) async {
   final items = <TreeNode<FileSystemItem>>[];
   for (final entry in entries) {
     if (entry.isFolder) {
@@ -1786,6 +1789,15 @@ Future<List<TreeNode<FileSystemItem>>> buildBoardFileListItems(
       items.add(TreeNode(id: entry.path, data: FileItem(entry.name)));
     }
   }
+  items.sort(
+    (a, b) => compareFileTreeEntries(
+      firstIsFolder: a.data is FolderItem,
+      firstName: a.data.name,
+      secondIsFolder: b.data is FolderItem,
+      secondName: b.data.name,
+      mode: sortMode,
+    ),
+  );
   return items;
 }
 

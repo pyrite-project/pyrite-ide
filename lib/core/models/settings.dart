@@ -36,6 +36,29 @@ enum BasedPyrightTypeCheckingMode {
   }
 }
 
+/// How sibling entries in a file tree are ordered.
+///
+/// Folders always come first -- both trees are explorers, and mixing a folder
+/// into a run of files makes the list harder to scan than it makes the names
+/// alphabetical. The mode only decides how the files below them are ordered.
+enum FileSortMode {
+  /// Alphabetical by name, case-insensitively.
+  byName,
+
+  /// Grouped by extension, then alphabetical within each group.
+  byType;
+
+  String get jsonName => switch (this) {
+    FileSortMode.byName => 'name',
+    FileSortMode.byType => 'type',
+  };
+
+  static FileSortMode fromJsonName(String? value) => switch (value) {
+    'type' => FileSortMode.byType,
+    _ => FileSortMode.byName,
+  };
+}
+
 class MicroPythonStubsLayer {
   const MicroPythonStubsLayer({required this.provider, required this.profile});
 
