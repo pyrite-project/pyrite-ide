@@ -99,6 +99,26 @@ void main() {
     expect(retried.config, 'config');
   });
 
+  test('a creation that throws does not poison later acquires', () async {
+    var attempts = 0;
+    final pool = WorkspaceLspConfigPool<String>(
+      create: (_) async {
+        attempts++;
+        if (attempts == 1) throw StateError('server failed to start');
+        return 'config';
+      },
+    );
+
+    await expectLater(pool.acquire('/ws'), throwsStateError);
+
+    // The failed bootstrap must not stay in the in-flight map, or this acquire
+    // would rethrow the same error instead of starting a second attempt.
+    final retried = await pool.acquire('/ws');
+    expect(attempts, 2);
+    expect(retried.created, isTrue);
+    expect(retried.config, 'config');
+  });
+
   test('evicts a config that is no longer alive on the next acquire', () async {
     final evicted = <String>[];
     var creations = 0;

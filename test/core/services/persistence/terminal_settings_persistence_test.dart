@@ -103,6 +103,20 @@ void main() {
     expect(data.toJson()['lspShowInlayHints'], isFalse);
   });
 
+  test('run-in-script-directory setting round-trips, defaulting to off', () {
+    expect(
+      SettingsPersistedData.fromJson(const {}).deviceRunChdirToScriptDir,
+      isFalse,
+    );
+
+    final data = SettingsPersistedData.fromJson({
+      'deviceRunChdirToScriptDir': true,
+    });
+
+    expect(data.deviceRunChdirToScriptDir, isTrue);
+    expect(data.toJson()['deviceRunChdirToScriptDir'], isTrue);
+  });
+
   test('every LSP capability defaults to on', () {
     final data = SettingsPersistedData.fromJson(const {});
 

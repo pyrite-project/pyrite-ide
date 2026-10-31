@@ -2,8 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
 abstract class SdkTabCommands {
@@ -59,10 +62,19 @@ class SdkTab {
 
   // ── Handlers ──
 
-  /// Opens one of the calling plugin's contributed views as an editor tab.
+  /// Opens one of the calling plugin's contributed views.
   ///
-  /// The tab hosts the same render surface as the sidebar placement, so a view
-  /// gains no capability by being placed one way or the other. Responds with the
+  /// The optional `pane` payload field chooses the target:
+  ///
+  /// - `focused` -- the pane the user last interacted with (the default): the
+  ///   console when they were last working there, otherwise the editor area;
+  /// - `editor` -- the editor area's active group, the focused one, or the
+  ///   primary group when none has focus;
+  /// - `console` -- the docked console panel, as a tab on its strip;
+  /// - a group index (a JSON number, or its decimal string) -- that editor
+  ///   group, the same index `list` reports.
+  ///
+  /// Every placement hosts the same render surface and responds with the
   /// allocated `instanceId`: patches and route state are per instance, so the
   /// plugin must address this one rather than reusing a sidebar instance.
   void _handleCreateView(
@@ -95,23 +107,87 @@ class SdkTab {
         ? payload['renderer'].toString()
         : contribution.value.renderer;
     final title = payload['title']?.toString() ?? contribution.value.title;
-    final expansion = payload['expansion'] == true;
+    // `expansion: true` used to open the view in the expansion panel. The
+    // panel is gone; the flag is accepted and ignored, and `pane` chooses the
+    // target instead.
+    final target = viewPaneFromPayload(payload['pane']);
+    if (target == null) {
+      _respondError(envelope, respond, '未知窗格: ${payload['pane']}');
+      return;
+    }
 
-    final instance = ref
-        .read(tabbedViewControllerProvider.notifier)
-        .openPluginView(
+    final notifier = ref.read(tabbedViewControllerProvider.notifier);
+    switch (target) {
+      case FocusedPaneTarget():
+        // The focused pane: the console when the user was last working there,
+        // otherwise the editor area's active group -- which is where a tab
+        // opens by default.
+        final onConsole =
+            ref.read(focusedWorkspacePaneProvider) == WorkspacePane.console;
+        final instance = onConsole
+            ? notifier.openPluginViewInConsole(
+                pluginId: runManager.pluginId,
+                viewId: viewId,
+                renderer: renderer,
+                title: title,
+              )
+            : notifier.openPluginView(
+                pluginId: runManager.pluginId,
+                viewId: viewId,
+                renderer: renderer,
+                title: title,
+              );
+        _respondInstance(
+          envelope,
+          respond,
+          instance,
+          placement: onConsole ? 'console' : 'editor',
+        );
+      case EditorPaneTarget():
+        final instance = notifier.openPluginView(
           pluginId: runManager.pluginId,
           viewId: viewId,
           renderer: renderer,
           title: title,
-          expansion: expansion,
         );
+        _respondInstance(envelope, respond, instance);
+      case ConsolePaneTarget():
+        final instance = notifier.openPluginViewInConsole(
+          pluginId: runManager.pluginId,
+          viewId: viewId,
+          renderer: renderer,
+          title: title,
+        );
+        _respondInstance(envelope, respond, instance, placement: 'console');
+      case GroupPaneTarget(:var index):
+        final groups = allEditorControllers(ref.container);
+        if (index < 0 || index >= groups.length) {
+          _respondError(envelope, respond, '窗格不存在: $index');
+          return;
+        }
+        final instance = notifier.openPluginView(
+          pluginId: runManager.pluginId,
+          viewId: viewId,
+          renderer: renderer,
+          title: title,
+          targetGroup: groups[index],
+        );
+        _respondInstance(envelope, respond, instance);
+    }
+  }
+
+  void _respondInstance(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+    ViewInstanceId? instance, {
+    String placement = 'editor',
+  }) {
     if (instance == null) {
       _respondError(envelope, respond, '插件未运行，无法创建视图标签页');
       return;
     }
-
     final data = instance.toJson();
+    data['placement'] = placement;
     data['tabId'] = TabDataValue.pluginViewPath(
       pluginId: instance.pluginId,
       viewId: instance.viewId,
@@ -131,64 +207,78 @@ class SdkTab {
       _respondError(envelope, respond, '需要 tab_id');
       return;
     }
-    final mainTabs = ref.read(tabbedViewControllerProvider).tabs;
-    for (int i = 0; i < mainTabs.length; i++) {
-      final value = mainTabs[i].value;
-      if (value is! TabDataValue || value.tabId != tabId) continue;
-      final tab = mainTabs[i];
-      ref.read(tabbedViewControllerProvider).removeTab(i);
-      ref.read(tabbedViewControllerProvider.notifier).afterTabClose(i, tab);
-      _respondOk(envelope, respond, data: true);
+    final found = _findTab(tabId);
+    if (found == null) {
+      _respondError(envelope, respond, '未找到标签页: $tabId');
       return;
     }
-
-    final expansionTabs = ref.read(expansionViewController).tabs;
-    for (int i = 0; i < expansionTabs.length; i++) {
-      final value = expansionTabs[i].value;
-      if (value is! TabDataValue || value.tabId != tabId) continue;
-      ref.read(expansionViewController).removeTab(i);
-      ref.read(tabbedViewControllerProvider.notifier).closePluginView(value);
-      final next = TabbedViewController(
-        List<TabData>.from(ref.read(expansionViewController).tabs),
-      );
-      ref.read(expansionViewController.notifier).state = next;
-      _respondOk(envelope, respond, data: true);
+    // A pinned tab -- the welcome page -- can be neither closed nor moved,
+    // whatever asked for it.
+    if (!found.tab.closable) {
+      _respondError(envelope, respond, '该标签页不允许关闭: $tabId');
       return;
     }
-    _respondError(envelope, respond, '未找到标签页: $tabId');
+    found.group.removeTab(found.group.tabs.indexOf(found.tab));
+    ref.read(tabbedViewControllerProvider.notifier).afterTabClose(found.tab);
+    _respondOk(envelope, respond, data: true);
   }
 
+  /// Lists every editor tab, group by group in layout order.
+  ///
+  /// `group` is the index of the group holding the tab; `placement` is
+  /// `editor` for those, and console-hosted tabs follow with `placement`
+  /// `console` and no `group` -- they live outside the editor layout tree.
   void _handleList(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
     final result = <Map<String, dynamic>>[];
     var index = 0;
-    void append(Iterable<TabData> tabs, String placement) {
-      for (final tab in tabs) {
+    final groups = allEditorControllers(ref.container);
+    for (var group = 0; group < groups.length; group++) {
+      for (final tab in groups[group].tabs) {
         final value = tab.value;
         if (value is! TabDataValue) continue;
-        final item = <String, dynamic>{
+        result.add({
           'index': index++,
           'tabId': value.tabId,
           'resource': value.isPluginView ? null : value.filePath,
           'name': tab.text,
           'kind': value.type,
-          'placement': placement,
-        };
-        if (value.isPluginView) {
-          item['view'] = {
+          'placement': 'editor',
+          'group': group,
+          if (value.isPluginView)
+            'view': {
+              'pluginId': value.pluginId,
+              'viewId': value.viewId,
+              'instanceId': value.viewInstanceId,
+            },
+        });
+      }
+    }
+    // Console-hosted plugin views are not documents, but the plugin opened
+    // them through this API and has to be able to find and close them again.
+    for (final tab in ref
+        .container
+        .read(consoleTabbedViewControllerProvider)
+        .tabs) {
+      final value = tab.value;
+      if (value is! TabDataValue) continue;
+      result.add({
+        'index': index++,
+        'tabId': value.tabId,
+        'resource': null,
+        'name': tab.text,
+        'kind': value.type,
+        'placement': 'console',
+        if (value.isPluginView)
+          'view': {
             'pluginId': value.pluginId,
             'viewId': value.viewId,
             'instanceId': value.viewInstanceId,
-          };
-        }
-        result.add(item);
-      }
+          },
+      });
     }
-
-    append(ref.read(tabbedViewControllerProvider).tabs, 'editor');
-    append(ref.read(expansionViewController).tabs, 'expansion');
     _respondOk(envelope, respond, data: result);
   }
 
@@ -203,27 +293,41 @@ class SdkTab {
       _respondError(envelope, respond, '需要 tab_id');
       return;
     }
-    final controller = ref.read(tabbedViewControllerProvider.notifier);
-    final tabs = ref.read(tabbedViewControllerProvider).tabs;
-    for (int i = 0; i < tabs.length; i++) {
-      final value = tabs[i].value;
-      if (value is! TabDataValue || value.tabId != tabId) continue;
-      controller.onTabTap(tabs[i], i);
-      _respondOk(envelope, respond, data: true);
+    final found = _findTab(tabId);
+    if (found == null) {
+      _respondError(envelope, respond, '未找到标签页: $tabId');
       return;
     }
+    // The group holding the tab takes focus as well, or the shared editing
+    // commands would keep acting on a group the user is not looking at. A
+    // console-hosted tab brings its panel to the front instead.
+    final notifier = ref.read(tabbedViewControllerProvider.notifier);
+    if (!notifier.focusTab(found.tab)) notifier.focusConsoleTab(found.tab);
+    _respondOk(envelope, respond, data: true);
+  }
 
-    final expansion = ref.read(expansionViewController);
-    for (int i = 0; i < expansion.tabs.length; i++) {
-      final value = expansion.tabs[i].value;
-      if (value is! TabDataValue || value.tabId != tabId) continue;
-      final next = TabbedViewController(List<TabData>.from(expansion.tabs));
-      next.selectTab(expansion.tabs[i]);
-      ref.read(expansionViewController.notifier).state = next;
-      _respondOk(envelope, respond, data: true);
-      return;
+  /// The editor tab [tabId] names, and the group holding it.
+  ///
+  /// The editor area can be split, so every command has to look in every
+  /// group -- the same ones `list` reports -- and the docked console panel
+  /// holds plugin views of its own.
+  ({TabbedViewController group, TabData tab})? _findTab(String tabId) {
+    for (final group in allEditorControllers(ref.container)) {
+      for (final tab in group.tabs) {
+        final value = tab.value;
+        if (value is TabDataValue && value.tabId == tabId) {
+          return (group: group, tab: tab);
+        }
+      }
     }
-    _respondError(envelope, respond, '未找到标签页: $tabId');
+    final console = ref.container.read(consoleTabbedViewControllerProvider);
+    for (final tab in console.tabs) {
+      final value = tab.value;
+      if (value is TabDataValue && value.tabId == tabId) {
+        return (group: console, tab: tab);
+      }
+    }
+    return null;
   }
 }
 

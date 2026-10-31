@@ -60,6 +60,10 @@ opencode.json
 docs/
 
 .codex
+.codebuddy
+.workbuddy
+.workbuddy-ai
+.taste-skill
 
 # Platform build directories
 /windows/

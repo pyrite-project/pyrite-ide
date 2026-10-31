@@ -18,6 +18,7 @@ import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_actions.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_parser.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Opens [url] in the platform browser, falling back to the clipboard.
 Future<void> openTerminalUrlLink(
@@ -27,7 +28,11 @@ Future<void> openTerminalUrlLink(
 ) async {
   final result = await openTerminalUrl(url);
   if (!context.mounted) return;
-  final message = terminalLinkOpenMessage(result);
+  final message = terminalLinkOpenMessage(
+    result,
+    translate: (key, [replacements = const {}]) =>
+        translateInContextWithReplacements(context, key, replacements),
+  );
   if (message != null) {
     ref.read(ideMessageProvider.notifier).info(message);
   }
@@ -54,9 +59,10 @@ Future<void> revealTerminalFileLink(
     ref
         .read(ideMessageProvider.notifier)
         .warning(
-          I18nKey.terminalFileNotFound.fallback.replaceAll(
-            '{path}',
-            link.path ?? '',
+          translateInContextWithReplacements(
+            context,
+            I18nKey.terminalFileNotFound,
+            {'path': link.path ?? ''},
           ),
         );
     return;

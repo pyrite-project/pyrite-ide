@@ -64,6 +64,9 @@ class ZubanLspServerAdapter extends LspServerAdapter {
       ].join(Platform.isWindows ? ';' : ':'),
     };
   }
+
+  @override
+  bool get deliversStubsViaEnvironment => true;
 }
 
 /// Whether [name] is the Zuban binary, either bare or at the end of a path

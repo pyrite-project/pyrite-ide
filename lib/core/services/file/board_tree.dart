@@ -19,6 +19,11 @@ import 'package:super_tree/super_tree.dart';
 
 final boardFileListLoadingProvider = StateProvider<bool>((ref) => false);
 
+/// Whether the root listing has been fetched successfully for the current
+/// connection. An empty listing only means "the board has no files" once this
+/// is true; otherwise it just means nothing was loaded yet.
+final boardFileListLoadedProvider = StateProvider<bool>((ref) => false);
+
 class BoardFileItemsNotifier
     extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   final Ref ref;
@@ -31,6 +36,7 @@ class BoardFileItemsNotifier
       final entries = await ref.read(boardProvider).ops.getFileList();
       final items = await buildBoardFileListItems(entries);
       state = items;
+      ref.read(boardFileListLoadedProvider.notifier).state = true;
       await ref.read(boardFileTreeViewControllerProvider).replaceRoots(items);
       return items;
     } on DeviceNotReadyException catch (error) {
@@ -49,6 +55,7 @@ class BoardFileItemsNotifier
 
   void clear() {
     state = const [];
+    ref.read(boardFileListLoadedProvider.notifier).state = false;
     unawaited(
       ref.read(boardFileTreeViewControllerProvider).replaceRoots(state),
     );

@@ -118,6 +118,14 @@ final searchRunnerProvider = StateNotifierProvider<SearchRunner, SearchState>((
 /// options never janks the UI.
 const int _matchIsolateThreshold = 1 << 20; // 1 MiB
 
+/// Upper bound on the retained scan snapshot.
+///
+/// The cache exists so toggling an option never re-reads the disk, which is
+/// worth a lot on a normal project and nothing at all on a huge one: past this
+/// point the strings would pin hundreds of megabytes for the life of the
+/// process, so the scan is simply re-run instead.
+const int _maxCachedBytes = 64 << 20; // 64 MiB
+
 /// Isolate entry point: top-level so it captures nothing.
 List<FileSearchResult> _matchFilesEntry(
   (List<ScannedFile>, SearchOptions) args,
@@ -192,7 +200,13 @@ class SearchRunner extends StateNotifier<SearchState> {
           state = state.copyWith(status: SearchStatus.cancelled);
           return;
         }
-        _cache = (root: root, files: files);
+        var cachedBytes = 0;
+        for (final file in files) {
+          cachedBytes += file.content.length;
+        }
+        _cache = cachedBytes <= _maxCachedBytes
+            ? (root: root, files: files)
+            : null;
 
         final results = await _matchOffscreen(files, options);
         if (!mounted || token.cancelled) return;

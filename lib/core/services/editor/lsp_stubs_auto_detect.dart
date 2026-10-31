@@ -1,4 +1,19 @@
-import 'package:pyrite_ide/core/services/device/board_identity.dart';
+/// MicroPython chip family a stubs profile can describe.
+///
+/// Declared here because stubs matching is the only remaining consumer: the
+/// board-identification module that used to own it was removed.
+enum BoardFamily {
+  esp32,
+  esp32s2,
+  esp32s3,
+  esp32c3,
+  esp32c6,
+  esp8266,
+  rp2040,
+  stm32,
+  k230,
+  unknown,
+}
 
 /// Picks the MicroPython stubs layer that matches an identified board.
 ///

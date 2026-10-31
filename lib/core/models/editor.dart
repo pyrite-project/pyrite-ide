@@ -1,5 +1,17 @@
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
+import 'package:tabbed_view/tabbed_view.dart';
+
+/// The [TabDataValue] behind [tab], or null when the tab hosts something that
+/// is not a document.
+///
+/// Tabs travel between the editor strip and the console strip, so a selected
+/// tab no longer implies a document: reading [TabDataValue] members straight
+/// off `tab.value` throws for a console surface.
+TabDataValue? editorTabValueOf(TabData? tab) {
+  final value = tab?.value;
+  return value is TabDataValue ? value : null;
+}
 
 class TabDataValue {
   TabDataValue({

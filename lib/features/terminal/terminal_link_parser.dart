@@ -282,10 +282,12 @@ String? resolveTerminalLinkPath({
       homeDirectory ??
       Platform.environment['HOME'] ??
       Platform.environment['USERPROFILE'];
-  if (home != null &&
-      (trimmed == '~' ||
-          trimmed.startsWith('~/') ||
-          trimmed.startsWith(r'~\'))) {
+  if (home != null && trimmed == '~') {
+    // A bare `~` is the home directory itself; taking `substring(2)` of a
+    // one-character string is what used to throw here.
+    trimmed = home;
+  } else if (home != null &&
+      (trimmed.startsWith('~/') || trimmed.startsWith(r'~\'))) {
     trimmed = path.join(home, trimmed.substring(2));
   }
 

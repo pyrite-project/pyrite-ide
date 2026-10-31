@@ -96,8 +96,8 @@ class PluginPersistedData {
     }
 
     return PluginPersistedData(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
       version: json['version'] as String? ?? '0.0.0',
       author: json['author'] as String? ?? '',
       description: json['description'] as String? ?? '',
@@ -107,7 +107,7 @@ class PluginPersistedData {
       permissionGrantsInitialized: json['permissionGrantsInitialized'] == true,
       platforms:
           (json['platforms'] as List<dynamic>?)
-              ?.map((e) => e as String)
+              ?.whereType<String>()
               .toList() ??
           [],
       status: manifest == null
@@ -118,6 +118,28 @@ class PluginPersistedData {
       rawManifest: json['rawManifest'] as String? ?? '',
       manifestErrorCode: manifestErrorCode,
     );
+  }
+
+  /// Parses the persisted plugin list, dropping entries that cannot be used.
+  ///
+  /// The loader treats a thrown parse as "there is no metadata at all" and
+  /// rescans the plugins directory, which re-initializes every permission
+  /// grant. One corrupt entry is not worth that: it is skipped and the rest of
+  /// the list keeps its recorded status and grants.
+  static List<PluginPersistedData> listFromJson(Object? value) {
+    if (value is! List) return const [];
+    final entries = <PluginPersistedData>[];
+    for (final raw in value.whereType<Map<String, dynamic>>()) {
+      try {
+        final entry = PluginPersistedData.fromJson(raw);
+        // An entry with no id names no plugin; nothing can be restored from it.
+        if (entry.id.isEmpty) continue;
+        entries.add(entry);
+      } catch (_) {
+        continue;
+      }
+    }
+    return entries;
   }
 
   Plugin toPlugin() {
@@ -188,10 +210,7 @@ class PluginPersistence {
     final file = await _file;
     if (!await file.exists()) return null;
     final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-    final list = json['plugins'] as List<dynamic>? ?? [];
-    return list
-        .map((e) => PluginPersistedData.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return PluginPersistedData.listFromJson(json['plugins']);
   }
 
   Future<void> save(List<Plugin> plugins) async {

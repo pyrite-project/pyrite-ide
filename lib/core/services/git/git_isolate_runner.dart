@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// 跨 isolate 传递的失败描述。
 ///
@@ -90,6 +91,7 @@ Future<T> runGitJob<T>(
   required Duration timeout,
   required GitJobErrorDescriber describeError,
   String debugLabel = 'git job',
+  I18nTranslate? translate,
 }) async {
   final resultPort = ReceivePort();
   final errorPort = ReceivePort();
@@ -146,9 +148,10 @@ Future<T> runGitJob<T>(
       'runGitJob timeout label=$debugLabel timeout=${timeout.inMilliseconds}ms',
     );
     throw TimeoutException(
-      I18nKey.gitIsolateTimeout.fallback
-          .replaceAll('{seconds}', '${timeout.inSeconds}')
-          .replaceAll('{label}', debugLabel),
+      (translate ?? fallbackTranslate)(I18nKey.gitIsolateTimeout, {
+        'seconds': '${timeout.inSeconds}',
+        'label': debugLabel,
+      }),
       timeout,
     );
   } finally {

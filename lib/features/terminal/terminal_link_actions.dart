@@ -18,6 +18,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Restricts what a terminal print can hand to the OS.
 ///
@@ -93,14 +94,22 @@ Future<TerminalUrlOpenResult> openTerminalUrl(String url) async {
 ///
 /// Returning null for a successful open keeps the UI quiet in the common case;
 /// only the outcomes that need explaining produce a notification.
-String? terminalLinkOpenMessage(TerminalUrlOpenResult result) {
+String? terminalLinkOpenMessage(
+  TerminalUrlOpenResult result, {
+  I18nTranslate? translate,
+}) {
+  final tr = translate ?? fallbackTranslate;
   return switch (result) {
     TerminalUrlOpenResult.opened => null,
-    TerminalUrlOpenResult.copied => I18nKey.terminalUrlCopied.fallback,
-    TerminalUrlOpenResult.rejected => I18nKey.terminalUrlRejected.fallback,
-    TerminalUrlOpenResult.failed => I18nKey.terminalUrlOpenFailed.fallback,
+    TerminalUrlOpenResult.copied => tr(I18nKey.terminalUrlCopied),
+    TerminalUrlOpenResult.rejected => tr(I18nKey.terminalUrlRejected),
+    TerminalUrlOpenResult.failed => tr(I18nKey.terminalUrlOpenFailed),
   };
 }
 
 /// Local `unawaited` so this file does not need `dart:async` just for it.
-void unawaited(Future<void> future) {}
+///
+/// [Future.ignore] is what makes this safe: a bare empty body would leave any
+/// error on the future unhandled, which surfaces as an uncaught asynchronous
+/// exception with no reference back to the caller.
+void unawaited(Future<void> future) => future.ignore();

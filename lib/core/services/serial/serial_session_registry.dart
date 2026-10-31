@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flserial/flserial.dart';
-import 'package:pyrite_ide/core/services/device/board_identity.dart';
-import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 
 /// One open serial port.
 ///
@@ -19,7 +17,6 @@ class SerialSession {
     required this.serial,
     required this.events,
     required this.baudRate,
-    this.identity,
   });
 
   /// Stable identity for this open handle. A port that is closed and reopened
@@ -31,22 +28,11 @@ class SerialSession {
   final StreamSubscription<SerialEvent> events;
   final int baudRate;
 
-  /// Best-effort identification from the port's USB ids, when the platform
-  /// exposes them.
-  final BoardIdentity? identity;
-
   /// When the handle opened, used to order the session list deterministically.
   final DateTime openedAt = DateTime.now();
 
   /// Whether this session is the one the rest of the IDE is talking to.
   bool isActive = false;
-
-  /// Reports the reset strategy this session's board responds to.
-  ///
-  /// Falls back to "no host-side reset" when the port could not be identified,
-  /// which matches the previous default for unknown boards.
-  HardwareResetStrategy get resetStrategy =>
-      identity?.resetStrategy.toHardware() ?? HardwareResetStrategy.disabled;
 
   Future<void> dispose() async {
     await events.cancel();
@@ -58,16 +44,6 @@ class SerialSession {
     }
     await serial.dispose();
   }
-}
-
-extension on BoardResetStrategy {
-  HardwareResetStrategy toHardware() => switch (this) {
-    BoardResetStrategy.none => HardwareResetStrategy.disabled,
-    BoardResetStrategy.dtrPulse => HardwareResetStrategy.dtrPulse,
-    BoardResetStrategy.rtsPulse => HardwareResetStrategy.rtsPulse,
-    BoardResetStrategy.esp32 => HardwareResetStrategy.esp32,
-    BoardResetStrategy.reopenPort => HardwareResetStrategy.esp32,
-  };
 }
 
 /// Every serial port the IDE currently holds open.
@@ -116,7 +92,6 @@ class SerialSessionRegistry extends ChangeNotifier {
     required FlSerial serial,
     required StreamSubscription<SerialEvent> events,
     required int baudRate,
-    BoardIdentity? identity,
   }) {
     final session = SerialSession(
       id: 'serial-session-${_nextId++}',
@@ -124,7 +99,6 @@ class SerialSessionRegistry extends ChangeNotifier {
       serial: serial,
       events: events,
       baudRate: baudRate,
-      identity: identity,
     );
     return session;
   }

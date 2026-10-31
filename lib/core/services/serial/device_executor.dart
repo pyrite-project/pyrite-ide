@@ -164,6 +164,15 @@ class DeviceSession {
   static final _eot = Uint8List.fromList([0x04]); // CTRL-D
   static final _rawReplBanner = utf8.encode('raw REPL; CTRL-B to exit');
 
+  /// Maximum Base64 characters sent as one stdin line during raw-input
+  /// uploads. 256 chars (+ newline) decode to at most 192 payload bytes —
+  /// small enough for the device to buffer while the VM is briefly stalled.
+  static const int _stdinLineChars = 256;
+
+  /// Pause between the stdin lines of one chunk so the device can drain each
+  /// line before the next one arrives.
+  static const Duration _stdinLineGap = Duration(milliseconds: 1);
+
   // Paste-mode markers (wraps user code to extract clean output).
   static const _startMarker = '__PYRITE_NORMAL_REPL_START__';
   static const _endMarker = '__PYRITE_NORMAL_REPL_END__';
@@ -199,7 +208,9 @@ class DeviceSession {
         queue.clear();
         try {
           await queue.readUntil(_prompt3, t);
-        } catch (_) {}
+        } catch (error) {
+          debugPrint('[repl] waiting for the paste prompt failed: $error');
+        }
         break;
       case ReplMode.rawRepl:
         queue.clear();
@@ -209,6 +220,27 @@ class DeviceSession {
         break;
     }
     debugPrint('[repl] exitRepl done');
+  }
+
+  /// Performs a MicroPython soft reset from the friendly prompt: CTRL-D on an
+  /// empty input line reboots the VM, dropping `sys.modules` and any task
+  /// state left by earlier runs so the next run imports freshly uploaded
+  /// files instead of modules cached by a previous import. The device
+  /// answers with the "MPY: soft reboot" banner and a fresh friendly prompt.
+  Future<void> softReset({Duration? timeout}) async {
+    final t = timeout ?? const Duration(seconds: 5);
+    debugPrint('[repl] softReset');
+    queue.clear();
+    _write([0x02]); // CTRL-B: make sure we are at the friendly prompt.
+    _write([0x04]); // CTRL-D on an empty line: soft reset.
+    try {
+      await queue.readUntil(utf8.encode('MPY: soft reboot'), t);
+    } on TimeoutException {
+      // Some builds reset quietly; the prompt below still confirms the reset.
+      debugPrint('[repl] soft reboot banner missing; waiting for prompt only');
+    }
+    await queue.readUntil(_prompt3, t);
+    debugPrint('[repl] softReset done');
   }
 
   // -- Public: execute ------------------------------------------------------
@@ -287,6 +319,13 @@ class DeviceSession {
   ///   3. Send Base64 lines for [chunkSize] byte chunks, waiting for '+' ACK every
   ///      [ackEvery] chunks (sparse ACK flow control)
   ///   4. Wait for [doneMarker] and consume the raw REPL trailer
+  ///
+  /// Each chunk travels as several short Base64 lines instead of one long
+  /// line. A 2KB chunk encoded as a single ~2.7KB line overruns the device's
+  /// USB CDC receive buffer whenever the VM stalls mid-line (GC, flash I/O);
+  /// the driver silently drops the excess and the device fails decoding with
+  /// "incorrect padding". Short lines with a small gap between them keep the
+  /// receive buffer out of the red zone; the device still ACKs once per chunk.
   Future<void> executeWithRawInput(
     String code,
     Uint8List data, {
@@ -300,7 +339,8 @@ class DeviceSession {
   }) async {
     debugPrint(
       '[raw-input] START raw-repl upload, code=${code.length}B data=${data.length}B '
-      'chunk=$chunkSize ackEvery=$ackEvery timeout=${completionTimeout.inSeconds}s',
+      'chunk=$chunkSize ackEvery=$ackEvery line=$_stdinLineChars '
+      'timeout=${completionTimeout.inSeconds}s',
     );
 
     // Phase 1: Send code + CTRL-D to execute the device script.
@@ -326,14 +366,34 @@ class DeviceSession {
         throw const SerialCancelledException();
       }
       final end = math.min(sent + chunkSize, data.length);
-      _write(utf8.encode('${base64Encode(data.sublist(sent, end))}\n'));
+      final encoded = base64Encode(data.sublist(sent, end));
+      for (var off = 0; off < encoded.length; off += _stdinLineChars) {
+        final stop = math.min(off + _stdinLineChars, encoded.length);
+        _write(utf8.encode('${encoded.substring(off, stop)}\n'));
+        if (stop < encoded.length) {
+          await Future<void>.delayed(_stdinLineGap);
+        }
+      }
       sent = end;
       ackCount++;
       if (ackEvery > 0 && ackCount % ackEvery == 0) {
         debugPrint(
           '[raw-input] waiting ACK #$ackCount at $sent/${data.length}',
         );
-        final ack = await _readUntilPattern(0x2B, completionTimeout);
+        final ack = await _readUntilPattern(
+          0x2B,
+          completionTimeout,
+          // The device reports write failures as a DEV-LOG + PYRITE_WRITE_ERR
+          // line instead of a '+'. Surfacing the line immediately reports the
+          // real cause (and lets the caller retry) instead of burning the
+          // whole completion timeout on a missing ACK.
+          onError: (line) {
+            final index = line.indexOf('PYRITE_WRITE_ERR:');
+            if (index >= 0) {
+              throw DeviceSessionException(line.substring(index).trim());
+            }
+          },
+        );
         if (!ack) {
           throw DeviceSessionException(
             'Device ACK timeout during data transfer',
@@ -405,9 +465,10 @@ class DeviceSession {
   ///
   /// Returns `true` if found, `false` on timeout. Cancellation is propagated
   /// as [SerialCancelledException] so callers never retry an interrupted job.
-  /// [onError] is called periodically with accumulated text (for error
-  /// detection before the target is found). DEV-LOG lines are logged
-  /// automatically.
+  /// [onError] is called with accumulated text for `String` patterns and with
+  /// each completed line for `int` patterns (for error detection before the
+  /// target is found; throwing from it aborts the wait). DEV-LOG lines are
+  /// logged automatically.
   Future<bool> _readUntilPattern(
     Object pattern,
     Duration timeout, {
@@ -425,8 +486,10 @@ class DeviceSession {
           // Log DEV-LOG lines from non-target bytes.
           final ch = String.fromCharCodes(byte);
           if (ch == '\n') {
-            _logDevText(buf.toString());
+            final line = buf.toString();
+            _logDevText(line);
             buf.clear();
+            if (onError != null) onError(line);
           } else if (ch != '\r') {
             buf.write(ch);
           }
@@ -458,7 +521,9 @@ class DeviceSession {
       await _waitForNormalPromptOrPasteReady(timeout);
     } on SerialCancelledException {
       rethrow;
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('[repl] waiting for the normal prompt failed: $error');
+    }
     if (queue.indexOf(_pastePrompt) < 0) {
       queue.clear();
       _write([0x05]); // Ctrl-E
@@ -983,6 +1048,7 @@ Future<DeviceSession> _initSessionAndEnterRepl(
   int interruptCount = 12,
   int interruptIntervalMs = 30,
   Duration settleDelay = const Duration(milliseconds: 150),
+  bool softReset = false,
 }) async {
   final session = DeviceSession(queue: queue, writeBytes: writeBytes);
   for (var i = 0; i < interruptCount; i++) {
@@ -990,6 +1056,9 @@ Future<DeviceSession> _initSessionAndEnterRepl(
     await Future<void>.delayed(Duration(milliseconds: interruptIntervalMs));
   }
   await Future<void>.delayed(settleDelay);
+  if (softReset) {
+    await session.softReset();
+  }
   await session.enterRepl(mode);
   return session;
 }
@@ -1040,6 +1109,7 @@ Future<T> _runTransaction<T>(
   int interruptCount = 12,
   int interruptIntervalMs = 30,
   Duration settleDelay = const Duration(milliseconds: 150),
+  bool softReset = false,
   Duration exitSettleDelay = const Duration(milliseconds: 300),
   String runningOperationId = 'code-exec',
 }) async {
@@ -1120,6 +1190,7 @@ Future<T> _runTransaction<T>(
           interruptCount: interruptCount,
           interruptIntervalMs: interruptIntervalMs,
           settleDelay: settleDelay,
+          softReset: softReset,
         );
         debugPrint('[txn] REPL entered OK');
       } catch (e) {
@@ -1129,7 +1200,12 @@ Future<T> _runTransaction<T>(
             !queue.isCancelled) {
           debugPrint('[txn] retrying REPL with conservative handshake');
           queue.clear();
-          session = await _initSessionAndEnterRepl(queue, writeBytes, mode);
+          session = await _initSessionAndEnterRepl(
+            queue,
+            writeBytes,
+            mode,
+            softReset: softReset,
+          );
           debugPrint('[txn] REPL entered after conservative retry');
         } else {
           rethrow;
@@ -1379,26 +1455,37 @@ Future<T> runPythonInReplSession<T>(
 
 /// Runs a Python script while forwarding stdout and stderr as the device
 /// emits them.
+///
+/// When [workingDirectory] is set, the device's working directory is switched
+/// there first — within the same transaction, so a preceding soft reset (which
+/// restores the firmware default directory) cannot undo it.
 Future<void> runPythonOnDeviceStreaming(
   WidgetRef ref,
   String python, {
   Duration startupTimeout = _defaultTimeout,
   ReplMode? forceMode,
   String runningOperationId = 'code-exec',
+  bool softReset = false,
+  String? workingDirectory,
   required void Function() onStarted,
   required void Function(Uint8List data) onStdout,
   required void Function(Uint8List data) onStderr,
 }) {
   return _runTransaction(
     ref.read,
-    (session, mode) => session.executeStreaming(
-      python,
-      timeout: startupTimeout,
-      mode: mode,
-      onStarted: onStarted,
-      onStdout: onStdout,
-      onStderr: onStderr,
-    ),
+    (session, mode) async {
+      if (workingDirectory != null) {
+        await setDeviceWorkingDirectory(session, workingDirectory, mode: mode);
+      }
+      await session.executeStreaming(
+        python,
+        timeout: startupTimeout,
+        mode: mode,
+        onStarted: onStarted,
+        onStdout: onStdout,
+        onStderr: onStderr,
+      );
+    },
     onSetup: (queue) {
       final sub = ref.listenManual(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
@@ -1406,6 +1493,7 @@ Future<void> runPythonOnDeviceStreaming(
       return () => sub.close();
     },
     forceMode: forceMode,
+    softReset: softReset,
     runningOperationId: runningOperationId,
   );
 }
@@ -1513,4 +1601,38 @@ Future<Uint8List> runPythonReadDeviceFile(
 
 String _boardFileExpr(String path) {
   return "'${path.replaceAll("'", "\\'")}'";
+}
+
+/// Marker printed after a successful working-directory switch, so a silent
+/// success is distinguishable from the traceback a failed one prints.
+const String kDeviceChdirOkMarker = '__PYRITE_CHDIR_OK__';
+
+/// Switches the device's working directory to [directory] inside the current
+/// transaction.
+///
+/// The switch must happen this way — as its own command before the script —
+/// rather than as a preamble on the script itself: prepending lines would
+/// shift every traceback line number, and the marker keeps a failed switch
+/// (missing directory, firmware without `os.chdir`) aborting the run with the
+/// real error instead of quietly running from the wrong directory.
+Future<void> setDeviceWorkingDirectory(
+  DeviceSession session,
+  String directory, {
+  required ReplMode mode,
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final output = await session.executeCommand(
+    'import os\n'
+    'os.chdir(${_boardFileExpr(directory)})\n'
+    "print('$kDeviceChdirOkMarker')\n",
+    timeout: timeout,
+    mode: mode,
+  );
+  if (!output.contains(kDeviceChdirOkMarker)) {
+    throw DeviceSessionException(
+      output.trim().isEmpty
+          ? "Switching the device working directory to '$directory' failed."
+          : output.trim(),
+    );
+  }
 }

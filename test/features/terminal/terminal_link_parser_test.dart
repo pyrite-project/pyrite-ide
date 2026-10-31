@@ -198,6 +198,18 @@ void main() {
       expect(resolved, '/home/me/notes.txt');
     });
 
+    test('expands a bare home marker to the home directory', () {
+      // A shell prints `~` on its own for a path inside the home directory;
+      // the old code sliced two characters off a one-character string.
+      final resolved = resolveTerminalLinkPath(
+        reference: '~',
+        homeDirectory: '/home/me',
+        exists: (candidate) => candidate == '/home/me',
+      );
+
+      expect(resolved, '/home/me');
+    });
+
     test('returns null when nothing exists', () {
       expect(
         resolveTerminalLinkPath(

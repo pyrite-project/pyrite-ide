@@ -522,13 +522,13 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
         .firstOrNull;
     if (container == null) {
       return Scaffold(
-        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+        body: Center(child: UseText(I18nKey.pluginsViewUnavailable)),
       );
     }
     final plugin = ref.watch(pluginManagerProvider)[widget.pluginId];
     if (plugin == null) {
       return Scaffold(
-        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+        body: Center(child: UseText(I18nKey.pluginsViewUnavailable)),
       );
     }
     final views = ref
@@ -549,7 +549,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     final targetView = _resolvedViewId(views);
     if (targetView == null) {
       return Scaffold(
-        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+        body: Center(child: UseText(I18nKey.pluginsViewUnavailable)),
       );
     }
     if (_activeViewId != targetView) {
@@ -594,7 +594,7 @@ class _PluginViewHostState extends ConsumerState<PluginViewHost> {
     final view = views.where((entry) => entry.id == targetView).firstOrNull;
     if (view == null) {
       return Scaffold(
-        body: Center(child: Text(I18nKey.pluginsViewUnavailable.fallback)),
+        body: Center(child: UseText(I18nKey.pluginsViewUnavailable)),
       );
     }
 

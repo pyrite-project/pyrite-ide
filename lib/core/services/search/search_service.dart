@@ -160,7 +160,10 @@ Future<List<ScannedFile>> scanProject(
 }) async {
   final filePaths = <String>[];
 
-  await for (final entity in root.list(recursive: true)) {
+  // `followLinks: false` because a recursive walk does not detect cycles: one
+  // symlink pointing back at an ancestor would expand forever and leave the
+  // search stuck in `running` with no way out but a restart.
+  await for (final entity in root.list(recursive: true, followLinks: false)) {
     if (cancel?.cancelled ?? false) return const [];
     if (entity is! File) continue;
     final normalized = path.normalize(entity.path);
@@ -268,7 +271,13 @@ List<SearchMatch> _collectLineMatches(String content, RegExp regex) {
     if (match.start == match.end) continue;
     final line = _lineIndexFor(lineStarts, match.start);
     final lineStart = lineStarts[line];
-    final length = lineText(line).length;
+    // Measured arithmetically rather than via `lineText(line).length`: the
+    // substring would be allocated once per match just to be discarded, and
+    // the length is exactly the span between the two offsets.
+    final lineEnd = line + 1 < lineStarts.length
+        ? lineStarts[line + 1] - 1
+        : content.length;
+    final length = lineEnd - lineStart;
     final start = match.start - lineStart;
     var end = match.end - lineStart;
     // A match may span lines (e.g. [\s\S]); display clamps it to its first
@@ -434,20 +443,33 @@ Future<bool> replaceOneOccurrence(
 /// capture groups (Dart's [String.replaceAll] does not perform this expansion
 /// for a [RegExp]). In plain-text mode the replacement is verbatim, so `$1`
 /// is inserted literally.
+///
+/// A `$` followed by digits that do not name a capture group is kept as
+/// written. `int.tryParse` rather than `int.parse` matters here: the digits
+/// come straight from the user's replacement text, and `$12345678901234567890`
+/// overflows a 64-bit int, so parsing it would throw and abort the whole
+/// replace instead of inserting the literal text the user typed.
 String _expandReplacement(Match match, SearchOptions options) {
   if (!options.isRegExp) return options.replaceText;
   return options.replaceText.replaceAllMapped(RegExp(r'\$(\d+)'), (group) {
-    final index = int.parse(group.group(1)!);
+    final reference = group.group(0)!;
+    final index = int.tryParse(group.group(1)!);
+    if (index == null) return reference;
     if (index == 0) return match.group(0) ?? '';
+    if (index > match.groupCount) return reference;
     return match.group(index) ?? '';
   });
 }
 
 /// Replaces every match of [regex] in [content] with [options.replaceText].
+///
+/// Both modes go through [regex] rather than `String.replaceAll(pattern, …)`:
+/// the pattern the user saw in the results list was produced by
+/// [SearchOptions.toRegExp], which folds in case-insensitivity and the
+/// whole-word `\b` wrapping. Replacing with the raw literal would edit
+/// substrings that were never shown as matches — `cat` would also rewrite
+/// `concat` — and would silently miss case-differing hits.
 String _replaceContent(String content, RegExp regex, SearchOptions options) {
-  if (!options.isRegExp) {
-    return content.replaceAll(options.pattern, options.replaceText);
-  }
   return content.replaceAllMapped(
     regex,
     (match) => _expandReplacement(match, options),

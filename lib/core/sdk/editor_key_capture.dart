@@ -131,6 +131,13 @@ class EditorKeyCaptureRegistry extends ChangeNotifier {
   /// True when the editor must hand [event] to a plugin instead of acting.
   bool isCaptured(KeyEvent event) => ownerOf(editorKeyEventName(event)) != null;
 
+  /// Keys whose forward is still waiting for the plugin's reply.
+  ///
+  /// A held key repeats roughly every 30 ms while the reply window is 300 ms,
+  /// so without this a single hold would queue about ten overlapping requests
+  /// per key and let the plugin answer them out of order.
+  final Set<String> _inFlight = <String>{};
+
   /// Called by the editor for every key press, before the engine acts on it.
   ///
   /// Returns true when the press was forwarded to a plugin. Captured keys are
@@ -141,7 +148,13 @@ class EditorKeyCaptureRegistry extends ChangeNotifier {
     if (name.isEmpty) return false;
     final owner = ownerOf(name);
     if (owner == null) return false;
+    // The release carries no new intent — the press was already forwarded —
+    // but it must still be swallowed or the editor would act on half a
+    // keystroke the plugin has taken over.
+    if (event is KeyUpEvent) return true;
+    if (_inFlight.contains(name)) return true;
     final keyboard = HardwareKeyboard.instance;
+    _inFlight.add(name);
     unawaited(
       _forward(
         owner,
@@ -151,7 +164,7 @@ class EditorKeyCaptureRegistry extends ChangeNotifier {
         control: keyboard.isControlPressed,
         alt: keyboard.isAltPressed,
         meta: keyboard.isMetaPressed,
-      ),
+      ).whenComplete(() => _inFlight.remove(name)),
     );
     return true;
   }

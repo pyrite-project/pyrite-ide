@@ -1,6 +1,7 @@
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
 import 'package:flutter/material.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_chrome.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/draggable_data.dart';
@@ -556,16 +557,25 @@ class NativeTabsAreaCorner extends StatelessWidget {
       TabsAreaButtonsWidget(provider: provider, hiddenTabs: hiddenTabs),
     ];
 
-    if (provider.trailing != null) {
-      Widget trailing = provider.trailing!;
-      if (tabsAreaTheme.position.isVertical &&
-          tabsAreaTheme.sideTabsLayout == SideTabsLayout.rotated) {
-        trailing = RotatedBox(
-          quarterTurns: tabsAreaTheme.position == TabBarPosition.left ? -1 : 1,
-          child: trailing,
-        );
-      }
-      children.add(trailing);
+    // The selected tab's own actions come first, the strip's after them: a
+    // console surface carries its buttons into whichever strip hosts it.
+    final selected = provider.controller.selectedTab?.value;
+    for (final trailing in [
+      if (selected is TabChrome) selected.buildTabActions(context),
+      provider.trailing,
+    ]) {
+      if (trailing == null) continue;
+      children.add(
+        tabsAreaTheme.position.isVertical &&
+                tabsAreaTheme.sideTabsLayout == SideTabsLayout.rotated
+            ? RotatedBox(
+                quarterTurns: tabsAreaTheme.position == TabBarPosition.left
+                    ? -1
+                    : 1,
+                child: trailing,
+              )
+            : trailing,
+      );
     }
 
     final Widget cornerContent;

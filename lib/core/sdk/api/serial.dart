@@ -86,8 +86,6 @@ class SdkSerial {
             'port': session.portPath,
             'baud_rate': session.baudRate,
             'is_active': session.isActive,
-            'board_family': session.identity?.family.name,
-            'board_label': session.identity?.label,
           },
       ],
     );

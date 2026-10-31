@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_selector/file_selector.dart';
@@ -126,7 +128,10 @@ class LspSettings extends ConsumerWidget {
               title: const UseText(I18nKey.settingsLspVirtualEnvironment),
               subtitle: Text(
                 ref.watch(lspVirtualEnvironment).isEmpty
-                    ? I18nKey.settingsLspVirtualEnvironmentSubtitle.fallback
+                    ? translateForWidget(
+                        ref,
+                        I18nKey.settingsLspVirtualEnvironmentSubtitle,
+                      )
                     : ref.watch(lspVirtualEnvironment),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -189,6 +194,7 @@ class LspSettings extends ConsumerWidget {
               value: ref.watch(microPythonStubsEnabled),
               onChanged: (value) {
                 ref.read(microPythonStubsEnabled.notifier).state = value;
+                _showStubsRestartDialogIfNeeded(context, ref);
               },
             ),
 
@@ -207,7 +213,9 @@ class LspSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.layers_outlined),
               title: const Text("Stubs Layers"),
-              subtitle: Text(_layersSummary(ref.watch(microPythonStubsLayers))),
+              subtitle: Text(
+                _layersSummary(ref.watch(microPythonStubsLayers), ref),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showLayersDialog(context, ref),
             ),
@@ -216,7 +224,7 @@ class LspSettings extends ConsumerWidget {
               leading: const Icon(Icons.folder_outlined),
               title: const UseText(I18nKey.settingsLspExtraPaths),
               subtitle: Text(
-                _pathsSummary(ref.watch(microPythonStubsExtraPaths)),
+                _pathsSummary(ref.watch(microPythonStubsExtraPaths), ref),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showExtraPathsDialog(context, ref),
@@ -309,20 +317,25 @@ class LspSettings extends ConsumerWidget {
     );
   }
 
-  String _layersSummary(List<MicroPythonStubsLayer> layers) {
-    if (layers.isEmpty) return I18nKey.settingsLspNotConfigured.fallback;
+  String _layersSummary(List<MicroPythonStubsLayer> layers, WidgetRef ref) {
+    if (layers.isEmpty) {
+      return translateForWidget(ref, I18nKey.settingsLspNotConfigured);
+    }
     return layers
         .map((layer) => '${layer.provider}/${layer.profile}')
         .join(', ');
   }
 
-  String _pathsSummary(List<String> paths) {
-    if (paths.isEmpty) return I18nKey.settingsLspNotConfigured.fallback;
+  String _pathsSummary(List<String> paths, WidgetRef ref) {
+    if (paths.isEmpty) {
+      return translateForWidget(ref, I18nKey.settingsLspNotConfigured);
+    }
     return paths.length == 1
         ? paths.first
-        : I18nKey.settingsLspPathCount.fallback.replaceAll(
-            '{count}',
-            paths.length.toString(),
+        : translateForWidgetWithReplacements(
+            ref,
+            I18nKey.settingsLspPathCount,
+            {'count': paths.length.toString()},
           );
   }
 
@@ -373,6 +386,12 @@ class LspSettings extends ConsumerWidget {
                           onDelete: () => setDialogState(() {
                             layers.removeAt(index);
                           }),
+                          translate: (key, [replacements = const {}]) =>
+                              translateInContextWithReplacements(
+                                context,
+                                key,
+                                replacements,
+                              ),
                         ),
                       ),
                     ),
@@ -418,6 +437,7 @@ class LspSettings extends ConsumerWidget {
                     context,
                     translateForWidget(ref, I18nKey.settingsLspLayersUpdated),
                   );
+                  _showStubsRestartDialogIfNeeded(context, ref);
                 },
                 child: const UseText(I18nKey.commonSave),
               ),
@@ -508,6 +528,27 @@ class LspSettings extends ConsumerWidget {
     );
   }
 
+  /// Stubs reach servers like Zuban only through the spawned process's
+  /// environment, so settings saved while one is running cannot reach it.
+  void _showStubsRestartDialogIfNeeded(BuildContext context, WidgetRef ref) {
+    if (!anyOpenLspNeedsRestartForStubs(ref.read)) return;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspStubsRestartTitle),
+          content: const UseText(I18nKey.settingsLspStubsRestartContent),
+          actions: [
+            TextButton(
+              onPressed: () => dialogContext.pop(),
+              child: const UseText(I18nKey.commonConfirm),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showExtraPathsDialog(BuildContext context, WidgetRef ref) async {
     final initial = ref.read(microPythonStubsExtraPaths).join('\n');
     await showDialog(
@@ -541,6 +582,7 @@ class LspSettings extends ConsumerWidget {
                     .where((line) => line.isNotEmpty)
                     .toList();
                 context.pop();
+                _showStubsRestartDialogIfNeeded(context, ref);
               },
               child: const UseText(I18nKey.commonSave),
             ),
@@ -748,6 +790,7 @@ class _StubsLayerTile extends StatelessWidget {
     required this.onMoveUp,
     required this.onMoveDown,
     required this.onDelete,
+    required this.translate,
   });
 
   final MicroPythonStubsLayer layer;
@@ -757,15 +800,15 @@ class _StubsLayerTile extends StatelessWidget {
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
   final VoidCallback onDelete;
+  final I18nTranslate translate;
 
   @override
   Widget build(BuildContext context) {
     final title = profile?.label ?? '${layer.provider}/${layer.profile}';
     final subtitle = profile == null
-        ? I18nKey.settingsLspMissingProfile.fallback.replaceAll(
-            '{profile}',
-            '${layer.provider}/${layer.profile}',
-          )
+        ? translate(I18nKey.settingsLspMissingProfile, {
+            'profile': '${layer.provider}/${layer.profile}',
+          })
         : '${layer.provider}/${layer.profile}\n${profile!.path}';
     return ListTile(
       leading: Icon(
@@ -778,17 +821,17 @@ class _StubsLayerTile extends StatelessWidget {
         spacing: 4,
         children: [
           IconButton(
-            tooltip: I18nKey.commonMoveUp.fallback,
+            tooltip: translate(I18nKey.commonMoveUp),
             onPressed: canMoveUp ? onMoveUp : null,
             icon: const Icon(Icons.keyboard_arrow_up),
           ),
           IconButton(
-            tooltip: I18nKey.commonMoveDown.fallback,
+            tooltip: translate(I18nKey.commonMoveDown),
             onPressed: canMoveDown ? onMoveDown : null,
             icon: const Icon(Icons.keyboard_arrow_down),
           ),
           IconButton(
-            tooltip: I18nKey.gitDelete.fallback,
+            tooltip: translate(I18nKey.gitDelete),
             onPressed: onDelete,
             icon: const Icon(Icons.delete_outline),
           ),

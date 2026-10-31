@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -13,9 +14,9 @@ const Map<String, String> editorTextFonts = {
   "custom": "custom",
 };
 
-String getFontDisplayName(String name) {
+String getFontDisplayName(String name, {I18nTranslate? translate}) {
   if (name == "custom") {
-    return I18nKey.settingsFontCustom.fallback;
+    return (translate ?? fallbackTranslate)(I18nKey.settingsFontCustom);
   }
   return name;
 }
@@ -142,6 +143,16 @@ StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
 StateProvider<bool> ensureBoardFilesystemOnConnect = StateProvider<bool>(
   (ref) => false,
 );
+
+/// Run a device file from its own directory.
+///
+/// When on, a run first switches the device's working directory to the
+/// directory holding the file being run, so the script's relative imports and
+/// data paths resolve without the script knowing where the IDE launches it
+/// from. Off keeps the firmware default (the device root after a soft reset).
+StateProvider<bool> deviceRunChdirToScriptDir = StateProvider<bool>(
+  (ref) => false,
+);
 StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
 StateProvider<bool> serialAutoReconnect = StateProvider<bool>((ref) => false);
 StateProvider<String> terminalFontFamily = StateProvider<String>(
@@ -154,22 +165,6 @@ StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
 StateProvider<TerminalAppearance> terminalAppearance =
     StateProvider<TerminalAppearance>((ref) => TerminalAppearance.dark);
 
-/// Desktop shell profile.
-///
-/// Empty means "not configured": the provider falls back to $SHELL /
-/// powershell.exe, so an untouched setting can never produce a broken launch
-/// line. Stored as one string rather than a list because the settings dialog
-/// edits a single text field and the split rules live next to the launch code
-/// (`features/terminal/shell_profile.dart`).
-StateProvider<String> terminalShellExecutable = StateProvider<String>(
-  (ref) => '',
-);
-StateProvider<String> terminalShellArguments = StateProvider<String>(
-  (ref) => '',
-);
-StateProvider<String> terminalWorkingDirectory = StateProvider<String>(
-  (ref) => '',
-);
 StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
   (ref) => false,
 );
@@ -191,17 +186,6 @@ const Map<String, String> uploadConfirmStyles = {
   "toolbar": "toolbar",
   "dialog": "dialog",
 };
-
-String getUploadConfirmStyleDisplayName(String key) {
-  switch (key) {
-    case "toolbar":
-      return I18nKey.settingsUploadConfirmToolbar.fallback;
-    case "dialog":
-      return I18nKey.settingsUploadConfirmDialog.fallback;
-    default:
-      return key;
-  }
-}
 
 StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
   (ref) => "toolbar",

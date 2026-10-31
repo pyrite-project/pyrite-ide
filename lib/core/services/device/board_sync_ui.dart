@@ -70,6 +70,10 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   /// Conflict rows the user already resolved, keyed by relative path.
   final Map<String, BoardSyncAction> _resolved = {};
 
+  /// The `.pyrsyncignore` rows start folded: files the user asked us to leave
+  /// alone must not push the rows that need a decision off screen.
+  bool _ignoredExpanded = false;
+
   static const _segmentLabelStyle = TextStyle(
     fontSize: 11,
     fontWeight: FontWeight.w600,
@@ -78,10 +82,11 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   @override
   void initState() {
     super.initState();
-    // Default selection: every actionable row. Conflicts start unresolved
-    // because silently overwriting either side would lose user edits.
+    // Default selection: every actionable row the ignore file does not cover.
+    // Conflicts start unresolved because silently overwriting either side would
+    // lose user edits.
     _selected = {
-      for (final entry in widget.plan.actionable) entry.relativePath,
+      for (final entry in widget.plan.defaultSelection) entry.relativePath,
     };
     _direction = BoardSyncDirection.none;
   }
@@ -113,6 +118,16 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
       BoardSyncDirection.none => changed.toList(growable: false),
     };
   }
+
+  /// Rows listed one by one, in path order.
+  List<BoardSyncEntry> get _regularEntries => _visibleEntries
+      .where((entry) => !entry.ignoredByDefault)
+      .toList(growable: false);
+
+  /// Rows folded into the single `.pyrsyncignore` group.
+  List<BoardSyncEntry> get _ignoredEntries => _visibleEntries
+      .where((entry) => entry.ignoredByDefault)
+      .toList(growable: false);
 
   /// Action that will actually run for [entry]; a resolved conflict carries the
   /// side the user picked.
@@ -204,8 +219,14 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final entries = _visibleEntries;
+    final regular = _regularEntries;
+    final ignored = _ignoredEntries;
     final selectedCount = _selectedCount;
+    // One list so the folded ignore group sits at the end of the rows instead
+    // of becoming a second scroll area.
+    final itemCount =
+        regular.length +
+        (ignored.isEmpty ? 0 : 1 + (_ignoredExpanded ? ignored.length : 0));
     // The dialog also runs on phones: shrink instead of overflowing when the
     // window is narrower or shorter than the desktop size.
     final media = MediaQuery.sizeOf(context);
@@ -225,7 +246,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
             const SizedBox(height: 4),
             const Divider(height: 1),
             Expanded(
-              child: entries.isEmpty
+              child: itemCount == 0
                   ? Center(
                       child: Text(
                         translateInContext(context, I18nKey.devicesSyncEmpty),
@@ -237,9 +258,24 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) =>
-                          _buildEntryRow(context, entries[index], scheme),
+                      itemCount: itemCount,
+                      itemBuilder: (context, index) {
+                        if (index < regular.length) {
+                          return _buildEntryRow(
+                            context,
+                            regular[index],
+                            scheme,
+                          );
+                        }
+                        if (index == regular.length) {
+                          return _buildIgnoredHeader(context, scheme, ignored);
+                        }
+                        return _buildEntryRow(
+                          context,
+                          ignored[index - regular.length - 1],
+                          scheme,
+                        );
+                      },
                     ),
             ),
             const Divider(height: 1),
@@ -323,7 +359,8 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   Widget _buildControlRow(BuildContext context) {
     final uploads = widget.plan.uploadCount;
     final downloads = widget.plan.downloadCount;
-    final selectable = _visibleEntries
+    // Ignored rows stay out of "select all": they are opt-in by definition.
+    final selectable = _regularEntries
         .where((entry) => !_needsDecision(entry))
         .toList(growable: false);
     final checked = selectable
@@ -408,6 +445,73 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     );
   }
 
+  /// One folded line for the `.pyrsyncignore` matches. Expanding it reveals the
+  /// same rows as everywhere else, so nothing has to explain the rule.
+  Widget _buildIgnoredHeader(
+    BuildContext context,
+    ColorScheme scheme,
+    List<BoardSyncEntry> ignored,
+  ) {
+    final selectable = ignored
+        .where((entry) => !_needsDecision(entry))
+        .toList(growable: false);
+    final checked = selectable
+        .where((entry) => _selected.contains(entry.relativePath))
+        .length;
+    final bool? groupValue = selectable.isEmpty
+        ? false
+        : checked == selectable.length
+        ? true
+        : checked == 0
+        ? false
+        : null;
+
+    return InkWell(
+      onTap: () => setState(() => _ignoredExpanded = !_ignoredExpanded),
+      child: SizedBox(
+        height: 36,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 40,
+              child: Center(
+                child: Checkbox(
+                  value: groupValue,
+                  tristate: true,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: selectable.isEmpty
+                      ? null
+                      : (_) => _toggleAll(selectable, groupValue),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                translateInContextWithReplacements(
+                  context,
+                  I18nKey.devicesSyncIgnoredGroup,
+                  {'count': '${ignored.length}'},
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+              ),
+            ),
+            Icon(
+              _ignoredExpanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+              size: 16,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEntryRow(
     BuildContext context,
     BoardSyncEntry entry,
@@ -465,7 +569,11 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                   style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 12.5,
-                    color: needsDecision ? scheme.error : scheme.onSurface,
+                    color: needsDecision
+                        ? scheme.error
+                        : entry.ignoredByDefault
+                        ? scheme.onSurfaceVariant
+                        : scheme.onSurface,
                   ),
                 ),
               ),

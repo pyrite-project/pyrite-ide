@@ -91,6 +91,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     // Refresh the file tree and reconcile any open tab whose buffer now
     // differs from the rewritten file on disk.
     await ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    if (!mounted) return;
     await ref
         .read(tabbedViewControllerProvider.notifier)
         .checkExternalChanges(context);
@@ -136,6 +137,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     // Refresh the file tree and reconcile any open tabs whose buffer now
     // differs from the rewritten file on disk.
     await ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    if (!context.mounted) return;
     await ref
         .read(tabbedViewControllerProvider.notifier)
         .checkExternalChanges(context);
@@ -317,9 +319,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
 /// Flat find/replace bar at the top of the search page.
 ///
-/// Its two rows mirror the editor's Ctrl+F find bar (same controls, sizes and
-/// visuals) but sit directly on the page — no floating rounded panel,
-/// elevation or outline around them.
+/// Mirrors the editor's Ctrl+F find widget — same controls, same interaction —
+/// but sits directly on the page instead of in a floating panel.
 class _SearchBar extends ConsumerStatefulWidget {
   const _SearchBar({
     required this.onOpenFlatMatch,
@@ -337,36 +338,41 @@ class _SearchBar extends ConsumerStatefulWidget {
   ConsumerState<_SearchBar> createState() => _SearchBarState();
 }
 
+/// Height shared by both inputs.
+///
+/// The find input also hosts the option toggles, so if each field sized itself
+/// the two rows would end up different heights. One constant for both keeps
+/// them identical.
+const double _fieldHeight = 32;
+
+/// Side of the square toolbar buttons.
+const double _iconButtonSize = 28;
+
+/// Side of the option toggles (`Aa` / `ab` / `.*`).
+const double _toggleSize = 24;
+
+/// Clear space an option toggle keeps between its painted square and the find
+/// input's top and bottom edges. Neighbouring toggles each carry half of it so
+/// their squares end up this far apart — the same room they keep from the
+/// edges — and the row closes with a half inset so the last square keeps the
+/// full distance from the input's right edge.
+const double _toggleInset = 3;
+
+/// Gap between the elements of a row.
+const double _barGap = 6;
+
+/// Gap between the find row and the replace row.
+const double _rowGap = 4;
+
 class _SearchBarState extends ConsumerState<_SearchBar> {
-  static const double _rowHeight = 32;
-  static const double _buttonSize = 28;
-
-  /// Breathing gap between the find and replace rows; the fields fill their
-  /// rows and would otherwise touch.
-  static const double _replaceRowGap = 4;
-  static const double _inset = 8;
-  static const double _leadingIconSize = 16;
-  static const double _gapAfterLeadingButton = 4;
-  static const double _gapAroundField = 6;
-  static const double _matchCounterMinWidth = 34;
-  static const double _matchCounterPadding = 6;
-
-  /// Leading offset of both input rows: the leading button plus its gap, the
-  /// leading icon and the gap that separates it from the input. The replace
-  /// row has no leading button, so it pads that slot instead, which keeps both
-  /// inputs starting at the same x position.
-  static const double _leadingWidth =
-      _buttonSize + _gapAfterLeadingButton + _leadingIconSize + _gapAroundField;
-
-  /// Width of everything between the find input and the right edge except the
-  /// match counter: the gap in front of it plus the two navigation buttons.
-  /// The counter's measured width is added at build time. The three option
-  /// toggles live inside the find input as its suffix, so they don't count
-  /// here.
-  static const double _trailingWidth = _gapAroundField + _buttonSize * 2;
-
   final _queryController = TextEditingController();
   final _replaceController = TextEditingController();
+
+  /// Owned here so rebuilding the bar (every keystroke rebuilds it) never
+  /// recreates the focus nodes.
+  final _queryFocusNode = FocusNode();
+  final _replaceFocusNode = FocusNode();
+
   Timer? _debounce;
   bool _replaceMode = false;
 
@@ -383,6 +389,8 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
     _debounce?.cancel();
     _queryController.dispose();
     _replaceController.dispose();
+    _queryFocusNode.dispose();
+    _replaceFocusNode.dispose();
     super.dispose();
   }
 
@@ -433,10 +441,9 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final foreground = scheme.onSurface;
-    final background = scheme.surface;
-    final fieldBackground = Color.alphaBlend(
+    final fieldColor = Color.alphaBlend(
       foreground.withAlpha(12),
-      background,
+      scheme.surface,
     );
     final options = ref.watch(searchOptionsProvider);
     final searchState = ref.watch(searchRunnerProvider);
@@ -444,6 +451,17 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
 
     String tr(I18nKey key) => translateForWidget(ref, key);
 
+    final counter = _matchCounter(
+      tr,
+      foreground: foreground,
+      hasQuery: options.pattern.isNotEmpty,
+      total: totalMatches,
+      current: searchState.currentMatchIndex,
+    );
+
+    // Both rows keep the same leading and trailing widths — the replace row
+    // reserves the counter's width as well — so their expanded inputs resolve
+    // to the same width.
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,
@@ -455,246 +473,203 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
         }
         return KeyEventResult.ignored;
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: background,
-          border: Border(
-            bottom: BorderSide(color: scheme.outlineVariant.withAlpha(60)),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: _inset, vertical: 6),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final counter = _matchCounter(
-              tr,
-              foreground: foreground,
-              hasQuery: options.pattern.isNotEmpty,
-              total: totalMatches,
-              current: searchState.currentMatchIndex,
-            );
-            // Both inputs get the same width so their left and right edges
-            // line up, independent of how wide the trailing controls are. The
-            // counter only reserves the width its text needs, so both inputs
-            // grow into the space it leaves free.
-            final fieldWidth = max(
-              0.0,
-              constraints.maxWidth -
-                  _leadingWidth -
-                  counter.width -
-                  _trailingWidth,
-            );
-            return Column(
-              mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                SizedBox(
-                  height: _rowHeight,
-                  child: Row(
-                    children: [
-                      _BarIconButton(
-                        icon: _replaceMode
-                            ? Icons.expand_more
-                            : Icons.chevron_right,
-                        tooltip: tr(
-                          _replaceMode
-                              ? I18nKey.editorFindHideReplace
-                              : I18nKey.editorFindShowReplace,
-                        ),
+                _BarIconButton(
+                  icon: _replaceMode ? Icons.expand_more : Icons.chevron_right,
+                  tooltip: tr(
+                    _replaceMode
+                        ? I18nKey.editorFindHideReplace
+                        : I18nKey.editorFindShowReplace,
+                  ),
+                  foreground: foreground,
+                  onPressed: () => setState(() => _replaceMode = !_replaceMode),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.search, size: 16, color: foreground),
+                const SizedBox(width: _barGap),
+                Expanded(
+                  child: _field(
+                    controller: _queryController,
+                    focusNode: _queryFocusNode,
+                    hintText: tr(I18nKey.editorFindHint),
+                    foreground: foreground,
+                    fillColor: fieldColor,
+                    onChanged: _onQueryChanged,
+                    onSubmitted: (_) => _runNow(),
+                    trailing: [
+                      _FindToggle(
+                        label: 'Aa',
+                        tooltip: tr(I18nKey.editorFindCaseSensitive),
+                        active: options.caseSensitive,
                         foreground: foreground,
-                        onPressed: () =>
-                            setState(() => _replaceMode = !_replaceMode),
-                      ),
-                      const SizedBox(width: _gapAfterLeadingButton),
-                      Icon(
-                        Icons.search,
-                        size: _leadingIconSize,
-                        color: foreground,
-                      ),
-                      const SizedBox(width: _gapAroundField),
-                      SizedBox(
-                        width: fieldWidth,
-                        child: _textField(
-                          context,
-                          controller: _queryController,
-                          hintText: tr(I18nKey.editorFindHint),
-                          fieldBackground: fieldBackground,
-                          foreground: foreground,
-                          onChanged: _onQueryChanged,
-                          onSubmitted: (_) => _runNow(),
-                          // VSCode-style: the option toggles live inside the
-                          // find input, along its right edge.
-                          suffix: Padding(
-                            padding: const EdgeInsets.only(right: 5),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _FindToggle(
-                                  label: 'Aa',
-                                  tooltip: tr(I18nKey.editorFindCaseSensitive),
-                                  active: options.caseSensitive,
-                                  foreground: foreground,
-                                  onPressed: () => _toggleOption(
-                                    (o) => o.copyWith(
-                                      caseSensitive: !o.caseSensitive,
-                                    ),
-                                  ),
-                                ),
-                                _FindToggle(
-                                  label: 'ab',
-                                  tooltip: tr(I18nKey.editorFindWholeWord),
-                                  active: options.wholeWord,
-                                  foreground: foreground,
-                                  onPressed: () => _toggleOption(
-                                    (o) => o.copyWith(wholeWord: !o.wholeWord),
-                                  ),
-                                ),
-                                _FindToggle(
-                                  label: '.*',
-                                  tooltip: tr(I18nKey.editorFindRegex),
-                                  active: options.isRegExp,
-                                  foreground: foreground,
-                                  onPressed: () => _toggleOption(
-                                    (o) => o.copyWith(isRegExp: !o.isRegExp),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        onPressed: () => _toggleOption(
+                          (o) => o.copyWith(caseSensitive: !o.caseSensitive),
                         ),
                       ),
-                      const SizedBox(width: _gapAroundField),
-                      counter.widget,
-                      _BarIconButton(
-                        icon: Icons.keyboard_arrow_up,
-                        tooltip: tr(I18nKey.editorFindPrevious),
+                      _FindToggle(
+                        label: 'ab',
+                        tooltip: tr(I18nKey.editorFindWholeWord),
+                        active: options.wholeWord,
                         foreground: foreground,
-                        onPressed: totalMatches > 0
-                            ? () => widget.onMoveCurrent(-1)
-                            : null,
+                        onPressed: () => _toggleOption(
+                          (o) => o.copyWith(wholeWord: !o.wholeWord),
+                        ),
                       ),
-                      _BarIconButton(
-                        icon: Icons.keyboard_arrow_down,
-                        tooltip: tr(I18nKey.editorFindNext),
+                      _FindToggle(
+                        label: '.*',
+                        tooltip: tr(I18nKey.editorFindRegex),
+                        active: options.isRegExp,
                         foreground: foreground,
-                        onPressed: totalMatches > 0
-                            ? () => widget.onMoveCurrent(1)
-                            : null,
+                        onPressed: () => _toggleOption(
+                          (o) => o.copyWith(isRegExp: !o.isRegExp),
+                        ),
                       ),
+                      // The trailing half of the last toggle's side inset, so
+                      // the cluster ends the same distance from the input's
+                      // right edge that the squares keep from the top and
+                      // bottom edges.
+                      const SizedBox(width: _toggleInset / 2),
                     ],
                   ),
                 ),
-                const SizedBox(height: _replaceRowGap),
-                if (_replaceMode)
-                  SizedBox(
-                    height: _rowHeight,
-                    child: Row(
-                      children: [
-                        // Pads the slot the find row's leading button uses so
-                        // the two inputs share the same left edge.
-                        const SizedBox(
-                          width: _buttonSize + _gapAfterLeadingButton,
-                        ),
-                        Icon(
-                          Icons.find_replace,
-                          size: _leadingIconSize,
-                          color: foreground,
-                        ),
-                        const SizedBox(width: _gapAroundField),
-                        SizedBox(
-                          width: fieldWidth,
-                          child: _textField(
-                            context,
-                            controller: _replaceController,
-                            hintText: tr(I18nKey.editorReplaceHint),
-                            fieldBackground: fieldBackground,
-                            foreground: foreground,
-                            onChanged: (value) => _updateOptions(
-                              (o) => o.copyWith(replaceText: value),
-                            ),
-                            onSubmitted: (_) => widget.onReplaceCurrent(),
-                          ),
-                        ),
-                        // The replace row has fewer trailing buttons, so the
-                        // leftover width is left blank.
-                        const Spacer(),
-                        const SizedBox(width: _gapAroundField),
-                        _BarIconButton(
-                          icon: Icons.check,
-                          tooltip: tr(I18nKey.editorReplaceApply),
-                          foreground: foreground,
-                          onPressed: totalMatches > 0
-                              ? widget.onReplaceCurrent
-                              : null,
-                        ),
-                        _BarIconButton(
-                          icon: Icons.done_all,
-                          tooltip: tr(I18nKey.editorReplaceAll),
-                          foreground: foreground,
-                          onPressed: totalMatches > 0
-                              ? widget.onReplaceAll
-                              : null,
-                        ),
-                      ],
+                const SizedBox(width: _barGap),
+                counter.widget,
+                _BarIconButton(
+                  icon: Icons.keyboard_arrow_up,
+                  tooltip: tr(I18nKey.editorFindPrevious),
+                  foreground: foreground,
+                  onPressed: totalMatches > 0
+                      ? () => widget.onMoveCurrent(-1)
+                      : null,
+                ),
+                _BarIconButton(
+                  icon: Icons.keyboard_arrow_down,
+                  tooltip: tr(I18nKey.editorFindNext),
+                  foreground: foreground,
+                  onPressed: totalMatches > 0
+                      ? () => widget.onMoveCurrent(1)
+                      : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: _rowGap),
+            if (_replaceMode)
+              Row(
+                children: [
+                  // The find row's expand button, kept as empty space so both
+                  // inputs start at the same x.
+                  const SizedBox(width: _iconButtonSize + 4),
+                  Icon(Icons.find_replace, size: 16, color: foreground),
+                  const SizedBox(width: _barGap),
+                  Expanded(
+                    child: _field(
+                      controller: _replaceController,
+                      focusNode: _replaceFocusNode,
+                      hintText: tr(I18nKey.editorReplaceHint),
+                      foreground: foreground,
+                      fillColor: fieldColor,
+                      onChanged: (value) =>
+                          _updateOptions((o) => o.copyWith(replaceText: value)),
+                      onSubmitted: (_) => widget.onReplaceCurrent(),
                     ),
                   ),
-              ],
-            );
-          },
+                  const SizedBox(width: _barGap),
+                  SizedBox(width: counter.width),
+                  _BarIconButton(
+                    icon: Icons.check,
+                    tooltip: tr(I18nKey.editorReplaceApply),
+                    foreground: foreground,
+                    onPressed: totalMatches > 0
+                        ? widget.onReplaceCurrent
+                        : null,
+                  ),
+                  _BarIconButton(
+                    icon: Icons.done_all,
+                    tooltip: tr(I18nKey.editorReplaceAll),
+                    foreground: foreground,
+                    onPressed: totalMatches > 0 ? widget.onReplaceAll : null,
+                  ),
+                ],
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _textField(
-    BuildContext context, {
+  /// One input of the bar.
+  ///
+  /// The box draws the fill, the outline and the focus colour itself, which
+  /// lets both inputs share [_fieldHeight] and lets the find input keep the
+  /// option toggles inside its border. The box and the toggles use the same
+  /// [AppCornerRadiiX.innerCorners] radius so the nesting reads as one shape.
+  Widget _field({
     required TextEditingController controller,
+    required FocusNode focusNode,
     required String hintText,
-    required Color fieldBackground,
     required Color foreground,
+    required Color fillColor,
     required ValueChanged<String> onChanged,
-    required ValueChanged<String> onSubmitted,
-    Widget? suffix,
+    ValueChanged<String>? onSubmitted,
+    List<Widget> trailing = const [],
   }) {
-    final borderColor = foreground.withAlpha(46);
-    return TextField(
-      controller: controller,
-      maxLines: 1,
-      style: TextStyle(color: foreground, fontSize: 13),
-      cursorColor: foreground,
-      onChanged: onChanged,
-      onSubmitted: onSubmitted,
-      decoration: InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: fieldBackground,
-        hintText: hintText,
-        hintStyle: TextStyle(color: foreground.withAlpha(110), fontSize: 13),
-        // Vertical 10 keeps the decorator's intrinsic height at the 32px row
-        // height even under the app's compact density tier (which shrinks the
-        // default to ~26px), so the suffix toggles get 5px of air on all
-        // sides, matching the right inset.
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        // `suffixIcon` rather than `suffix`: the decorator fades `suffix` out
-        // while the field is empty and unfocused (it wraps it in the
-        // label-withdraw opacity), but the option toggles must always stay
-        // visible. suffixIcon's default 48x48 minimum is relaxed via
-        // suffixIconConstraints so it fits the 32px row.
-        suffixIcon: suffix,
-        suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: context.nestedCorners(_inset),
-          borderSide: BorderSide(color: borderColor),
+    return ListenableBuilder(
+      listenable: focusNode,
+      builder: (context, child) => Container(
+        height: _fieldHeight,
+        decoration: BoxDecoration(
+          color: fillColor,
+          borderRadius: context.innerCorners,
+          border: Border.all(
+            color: focusNode.hasFocus
+                ? foreground.withAlpha(120)
+                : foreground.withAlpha(46),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: context.nestedCorners(_inset),
-          borderSide: BorderSide(color: foreground.withAlpha(160)),
-        ),
+        child: child,
+      ),
+      // Built once and reused on focus changes; only the box decoration needs
+      // to be rebuilt there.
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              // The row centres the editable vertically, so the text sits
+              // mid-height without any alignment tweaks.
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                maxLines: 1,
+                style: TextStyle(color: foreground, fontSize: 13),
+                cursorColor: foreground,
+                onChanged: onChanged,
+                onSubmitted: onSubmitted,
+                decoration: InputDecoration.collapsed(
+                  hintText: hintText,
+                  hintStyle: TextStyle(
+                    color: foreground.withAlpha(110),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          ...trailing,
+        ],
       ),
     );
   }
 
   /// Match counter styled like the editor's: measured width, `current/total`
-  /// or a red "no results" hint. Returns the width it occupies so the caller
-  /// can size both inputs against it.
+  /// or a red "no results" hint. Returns the width it occupies so the replace
+  /// row can reserve the same slot.
   ({double width, Widget widget}) _matchCounter(
     String Function(I18nKey) tr, {
     required Color foreground,
@@ -720,10 +695,7 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
       text: TextSpan(text: text, style: textStyle),
       textDirection: TextDirection.ltr,
     )..layout();
-    final width = max(
-      _matchCounterMinWidth,
-      painter.width + _matchCounterPadding,
-    );
+    final width = max(34.0, painter.width + 6);
     painter.dispose();
     return (
       width: width,
@@ -736,8 +708,12 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
   }
 }
 
-/// Small square toggle (Aa / ab / .*) styled like the editor find bar's option
-/// buttons.
+/// One option button (`Aa` / `ab` / `.*`) inside the find input.
+///
+/// The [Padding] keeps the painted square away from the input's outline and
+/// from the neighbouring toggles, so the hover and selected states never sit
+/// flush against either. Horizontally each side carries half the inset, since
+/// adjacent paddings add up; vertical carries it whole.
 class _FindToggle extends StatefulWidget {
   const _FindToggle({
     required this.label,
@@ -758,44 +734,35 @@ class _FindToggle extends StatefulWidget {
 }
 
 class _FindToggleState extends State<_FindToggle> {
-  /// 22px inside the 32px row centers with 5px of air above and below, which
-  /// matches the suffix's right inset so the toggle's (selected) outline keeps
-  /// an equal gap to the input's border on all sides.
-  static const double _size = _SearchBarState._buttonSize - 6;
-
-  /// Sibling toggles share the bar's inset, so every button in the row has the
-  /// same corner radius.
-  static const double _inset = _SearchBarState._inset;
-
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    // VSCode-style toggle: the selected state draws a thin accent outline
-    // over a subtle tint, hover paints only an inner highlight fill, and the
-    // idle state stays a plain label.
-    final Color accent = Theme.of(context).colorScheme.primary;
+    final color = widget.foreground;
     final Color background;
     final Color borderColor;
     if (widget.active) {
-      background = accent.withAlpha(28);
-      borderColor = accent;
+      background = color.withAlpha(36);
+      borderColor = color.withAlpha(130);
     } else if (_hovered) {
-      background = widget.foreground.withAlpha(26);
-      borderColor = Colors.transparent;
+      background = color.withAlpha(20);
+      borderColor = color.withAlpha(90);
     } else {
       background = Colors.transparent;
       borderColor = Colors.transparent;
     }
-    // `container: true` prevents adjacent toolbar buttons from merging this
-    // tooltip's semantics anchor into one shared node.
     return Tooltip(
       message: widget.tooltip,
       child: Semantics(
         container: true,
         child: Padding(
-          // Separates adjacent toggles without shrinking the painted square.
-          padding: const EdgeInsets.only(left: 2),
+          // Vertically the full inset — it is the square's only clearance from
+          // the input's edges. Horizontally half of it: the neighbouring
+          // toggle's half adds up to one full inset between the squares.
+          padding: const EdgeInsets.symmetric(
+            horizontal: _toggleInset / 2,
+            vertical: _toggleInset,
+          ),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) => setState(() => _hovered = true),
@@ -803,26 +770,19 @@ class _FindToggleState extends State<_FindToggle> {
             child: GestureDetector(
               onTap: widget.onPressed,
               child: Container(
-                width: _size,
-                height: _size,
+                width: _toggleSize,
+                height: _toggleSize,
                 alignment: Alignment.center,
+                // Same radius as the input, so the two shapes match.
                 decoration: BoxDecoration(
-                  borderRadius: context.nestedCorners(_inset),
+                  borderRadius: context.innerCorners,
                   color: background,
-                  // Hover keeps the border slot transparent so the states can
-                  // never paint a second, offset rectangle.
                   border: Border.all(color: borderColor),
                 ),
                 child: Text(
                   widget.label,
                   style: TextStyle(
-                    color: widget.foreground.withAlpha(
-                      widget.active
-                          ? 255
-                          : _hovered
-                          ? 210
-                          : 150,
-                    ),
+                    color: color.withAlpha(widget.active ? 255 : 150),
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     height: 1,
@@ -857,16 +817,21 @@ class _BarIconButton extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon, size: 17),
+      // Without this the Material tap target inflates the button well past
+      // [_iconButtonSize], which would push the inputs out of alignment.
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
       color: foreground.withAlpha(215),
       disabledColor: foreground.withAlpha(70),
       hoverColor: foreground.withAlpha(26),
       focusColor: Colors.transparent,
       highlightColor: foreground.withAlpha(40),
-      splashRadius: _SearchBarState._buttonSize / 2,
+      splashRadius: _iconButtonSize / 2,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(
-        width: _SearchBarState._buttonSize,
-        height: _SearchBarState._buttonSize,
+        width: _iconButtonSize,
+        height: _iconButtonSize,
       ),
     );
   }

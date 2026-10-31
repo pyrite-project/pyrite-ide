@@ -215,6 +215,201 @@ void main() {
     expect(captured!.overrides['clash.py'], BoardSyncAction.uploadChanged);
   });
 
+  // -------------------------------------------------------------------------
+  // .pyrsyncignore
+  // -------------------------------------------------------------------------
+
+  BoardSyncPlan buildPlanWithIgnored() {
+    final now = DateTime.now();
+    return BoardSyncPlan(
+      entries: [
+        BoardSyncEntry(
+          relativePath: '.pyrsyncignore',
+          action: BoardSyncAction.uploadNew,
+          direction: BoardSyncDirection.localToBoard,
+          local: SyncFileInfo(
+            relativePath: '.pyrsyncignore',
+            size: 8,
+            modified: now,
+          ),
+          ignoredByDefault: true,
+        ),
+        BoardSyncEntry(
+          relativePath: 'main.py',
+          action: BoardSyncAction.uploadNew,
+          direction: BoardSyncDirection.localToBoard,
+          local: SyncFileInfo(relativePath: 'main.py', size: 10, modified: now),
+        ),
+        BoardSyncEntry(
+          relativePath: 'vendor/lib.py',
+          action: BoardSyncAction.uploadNew,
+          direction: BoardSyncDirection.localToBoard,
+          local: SyncFileInfo(
+            relativePath: 'vendor/lib.py',
+            size: 20,
+            modified: now,
+          ),
+          ignoredByDefault: true,
+        ),
+      ],
+      localRoot: '/workspace',
+    );
+  }
+
+  Future<BoardSyncPreviewResult?> openIgnoredPlan(WidgetTester tester) async {
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: buildPlanWithIgnored(),
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    return captured;
+  }
+
+  testWidgets('ignored rows start unticked and folded into one group', (
+    tester,
+  ) async {
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: buildPlanWithIgnored(),
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已按 .pyrsyncignore 忽略 2 项'), findsOneWidget);
+    expect(find.text('main.py'), findsOneWidget);
+    // Folded: the ignored paths are not rendered as rows yet.
+    expect(find.text('vendor/lib.py'), findsNothing);
+    expect(find.text('.pyrsyncignore'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, '同步'));
+    await tester.pumpAndSettle();
+
+    expect(captured!.selectedPaths, {'main.py'});
+  });
+
+  testWidgets('expanding the group shows its rows unticked', (tester) async {
+    await openIgnoredPlan(tester);
+
+    await tester.tap(find.text('已按 .pyrsyncignore 忽略 2 项'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('.pyrsyncignore'), findsOneWidget);
+    expect(find.text('vendor/lib.py'), findsOneWidget);
+  });
+
+  testWidgets('the group checkbox ticks every ignored row', (tester) async {
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: buildPlanWithIgnored(),
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final header = find
+        .ancestor(
+          of: find.text('已按 .pyrsyncignore 忽略 2 项'),
+          matching: find.byType(Row),
+        )
+        .first;
+    await tester.tap(
+      find.descendant(of: header, matching: find.byType(Checkbox)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '同步'));
+    await tester.pumpAndSettle();
+
+    expect(captured!.selectedPaths, {
+      'main.py',
+      '.pyrsyncignore',
+      'vendor/lib.py',
+    });
+  });
+
+  testWidgets('select all does not reach into the ignored group', (
+    tester,
+  ) async {
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: buildPlanWithIgnored(),
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Clear, then select everything through the master checkbox.
+    final master = find.byType(Checkbox).first;
+    await tester.tap(master);
+    await tester.pumpAndSettle();
+    await tester.tap(master);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '同步'));
+    await tester.pumpAndSettle();
+
+    expect(captured!.selectedPaths, {'main.py'});
+  });
+
   group('FileTransferProgressBar', () {
     Widget host(Widget child) => ProviderScope(
       child: MaterialApp(home: Scaffold(body: child)),

@@ -85,15 +85,6 @@ class Settings extends ConsumerWidget {
               },
             ),
 
-            SwitchListTile(
-              secondary: const Icon(Icons.expand),
-              title: const UseText(I18nKey.settingsExpansionPanelTitle),
-              value: ref.watch(expansionPageShow),
-              onChanged: (value) {
-                ref.read(expansionPageShow.notifier).state = value;
-              },
-            ),
-
             ListTile(
               leading: const Icon(Icons.flag_outlined),
               title: const UseText(I18nKey.settingsWelcomeTitle),

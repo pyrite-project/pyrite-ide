@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -123,65 +124,6 @@ class EditorSettings extends ConsumerWidget {
             ),
           ],
         ),
-        // The editor's other bindings are fixed in code and cannot be recorded
-        // here, but they were also nowhere to be found: a user had to guess
-        // that F12 jumps to a definition or that Cmd+F12 does something
-        // different. This section lists what exists without pretending it can
-        // be edited.
-        SettingsSection(
-          title: I18nKey.settingsEditorShortcutReferenceSection,
-          description: I18nKey.settingsEditorShortcutReferenceDescription,
-          children: [
-            _ShortcutReferenceTile(
-              title: I18nKey.settingsEditorShortcutSave,
-              keys: usesCommandShortcut ? 'Cmd+S' : 'Ctrl+S',
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.settingsEditorShortcutRun,
-              keys: usesCommandShortcut ? 'Cmd+R' : 'Ctrl+R',
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorFindHint,
-              keys: findShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorReplaceApply,
-              keys: replaceShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorGoToLine,
-              keys: usesCommandShortcut ? 'Cmd+G' : 'Ctrl+G',
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorMenuGoToDefinition,
-              keys: goToDefinitionShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorMenuGoToImplementation,
-              keys: goToImplementationShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorMenuFindReferences,
-              keys: findReferencesShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.fileActionRename,
-              keys: renameShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorMenuFormatDocument,
-              keys: formatDocumentShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.editorMenuToggleComment,
-              keys: toggleCommentShortcutLabel(),
-            ),
-            _ShortcutReferenceTile(
-              title: I18nKey.statusEditorAddCursor,
-              keys: addCursorShortcutLabel(),
-            ),
-          ],
-        ),
         SettingsSection(
           title: I18nKey.settingsEditorBehaviorSection,
           children: [
@@ -264,9 +206,10 @@ class EditorSettings extends ConsumerWidget {
               leading: const Icon(Icons.keyboard_tab),
               title: const UseText(I18nKey.settingsEditorTabSize),
               subtitle: Text(
-                I18nKey.settingsEditorTabSizeValue.fallback.replaceAll(
-                  '{count}',
-                  ref.watch(editorTabSize).toString(),
+                translateForWidgetWithReplacements(
+                  ref,
+                  I18nKey.settingsEditorTabSizeValue,
+                  {'count': ref.watch(editorTabSize).toString()},
                 ),
               ),
               trailing: const Icon(Icons.chevron_right),
@@ -320,7 +263,9 @@ class EditorSettings extends ConsumerWidget {
                   min: min.toDouble(),
                   max: max.toDouble(),
                   divisions: max - min,
-                  value: current.toDouble(),
+                  // Same reason as the font-size slider: the value comes from
+                  // persisted settings and may predate the current range.
+                  value: current.clamp(min, max).toDouble(),
                   label: current.toString(),
                   onChanged: (next) {
                     setState(() => current = next.round());
@@ -342,7 +287,17 @@ class EditorSettings extends ConsumerWidget {
       children.add(
         SimpleDialogOption(
           child: ListTile(
-            title: Text(getFontDisplayName(name)),
+            title: Text(
+              getFontDisplayName(
+                name,
+                translate: (key, [replacements = const {}]) =>
+                    translateInContextWithReplacements(
+                      context,
+                      key,
+                      replacements,
+                    ),
+              ),
+            ),
             subtitle: Text(
               "print('Pyrite IDE')",
               style: TextStyle(fontFamily: value.isEmpty ? null : value),
@@ -397,7 +352,10 @@ class EditorSettings extends ConsumerWidget {
                   min: 10,
                   max: 28,
                   divisions: 18,
-                  value: size,
+                  // A size saved by an older build (or hand-edited in
+                  // settings.json) can sit outside the range; Slider asserts on
+                  // that instead of clamping for us.
+                  value: size.clamp(10.0, 28.0),
                   label: size.toStringAsFixed(0),
                   onChanged: (value) =>
                       ref.read(editorFontSize.notifier).state = value,
@@ -466,43 +424,6 @@ class EditorSettings extends ConsumerWidget {
             child: const UseText(I18nKey.commonCancel),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Read-only row that shows a built-in shortcut next to what it does.
-///
-/// Distinct from [ShortcutRecorderTile] on purpose: that one records a key and
-/// writes it back to a provider, this one only reports a binding compiled into
-/// the editor. Showing them in the same visual language would imply the user
-/// can change a key they cannot.
-class _ShortcutReferenceTile extends StatelessWidget {
-  const _ShortcutReferenceTile({required this.title, required this.keys});
-
-  final I18nKey title;
-  final String keys;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      title: UseText(title),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Text(
-          keys,
-          style: TextStyle(
-            fontFamily: 'JetBrainsMono',
-            fontSize: 11,
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
       ),
     );
   }

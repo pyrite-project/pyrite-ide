@@ -46,7 +46,10 @@ class TerminalSearchBar extends StatelessWidget {
     // bug even though it is correct.
     final counter = state.isActive && !state.hasMatches
         ? translateInContext(context, I18nKey.terminalSearchNoResults)
-        : state.counterLabel;
+        : state.counterLabelFor(
+            (key, [replacements = const {}]) =>
+                translateInContextWithReplacements(context, key, replacements),
+          );
 
     return Material(
       color: scheme.surfaceContainerHigh,

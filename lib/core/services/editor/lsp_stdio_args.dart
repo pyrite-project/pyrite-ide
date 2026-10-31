@@ -31,7 +31,9 @@ List<String> splitLspStdioArgs(String input) {
     hasContent = false;
   }
 
-  for (final rune in input.runes) {
+  final runes = input.runes.toList(growable: false);
+  for (var index = 0; index < runes.length; index++) {
+    final rune = runes[index];
     if (escaped) {
       current.writeCharCode(rune);
       hasContent = true;
@@ -53,7 +55,19 @@ List<String> splitLspStdioArgs(String input) {
 
     if (inDouble) {
       if (char == r'\') {
-        escaped = true;
+        // Inside double quotes only the three escapes the contract names are
+        // escapes. Everything else — most importantly the separator in a
+        // Windows path such as "C:\Users\me\pyright.json" — is a literal
+        // backslash; consuming it silently turned the path into C:Usersmepyright.json.
+        final next = index + 1 < runes.length
+            ? String.fromCharCode(runes[index + 1])
+            : '';
+        if (next == '"' || next == r'\' || next == r'$') {
+          escaped = true;
+        } else {
+          current.write(r'\');
+          hasContent = true;
+        }
       } else if (char == '"') {
         inDouble = false;
       } else {

@@ -5,6 +5,7 @@ import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:git2dart/git2dart.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -14,6 +15,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
@@ -24,6 +26,7 @@ import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
 import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
@@ -32,6 +35,9 @@ import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/features/window.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
+import 'package:pyrite_ide/core/sdk/environment_provider.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
 
 String? getPythonPath() {
@@ -112,7 +118,10 @@ void _installIdeOutputLogger() {
       stackTrace: stack,
     );
     _appendIdeOutputLater('Unhandled exception: $error\n$stack');
-    return false;
+    // Returning true marks the error handled so a single uncaught async
+    // exception cannot terminate the whole IDE in release; the log and the
+    // output panel above keep it diagnosable.
+    return true;
   };
 }
 
@@ -138,6 +147,7 @@ void _applyData(PersistedData data) {
       data.welcomeCompleted;
   container.read(activeLocaleProvider.notifier).state = data.activeLocale;
   container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
+  container.read(windowPlacementProvider.notifier).state = data.windowPlacement;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
@@ -188,11 +198,14 @@ void _applyData(PersistedData data) {
   container.read(tabletSelectedIndex.notifier).state = data.tabletSelectedIndex;
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
-  container.read(expansionPageShow.notifier).state = data.expansionPageShow;
+  container.read(consoleDockSideProvider.notifier).state =
+      PaneEdge.values.asNameMap()[data.consoleDockSide] ?? PaneEdge.bottom;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
   container.read(ensureBoardFilesystemOnConnect.notifier).state =
       data.ensureBoardFilesystemOnConnect;
+  container.read(deviceRunChdirToScriptDir.notifier).state =
+      data.deviceRunChdirToScriptDir;
   container.read(serialDefaultBaudRate.notifier).state =
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
@@ -206,12 +219,6 @@ void _applyData(PersistedData data) {
       HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
       HardwareResetStrategy.disabled;
   container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
-  container.read(terminalShellExecutable.notifier).state =
-      data.terminalShellExecutable;
-  container.read(terminalShellArguments.notifier).state =
-      data.terminalShellArguments;
-  container.read(terminalWorkingDirectory.notifier).state =
-      data.terminalWorkingDirectory;
   container.read(terminalFontSize.notifier).state = data.terminalFontSize;
   container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
   container.read(terminalLigatures.notifier).state = data.terminalLigatures;
@@ -310,6 +317,41 @@ void _startAutoSave() {
       container.listen<Object?>(provider, (_, _) => _triggerSave()),
     );
   }
+  _watchEditorArea();
+}
+
+/// Saves the session whenever what it records about the editor area changes.
+///
+/// Tabs join and leave groups through their own controllers -- the close
+/// button, a drag, the SDK -- so the layout state alone would miss most of it.
+/// [EditorLayoutNotifier.changes] reports every change in any group, and a
+/// save is only scheduled when the persisted shape actually differs, so a
+/// title refresh or re-selecting the selected tab writes nothing.
+void _watchEditorArea() {
+  var last = persistedEditorAreaKey(container);
+  container.read(editorLayoutProvider.notifier).changes.addListener(() {
+    final next = persistedEditorAreaKey(container);
+    if (next == last) return;
+    last = next;
+    _triggerSave();
+  });
+}
+
+/// Moves console surfaces out of the editor area when the window narrows to
+/// the mobile layout.
+///
+/// Grouping is a desktop and tablet feature: on mobile the terminal lives in
+/// its bottom popup, so a surface dragged into an editor group has to return
+/// to the panel for the popup to show it.
+void _gatherConsoleOnMobileLayout() {
+  final environment = container.read(environmentNotifierProvider);
+  var layoutMode = environment.snapshot.layoutMode;
+  environment.addListener(() {
+    final next = environment.snapshot.layoutMode;
+    if (next == layoutMode) return;
+    layoutMode = next;
+    if (next == LayoutMode.mobile) evacuateConsoleTabsToPanel(container);
+  });
 }
 
 /// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
@@ -361,6 +403,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   chineseToUnicodeConversion,
   enableSignalDetection,
   ensureBoardFilesystemOnConnect,
+  deviceRunChdirToScriptDir,
   serialDefaultBaudRate,
   serialAutoReconnect,
   terminalFontFamily,
@@ -383,6 +426,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   microPythonStubsAutoDetectLayers,
   microPythonStubsLayers,
   microPythonStubsExtraPaths,
+  windowPlacementProvider,
 ];
 
 Future<void> _startRuntimeAndPlugins() async {
@@ -480,7 +524,20 @@ void main() async {
   await RustLib.init();
   await PlatformSpecific.initialize();
 
-  if (data.tabs.isNotEmpty) {
+  // The tree is what carries more than one group. Without it the flat list is
+  // the only reliable source: restoring the groups alone would drop every
+  // group past the first, since the tree is what builds their controllers.
+  if (data.tabLayout != null && data.tabGroups.isNotEmpty) {
+    // A session saved with a split editor area: every group comes back, and the
+    // tree puts them where the user left them.
+    await container
+        .read(tabbedViewControllerProvider.notifier)
+        .restoreEditorGroups(
+          data.tabGroups,
+          data.tabLayout,
+          primaryIndex: data.tabPrimaryGroupIndex,
+        );
+  } else if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
         .restoreTabs(
@@ -526,6 +583,7 @@ void main() async {
   );
 
   _startAutoSave();
+  _gatherConsoleOnMobileLayout();
 
   // Let Flutter paint the first frame before native CPython initialization.
   // Startup plugins still wait for the runtime snapshot inside the helper.

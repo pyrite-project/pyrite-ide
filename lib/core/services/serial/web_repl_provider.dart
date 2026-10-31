@@ -323,6 +323,8 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   Future<void> executeStreaming(
     String source, {
     Duration timeout = const Duration(seconds: 20),
+    bool softReset = false,
+    String? workingDirectory,
     required void Function() onStarted,
     required void Function(Uint8List data) onStdout,
     required void Function(Uint8List data) onStderr,
@@ -333,6 +335,8 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
           () => _executeStreaming(
             source,
             timeout: timeout,
+            softReset: softReset,
+            workingDirectory: workingDirectory,
             onStarted: onStarted,
             onStdout: onStdout,
             onStderr: onStderr,
@@ -343,6 +347,8 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   Future<void> _executeStreaming(
     String source, {
     required Duration timeout,
+    bool softReset = false,
+    String? workingDirectory,
     required void Function() onStarted,
     required void Function(Uint8List data) onStdout,
     required void Function(Uint8List data) onStderr,
@@ -374,8 +380,14 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
     try {
       writeBytes(const [0x03, 0x02, 0x03]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (softReset) {
+        await session.softReset();
+      }
       await session.enterRepl(mode);
       enteredRepl = true;
+      if (workingDirectory != null) {
+        await setDeviceWorkingDirectory(session, workingDirectory, mode: mode);
+      }
       await session.executeStreaming(
         source,
         timeout: timeout,

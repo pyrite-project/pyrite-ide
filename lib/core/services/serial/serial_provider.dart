@@ -6,8 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
-import 'package:pyrite_ide/core/services/device/board_identity.dart';
-import 'package:pyrite_ide/core/services/device/board_identity_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
@@ -154,11 +152,6 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     ref.read(boardFileItemsProvider.notifier).clear();
     ref.read(deviceStatusProvider.notifier).clear();
 
-    // USB VID/PID identification runs before the port is opened so the first
-    // handshake already uses the right baud rate and reset strategy. Explicit
-    // user settings are never overwritten here.
-    applyBoardDefaultsOnConnect(ref, path: path);
-
     bindReplOnOutputCallback();
     final serial = FlSerial();
     _eventSub = serial.events.listen(_onEvent);
@@ -170,7 +163,6 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
         serial: serial,
         events: _eventSub!,
         baudRate: state.baudRate,
-        identity: _identityForPort(path),
       );
       _serial = serial;
       sessions.adopt(session);
@@ -182,17 +174,6 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       _eventSub = null;
       await serial.dispose();
     }
-  }
-
-  /// Identity of [portPath] from the last port scan.
-  ///
-  /// The scan runs every few seconds, so the entry is normally present by the
-  /// time the user connects; a missing entry simply means "unidentified".
-  BoardIdentity? _identityForPort(String portPath) {
-    for (final port in state.portInfos) {
-      if (port.path == portPath) return identifyPort(port);
-    }
-    return null;
   }
 
   SerialConfig _serialConfig() => SerialConfig(

@@ -52,8 +52,8 @@ enum ExternalChangeAction {
   /// last wrote, so there is nothing to reconcile.
   touchOnly,
 
-  /// The file no longer exists. The buffer stays readable but must stop being
-  /// written back over a path that is not there.
+  /// The file no longer exists. The buffer is left untouched and stays
+  /// editable: saving it recreates the path, which is the user's call to make.
   deleted,
 
   /// The file changed and the tab has no unsaved edits, so the disk version

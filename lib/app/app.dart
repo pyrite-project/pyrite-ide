@@ -381,7 +381,10 @@ class PyriteIDE extends ConsumerWidget {
           },
         );
 
-        if (Platform.isMacOS || defaultTargetPlatform == TargetPlatform.macOS) {
+        // The platform-provided menu items exist only where the target
+        // platform is macOS; a macOS host running another target -- the test
+        // environment -- has none of them.
+        if (defaultTargetPlatform == TargetPlatform.macOS) {
           return MacOSMenu(app: app);
         }
         return app;
