@@ -3,9 +3,11 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/file/file_sort.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -50,8 +52,9 @@ String getPattern() {
 }
 
 Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
-  Stream<FileSystemEntity> datas,
-) async {
+  Stream<FileSystemEntity> datas, {
+  FileSortMode sortMode = FileSortMode.byName,
+}) async {
   final entities = <FileSystemEntity>[];
   final items = <TreeNode<FileSystemItem>>[];
   final pattern = getPattern();
@@ -91,6 +94,15 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
     }
   }
 
+  items.sort(
+    (a, b) => compareFileTreeEntries(
+      firstIsFolder: a.data is FolderItem,
+      firstName: a.data.name,
+      secondIsFolder: b.data is FolderItem,
+      secondName: b.data.name,
+      mode: sortMode,
+    ),
+  );
   return items;
 }
 

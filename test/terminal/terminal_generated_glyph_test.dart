@@ -213,6 +213,53 @@ void main() {
       },
     );
   }
+
+  test('a faint block run keeps one alpha across cell boundaries', () async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const origin = Offset(1, 1);
+    final cellWidth = painter.cellSize.width;
+    final cellHeight = painter.cellSize.height;
+    final cellData = CellData(
+      foreground: CellColor.rgb | 0xffffff,
+      background: CellColor.normal,
+      flags: CellFlags.faint,
+      content: 0x2588 | (1 << CellContent.widthShift),
+    );
+
+    for (var column = 0; column < 3; column++) {
+      painter.paintCellForeground(
+        canvas,
+        origin + Offset(cellWidth * column, 0),
+        cellData,
+      );
+    }
+
+    final image = await recorder.endRecording().toImage(
+      (cellWidth * 3).ceil() + 2,
+      cellHeight.ceil() + 2,
+    );
+    final centerY = (origin.dy + cellHeight / 2).round();
+
+    // 为什么按“整行 alpha 必须一致”断言：
+    //
+    // 不透明块之间的半像素外扩（bleed）是为了让相邻格子没有缝，但淡色
+    // （faint，alpha 0.5）的块如果也外扩，相邻两个格子在边界上会各画一次，
+    // 叠加后 alpha 变成 0.75 —— 于是整行出现“亮条纹”。Claude Code 的
+    // clawd 第一行（\x1b[2m 或继承来的 faint 属性）就是这样变成条纹状的。
+    // 正确的淡色块应当是均匀的半透明，所以这里要求整行 alpha 完全一致。
+    final alphas = <int>{};
+    for (
+      var x = origin.dx.ceil();
+      x < (origin.dx + cellWidth * 3).floor();
+      x++
+    ) {
+      alphas.add(await _alphaAt(image, x: x, y: centerY));
+    }
+
+    expect(alphas.length, 1, reason: '淡色块不能出现条纹，实际 alpha 集合：$alphas');
+    expect(alphas.single, closeTo(128, 2));
+  });
 }
 
 Future<ui.Image> _paintGeneratedGlyph(

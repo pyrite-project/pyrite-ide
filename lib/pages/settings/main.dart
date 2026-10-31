@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
@@ -83,6 +85,29 @@ class Settings extends ConsumerWidget {
               onChanged: (value) {
                 ref.read(consolePageShow.notifier).state = value;
               },
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.sort),
+              title: const UseText(I18nKey.settingsFileSortTitle),
+              subtitle: const UseText(I18nKey.settingsFileSortSubtitle),
+              trailing: DropdownButton<FileSortMode>(
+                value: ref.watch(fileSortModeProvider),
+                items: const [
+                  DropdownMenuItem(
+                    value: FileSortMode.byName,
+                    child: UseText(I18nKey.settingsFileSortByName),
+                  ),
+                  DropdownMenuItem(
+                    value: FileSortMode.byType,
+                    child: UseText(I18nKey.settingsFileSortByType),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  ref.read(fileSortModeProvider.notifier).state = value;
+                },
+              ),
             ),
 
             ListTile(

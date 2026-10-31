@@ -305,6 +305,9 @@ class PersistedData {
   final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
+
+  /// Ordering of both file trees: `name` or `type`.
+  final String fileSortMode;
   final String confirmShortcut;
   final String cancelShortcut;
   final String webReplHost;
@@ -395,6 +398,7 @@ class PersistedData {
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
+    this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
     this.webReplHost = '',
