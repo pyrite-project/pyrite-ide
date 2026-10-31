@@ -76,11 +76,6 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   /// alone must not push the rows that need a decision off screen.
   bool _ignoredExpanded = false;
 
-  static const _segmentLabelStyle = TextStyle(
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
-  );
-
   @override
   void initState() {
     super.initState();
@@ -402,11 +397,12 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
 
   /// Master checkbox plus the direction switch.
   ///
-  /// Two layouts. On a wide dialog the switch sits beside the master checkbox
-  /// and each segment carries its count. Once the row can no longer hold three
-  /// labelled segments (phone widths) the checkbox moves to its own line and
-  /// the switch spans the full width; counts are the first thing to go, icons
-  /// the second, so the control never overflows from 280dp up.
+  /// Uses the same segmented control as the rest of the app — outlined track,
+  /// check mark on the selected segment — so the dialog does not invent its own
+  /// selection language. On a wide dialog the switch sits beside the master
+  /// checkbox and each segment carries its count; once the row can no longer
+  /// hold three labelled segments the checkbox moves to its own line, the
+  /// switch spans the full width and the counts are dropped.
   Widget _buildControlRow(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final uploads = _uploadTotal;
@@ -442,8 +438,12 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final stacked = constraints.maxWidth < 460;
-        final showCounts = constraints.maxWidth >= 420;
-        final showIcons = constraints.maxWidth >= 260;
+        final showCounts = constraints.maxWidth >= 520;
+        // Below ~300dp three icon + label segments stop fitting; the words are
+        // what make the switch legible, so the icons go first. The check mark
+        // needs less room but still has to leave the selected label visible.
+        final showIcons = constraints.maxWidth >= 300;
+        final showCheck = constraints.maxWidth >= 234;
 
         Widget segmentLabel(I18nKey key, int count) => Text(
           showCounts
@@ -451,19 +451,15 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
               : translateInContext(context, key),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: _segmentLabelStyle,
         );
 
-        Widget segmentIcon(IconData icon) => Icon(icon, size: 16);
-
         final segments = SegmentedButton<BoardSyncDirection>(
-          showSelectedIcon: false,
+          showSelectedIcon: showCheck,
           expandedInsets: stacked ? EdgeInsets.zero : null,
-          style: _segmentStyle(scheme, compact: stacked),
           segments: [
             ButtonSegment(
               value: BoardSyncDirection.none,
-              icon: showIcons ? segmentIcon(Icons.swap_horiz) : null,
+              icon: showIcons ? const Icon(Icons.swap_horiz) : null,
               label: segmentLabel(
                 I18nKey.devicesSyncDirBoth,
                 uploads + downloads,
@@ -476,7 +472,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
             ButtonSegment(
               value: BoardSyncDirection.localToBoard,
               enabled: uploads > 0,
-              icon: showIcons ? segmentIcon(Icons.arrow_upward_rounded) : null,
+              icon: showIcons ? const Icon(Icons.arrow_upward_rounded) : null,
               label: segmentLabel(I18nKey.devicesSyncDirUpload, uploads),
               tooltip: translateInContext(
                 context,
@@ -486,9 +482,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
             ButtonSegment(
               value: BoardSyncDirection.boardToLocal,
               enabled: downloads > 0,
-              icon: showIcons
-                  ? segmentIcon(Icons.arrow_downward_rounded)
-                  : null,
+              icon: showIcons ? const Icon(Icons.arrow_downward_rounded) : null,
               label: segmentLabel(I18nKey.devicesSyncDirDownload, downloads),
               tooltip: translateInContext(
                 context,
@@ -535,37 +529,6 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
           ],
         );
       },
-    );
-  }
-
-  /// Filled segment styling: `surfaceContainerHighest` track, `primary`
-  /// selection. Colours are resolved explicitly because some plugin themes
-  /// leave `outline` almost equal to the dialog surface, which made the
-  /// outlined default read as three plain labels.
-  ButtonStyle _segmentStyle(ColorScheme scheme, {required bool compact}) {
-    return ButtonStyle(
-      visualDensity: VisualDensity.compact,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
-      padding: WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
-      ),
-      side: const WidgetStatePropertyAll(BorderSide.none),
-      backgroundColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected)
-            ? scheme.primary
-            : scheme.surfaceContainerHighest,
-      ),
-      foregroundColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected)
-            ? scheme.onPrimary
-            : scheme.onSurfaceVariant,
-      ),
-      iconColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected)
-            ? scheme.onPrimary
-            : scheme.onSurfaceVariant,
-      ),
     );
   }
 
