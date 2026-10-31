@@ -75,7 +75,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   bool _ignoredExpanded = false;
 
   static const _segmentLabelStyle = TextStyle(
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: FontWeight.w600,
   );
 
@@ -128,6 +128,30 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   List<BoardSyncEntry> get _ignoredEntries => _visibleEntries
       .where((entry) => entry.ignoredByDefault)
       .toList(growable: false);
+
+  /// Changed rows the ignore file does not cover, in both directions.
+  ///
+  /// The switch counts these, not the whole plan: ignored rows are folded and
+  /// unticked, so counting them would promise more than the list shows.
+  Iterable<BoardSyncEntry> get _regularChanged => widget.plan.entries.where(
+    (entry) => entry.isChanged && !entry.ignoredByDefault,
+  );
+
+  int get _uploadTotal => _regularChanged
+      .where(
+        (entry) =>
+            entry.action == BoardSyncAction.uploadNew ||
+            entry.action == BoardSyncAction.uploadChanged,
+      )
+      .length;
+
+  int get _downloadTotal => _regularChanged
+      .where(
+        (entry) =>
+            entry.action == BoardSyncAction.downloadNew ||
+            entry.action == BoardSyncAction.downloadChanged,
+      )
+      .length;
 
   /// Action that will actually run for [entry]; a resolved conflict carries the
   /// side the user picked.
@@ -233,7 +257,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     return AlertDialog(
       icon: const Icon(Icons.sync_alt),
       title: Text(translateInContext(context, I18nKey.devicesSyncTitle)),
-      contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
       content: SizedBox(
         width: (media.width - 120).clamp(240.0, 620.0),
         height: (media.height - 280).clamp(220.0, 460.0),
@@ -251,7 +275,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                       child: Text(
                         translateInContext(context, I18nKey.devicesSyncEmpty),
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 13,
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
@@ -289,7 +313,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                   'size': formatTransferBytes(_selectedBytes),
                 },
               ),
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -354,11 +378,16 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     return '…/${parts.skip(parts.length - 2).join('/')}';
   }
 
-  /// Master checkbox plus the direction switch. The counts sit inside the
-  /// switch, so the plan summary and the filter are the same control.
+  /// Master checkbox plus the direction switch.
+  ///
+  /// The switch is filled rather than outlined: the outline colour of some
+  /// plugin themes is close to the dialog surface, which made the segments read
+  /// as plain labels. Filling the track with `surfaceContainerHighest` and the
+  /// selected segment with `primary` keeps the control visible in every theme.
   Widget _buildControlRow(BuildContext context) {
-    final uploads = widget.plan.uploadCount;
-    final downloads = widget.plan.downloadCount;
+    final scheme = Theme.of(context).colorScheme;
+    final uploads = _uploadTotal;
+    final downloads = _downloadTotal;
     // Ignored rows stay out of "select all": they are opt-in by definition.
     final selectable = _regularEntries
         .where((entry) => !_needsDecision(entry))
@@ -374,11 +403,16 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
         ? false
         : null;
 
+    Widget segmentLabel(I18nKey key, int count) => Text(
+      '${translateInContext(context, key)} $count',
+      style: _segmentLabelStyle,
+    );
+
     return Row(
       children: [
         SizedBox(
           width: 40,
-          height: 36,
+          height: 40,
           child: Center(
             child: Tooltip(
               message: translateInContext(
@@ -397,49 +431,77 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
             ),
           ),
         ),
-        SegmentedButton<BoardSyncDirection>(
-          showSelectedIcon: false,
-          style: const ButtonStyle(
-            visualDensity: VisualDensity.compact,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            padding: WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 10),
+        Expanded(
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: SegmentedButton<BoardSyncDirection>(
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 12),
+                ),
+                side: const WidgetStatePropertyAll(BorderSide.none),
+                backgroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? scheme.primary
+                      : scheme.surfaceContainerHighest,
+                ),
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? scheme.onPrimary
+                      : scheme.onSurfaceVariant,
+                ),
+                iconColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? scheme.onPrimary
+                      : scheme.onSurfaceVariant,
+                ),
+              ),
+              segments: [
+                ButtonSegment(
+                  value: BoardSyncDirection.none,
+                  icon: const Icon(Icons.swap_horiz, size: 16),
+                  label: segmentLabel(
+                    I18nKey.devicesSyncDirBoth,
+                    uploads + downloads,
+                  ),
+                  tooltip: translateInContext(
+                    context,
+                    I18nKey.devicesSyncDirectionBoth,
+                  ),
+                ),
+                ButtonSegment(
+                  value: BoardSyncDirection.localToBoard,
+                  enabled: uploads > 0,
+                  icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+                  label: segmentLabel(I18nKey.devicesSyncDirUpload, uploads),
+                  tooltip: translateInContext(
+                    context,
+                    I18nKey.devicesSyncDirectionLocal,
+                  ),
+                ),
+                ButtonSegment(
+                  value: BoardSyncDirection.boardToLocal,
+                  enabled: downloads > 0,
+                  icon: const Icon(Icons.arrow_downward_rounded, size: 16),
+                  label: segmentLabel(
+                    I18nKey.devicesSyncDirDownload,
+                    downloads,
+                  ),
+                  tooltip: translateInContext(
+                    context,
+                    I18nKey.devicesSyncDirectionBoard,
+                  ),
+                ),
+              ],
+              selected: {_direction},
+              onSelectionChanged: (selection) =>
+                  setState(() => _direction = selection.first),
             ),
           ),
-          segments: [
-            ButtonSegment(
-              value: BoardSyncDirection.none,
-              icon: const Icon(Icons.swap_horiz, size: 15),
-              label: Text('${uploads + downloads}', style: _segmentLabelStyle),
-              tooltip: translateInContext(
-                context,
-                I18nKey.devicesSyncDirectionBoth,
-              ),
-            ),
-            ButtonSegment(
-              value: BoardSyncDirection.localToBoard,
-              enabled: uploads > 0,
-              icon: const Icon(Icons.arrow_upward_rounded, size: 15),
-              label: Text('$uploads', style: _segmentLabelStyle),
-              tooltip: translateInContext(
-                context,
-                I18nKey.devicesSyncDirectionLocal,
-              ),
-            ),
-            ButtonSegment(
-              value: BoardSyncDirection.boardToLocal,
-              enabled: downloads > 0,
-              icon: const Icon(Icons.arrow_downward_rounded, size: 15),
-              label: Text('$downloads', style: _segmentLabelStyle),
-              tooltip: translateInContext(
-                context,
-                I18nKey.devicesSyncDirectionBoard,
-              ),
-            ),
-          ],
-          selected: {_direction},
-          onSelectionChanged: (selection) =>
-              setState(() => _direction = selection.first),
         ),
       ],
     );
@@ -469,7 +531,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     return InkWell(
       onTap: () => setState(() => _ignoredExpanded = !_ignoredExpanded),
       child: SizedBox(
-        height: 36,
+        height: 40,
         child: Row(
           children: [
             SizedBox(
@@ -495,7 +557,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ),
             Icon(
@@ -537,7 +599,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
       child: InkWell(
         onTap: isConflict ? null : () => _setSelected(entry, !checked),
         child: SizedBox(
-          height: 36,
+          height: 44,
           child: Row(
             children: [
               SizedBox(
@@ -568,7 +630,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'monospace',
-                    fontSize: 12.5,
+                    fontSize: 13,
                     color: needsDecision
                         ? scheme.error
                         : entry.ignoredByDefault
@@ -582,7 +644,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                 Text(
                   formatTransferBytes(bytes),
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontFamily: 'monospace',
                     color: scheme.onSurfaceVariant,
                   ),
@@ -672,7 +734,7 @@ class _SyncRootChip extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(6),
@@ -680,7 +742,7 @@ class _SyncRootChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 13, color: scheme.onSurfaceVariant),
+            Icon(icon, size: 14, color: scheme.onSurfaceVariant),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -688,7 +750,7 @@ class _SyncRootChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   fontFamily: 'monospace',
                   color: scheme.onSurfaceVariant,
                 ),
