@@ -80,7 +80,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'alpha');
     await tester.pumpAndSettle();
 
-    expect(find.text('第 1 / 共 2 个'), findsOneWidget);
+    expect(find.text('1/2'), findsOneWidget);
     // Highlights come from the controller, which is what the renderer paints.
     expect(controller.highlights, hasLength(2));
   });
@@ -94,17 +94,17 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'hit');
     await tester.pumpAndSettle();
-    expect(find.text('第 1 / 共 2 个'), findsOneWidget);
+    expect(find.text('1/2'), findsOneWidget);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.text('第 2 / 共 2 个'), findsOneWidget);
+    expect(find.text('2/2'), findsOneWidget);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pumpAndSettle();
-    expect(find.text('第 1 / 共 2 个'), findsOneWidget);
+    expect(find.text('1/2'), findsOneWidget);
   });
 
   testWidgets('Escape closes the bar and clears the highlights', (

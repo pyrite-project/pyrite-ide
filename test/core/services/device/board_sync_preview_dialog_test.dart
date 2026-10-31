@@ -66,12 +66,13 @@ void main() {
 
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.text('同步本地工作区到设备'), findsOneWidget);
+    expect(find.text('同步到设备'), findsOneWidget);
     expect(find.text('new.py'), findsOneWidget);
     expect(find.text('other.py'), findsOneWidget);
-    expect(find.text('same.py'), findsOneWidget);
+    // Files that already match on both sides are not worth a row.
+    expect(find.text('same.py'), findsNothing);
 
-    await tester.tap(find.textContaining(buttonLabel).last);
+    await tester.tap(find.widgetWithText(FilledButton, buttonLabel));
     await tester.pumpAndSettle();
     return captured;
   }
@@ -138,17 +139,80 @@ void main() {
 
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('仅本地 → 设备'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(SegmentedButton<BoardSyncDirection>),
+        matching: find.byIcon(Icons.arrow_upward_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('new.py'), findsOneWidget);
     expect(find.text('other.py'), findsNothing);
 
-    await tester.tap(find.textContaining('同步').last);
+    await tester.tap(find.widgetWithText(FilledButton, '同步'));
     await tester.pumpAndSettle();
 
     expect(captured!.direction, BoardSyncDirection.localToBoard);
     expect(captured!.selectedPaths, {'new.py'});
+  });
+
+  testWidgets('a conflict row is resolved by picking a side', (tester) async {
+    final plan = BoardSyncPlan(
+      entries: [
+        BoardSyncEntry(
+          relativePath: 'clash.py',
+          action: BoardSyncAction.conflict,
+          direction: BoardSyncDirection.none,
+          local: SyncFileInfo(
+            relativePath: 'clash.py',
+            size: 12,
+            modified: DateTime.now(),
+          ),
+          board: SyncFileInfo(
+            relativePath: 'clash.py',
+            size: 14,
+            modified: DateTime.now(),
+          ),
+        ),
+      ],
+      localRoot: '/workspace',
+    );
+
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: plan,
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // No side picked yet: the action stays disabled instead of syncing nothing.
+    final apply = find.widgetWithText(FilledButton, '同步');
+    expect(tester.widget<FilledButton>(apply).onPressed, isNull);
+
+    await tester.tap(find.text('保留本地'));
+    await tester.pumpAndSettle();
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+
+    expect(captured!.selectedPaths, {'clash.py'});
+    expect(captured!.overrides['clash.py'], BoardSyncAction.uploadChanged);
   });
 
   group('FileTransferProgressBar', () {

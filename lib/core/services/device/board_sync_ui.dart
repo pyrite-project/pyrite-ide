@@ -20,6 +20,7 @@ class BoardSyncPreviewResult {
   const BoardSyncPreviewResult({
     required this.selectedPaths,
     this.direction = BoardSyncDirection.none,
+    this.overrides = const {},
   });
 
   /// Relative paths the user left checked.
@@ -27,6 +28,11 @@ class BoardSyncPreviewResult {
 
   /// Direction chosen in the dialog; `none` means "both".
   final BoardSyncDirection direction;
+
+  /// Conflict rows the user resolved here: [BoardSyncAction.uploadChanged]
+  /// keeps the local copy, [BoardSyncAction.downloadChanged] keeps the device
+  /// copy. Empty when nothing needed a decision.
+  final Map<String, BoardSyncAction> overrides;
 }
 
 /// Shows the sync plan preview and returns the user's selection, or `null`
@@ -61,10 +67,18 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   late Set<String> _selected;
   late BoardSyncDirection _direction;
 
+  /// Conflict rows the user already resolved, keyed by relative path.
+  final Map<String, BoardSyncAction> _resolved = {};
+
+  static const _segmentLabelStyle = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+  );
+
   @override
   void initState() {
     super.initState();
-    // Default selection: every actionable row. Conflicts start unchecked
+    // Default selection: every actionable row. Conflicts start unresolved
     // because silently overwriting either side would lose user edits.
     _selected = {
       for (final entry in widget.plan.actionable) entry.relativePath,
@@ -72,130 +86,174 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     _direction = BoardSyncDirection.none;
   }
 
+  /// Rows worth showing: files that will move, plus conflicts.
+  ///
+  /// Identical files are left out. The dialog answers "what will happen"; a row
+  /// that cannot be acted on is noise, and the arrow column already says which
+  /// way every remaining file goes.
   List<BoardSyncEntry> get _visibleEntries {
-    if (_direction == BoardSyncDirection.localToBoard) {
-      return widget.plan.entries
-          .where(
-            (entry) =>
-                entry.action == BoardSyncAction.uploadNew ||
-                entry.action == BoardSyncAction.uploadChanged ||
-                entry.action == BoardSyncAction.unchanged,
-          )
-          .toList(growable: false);
-    }
-    if (_direction == BoardSyncDirection.boardToLocal) {
-      return widget.plan.entries
-          .where(
-            (entry) =>
-                entry.action == BoardSyncAction.downloadNew ||
-                entry.action == BoardSyncAction.downloadChanged ||
-                entry.action == BoardSyncAction.unchanged,
-          )
-          .toList(growable: false);
-    }
-    return widget.plan.entries;
+    final changed = widget.plan.entries.where((entry) => entry.isChanged);
+    return switch (_direction) {
+      BoardSyncDirection.localToBoard =>
+        changed
+            .where(
+              (entry) =>
+                  entry.action == BoardSyncAction.uploadNew ||
+                  entry.action == BoardSyncAction.uploadChanged,
+            )
+            .toList(growable: false),
+      BoardSyncDirection.boardToLocal =>
+        changed
+            .where(
+              (entry) =>
+                  entry.action == BoardSyncAction.downloadNew ||
+                  entry.action == BoardSyncAction.downloadChanged,
+            )
+            .toList(growable: false),
+      BoardSyncDirection.none => changed.toList(growable: false),
+    };
   }
 
-  int get _selectedBytes => widget.plan.actionable
+  /// Action that will actually run for [entry]; a resolved conflict carries the
+  /// side the user picked.
+  BoardSyncAction _effectiveAction(BoardSyncEntry entry) =>
+      _resolved[entry.relativePath] ?? entry.action;
+
+  /// Conflicts have no direction until the user picks a side, so they cannot be
+  /// checked yet: the two side buttons replace the checkbox.
+  bool _needsDecision(BoardSyncEntry entry) =>
+      entry.action == BoardSyncAction.conflict &&
+      _resolved[entry.relativePath] == null;
+
+  int _bytesFor(BoardSyncEntry entry) {
+    switch (_effectiveAction(entry)) {
+      case BoardSyncAction.uploadNew:
+      case BoardSyncAction.uploadChanged:
+        return entry.local?.size ?? 0;
+      case BoardSyncAction.downloadNew:
+      case BoardSyncAction.downloadChanged:
+        return entry.board?.size ?? 0;
+      case BoardSyncAction.unchanged:
+      case BoardSyncAction.conflict:
+        return 0;
+    }
+  }
+
+  /// Only visible rows count: switching the direction chip must not keep
+  /// counting rows the user can no longer see, since those are also the only
+  /// paths handed back to the executor.
+  int get _selectedCount => _visibleEntries
       .where((entry) => _selected.contains(entry.relativePath))
-      .fold(0, (sum, entry) => sum + entry.transferBytes);
+      .length;
+
+  int get _selectedBytes => _visibleEntries
+      .where((entry) => _selected.contains(entry.relativePath))
+      .fold(0, (sum, entry) => sum + _bytesFor(entry));
+
+  void _setSelected(BoardSyncEntry entry, bool selected) {
+    setState(() {
+      if (selected) {
+        _selected.add(entry.relativePath);
+      } else {
+        _selected.remove(entry.relativePath);
+      }
+    });
+  }
+
+  /// Picking a side both records the direction and includes the row; tapping
+  /// the chosen side again drops it back to "needs a decision".
+  void _resolve(BoardSyncEntry entry, BoardSyncAction action) {
+    setState(() {
+      if (_resolved[entry.relativePath] == action) {
+        _resolved.remove(entry.relativePath);
+        _selected.remove(entry.relativePath);
+      } else {
+        _resolved[entry.relativePath] = action;
+        _selected.add(entry.relativePath);
+      }
+    });
+  }
+
+  void _toggleAll(List<BoardSyncEntry> selectable, bool? current) {
+    setState(() {
+      final paths = selectable.map((entry) => entry.relativePath);
+      if (current == true) {
+        _selected.removeAll(paths);
+      } else {
+        _selected.addAll(paths);
+      }
+    });
+  }
+
+  BoardSyncPreviewResult _buildResult() {
+    final selected = {
+      for (final entry in _visibleEntries)
+        if (entry.isChanged && _selected.contains(entry.relativePath))
+          entry.relativePath,
+    };
+    return BoardSyncPreviewResult(
+      selectedPaths: selected,
+      direction: _direction,
+      overrides: {
+        for (final entry in _resolved.entries)
+          if (selected.contains(entry.key)) entry.key: entry.value,
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final entries = _visibleEntries;
-    final actionable = _selected.length;
+    final selectedCount = _selectedCount;
+    // The dialog also runs on phones: shrink instead of overflowing when the
+    // window is narrower or shorter than the desktop size.
+    final media = MediaQuery.sizeOf(context);
     return AlertDialog(
       icon: const Icon(Icons.sync_alt),
       title: Text(translateInContext(context, I18nKey.devicesSyncTitle)),
+      contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       content: SizedBox(
-        width: 640,
-        height: 460,
+        width: (media.width - 120).clamp(240.0, 620.0),
+        height: (media.height - 280).clamp(220.0, 460.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              translateInContextWithReplacements(
-                context,
-                I18nKey.devicesSyncRoots,
-                {'local': widget.localRoot, 'board': widget.plan.boardRoot},
-              ),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildDirectionSelector(scheme),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    translateInContextWithReplacements(
-                      context,
-                      I18nKey.devicesSyncSummary,
-                      {
-                        'count': '${widget.plan.entries.length}',
-                        'upload': '${widget.plan.uploadCount}',
-                        'download': '${widget.plan.downloadCount}',
-                        'unchanged': '${widget.plan.unchangedCount}',
-                        'conflict': '${widget.plan.conflicts.length}',
-                      },
-                    ),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                TextButton(
-                  onPressed: entries.isEmpty
-                      ? null
-                      : () {
-                          final selectable = entries
-                              .where((entry) => entry.isChanged)
-                              .map((entry) => entry.relativePath)
-                              .toSet();
-                          setState(() {
-                            if (_selected.containsAll(selectable)) {
-                              _selected = {};
-                            } else {
-                              _selected = {..._selected, ...selectable};
-                            }
-                          });
-                        },
-                  child: Text(
-                    translateInContext(context, I18nKey.devicesSyncToggleAll),
-                  ),
-                ),
-              ],
-            ),
+            _buildRootsRow(scheme),
+            const SizedBox(height: 12),
+            _buildControlRow(context),
+            const SizedBox(height: 4),
             const Divider(height: 1),
             Expanded(
               child: entries.isEmpty
                   ? Center(
                       child: Text(
                         translateInContext(context, I18nKey.devicesSyncEmpty),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     )
                   : ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: entries.length,
                       itemBuilder: (context, index) =>
                           _buildEntryRow(context, entries[index], scheme),
                     ),
             ),
             const Divider(height: 1),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               translateInContextWithReplacements(
                 context,
                 I18nKey.devicesSyncSelected,
                 {
-                  'count': '$actionable',
+                  'count': '$selectedCount',
                   'size': formatTransferBytes(_selectedBytes),
                 },
               ),
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -206,63 +264,145 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
           child: Text(translateInContext(context, I18nKey.devicesSyncCancel)),
         ),
         FilledButton.icon(
-          onPressed: actionable == 0
+          onPressed: selectedCount == 0
               ? null
-              : () => Navigator.pop(
-                  context,
-                  BoardSyncPreviewResult(
-                    // Only rows currently visible *and* checked are returned:
-                    // switching the direction chip must not keep transferring
-                    // rows the user can no longer see.
-                    selectedPaths: {
-                      for (final entry in _visibleEntries)
-                        if (entry.isChanged &&
-                            _selected.contains(entry.relativePath))
-                          entry.relativePath,
-                    },
-                    direction: _direction,
-                  ),
-                ),
+              : () => Navigator.pop(context, _buildResult()),
           icon: const Icon(Icons.play_arrow),
-          label: Text(
-            translateInContextWithReplacements(
-              context,
-              I18nKey.devicesSyncApply,
-              {'count': '$actionable'},
-            ),
+          label: Text(translateInContext(context, I18nKey.devicesSyncApply)),
+        ),
+      ],
+    );
+  }
+
+  /// Source and destination, as two chips. The full path lives in the tooltip
+  /// so the row stays one line.
+  Widget _buildRootsRow(ColorScheme scheme) {
+    return Row(
+      children: [
+        Flexible(
+          child: _SyncRootChip(
+            icon: Icons.folder_outlined,
+            label: _shortRoot(widget.localRoot),
+            tooltip: widget.localRoot,
+            scheme: scheme,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(
+            Icons.arrow_right_alt,
+            size: 18,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        Flexible(
+          child: _SyncRootChip(
+            icon: Icons.memory,
+            label: widget.plan.boardRoot,
+            tooltip: widget.plan.boardRoot,
+            scheme: scheme,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildDirectionSelector(ColorScheme scheme) {
-    return Wrap(
-      spacing: 8,
+  /// Keeps the last two segments of a path: enough to recognise the project,
+  /// short enough to never wrap.
+  String _shortRoot(String path) {
+    final parts = path
+        .split(RegExp(r'[\\/]'))
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (parts.length <= 2) return path;
+    return '…/${parts.skip(parts.length - 2).join('/')}';
+  }
+
+  /// Master checkbox plus the direction switch. The counts sit inside the
+  /// switch, so the plan summary and the filter are the same control.
+  Widget _buildControlRow(BuildContext context) {
+    final uploads = widget.plan.uploadCount;
+    final downloads = widget.plan.downloadCount;
+    final selectable = _visibleEntries
+        .where((entry) => !_needsDecision(entry))
+        .toList(growable: false);
+    final checked = selectable
+        .where((entry) => _selected.contains(entry.relativePath))
+        .length;
+    final bool? masterValue = selectable.isEmpty
+        ? false
+        : checked == selectable.length
+        ? true
+        : checked == 0
+        ? false
+        : null;
+
+    return Row(
       children: [
-        ChoiceChip(
-          label: Text(
-            translateInContext(context, I18nKey.devicesSyncDirectionBoth),
+        SizedBox(
+          width: 40,
+          height: 36,
+          child: Center(
+            child: Tooltip(
+              message: translateInContext(
+                context,
+                I18nKey.devicesSyncToggleAll,
+              ),
+              child: Checkbox(
+                value: masterValue,
+                tristate: true,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onChanged: selectable.isEmpty
+                    ? null
+                    : (_) => _toggleAll(selectable, masterValue),
+              ),
+            ),
           ),
-          selected: _direction == BoardSyncDirection.none,
-          onSelected: (_) =>
-              setState(() => _direction = BoardSyncDirection.none),
         ),
-        ChoiceChip(
-          label: Text(
-            translateInContext(context, I18nKey.devicesSyncDirectionLocal),
+        SegmentedButton<BoardSyncDirection>(
+          showSelectedIcon: false,
+          style: const ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 10),
+            ),
           ),
-          selected: _direction == BoardSyncDirection.localToBoard,
-          onSelected: (_) =>
-              setState(() => _direction = BoardSyncDirection.localToBoard),
-        ),
-        ChoiceChip(
-          label: Text(
-            translateInContext(context, I18nKey.devicesSyncDirectionBoard),
-          ),
-          selected: _direction == BoardSyncDirection.boardToLocal,
-          onSelected: (_) =>
-              setState(() => _direction = BoardSyncDirection.boardToLocal),
+          segments: [
+            ButtonSegment(
+              value: BoardSyncDirection.none,
+              icon: const Icon(Icons.swap_horiz, size: 15),
+              label: Text('${uploads + downloads}', style: _segmentLabelStyle),
+              tooltip: translateInContext(
+                context,
+                I18nKey.devicesSyncDirectionBoth,
+              ),
+            ),
+            ButtonSegment(
+              value: BoardSyncDirection.localToBoard,
+              enabled: uploads > 0,
+              icon: const Icon(Icons.arrow_upward_rounded, size: 15),
+              label: Text('$uploads', style: _segmentLabelStyle),
+              tooltip: translateInContext(
+                context,
+                I18nKey.devicesSyncDirectionLocal,
+              ),
+            ),
+            ButtonSegment(
+              value: BoardSyncDirection.boardToLocal,
+              enabled: downloads > 0,
+              icon: const Icon(Icons.arrow_downward_rounded, size: 15),
+              label: Text('$downloads', style: _segmentLabelStyle),
+              tooltip: translateInContext(
+                context,
+                I18nKey.devicesSyncDirectionBoard,
+              ),
+            ),
+          ],
+          selected: {_direction},
+          onSelectionChanged: (selection) =>
+              setState(() => _direction = selection.first),
         ),
       ],
     );
@@ -273,92 +413,249 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     BoardSyncEntry entry,
     ColorScheme scheme,
   ) {
+    final isConflict = entry.action == BoardSyncAction.conflict;
+    final needsDecision = _needsDecision(entry);
+    final resolvedAction = _resolved[entry.relativePath];
     final checked = _selected.contains(entry.relativePath);
-    final selectable = entry.isChanged;
-    final (icon, color, label) = _describeAction(entry.action, scheme);
-    final sizeLabel = entry.transferBytes > 0
-        ? formatTransferBytes(entry.transferBytes)
-        : '';
-    return CheckboxListTile(
-      dense: true,
-      value: selectable && checked,
-      onChanged: selectable
-          ? (value) {
-              setState(() {
-                if (value ?? false) {
-                  _selected.add(entry.relativePath);
-                } else {
-                  _selected.remove(entry.relativePath);
-                }
-              });
-            }
-          : null,
-      controlAffinity: ListTileControlAffinity.leading,
-      secondary: Icon(icon, size: 18, color: color),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              entry.relativePath,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            ),
+    final (icon, color, labelKey) = _describeAction(
+      resolvedAction ?? entry.action,
+      scheme,
+    );
+    final bytes = _bytesFor(entry);
+    final label = translateInContext(context, labelKey);
+    final detail = entry.note == null || resolvedAction != null
+        ? label
+        : '$label · ${entry.note}';
+
+    return Tooltip(
+      message: detail,
+      waitDuration: const Duration(milliseconds: 700),
+      child: InkWell(
+        onTap: isConflict ? null : () => _setSelected(entry, !checked),
+        child: SizedBox(
+          height: 36,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 40,
+                child: Center(
+                  child: isConflict
+                      ? Icon(
+                          resolvedAction == null
+                              ? Icons.priority_high_rounded
+                              : Icons.check_rounded,
+                          size: 16,
+                          color: resolvedAction == null ? scheme.error : color,
+                        )
+                      : Checkbox(
+                          value: checked,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          onChanged: (value) =>
+                              _setSelected(entry, value ?? false),
+                        ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  entry.relativePath,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12.5,
+                    color: needsDecision ? scheme.error : scheme.onSurface,
+                  ),
+                ),
+              ),
+              if (bytes > 0) ...[
+                const SizedBox(width: 12),
+                Text(
+                  formatTransferBytes(bytes),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(width: 12),
+              if (isConflict)
+                _ConflictSidePicker(
+                  resolved: resolvedAction,
+                  onPick: (action) => _resolve(entry, action),
+                )
+              else
+                Icon(icon, size: 16, color: color),
+              const SizedBox(width: 8),
+            ],
           ),
-          if (sizeLabel.isNotEmpty)
-            Text(
-              sizeLabel,
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-            ),
-        ],
-      ),
-      subtitle: Text(
-        entry.note == null ? label : '$label · ${entry.note}',
-        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+        ),
       ),
     );
   }
 
-  (IconData, Color, String) _describeAction(
+  /// Direction icon, colour and tooltip label for one action.
+  ///
+  /// The icon column is the only per-row explanation: an up arrow means the
+  /// file goes to the device, a down arrow means it comes back.
+  (IconData, Color, I18nKey) _describeAction(
     BoardSyncAction action,
     ColorScheme scheme,
   ) {
     switch (action) {
       case BoardSyncAction.uploadNew:
         return (
-          Icons.upload_outlined,
+          Icons.arrow_upward_rounded,
           scheme.primary,
-          I18nKey.devicesSyncRowAdded.fallback,
+          I18nKey.devicesSyncRowAdded,
         );
       case BoardSyncAction.uploadChanged:
         return (
-          Icons.arrow_upward,
+          Icons.arrow_upward_rounded,
           scheme.primary,
-          I18nKey.devicesSyncRowModifiedUpload.fallback,
+          I18nKey.devicesSyncRowModifiedUpload,
         );
       case BoardSyncAction.downloadNew:
         return (
-          Icons.download_outlined,
+          Icons.arrow_downward_rounded,
           scheme.tertiary,
-          I18nKey.devicesSyncRowBoardOnly.fallback,
+          I18nKey.devicesSyncRowBoardOnly,
         );
       case BoardSyncAction.downloadChanged:
         return (
-          Icons.arrow_downward,
+          Icons.arrow_downward_rounded,
           scheme.tertiary,
-          I18nKey.devicesSyncRowModifiedDownload.fallback,
+          I18nKey.devicesSyncRowModifiedDownload,
         );
       case BoardSyncAction.unchanged:
         return (
           Icons.check,
           scheme.onSurfaceVariant,
-          I18nKey.devicesSyncRowUnchanged.fallback,
+          I18nKey.devicesSyncRowUnchanged,
         );
       case BoardSyncAction.conflict:
         return (
-          Icons.warning_amber_rounded,
+          Icons.priority_high_rounded,
           scheme.error,
-          I18nKey.devicesSyncRowConflict.fallback,
+          I18nKey.devicesSyncRowConflict,
         );
     }
+  }
+}
+
+/// Local or device root, rendered as one compact chip.
+class _SyncRootChip extends StatelessWidget {
+  const _SyncRootChip({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.scheme,
+  });
+
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Two side buttons for a conflicting file: keep the local copy or the device
+/// copy. Replaces the checkbox, because a conflict has no default direction.
+class _ConflictSidePicker extends StatelessWidget {
+  const _ConflictSidePicker({required this.resolved, required this.onPick});
+
+  final BoardSyncAction? resolved;
+  final ValueChanged<BoardSyncAction> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildPill(
+          context,
+          scheme,
+          I18nKey.devicesSyncKeepLocal,
+          BoardSyncAction.uploadChanged,
+        ),
+        const SizedBox(width: 4),
+        _buildPill(
+          context,
+          scheme,
+          I18nKey.devicesSyncKeepBoard,
+          BoardSyncAction.downloadChanged,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPill(
+    BuildContext context,
+    ColorScheme scheme,
+    I18nKey key,
+    BoardSyncAction action,
+  ) {
+    final selected = resolved == action;
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => onPick(action),
+      child: Container(
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? scheme.primaryContainer : null,
+          border: Border.all(
+            color: selected ? Colors.transparent : scheme.outlineVariant,
+          ),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          translateInContext(context, key),
+          style: TextStyle(
+            fontSize: 11,
+            color: selected
+                ? scheme.onPrimaryContainer
+                : scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
   }
 }
 

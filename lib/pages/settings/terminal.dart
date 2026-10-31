@@ -162,7 +162,6 @@ class TerminalSettings extends ConsumerWidget {
           ),
         SettingsSection(
           title: I18nKey.settingsTerminalSerialSection,
-          description: I18nKey.settingsTerminalSerialDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.speed),
@@ -178,9 +177,6 @@ class TerminalSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsTerminalAutoReconnect),
-              subtitle: const UseText(
-                I18nKey.settingsTerminalAutoReconnectSubtitle,
-              ),
               value: ref.watch(serialAutoReconnect),
               onChanged: (value) {
                 ref.read(serialAutoReconnect.notifier).state = value;
@@ -212,9 +208,6 @@ class TerminalSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsTerminalChineseToUnicode),
-              subtitle: const UseText(
-                I18nKey.settingsTerminalChineseToUnicodeSubtitle,
-              ),
               value: ref.watch(chineseToUnicodeConversion),
               onChanged: (value) {
                 ref.read(chineseToUnicodeConversion.notifier).state = value;
@@ -262,7 +255,6 @@ class TerminalSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsTerminalDisplaySection,
-          description: I18nKey.settingsTerminalDisplayDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.font_download_outlined),
@@ -304,9 +296,6 @@ class TerminalSettings extends ConsumerWidget {
             SwitchListTile(
               secondary: const Icon(Icons.visibility_outlined),
               title: const UseText(I18nKey.settingsTerminalMinimumContrast),
-              subtitle: const UseText(
-                I18nKey.settingsTerminalMinimumContrastSubtitle,
-              ),
               value: ref.watch(terminalMinimumContrast),
               onChanged: (value) =>
                   ref.read(terminalMinimumContrast.notifier).state = value,
@@ -317,12 +306,11 @@ class TerminalSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "WebREPL",
-          description: I18nKey.settingsTerminalWebReplDescription,
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsTerminalWebReplEnable),
               subtitle: webReplInfo.errorMessage == null
-                  ? const UseText(I18nKey.settingsTerminalWebReplEnableSubtitle)
+                  ? null
                   : Text(webReplInfo.errorMessage!),
               value: switch (webReplInfo.state) {
                 WebReplState.waitingPassword || WebReplState.connected => true,
@@ -972,14 +960,14 @@ class _TerminalCustomColorsSection extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            subtitle: UseText(
-              enabled
-                  ? I18nKey.settingsTerminalCustomSectionDescription
-                  : I18nKey.settingsTerminalColorsPluginLocked,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            subtitle: enabled
+                ? null
+                : UseText(
+                    I18nKey.settingsTerminalColorsPluginLocked,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
             children: const [_TerminalCustomColors()],
           ),
         ),

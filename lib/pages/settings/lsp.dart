@@ -27,7 +27,6 @@ class LspSettings extends ConsumerWidget {
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsLspEnable),
-              subtitle: const UseText(I18nKey.settingsLspEnableSubtitle),
               value: ref.watch(useLsp),
               onChanged: (value) {
                 ref.read(useLsp.notifier).state = value;
@@ -139,7 +138,6 @@ class LspSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsLspBasedPyrightSection,
-          description: I18nKey.settingsLspBasedPyrightDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.rule_outlined),
@@ -159,7 +157,6 @@ class LspSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsLspDiagnosticsSection,
-          description: I18nKey.settingsLspDiagnosticsDescription,
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsLspWarningDiagnostics),
@@ -186,11 +183,9 @@ class LspSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "MicroPython Stubs",
-          description: I18nKey.settingsLspStubsDescription,
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsLspEnableStubs),
-              subtitle: const UseText(I18nKey.settingsLspEnableStubsSubtitle),
               value: ref.watch(microPythonStubsEnabled),
               onChanged: (value) {
                 ref.read(microPythonStubsEnabled.notifier).state = value;
@@ -240,13 +235,11 @@ class LspSettings extends ConsumerWidget {
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeCompletion,
-              description: I18nKey.settingsLspCodeCompletionDescription,
               provider: lspCodeCompletion,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspHoverInfo,
-              description: I18nKey.settingsLspHoverInfoDescription,
               provider: lspHoverInfo,
             ),
 
@@ -288,20 +281,17 @@ class LspSettings extends ConsumerWidget {
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspGoToDefinition,
-              description: I18nKey.settingsLspGoToDefinitionDescription,
               provider: lspGoToDefinition,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspRename,
-              description: I18nKey.settingsLspRenameDescription,
               provider: lspRename,
             ),
           ],
         ),
         SettingsSection(
           title: I18nKey.settingsLspScope,
-          description: I18nKey.settingsLspScopeDescription,
           children: [
             _CapabilitySwitch(
               title: I18nKey.settingsLspAlwaysStart,
@@ -730,19 +720,19 @@ class LspSettings extends ConsumerWidget {
 class _CapabilitySwitch extends ConsumerWidget {
   const _CapabilitySwitch({
     required this.title,
-    required this.description,
+    this.description,
     required this.provider,
   });
 
   final Object title;
-  final Object description;
+  final Object? description;
   final StateProvider<bool> provider;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SwitchListTile(
       title: UseText(title),
-      subtitle: UseText(description),
+      subtitle: description == null ? null : UseText(description!),
       value: ref.watch(provider),
       onChanged: (value) => ref.read(provider.notifier).state = value,
     );

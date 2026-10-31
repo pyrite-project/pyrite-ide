@@ -42,8 +42,8 @@ class TerminalSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // "无结果" is shown instead of "第 0 / 共 0 个": the latter reads like an
-    // off-by-one bug even though it is correct.
+    // "无结果" is shown instead of "0/0": the latter reads like an off-by-one
+    // bug even though it is correct.
     final counter = state.isActive && !state.hasMatches
         ? translateInContext(context, I18nKey.terminalSearchNoResults)
         : state.counterLabel;

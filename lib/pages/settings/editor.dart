@@ -27,7 +27,6 @@ class EditorSettings extends ConsumerWidget {
       children: [
         SettingsSection(
           title: I18nKey.settingsEditorFontSection,
-          description: I18nKey.settingsEditorFontDescription,
           children: [
             ListTile(
               title: const UseText(I18nKey.settingsTerminalFont),
@@ -81,7 +80,6 @@ class EditorSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsEditorUploadConfirmSection,
-          description: I18nKey.settingsEditorUploadConfirmDescription,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -109,7 +107,6 @@ class EditorSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsEditorShortcutsSection,
-          description: I18nKey.settingsEditorShortcutsDescription,
           children: [
             ShortcutRecorderTile(
               title: I18nKey.settingsEditorConfirmAction,
@@ -190,7 +187,6 @@ class EditorSettings extends ConsumerWidget {
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorWordWrap),
-              subtitle: const UseText(I18nKey.settingsEditorWordWrapSubtitle),
               value: ref.watch(editorWordWrap),
               onChanged: (value) {
                 ref.read(editorWordWrap.notifier).state = value;
@@ -199,7 +195,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorLineNumber),
-              subtitle: const UseText(I18nKey.settingsEditorLineNumberSubtitle),
               value: ref.watch(editorLineNumber),
               onChanged: (value) =>
                   ref.read(editorLineNumber.notifier).state = value,
@@ -207,9 +202,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorGutterDivider),
-              subtitle: const UseText(
-                I18nKey.settingsEditorGutterDividerSubtitle,
-              ),
               value: ref.watch(editorGutterDivider),
               onChanged: (value) =>
                   ref.read(editorGutterDivider.notifier).state = value,
@@ -217,9 +209,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorSmoothCursor),
-              subtitle: const UseText(
-                I18nKey.settingsEditorSmoothCursorSubtitle,
-              ),
               value: ref.watch(editorSmoothCursor),
               onChanged: (value) =>
                   ref.read(editorSmoothCursor.notifier).state = value,
@@ -235,9 +224,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorCodeFolding),
-              subtitle: const UseText(
-                I18nKey.settingsEditorCodeFoldingSubtitle,
-              ),
               value: ref.watch(editorCodeFolding),
               onChanged: (value) =>
                   ref.read(editorCodeFolding.notifier).state = value,
@@ -245,7 +231,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorGuideLines),
-              subtitle: const UseText(I18nKey.settingsEditorGuideLinesSubtitle),
               value: ref.watch(editorGuideLines),
               onChanged: (value) =>
                   ref.read(editorGuideLines.notifier).state = value,
@@ -263,9 +248,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorKeyboardSuggestions),
-              subtitle: const UseText(
-                I18nKey.settingsEditorKeyboardSuggestionsSubtitle,
-              ),
               value: ref.watch(editorKeyboardSuggestions),
               onChanged: (value) =>
                   ref.read(editorKeyboardSuggestions.notifier).state = value,
@@ -273,7 +255,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorSpaceAsTab),
-              subtitle: const UseText(I18nKey.settingsEditorSpaceAsTabSubtitle),
               value: ref.watch(editorUseSpaceAsTab),
               onChanged: (value) =>
                   ref.read(editorUseSpaceAsTab.notifier).state = value,
@@ -302,9 +283,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorFormatOnSave),
-              subtitle: const UseText(
-                I18nKey.settingsEditorFormatOnSaveSubtitle,
-              ),
               value: ref.watch(editorFormatOnSave),
               onChanged: (value) =>
                   ref.read(editorFormatOnSave.notifier).state = value,

@@ -118,7 +118,7 @@ class TerminalSearchState {
   TerminalSearchMatch? get current =>
       hasMatches ? matches[currentIndex.clamp(0, matches.length - 1)] : null;
 
-  /// `第 3 / 共 17 个`, or an empty string when nothing matched. The UI shows
+  /// `3/17`, or an empty string when nothing matched. The UI shows
   /// the counter only when it has a number to show, so the "0 / 0" case never
   /// reaches the user.
   String get counterLabel => hasMatches

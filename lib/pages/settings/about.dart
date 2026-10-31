@@ -167,7 +167,6 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                 children: [
                   SettingsSection(
                     title: I18nKey.aboutRuntimePaths,
-                    description: I18nKey.aboutRuntimePathsDescription,
                     children: [
                       _CopyableInfoTile(
                         icon: Icons.folder_outlined,
@@ -202,7 +201,6 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                   ),
                   SettingsSection(
                     title: I18nKey.aboutRuntimeStatus,
-                    description: I18nKey.aboutRuntimeStatusDescription,
                     children: [
                       _InfoTile(
                         icon: Icons.computer,
@@ -260,7 +258,6 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                   ),
                   SettingsSection(
                     title: I18nKey.aboutKeySettings,
-                    description: I18nKey.aboutKeySettingsDescription,
                     children: [
                       _InfoTile(
                         icon: Icons.speed,
@@ -471,7 +468,6 @@ class FeatureModern extends StatelessWidget {
       children: [
         SettingsSection(
           title: I18nKey.aboutModernExperience,
-          description: I18nKey.aboutModernExperienceDescription,
           children: const [
             _InfoTile(
               icon: Icons.dashboard_customize_outlined,
@@ -494,7 +490,6 @@ class FeatureModern extends StatelessWidget {
         ),
         SettingsSection(
           title: I18nKey.aboutModernPreview,
-          description: I18nKey.aboutModernPreviewDescription,
           children: const [
             _MaterialComponentShowcase(),
             _ThemeModePreview(),
@@ -518,7 +513,6 @@ class FeaturePowerful extends StatelessWidget {
       children: [
         SettingsSection(
           title: I18nKey.aboutPowerfulCapability,
-          description: I18nKey.aboutPowerfulCapabilityDescription,
           children: const [
             _CapabilityExpansion(
               icon: Icons.code,
@@ -553,7 +547,6 @@ class FeaturePowerful extends StatelessWidget {
         ),
         const SettingsSection(
           title: I18nKey.aboutCurrentConfigSnapshot,
-          description: I18nKey.aboutCurrentConfigSnapshotDescription,
           children: [_RuntimeSettingsSnapshot()],
         ),
         SettingsSection(
@@ -595,12 +588,10 @@ class FeatureCrossPlatform extends StatelessWidget {
       children: [
         const SettingsSection(
           title: I18nKey.aboutPlatformCapability,
-          description: I18nKey.aboutPlatformCapabilityDescription,
           children: [_PlatformMatrix()],
         ),
         SettingsSection(
           title: I18nKey.aboutCurrentPlatform,
-          description: I18nKey.aboutCurrentPlatformDescription,
           children: [
             _InfoTile(
               icon: Icons.computer,
@@ -653,7 +644,6 @@ class AboutProject extends StatelessWidget {
       children: [
         SettingsSection(
           title: I18nKey.aboutEcosystemLayers,
-          description: I18nKey.aboutEcosystemLayersDescription,
           children: const [
             _EcosystemTile(
               icon: Icons.hub_outlined,
@@ -682,12 +672,10 @@ class AboutProject extends StatelessWidget {
         ),
         const SettingsSection(
           title: I18nKey.aboutEcosystemStatus,
-          description: I18nKey.aboutEcosystemStatusDescription,
           children: [_EcosystemSnapshot()],
         ),
         SettingsSection(
           title: I18nKey.aboutModuleExpansion,
-          description: I18nKey.aboutModuleExpansionDescription,
           children: const [
             _CapabilityExpansion(
               icon: Icons.edit_note_outlined,

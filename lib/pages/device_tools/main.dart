@@ -254,16 +254,13 @@ class _ToolsState extends ConsumerState<Tools> {
                           : I18nKey.devicesDisconnected,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    UseText(
-                      isConnected
-                          ? selectedPortName ?? I18nKey.devicesSerialConnected
-                          : I18nKey.devicesConnectionHint,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: isConnected
-                            ? scheme.onPrimaryContainer
-                            : scheme.onSurfaceVariant,
+                    if (isConnected)
+                      UseText(
+                        selectedPortName ?? I18nKey.devicesSerialConnected,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onPrimaryContainer,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

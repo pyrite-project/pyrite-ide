@@ -7,47 +7,19 @@ enum I18nKey {
   navEditor('nav.editor', '编辑器'),
   settingsTitle('settings.title', '设置'),
   settingsWorkspaceSection('settings.workspace.section', '工作区'),
-  settingsWorkspaceDescription(
-    'settings.workspace.description',
-    '编辑器、终端和语言服务。',
-  ),
   settingsEditorTitle('settings.editor.title', '编辑器'),
-  settingsEditorSubtitle('settings.editor.subtitle', '字体、字号、折行、行号'),
   settingsTerminalTitle('settings.terminal.title', '调试与终端'),
-  settingsTerminalSubtitle('settings.terminal.subtitle', '波特率、自动重连、REPL'),
   settingsLspTitle('settings.lsp.title', '语言服务器'),
-  settingsLspSubtitle('settings.lsp.subtitle', '补全、诊断和连接地址'),
   settingsInterfaceSection('settings.interface.section', '界面'),
-  settingsInterfaceDescription('settings.interface.description', '主题、颜色和显示偏好。'),
   settingsStyleTitle('settings.style.title', '外观与风格'),
-  settingsStyleSubtitle('settings.style.subtitle', '主题模式与配色'),
   settingsFunctionPanelTitle('settings.function_panel.title', '功能面板'),
-  settingsFunctionPanelSubtitle(
-    'settings.function_panel.subtitle',
-    '显示/隐藏功能导航面板',
-  ),
   settingsConsolePanelTitle('settings.console_panel.title', '控制台面板'),
-  settingsConsolePanelSubtitle(
-    'settings.console_panel.subtitle',
-    '显示/隐藏控制台输出面板',
-  ),
   settingsExpansionPanelTitle('settings.expansion_panel.title', '扩展面板'),
-  settingsExpansionPanelSubtitle(
-    'settings.expansion_panel.subtitle',
-    '显示/隐藏扩展信息面板',
-  ),
   settingsWelcomeTitle('settings.welcome.title', '重新显示欢迎引导'),
-  settingsWelcomeSubtitle('settings.welcome.subtitle', '重新显示首次启动引导'),
   settingsAboutTitle('settings.about.title', '关于'),
-  settingsAboutSubtitle('settings.about.subtitle', '产品信息和当前阶段'),
   settingsLanguageTitle('settings.language.title', '语言'),
-  settingsLanguageSubtitle('settings.language.subtitle', '切换 IDE 显示语言'),
   settingsLanguageSystemDefault('settings.language.default', '默认'),
   welcomeTitle('welcome.title', '欢迎使用 PyriteIDE'),
-  welcomeDescription(
-    'welcome.description',
-    '配置好文件访问和设备连接后，就可以开始管理本地项目与 MicroPython 开发板。',
-  ),
   welcomeStart('welcome.start', '开始'),
   androidPermissionsTitle('welcome.android_permissions.title', 'Android 权限'),
   androidPermissionStorage('welcome.android_permissions.storage', '文件读写'),
@@ -413,7 +385,6 @@ enum I18nKey {
   devicesConnected('devices.connection.connected', '设备已连接'),
   devicesDisconnected('devices.connection.disconnected', '暂未连接设备'),
   devicesSerialConnected('devices.connection.serial_connected', '已建立串口连接'),
-  devicesConnectionHint('devices.connection.hint', '选择下方串口后，REPL 与文件同步会使用该设备。'),
   devicesShowStatus('devices.action.show_status', '查看设备状态'),
   devicesHideStatus('devices.action.hide_status', '收起设备状态'),
   devicesDisconnect('devices.action.disconnect', '断开'),
@@ -445,10 +416,6 @@ enum I18nKey {
   devicesStatusNotConnected('devices.status.not_connected', '设备未连接'),
   devicesStatusParseError('devices.status.parse_error', '未能从设备响应中解析到状态数据'),
   settingsStyleThemeMode('settings.style.theme_mode.title', '主题模式'),
-  settingsStyleThemeModeDescription(
-    'settings.style.theme_mode.description',
-    '界面跟随系统，或固定为亮色/暗色。',
-  ),
   settingsStyleThemeModePluginLockedDark(
     'settings.style.theme_mode.plugin_locked_dark',
     '当前插件主题已锁定为暗色模式。',
@@ -463,7 +430,7 @@ enum I18nKey {
   settingsStyleThemeStyle('settings.style.theme_style.title', '主题风格'),
   settingsStyleThemeStyleDescription(
     'settings.style.theme_style.description',
-    '组件样式与信息密度。',
+    '信息密度',
   ),
   settingsStylePluginThemeDisabledDescription(
     'settings.style.plugin_theme_disabled.description',
@@ -473,49 +440,29 @@ enum I18nKey {
   settingsStyleCompact('settings.style.variant.compact', '紧凑'),
   settingsStyleComfortable('settings.style.variant.comfortable', '舒适'),
   settingsStyleThemeColor('settings.style.theme_color.title', '主题颜色'),
-  settingsStyleThemeColorDescription(
-    'settings.style.theme_color.description',
-    '使用系统动态色，或指定固定主题色。',
-  ),
   settingsStyleFollowSystem('settings.style.follow_system', '跟随系统'),
   settingsStylePluginTheme('settings.style.plugin_theme.title', '插件主题'),
   settingsStylePluginThemeDescription(
     'settings.style.plugin_theme.description',
-    '使用插件提供的主题配色，会覆盖主题风格和主题颜色。',
+    '覆盖主题风格与颜色',
   ),
   settingsStyleBuiltin('settings.style.builtin', '内置'),
-  settingsStyleBuiltinSubtitle(
-    'settings.style.builtin.subtitle',
-    '使用系统动态色或自定义主题色',
-  ),
   settingsStyleDarkOnly('settings.style.dark_only', '仅暗色'),
   settingsStyleLightOnly('settings.style.light_only', '仅亮色'),
   settingsStyleMenuStyle('settings.style.menu_style.title', '菜单样式'),
-  settingsStyleMenuStyleDescription(
-    'settings.style.menu_style.description',
-    '桌面右键菜单的样式。',
-  ),
   settingsStyleMd3ContextMenu(
     'settings.style.md3_context_menu.title',
     'Material Design 3 右键菜单',
   ),
   settingsStyleMd3ContextMenuSubtitle(
     'settings.style.md3_context_menu.subtitle',
-    '用应用内绘制的菜单替代系统默认菜单',
+    '替代系统菜单',
   ),
   settingsTerminalSerialSection('settings.terminal.serial.title', '串口设置'),
-  settingsTerminalSerialDescription(
-    'settings.terminal.serial.description',
-    '开发板串口连接参数。',
-  ),
   settingsTerminalBaudRate('settings.terminal.baud_rate', '波特率'),
   settingsTerminalAutoReconnect(
     'settings.terminal.auto_reconnect.title',
     '自动重连',
-  ),
-  settingsTerminalAutoReconnectSubtitle(
-    'settings.terminal.auto_reconnect.subtitle',
-    '断开后自动尝试重新连接',
   ),
   settingsTerminalSignalDetection(
     'settings.terminal.signal_detection.title',
@@ -531,15 +478,11 @@ enum I18nKey {
   ),
   settingsTerminalEnsureFilesystemSubtitle(
     'settings.terminal.ensure_filesystem.subtitle',
-    '尝试挂载尚未就绪的设备文件系统，默认关闭',
+    '挂载未就绪的文件系统（默认关闭）',
   ),
   settingsTerminalChineseToUnicode(
     'settings.terminal.chinese_to_unicode.title',
     '中文转 Unicode',
-  ),
-  settingsTerminalChineseToUnicodeSubtitle(
-    'settings.terminal.chinese_to_unicode.subtitle',
-    '输入中文时自动转为 \\uXXXX 转义',
   ),
   settingsTerminalReplMode('settings.terminal.repl_mode.title', 'REPL 模式'),
   settingsTerminalReplModeSubtitle(
@@ -589,10 +532,6 @@ enum I18nKey {
     'ESP32 DTR/RTS',
   ),
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
-  settingsTerminalDisplayDescription(
-    'settings.terminal.display.description',
-    'REPL、日志和桌面终端的字体样式。',
-  ),
   settingsTerminalFont('settings.terminal.font', '字体'),
   settingsTerminalFontSize('settings.terminal.font_size', '字体大小'),
   settingsTerminalLineHeight('settings.terminal.line_height', '行高'),
@@ -620,17 +559,13 @@ enum I18nKey {
     'settings.terminal.minimum_contrast.title',
     '增强低对比度文字',
   ),
-  settingsTerminalMinimumContrastSubtitle(
-    'settings.terminal.minimum_contrast.subtitle',
-    '必要时调整前景色，保证与背景清晰可辨',
-  ),
   settingsTerminalOverrideBackground(
     'settings.terminal.override_background.title',
     '覆盖终端背景颜色',
   ),
   settingsTerminalOverrideBackgroundSubtitle(
     'settings.terminal.override_background.subtitle',
-    '忽略终端程序自带的背景色，仅影响桌面终端',
+    '仅影响桌面终端',
   ),
   settingsTerminalCustomForeground(
     'settings.terminal.custom.foreground',
@@ -643,10 +578,6 @@ enum I18nKey {
   settingsTerminalCustomSection(
     'settings.terminal.custom.section.title',
     '自定义终端颜色',
-  ),
-  settingsTerminalCustomSectionDescription(
-    'settings.terminal.custom.section.description',
-    '设置默认前景色和背景色。',
   ),
   settingsTerminalCustomPreview('settings.terminal.custom.preview', '终端预览'),
   settingsTerminalCustomBaseColors(
@@ -666,17 +597,9 @@ enum I18nKey {
     'settings.terminal.custom.reset_done',
     '终端颜色已恢复默认值',
   ),
-  settingsTerminalWebReplDescription(
-    'settings.terminal.webrepl.description',
-    '通过 WiFi WebSocket 连接 MicroPython 设备。',
-  ),
   settingsTerminalWebReplEnable(
     'settings.terminal.webrepl.enable.title',
     '启用 WebREPL',
-  ),
-  settingsTerminalWebReplEnableSubtitle(
-    'settings.terminal.webrepl.enable.subtitle',
-    '通过 WiFi 连接到设备的 WebREPL 服务',
   ),
   settingsTerminalDeviceIp('settings.terminal.webrepl.device_ip', '设备 IP 地址'),
   settingsTerminalExampleIp(
@@ -710,11 +633,7 @@ enum I18nKey {
   commonCreate('common.create', '创建'),
   commonRetry('common.retry', '重试'),
   commonRefresh('common.refresh', '刷新'),
-  settingsEditorFontSection('settings.editor.font_section.title', '字体'),
-  settingsEditorFontDescription(
-    'settings.editor.font_section.description',
-    '代码编辑区的字体与字号。',
-  ),
+  settingsEditorFontSection('settings.editor.font_section.title', '排版'),
   settingsEditorThemeSection('settings.editor.theme_section.title', '编辑器主题'),
   settingsEditorThemeDescription(
     'settings.editor.theme_section.description',
@@ -729,27 +648,19 @@ enum I18nKey {
     'settings.editor.upload_confirm.title',
     '上传确认',
   ),
-  settingsEditorUploadConfirmDescription(
-    'settings.editor.upload_confirm.description',
-    '上传文件存在差异时的确认方式。',
-  ),
   settingsEditorFloatingToolbar(
     'settings.editor.upload_confirm.toolbar',
     '浮动工具栏',
   ),
   settingsEditorConfirmDialog('settings.editor.upload_confirm.dialog', '确认对话框'),
   settingsEditorShortcutsSection('settings.editor.shortcuts.title', '快捷键'),
-  settingsEditorShortcutsDescription(
-    'settings.editor.shortcuts.description',
-    '上传/下载确认的快捷键。',
-  ),
   settingsEditorShortcutReferenceSection(
     'settings.editor.shortcut_reference.section',
     '编辑器快捷键',
   ),
   settingsEditorShortcutReferenceDescription(
     'settings.editor.shortcut_reference.description',
-    '编辑器内置的按键绑定。这些键目前不可自定义，列出以便查阅。',
+    '不可自定义',
   ),
   settingsEditorShortcutSave('settings.editor.shortcut.save', '保存当前文件'),
   settingsEditorShortcutRun('settings.editor.shortcut.run', '运行当前文件'),
@@ -757,73 +668,34 @@ enum I18nKey {
   settingsEditorCancelAction('settings.editor.shortcuts.cancel', '取消操作'),
   settingsEditorBehaviorSection('settings.editor.behavior.title', '编辑行为'),
   settingsEditorWordWrap('settings.editor.word_wrap.title', '自动折行'),
-  settingsEditorWordWrapSubtitle(
-    'settings.editor.word_wrap.subtitle',
-    '超出编辑器宽度时折行显示',
-  ),
   settingsEditorLineNumber('settings.editor.line_number.title', '显示行号'),
-  settingsEditorLineNumberSubtitle(
-    'settings.editor.line_number.subtitle',
-    '在代码左侧显示行号',
-  ),
   settingsEditorGutterDivider(
     'settings.editor.gutter_divider.title',
     '显示行号分隔线',
   ),
-  settingsEditorGutterDividerSubtitle(
-    'settings.editor.gutter_divider.subtitle',
-    '在行号和代码之间画一条分隔线',
-  ),
   settingsEditorSmoothCursor('settings.editor.smooth_cursor.title', '平滑光标'),
-  settingsEditorSmoothCursorSubtitle(
-    'settings.editor.smooth_cursor.subtitle',
-    '光标移动时平滑滑动到新位置',
-  ),
   settingsEditorMinimap('settings.editor.minimap.title', '代码缩略图'),
-  settingsEditorMinimapSubtitle(
-    'settings.editor.minimap.subtitle',
-    '在右侧显示全文缩略图，自动折行时隐藏',
-  ),
+  settingsEditorMinimapSubtitle('settings.editor.minimap.subtitle', '自动折行时隐藏'),
   settingsEditorCodeFolding('settings.editor.code_folding.title', '代码折叠'),
-  settingsEditorCodeFoldingSubtitle(
-    'settings.editor.code_folding.subtitle',
-    '显示折叠图标，可折叠代码块',
-  ),
   settingsEditorGuideLines('settings.editor.guide_lines.title', '缩进参考线'),
-  settingsEditorGuideLinesSubtitle(
-    'settings.editor.guide_lines.subtitle',
-    '显示每一级缩进的竖线',
-  ),
   settingsEditorLocalSuggestions(
     'settings.editor.local_suggestions.title',
     '本地补全',
   ),
   settingsEditorLocalSuggestionsSubtitle(
     'settings.editor.local_suggestions.subtitle',
-    '不依赖 LSP 的本地补全，大文件可能稍慢',
+    '大文件可能稍慢',
   ),
   settingsEditorKeyboardSuggestions(
     'settings.editor.keyboard_suggestions.title',
     '键盘补全建议',
   ),
-  settingsEditorKeyboardSuggestionsSubtitle(
-    'settings.editor.keyboard_suggestions.subtitle',
-    '允许系统虚拟键盘显示输入建议',
-  ),
   settingsEditorSpaceAsTab('settings.editor.space_as_tab.title', 'Tab 输入空格'),
-  settingsEditorSpaceAsTabSubtitle(
-    'settings.editor.space_as_tab.subtitle',
-    '按 Tab 插入空格而不是制表符',
-  ),
   settingsEditorTabSize('settings.editor.tab_size', 'Tab 大小'),
   settingsEditorTabSizeValue('settings.editor.tab_size.value', '{count} 个字符'),
   settingsEditorFormatOnSave(
     'settings.editor.format_on_save.title',
     '保存时格式化文档',
-  ),
-  settingsEditorFormatOnSaveSubtitle(
-    'settings.editor.format_on_save.subtitle',
-    '保存前由语言服务器格式化当前文件',
   ),
   settingsEditorSelectFont('settings.editor.select_font', '选择编辑器字体'),
   settingsEditorSelectTheme('settings.editor.select_theme', '选择编辑器主题'),
@@ -834,7 +706,6 @@ enum I18nKey {
     '改动会在新打开的编辑器标签页中生效。',
   ),
   settingsLspEnable('settings.lsp.enable.title', '启用语言服务器'),
-  settingsLspEnableSubtitle('settings.lsp.enable.subtitle', '提供补全、诊断和跳转等编辑能力'),
   settingsLspConnectionType('settings.lsp.connection_type', '连接方式'),
   settingsLspWebSocketSubtitle('settings.lsp.websocket.subtitle', '远程服务器'),
   settingsLspStdioSubtitle('settings.lsp.stdio.subtitle', '本地进程'),
@@ -868,10 +739,6 @@ enum I18nKey {
     'settings.lsp.basedpyright.title',
     'BasedPyright',
   ),
-  settingsLspBasedPyrightDescription(
-    'settings.lsp.basedpyright.description',
-    'BasedPyright 的类型检查严格程度。',
-  ),
   settingsLspBasedPyrightTypeCheckingMode(
     'settings.lsp.basedpyright.type_checking_mode',
     '类型检查严格程度',
@@ -897,10 +764,6 @@ enum I18nKey {
     '全部',
   ),
   settingsLspDiagnosticsSection('settings.lsp.diagnostics.title', '诊断显示'),
-  settingsLspDiagnosticsDescription(
-    'settings.lsp.diagnostics.description',
-    '控制是否显示语言服务器返回的问题标记。',
-  ),
   settingsLspWarningDiagnostics(
     'settings.lsp.warning_diagnostics.title',
     '显示警告诊断',
@@ -914,15 +777,7 @@ enum I18nKey {
     'settings.lsp.error_diagnostics.subtitle',
     '错误以下划线标出',
   ),
-  settingsLspStubsDescription(
-    'settings.lsp.stubs.description',
-    '配置 pylsp 等语言服务使用的 MicroPython 类型存根。',
-  ),
   settingsLspEnableStubs('settings.lsp.stubs.enable.title', '启用 Stubs'),
-  settingsLspEnableStubsSubtitle(
-    'settings.lsp.stubs.enable.subtitle',
-    '语言服务可读取已配置的 stubs layer',
-  ),
   settingsLspAutoDetectLayer(
     'settings.lsp.stubs.auto_detect.title',
     '自动检测 Layer',
@@ -937,7 +792,7 @@ enum I18nKey {
   settingsLspFeaturesSection('settings.lsp.features.title', '语言服务器功能'),
   settingsLspFeaturesDescription(
     'settings.lsp.features.description',
-    '开关 CodeForge 请求的语言服务器功能。改动立即生效，但能力声明要重新连接后才会更新。',
+    '改动立即生效；能力声明需重连后更新',
   ),
   settingsLspSemanticHighlighting(
     'settings.lsp.feature.semantic_highlighting',
@@ -948,15 +803,7 @@ enum I18nKey {
     '按服务器返回的语义标记着色，替代本地语法高亮。',
   ),
   settingsLspCodeCompletion('settings.lsp.feature.code_completion', '代码补全'),
-  settingsLspCodeCompletionDescription(
-    'settings.lsp.feature.code_completion.description',
-    '输入时向服务器请求补全候选。',
-  ),
   settingsLspHoverInfo('settings.lsp.feature.hover_info', '悬浮提示'),
-  settingsLspHoverInfoDescription(
-    'settings.lsp.feature.hover_info.description',
-    '悬停符号时向服务器请求文档与类型信息。',
-  ),
   settingsLspCodeAction('settings.lsp.feature.code_action', '代码操作'),
   settingsLspCodeActionDescription(
     'settings.lsp.feature.code_action.description',
@@ -991,20 +838,8 @@ enum I18nKey {
     '在代码之间显示参数名、推断类型等标注。',
   ),
   settingsLspGoToDefinition('settings.lsp.feature.go_to_definition', '跳转定义'),
-  settingsLspGoToDefinitionDescription(
-    'settings.lsp.feature.go_to_definition.description',
-    '跳转符号时向服务器请求定义位置。',
-  ),
   settingsLspRename('settings.lsp.feature.rename', '重命名符号'),
-  settingsLspRenameDescription(
-    'settings.lsp.feature.rename.description',
-    '重命名时向服务器请求跨文件的修改。',
-  ),
   settingsLspScope('settings.lsp.scope', '语言服务器生效范围'),
-  settingsLspScopeDescription(
-    'settings.lsp.scope.description',
-    '决定哪些文件会启动语言服务器。',
-  ),
   settingsLspAlwaysStart('settings.lsp.scope.always_start', '对所有文件启用'),
   settingsLspAlwaysStartDescription(
     'settings.lsp.scope.always_start.description',
@@ -1170,20 +1005,12 @@ enum I18nKey {
   aboutTitle('about.title', '关于'),
   aboutAppDetailsTitle('about.app_details.title', '应用与设备信息'),
   aboutRuntimePaths('about.runtime_paths.title', '运行路径'),
-  aboutRuntimePathsDescription(
-    'about.runtime_paths.description',
-    '这些路径直接对应应用数据、插件和缓存位置。',
-  ),
   aboutSupportDirectory('about.runtime_paths.support_directory', '应用支持目录'),
   aboutPluginDirectory('about.runtime_paths.plugin_directory', '插件目录'),
   aboutCacheDirectory('about.runtime_paths.cache_directory', '缓存目录'),
   aboutTempDirectory('about.runtime_paths.temp_directory', '临时目录'),
   aboutLogFile('about.runtime_paths.log_file', '调试日志文件'),
   aboutRuntimeStatus('about.runtime_status.title', '运行状态'),
-  aboutRuntimeStatusDescription(
-    'about.runtime_status.description',
-    '从当前 Provider 状态读取，便于判断配置是否已生效。',
-  ),
   aboutCurrentPlatform('about.runtime_status.current_platform', '当前平台'),
   aboutPluginStats('about.runtime_status.plugin_stats', '插件统计'),
   aboutPluginStatsValue(
@@ -1195,10 +1022,6 @@ enum I18nKey {
     '记录 {records} 项，Stubs provider {providers} 个。',
   ),
   aboutKeySettings('about.key_settings.title', '关键设置'),
-  aboutKeySettingsDescription(
-    'about.key_settings.description',
-    '展示会影响调试、串口和语言服务行为的实际配置。',
-  ),
   aboutDefaultBaudRate('about.key_settings.default_baud_rate', '默认波特率'),
   aboutSerialAutoReconnect(
     'about.key_settings.serial_auto_reconnect',
@@ -1209,10 +1032,7 @@ enum I18nKey {
     '{status}，Layers: {layers}',
   ),
   aboutDiagnosticsSummary('about.diagnostics.title', '诊断摘要'),
-  aboutDiagnosticsDescription(
-    'about.diagnostics.description',
-    '复制这段内容可以直接用于反馈环境问题。',
-  ),
+  aboutDiagnosticsDescription('about.diagnostics.description', '用于反馈环境问题'),
   aboutViewFullSummary('about.diagnostics.view_full_summary', '查看完整摘要'),
   aboutCopyDiagnostics('about.diagnostics.copy', '复制诊断信息'),
   aboutCopyDiagnosticsSubtitle(
@@ -1537,8 +1357,8 @@ enum I18nKey {
   statusOpenConsole('status.open_console', '打开控制台'),
   statusShowRepl('status.show_repl', '显示 REPL'),
   statusOpenMenu('status.open_menu', '打开菜单'),
-  statusCursorPosition('status.cursor_position', '行 {line}，列 {column}'),
-  statusSelectionCount('status.selection_count', '已选 {count} 个字符'),
+  statusCursorPosition('status.cursor_position', '{line}:{column}'),
+  statusSelectionCount('status.selection_count', '已选 {count}'),
   statusProblems('status.problems', '{errors} 个错误，{warnings} 个警告'),
   statusProblemsErrorsOnly('status.problems_errors_only', '{errors} 个错误'),
   statusProblemsWarningsOnly('status.problems_warnings_only', '{warnings} 个警告'),
@@ -1581,10 +1401,6 @@ enum I18nKey {
   aboutCardEcosystem('about.card.ecosystem', '生态布局'),
   aboutModernTitle('about.modern.title', '现代化的 PyriteIDE'),
   aboutModernExperience('about.modern.experience.title', '界面体验'),
-  aboutModernExperienceDescription(
-    'about.modern.experience.description',
-    '围绕开发工作流设计，减少干扰并保持信息密度。',
-  ),
   aboutModernSimple('about.modern.simple', '简洁，一致'),
   aboutModernResponsive('about.modern.responsive.title', '响应式布局'),
   aboutModernResponsiveSubtitle(
@@ -1597,24 +1413,12 @@ enum I18nKey {
     '标签页、未保存状态和编辑器状态会在会话间恢复。',
   ),
   aboutModernPreview('about.modern.preview.title', '交互预览'),
-  aboutModernPreviewDescription(
-    'about.modern.preview.description',
-    '直接展示 PyriteIDE 常用的 Material Design 3 控件。',
-  ),
   aboutPowerfulTitle('about.powerful.title', '强大的 PyriteIDE'),
   aboutPowerfulCapability('about.powerful.capability.title', '开发能力'),
-  aboutPowerfulCapabilityDescription(
-    'about.powerful.capability.description',
-    '编辑、设备、语言服务和插件能力组合成完整工作流。',
-  ),
   aboutEditorLsp('about.powerful.editor_lsp', '编辑器与 LSP'),
   aboutDeviceSerial('about.powerful.device_serial', '设备与串口'),
   aboutPluginSdk('about.powerful.plugin_sdk', '插件 SDK'),
   aboutCurrentConfigSnapshot('about.powerful.config_snapshot.title', '当前配置快照'),
-  aboutCurrentConfigSnapshotDescription(
-    'about.powerful.config_snapshot.description',
-    '从真实设置 provider 读取，不展示静态宣传语。',
-  ),
   aboutQuickLinks('about.powerful.quick_links.title', '快捷入口'),
   aboutTerminalSettingsLink('about.powerful.terminal_settings', '调试与终端设置'),
   aboutTerminalSettingsLinkSubtitle(
@@ -1628,14 +1432,6 @@ enum I18nKey {
   ),
   aboutCrossPlatformTitle('about.cross_platform.title', '跨平台的 PyriteIDE'),
   aboutPlatformCapability('about.cross_platform.capability.title', '平台能力'),
-  aboutPlatformCapabilityDescription(
-    'about.cross_platform.capability.description',
-    '选择平台查看主要支持能力。',
-  ),
-  aboutCurrentPlatformDescription(
-    'about.cross_platform.current_platform.description',
-    '从 Dart 运行时读取的系统信息。',
-  ),
   aboutOperatingSystem('about.cross_platform.os', '操作系统'),
   aboutSystemVersion('about.cross_platform.system_version', '系统版本'),
   aboutDesignPrinciples('about.cross_platform.design_principles.title', '设计原则'),
@@ -1662,10 +1458,6 @@ enum I18nKey {
   ),
   aboutEcosystemTitle('about.ecosystem.title', '生态布局'),
   aboutEcosystemLayers('about.ecosystem.layers.title', '生态层次'),
-  aboutEcosystemLayersDescription(
-    'about.ecosystem.layers.description',
-    'PyriteIDE 的能力被拆成核心、运行时、插件和数据贡献几个层次。',
-  ),
   aboutCoreLayerSubtitle(
     'about.ecosystem.core.subtitle',
     '编辑器、设置、标签页、输出面板和设备工作流。',
@@ -1683,15 +1475,7 @@ enum I18nKey {
     '插件进程通过 bridge 与 IDE 通信，Data 插件贡献完成即可退出。',
   ),
   aboutEcosystemStatus('about.ecosystem.status.title', '当前生态状态'),
-  aboutEcosystemStatusDescription(
-    'about.ecosystem.status.description',
-    '从插件管理器和数据 registry 读取当前状态。',
-  ),
   aboutModuleExpansion('about.ecosystem.module_expansion.title', '模块展开'),
-  aboutModuleExpansionDescription(
-    'about.ecosystem.module_expansion.description',
-    '查看每个生态模块负责的边界。',
-  ),
   aboutDeveloperEntry('about.ecosystem.developer_entry.title', '开发者入口'),
   aboutPluginSdkDocs('about.ecosystem.plugin_sdk_docs', '插件与 SDK 文档'),
   aboutDocsPathCopied('about.ecosystem.docs_path_copied', '文档路径已复制'),
@@ -1765,7 +1549,7 @@ enum I18nKey {
   // Global search / cross-file replace page.
   searchTitle('search.title', '搜索'),
   searchNoProject('search.no_project', '先打开一个项目目录再搜索。'),
-  searchScanned('search.scanned', '已扫描 {scanned} / {total} 个文件'),
+  searchScanned('search.scanned', '{scanned}/{total} 个文件'),
   searchCancel('search.cancel', '取消'),
   searchFilesMatched('search.files_matched', '{files} 个文件'),
   searchMatchesInFile('search.matches_in_file', '{count} 处匹配'),
@@ -2025,19 +1809,14 @@ enum I18nKey {
   devicesSessionSwitch('devices.session.switch', '切换到此设备'),
   devicesSessionInUse('devices.session.in_use', '当前正在使用此设备'),
   devicesSessionDisconnect('devices.session.disconnect', '断开'),
-  devicesSyncTitle('devices.sync.title', '同步本地工作区到设备'),
-  devicesSyncRoots('devices.sync.roots', '本地：{local} 设备：{board}'),
-  devicesSyncSummary(
-    'devices.sync.summary',
-    '共 {count} 个文件：上传 {upload} · 下载 {download} · 相同 {unchanged} · 冲突 {conflict}',
-  ),
+  devicesSyncTitle('devices.sync.title', '同步到设备'),
   devicesSyncToggleAll('devices.sync.toggle_all', '全选/全不选'),
   devicesSyncEmpty('devices.sync.empty', '没有可同步的文件'),
-  devicesSyncSelected('devices.sync.selected', '已选择 {count} 个文件，约 {size}'),
+  devicesSyncSelected('devices.sync.selected', '{count} 项 · {size}'),
   devicesSyncCancel('devices.sync.cancel', '取消'),
   devicesSyncCancelling('devices.sync.cancelling', '取消中…'),
-  devicesSyncApply('devices.sync.apply', '同步 {count} 个'),
-  devicesSyncDirectionBoth('devices.sync.direction.both', '双向（默认）'),
+  devicesSyncApply('devices.sync.apply', '同步'),
+  devicesSyncDirectionBoth('devices.sync.direction.both', '双向同步'),
   devicesSyncDirectionLocal('devices.sync.direction.local', '仅本地 → 设备'),
   devicesSyncDirectionBoard('devices.sync.direction.board', '仅设备 → 本地'),
   devicesSyncRowAdded('devices.sync.row.added', '新增（上传）'),
@@ -2049,6 +1828,8 @@ enum I18nKey {
   ),
   devicesSyncRowUnchanged('devices.sync.row.unchanged', '相同'),
   devicesSyncRowConflict('devices.sync.row.conflict', '冲突（需选择）'),
+  devicesSyncKeepLocal('devices.sync.conflict.keep_local', '保留本地'),
+  devicesSyncKeepBoard('devices.sync.conflict.keep_board', '保留设备'),
   devicesSyncReasonSizeMismatch('devices.sync.reason.size_mismatch', '大小不同'),
   devicesSyncReasonSameSize('devices.sync.reason.same_size', '大小相同但修改时间不同'),
   devicesSyncNoteMissingMtime(
@@ -2100,7 +1881,7 @@ enum I18nKey {
     'devices.transfer.space_insufficient',
     '设备空间不足：需要 {required}（{requiredBytes} 字节），可用 {free}（{freeBytes} 字节）',
   ),
-  devicesSpaceUnknown('devices.transfer.space_unknown', '设备未上报可用空间，已跳过上传前空间预检'),
+  devicesSpaceUnknown('devices.transfer.space_unknown', '设备未上报可用空间，已跳过预检'),
   devicesSpaceSufficient(
     'devices.transfer.space_sufficient',
     '空间充足：需要 {required}，可用 {free}',
@@ -2113,7 +1894,7 @@ enum I18nKey {
   terminalSearchCaseSensitive('terminal.search.case_sensitive', '区分大小写'),
   terminalSearchClose('terminal.search.close', '关闭搜索'),
   terminalSearchNoResults('terminal.search.no_results', '无结果'),
-  terminalSearchCounter('terminal.search.counter', '第 {current} / 共 {total} 个'),
+  terminalSearchCounter('terminal.search.counter', '{current}/{total}'),
   terminalMenuCopy('terminal.menu.copy', '复制'),
   terminalMenuPaste('terminal.menu.paste', '粘贴'),
   terminalMenuSelectAll('terminal.menu.select_all', '全选'),
@@ -2126,7 +1907,7 @@ enum I18nKey {
   terminalShellSection('terminal.shell.section', '桌面 Shell'),
   terminalShellSectionDescription(
     'terminal.shell.description',
-    '新建终端时启动的可执行文件、参数和工作目录。留空则使用系统默认 Shell。',
+    '留空则使用系统默认 Shell',
   ),
   terminalShellExecutable('terminal.shell.executable', 'Shell 可执行文件'),
   terminalShellExecutableFallback(

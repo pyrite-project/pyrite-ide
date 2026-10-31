@@ -56,7 +56,7 @@ void main() {
 
       expect(state.hasMatches, isTrue);
       expect(state.currentIndex, 0);
-      expect(state.counterLabel, '第 1 / 共 3 个');
+      expect(state.counterLabel, '1/3');
       expect(
         state.current,
         const TerminalSearchMatch(line: 0, start: 4, end: 7),

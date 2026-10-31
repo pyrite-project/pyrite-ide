@@ -118,13 +118,6 @@ class _WelcomeOobePageState extends ConsumerState<WelcomeOobePage> {
                       fontWeight: FontWeight.w300,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  UseText(
-                    I18nKey.welcomeDescription,
-                    color: scheme.onSurfaceVariant,
-                    textAlign: TextAlign.center,
-                    style: textTheme.bodyLarge,
-                  ),
                   if (isAndroid) ...[
                     const SizedBox(height: 28),
                     _AndroidPermissionPanel(

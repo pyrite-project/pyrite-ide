@@ -48,7 +48,7 @@ void main() {
 
     await pumpBar(tester, state: state);
 
-    expect(find.text('第 1 / 共 3 个'), findsOneWidget);
+    expect(find.text('1/3'), findsOneWidget);
   });
 
   testWidgets('shows "no results" when nothing matched', (tester) async {

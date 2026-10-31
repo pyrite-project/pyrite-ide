@@ -1890,7 +1890,13 @@ class ProjectFiles extends ConsumerWidget {
       return;
     }
 
-    final filtered = _restrictPlanToDirection(plan, result.direction);
+    // Conflict rows carry the side the user picked in the preview; resolve
+    // them before the direction filter so a resolved conflict lands in the
+    // half of the plan that will actually run.
+    final filtered = _restrictPlanToDirection(
+      _applyConflictOverrides(plan, result.overrides),
+      result.direction,
+    );
     final progress = ref.read(fileTransferProgressProvider.notifier);
     final executor = BoardSyncExecutor(ops: boardOps, progress: progress);
     // No token is passed in: the executor creates it right after `start()`, so
@@ -1919,6 +1925,28 @@ class ProjectFiles extends ConsumerWidget {
       showEditorSnackBar(context, outcome.summary);
     }
   }
+
+  /// Applies the conflict decisions made in the preview dialog.
+  ///
+  /// A conflict row has no direction of its own, so without this the executor
+  /// would skip it even though the user picked a side.
+  BoardSyncPlan _applyConflictOverrides(
+    BoardSyncPlan plan,
+    Map<String, BoardSyncAction> overrides,
+  ) {
+    if (overrides.isEmpty) return plan;
+    return BoardSyncPlan(
+      entries: [
+        for (final entry in plan.entries)
+          _withOverride(entry, overrides[entry.relativePath]),
+      ],
+      localRoot: plan.localRoot,
+      boardRoot: plan.boardRoot,
+    );
+  }
+
+  BoardSyncEntry _withOverride(BoardSyncEntry entry, BoardSyncAction? action) =>
+      action == null ? entry : entry.copyWith(action: action);
 
   /// Drops entries that point in the opposite direction of the user's choice.
   ///
