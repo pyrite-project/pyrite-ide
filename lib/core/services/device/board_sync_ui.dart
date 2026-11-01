@@ -397,12 +397,13 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
 
   /// Master checkbox plus the direction switch.
   ///
-  /// Uses the same segmented control as the rest of the app — outlined track,
-  /// check mark on the selected segment — so the dialog does not invent its own
-  /// selection language. On a wide dialog the switch sits beside the master
-  /// checkbox and each segment carries its count; once the row can no longer
-  /// hold three labelled segments the checkbox moves to its own line, the
-  /// switch spans the full width and the counts are dropped.
+  /// The switch is drawn here rather than with [SegmentedButton]: that widget
+  /// sizes each segment to its intrinsic width, so a long label plus a count
+  /// pushed the control past the dialog edge and clipped the last segment.
+  /// Three [Expanded] segments divide whatever width is available, which makes
+  /// overflow impossible at any window size; the look still follows the app's
+  /// segmented buttons (outlined stadium, divider lines, check on the selected
+  /// segment).
   Widget _buildControlRow(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final uploads = _uploadTotal;
@@ -438,61 +439,12 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final stacked = constraints.maxWidth < 460;
-        final showCounts = constraints.maxWidth >= 520;
-        // Below ~300dp three icon + label segments stop fitting; the words are
-        // what make the switch legible, so the icons go first. The check mark
-        // needs less room but still has to leave the selected label visible.
-        final showIcons = constraints.maxWidth >= 300;
-        final showCheck = constraints.maxWidth >= 234;
-
-        Widget segmentLabel(I18nKey key, int count) => Text(
-          showCounts
-              ? '${translateInContext(context, key)} $count'
-              : translateInContext(context, key),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        );
-
-        final segments = SegmentedButton<BoardSyncDirection>(
-          showSelectedIcon: showCheck,
-          expandedInsets: stacked ? EdgeInsets.zero : null,
-          segments: [
-            ButtonSegment(
-              value: BoardSyncDirection.none,
-              icon: showIcons ? const Icon(Icons.swap_horiz) : null,
-              label: segmentLabel(
-                I18nKey.devicesSyncDirBoth,
-                uploads + downloads,
-              ),
-              tooltip: translateInContext(
-                context,
-                I18nKey.devicesSyncDirectionBoth,
-              ),
-            ),
-            ButtonSegment(
-              value: BoardSyncDirection.localToBoard,
-              enabled: uploads > 0,
-              icon: showIcons ? const Icon(Icons.arrow_upward_rounded) : null,
-              label: segmentLabel(I18nKey.devicesSyncDirUpload, uploads),
-              tooltip: translateInContext(
-                context,
-                I18nKey.devicesSyncDirectionLocal,
-              ),
-            ),
-            ButtonSegment(
-              value: BoardSyncDirection.boardToLocal,
-              enabled: downloads > 0,
-              icon: showIcons ? const Icon(Icons.arrow_downward_rounded) : null,
-              label: segmentLabel(I18nKey.devicesSyncDirDownload, downloads),
-              tooltip: translateInContext(
-                context,
-                I18nKey.devicesSyncDirectionBoard,
-              ),
-            ),
-          ],
-          selected: {_direction},
-          onSelectionChanged: (selection) =>
-              setState(() => _direction = selection.first),
+        final switchControl = _buildDirectionSwitch(
+          context,
+          scheme,
+          uploads: uploads,
+          downloads: downloads,
+          available: stacked ? constraints.maxWidth : constraints.maxWidth - 44,
         );
 
         if (stacked) {
@@ -512,7 +464,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                 ],
               ),
               const SizedBox(height: 4),
-              segments,
+              switchControl,
             ],
           );
         }
@@ -520,15 +472,163 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
         return Row(
           children: [
             SizedBox(width: 40, height: 40, child: Center(child: master)),
-            Expanded(
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: segments,
-              ),
-            ),
+            const SizedBox(width: 4),
+            Expanded(child: switchControl),
           ],
         );
       },
+    );
+  }
+
+  /// Outlined stadium with three equal segments.
+  ///
+  /// [available] drives how much detail each segment can carry: the count is
+  /// dropped first, then the leading icon. The label always keeps an ellipsis,
+  /// so even the narrowest window cannot produce an overflow error.
+  Widget _buildDirectionSwitch(
+    BuildContext context,
+    ColorScheme scheme, {
+    required int uploads,
+    required int downloads,
+    required double available,
+  }) {
+    final showCounts = available >= 400;
+    final showIcons = available >= 280;
+    final labelSize = available < 240 ? 12.0 : 13.0;
+
+    final items =
+        <
+          ({
+            BoardSyncDirection value,
+            IconData icon,
+            I18nKey label,
+            I18nKey tooltip,
+            int count,
+            bool enabled,
+          })
+        >[
+          (
+            value: BoardSyncDirection.none,
+            icon: Icons.swap_horiz,
+            label: I18nKey.devicesSyncDirBoth,
+            tooltip: I18nKey.devicesSyncDirectionBoth,
+            count: uploads + downloads,
+            enabled: true,
+          ),
+          (
+            value: BoardSyncDirection.localToBoard,
+            icon: Icons.arrow_upward_rounded,
+            label: I18nKey.devicesSyncDirUpload,
+            tooltip: I18nKey.devicesSyncDirectionLocal,
+            count: uploads,
+            enabled: uploads > 0,
+          ),
+          (
+            value: BoardSyncDirection.boardToLocal,
+            icon: Icons.arrow_downward_rounded,
+            label: I18nKey.devicesSyncDirDownload,
+            tooltip: I18nKey.devicesSyncDirectionBoard,
+            count: downloads,
+            enabled: downloads > 0,
+          ),
+        ];
+
+    return SizedBox(
+      height: 40,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: scheme.outline),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) Container(width: 1, color: scheme.outline),
+                Expanded(
+                  child: _buildDirectionSegment(
+                    context,
+                    scheme,
+                    item: items[i],
+                    selected: _direction == items[i].value,
+                    showIcon: showIcons,
+                    showCount: showCounts,
+                    labelSize: labelSize,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectionSegment(
+    BuildContext context,
+    ColorScheme scheme, {
+    required ({
+      BoardSyncDirection value,
+      IconData icon,
+      I18nKey label,
+      I18nKey tooltip,
+      int count,
+      bool enabled,
+    })
+    item,
+    required bool selected,
+    required bool showIcon,
+    required bool showCount,
+    required double labelSize,
+  }) {
+    final enabled = item.enabled;
+    final foreground = !enabled
+        ? scheme.onSurface.withValues(alpha: 0.38)
+        : selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurface;
+    final label = translateInContext(context, item.label);
+    final text = showCount ? '$label ${item.count}' : label;
+    final leading = selected
+        ? Icons.check
+        : showIcon
+        ? item.icon
+        : null;
+
+    return Tooltip(
+      message: translateInContext(context, item.tooltip),
+      waitDuration: const Duration(milliseconds: 500),
+      child: Ink(
+        color: selected ? scheme.secondaryContainer : Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? () => setState(() => _direction = item.value) : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (leading != null) ...[
+                  Icon(leading, size: 18, color: foreground),
+                  const SizedBox(width: 4),
+                ],
+                Flexible(
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: labelSize,
+                      fontWeight: FontWeight.w500,
+                      color: foreground,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

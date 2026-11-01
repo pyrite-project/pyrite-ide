@@ -139,12 +139,7 @@ void main() {
 
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(SegmentedButton<BoardSyncDirection>),
-        matching: find.byIcon(Icons.arrow_upward_rounded),
-      ),
-    );
+    await tester.tap(find.textContaining('上传'));
     await tester.pumpAndSettle();
 
     expect(find.text('new.py'), findsOneWidget);
