@@ -9,6 +9,7 @@ import 'package:super_context_menu/super_context_menu.dart';
 import 'package:super_context_menu/src/scaffold/desktop/menu_widget_builder.dart';
 
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class PyriteContextMenuWidget extends ConsumerWidget {
@@ -128,7 +129,7 @@ class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
         : destructive
         ? scheme.error
         : selected
-        ? scheme.onSecondaryContainer
+        ? AppSelection.onItem(scheme)
         : scheme.onSurface;
     final iconTheme = menuInfo.iconTheme.copyWith(size: 16, color: foreground);
     final image = element.image?.asWidget(iconTheme);
@@ -152,7 +153,7 @@ class _PyriteMd3DesktopMenuWidgetBuilder extends DesktopMenuWidgetBuilder {
           bottom: 4,
         ),
         decoration: BoxDecoration(
-          color: selected ? scheme.secondaryContainer : Colors.transparent,
+          color: selected ? AppSelection.item(scheme) : Colors.transparent,
           borderRadius: context.nestedCorners(_itemInset),
         ),
         child: Row(

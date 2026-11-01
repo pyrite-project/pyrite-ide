@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/sdk/environment_broadcaster.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
@@ -148,7 +149,18 @@ class PyriteIDE extends ConsumerWidget {
           );
     }
 
+    // Resolved from the theme actually in use, so a plugin theme's scheme wins
+    // over the built-in one for both tokens below.
+    final scheme = baseTheme.colorScheme;
     return _applyDensityTokens(baseTheme, tokens).copyWith(
+      // One text-selection tint for every editable and selectable surface.
+      // `Theme` forwards this into `DefaultSelectionStyle`, which is what
+      // `SelectionArea`, `SelectableText` and `EditableText` read when they are
+      // given no explicit color of their own. Surfaces that paint themselves
+      // (the editor, the terminal) take the same value from `AppSelection`.
+      textSelectionTheme: TextSelectionThemeData(
+        selectionColor: AppSelection.text(scheme),
+      ),
       extensions: <ThemeExtension<dynamic>>[
         // Single source of truth for corner radii, shared by the built-in theme
         // and by plugin-provided themes.
