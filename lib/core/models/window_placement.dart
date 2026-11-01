@@ -11,11 +11,14 @@ class WindowPlacement {
 
   /// Smallest window accepted by [clampToVisibleAreas]. Anything smaller is
   /// grown before being fitted to a display.
-  static const Size defaultMinimumSize = Size(900, 600);
+  ///
+  /// Matches the shell's own minimum so a window resized to phone proportions
+  /// is not silently grown back on the next launch.
+  static const Size defaultMinimumSize = Size(320, 480);
 
   /// Smallest window that is considered restorable when reading persisted
   /// geometry; smaller entries are treated as corrupt and dropped.
-  static const double minimumWidth = 400;
+  static const double minimumWidth = 320;
   static const double minimumHeight = 300;
 
   final Rect bounds;

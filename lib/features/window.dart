@@ -42,8 +42,12 @@ class UseWindow with WindowListener {
   /// arriving while the first one is still showing its dialog.
   bool _confirmingUnsaved = false;
 
-  /// Below this the workspace layouts stop being usable on a desktop.
-  static const Size _minimumWindowSize = Size(900, 600);
+  /// Smallest window the shell accepts.
+  ///
+  /// Set to the smallest phone target rather than a desktop comfort floor: the
+  /// app has a phone layout, and being able to resize a desktop window down to
+  /// 320x480 is how that layout gets exercised without a device.
+  static const Size _minimumWindowSize = Size(320, 480);
 
   /// The normal (unmaximized) bounds, kept even while the window is maximized
   /// so restoring a maximized session does not later restore to the maximized
