@@ -494,7 +494,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   }) {
     final showCounts = available >= 400;
     final showIcons = available >= 280;
-    final labelSize = available < 240 ? 12.0 : 13.0;
+    final labelSize = available < 240 ? 11.0 : 12.0;
 
     final items =
         <
@@ -537,15 +537,14 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
       height: 40,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: scheme.outline),
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(12),
           child: Row(
             children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) Container(width: 1, color: scheme.outline),
+              for (var i = 0; i < items.length; i++)
                 Expanded(
                   child: _buildDirectionSegment(
                     context,
@@ -557,7 +556,6 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                     labelSize: labelSize,
                   ),
                 ),
-              ],
             ],
           ),
         ),
@@ -586,21 +584,19 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     final foreground = !enabled
         ? scheme.onSurface.withValues(alpha: 0.38)
         : selected
-        ? scheme.onSecondaryContainer
-        : scheme.onSurface;
+        ? scheme.onPrimary
+        : scheme.onSurfaceVariant;
     final label = translateInContext(context, item.label);
     final text = showCount ? '$label ${item.count}' : label;
-    final leading = selected
-        ? Icons.check
-        : showIcon
-        ? item.icon
-        : null;
+    final leading = showIcon ? item.icon : null;
 
     return Tooltip(
       message: translateInContext(context, item.tooltip),
       waitDuration: const Duration(milliseconds: 500),
-      child: Ink(
-        color: selected ? scheme.secondaryContainer : Colors.transparent,
+      // Material, not Ink: Ink paints into the nearest Material's ink layer,
+      // which sits behind the filled track and would hide the selection.
+      child: Material(
+        color: selected ? scheme.primary : Colors.transparent,
         child: InkWell(
           onTap: enabled ? () => setState(() => _direction = item.value) : null,
           child: Padding(
@@ -619,7 +615,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: labelSize,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: foreground,
                     ),
                   ),
