@@ -143,4 +143,62 @@ void main() {
       expect(rules.shouldIgnore('main.py'), isFalse);
     });
   });
+
+  group('SyncIgnoreFilter', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('pyrite_filter_test_');
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) await tempDir.delete(recursive: true);
+    });
+
+    SyncIgnoreFilter filterOf(String patterns) => SyncIgnoreFilter(
+      rules: SyncIgnoreRules.parse(patterns),
+      root: tempDir.path,
+    );
+
+    test('matches absolute paths inside the root', () {
+      final filter = filterOf('build\n');
+
+      expect(
+        filter.isIgnored(path.join(tempDir.path, 'build', 'out.bin')),
+        isTrue,
+      );
+      expect(filter.isIgnored(path.join(tempDir.path, 'main.py')), isFalse);
+    });
+
+    test('never ignores a path outside the root', () {
+      final filter = filterOf('build\n');
+      final outside = path.join(tempDir.parent.path, 'elsewhere', 'build', 'x');
+
+      expect(filter.isIgnored(outside), isFalse);
+    });
+
+    test('the ignore file itself is always filtered out', () {
+      final filter = filterOf('');
+
+      expect(
+        filter.isIgnored(path.join(tempDir.path, syncIgnoreFileName)),
+        isTrue,
+      );
+      expect(filter.isIgnored(tempDir.path), isFalse);
+    });
+
+    test('loadSyncIgnoreFilter binds the rules to the root', () async {
+      await File(
+        path.join(tempDir.path, syncIgnoreFileName),
+      ).writeAsString('dist\n');
+
+      final filter = await loadSyncIgnoreFilter(tempDir.path);
+
+      expect(
+        filter.isIgnored(path.join(tempDir.path, 'dist', 'a.bin')),
+        isTrue,
+      );
+      expect(filter.isIgnored(path.join(tempDir.path, 'src', 'a.py')), isFalse);
+    });
+  });
 }

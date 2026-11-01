@@ -275,10 +275,13 @@ class BoardSyncExecutor {
     final failures = <BoardSyncEntryFailure>[];
 
     try {
-      // `requiredBoardDirectories` collects parents deepest-first, and the
-      // device's `os.mkdir` does not create missing parents: creating
-      // shallowest-first keeps nested trees from failing with ENOENT.
-      final boardDirectories = plan.requiredBoardDirectories.toList()
+      // Only the rows about to be transferred may create directories:
+      // `boardDirectoriesForUploads` walks the selection, so an ignored path
+      // the user left unticked cannot leave an empty folder on the board.
+      // The set collects parents deepest-first, and the device's `os.mkdir`
+      // does not create missing parents: creating shallowest-first keeps
+      // nested trees from failing with ENOENT.
+      final boardDirectories = boardDirectoriesForUploads(entries).toList()
         ..sort((a, b) => a.split('/').length.compareTo(b.split('/').length));
       for (final directory in boardDirectories) {
         final target = ops.normalizeBoardPath('/$directory');

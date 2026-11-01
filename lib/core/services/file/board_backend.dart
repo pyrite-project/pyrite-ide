@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
@@ -1424,8 +1425,13 @@ class BoardFileOps {
   ///
   /// Directory sizes come from walking the tree, which is what the pre-flight
   /// needs before a folder upload. Unreadable entries contribute 0 rather than
-  /// aborting the whole upload.
-  Future<int> localTransferSize(Iterable<String> localPaths) async {
+  /// aborting the whole upload. When [ignore] is given, the files it covers are
+  /// left out of the sum: they are never transferred, so counting them would
+  /// reject a batch that actually fits.
+  Future<int> localTransferSize(
+    Iterable<String> localPaths, {
+    SyncIgnoreFilter? ignore,
+  }) async {
     var total = 0;
     for (final localPath in localPaths) {
       final type = await io.FileSystemEntity.type(localPath);
@@ -1434,6 +1440,7 @@ class BoardFileOps {
           localPath,
         ).list(recursive: true, followLinks: false)) {
           if (entity is! io.File) continue;
+          if (ignore != null && ignore.isIgnored(entity.path)) continue;
           try {
             total += await entity.length();
           } catch (_) {}
@@ -1469,14 +1476,21 @@ class BoardTransfer {
   /// Files whose board copy already holds the same bytes (same size and
   /// CRC-32) are skipped; the return value is how many files were skipped so
   /// batch callers can fold it into their own skipped counters.
+  ///
+  /// [ignore] is the workspace's `.pyrsyncignore` filter. Matching files are
+  /// never read, never written and their directories are never created, which
+  /// is what keeps a `build/` or `node_modules/` tree off the board. The
+  /// directory walk stops at an ignored directory instead of descending into
+  /// it, so the scan cost drops too.
   Future<int> uploadFolder(
     String localPath,
     String remotePath, {
     FileTransferCancelToken? cancel,
     bool preflightSpace = true,
+    SyncIgnoreFilter? ignore,
   }) async {
     final dir = io.Directory(localPath);
-    final entities = await dir.list(recursive: true).toList();
+    final entities = await _listUploadEntities(dir, ignore);
     final files = entities.whereType<io.File>().toList(growable: false);
     final createdDirs = <String>{};
     ref
@@ -1568,6 +1582,36 @@ class BoardTransfer {
 
   String _boardTargetPath(String remotePath, String relativePath) =>
       _ops.normalizeBoardPath(_boardPath.join(remotePath, relativePath));
+
+  /// Lists [root] depth-first, dropping everything [ignore] covers.
+  ///
+  /// `Directory.list(recursive: true)` cannot prune: it yields every entry
+  /// below a directory before the caller can decide, so a `node_modules/` or
+  /// `.git/` tree would still be walked in full. This walk checks each entry
+  /// before descending, which is what makes the ignore list cheap as well as
+  /// correct. Symlinks are not followed, matching `scanLocalWorkspace`.
+  Future<List<io.FileSystemEntity>> _listUploadEntities(
+    io.Directory root,
+    SyncIgnoreFilter? ignore,
+  ) async {
+    if (ignore == null) {
+      return root.list(recursive: true).toList();
+    }
+    final result = <io.FileSystemEntity>[];
+    final pending = <io.Directory>[root];
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      await for (final entity in current.list(followLinks: false)) {
+        if (ignore.isIgnored(entity.path)) {
+          debugPrint('[BoardWS] Ignoring ${entity.path}');
+          continue;
+        }
+        result.add(entity);
+        if (entity is io.Directory) pending.add(entity);
+      }
+    }
+    return result;
+  }
 
   /// Board paths whose content already equals the local file (same size and
   /// CRC-32).

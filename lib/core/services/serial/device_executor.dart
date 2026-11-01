@@ -1099,6 +1099,32 @@ Future<bool> _recoverInterruptedDevice(
   return false;
 }
 
+/// Best-effort call site of the transaction that is about to start.
+///
+/// A transaction owns the serial line for about a second even when its action
+/// is trivial — the 12-interrupt handshake and the exit sequence dominate — so
+/// a transaction that repeats every second is indistinguishable in the log from
+/// any other: `[txn] START` says nothing about who asked for it. Naming the
+/// first frame outside this file answers that without changing behaviour. In a
+/// debug build it resolves to `file.dart:line`; a release build keeps only the
+/// enclosing function name, which still identifies the caller.
+String _describeTransactionCaller() {
+  const skipped = [
+    'device_executor.dart',
+    'package:flutter/',
+    'dart:async',
+    'dart:core',
+    'dart:collection',
+  ];
+  for (final frame in StackTrace.current.toString().split('\n')) {
+    final line = frame.trim();
+    if (line.isEmpty || !line.startsWith('#')) continue;
+    if (skipped.any(line.contains)) continue;
+    return line.replaceFirst(RegExp(r'^#\d+\s+'), '');
+  }
+  return 'unknown';
+}
+
 /// Runs a REPL transaction with mutex, I/O pausing, and cleanup.
 ///
 Future<T> _runTransaction<T>(
@@ -1179,8 +1205,15 @@ Future<T> _runTransaction<T>(
 
     final mode = forceMode ?? read(replModeProvider) ?? ReplMode.rawRepl;
     DeviceSession? session;
+    // Timed so a repeating transaction can be told apart from a slow one: the
+    // elapsed value is the whole cycle (handshake + action + exit), which is
+    // what a user sees as the cadence in the log.
+    final cycle = Stopwatch()..start();
     try {
-      debugPrint('[txn] START mode=$mode');
+      debugPrint(
+        '[txn] START mode=$mode op=$runningOperationId '
+        'from=${_describeTransactionCaller()}',
+      );
       try {
         debugPrint('[txn] entering REPL...');
         session = await _initSessionAndEnterRepl(
@@ -1214,7 +1247,10 @@ Future<T> _runTransaction<T>(
       debugPrint('[txn] running action...');
       return await action(session, mode);
     } finally {
-      debugPrint('[txn] FINALLY: queue.isCancelled=${queue.isCancelled}');
+      debugPrint(
+        '[txn] FINALLY: queue.isCancelled=${queue.isCancelled} '
+        'elapsed=${cycle.elapsedMilliseconds}ms',
+      );
       read(hardwareResetControllerProvider).unregister(requestHardwareReset);
       cleanup?.call();
       try {

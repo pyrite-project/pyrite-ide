@@ -243,18 +243,8 @@ class BoardSyncPlan {
   /// the executor never has to guess. Insertion walks deepest-first, so the
   /// iteration order must not be fed straight to `os.mkdir`, which cannot
   /// create missing parents; sort shallowest-first before creating.
-  Set<String> get requiredBoardDirectories {
-    final result = <String>{};
-    for (final entry in uploads) {
-      final parent = path.posix.dirname('/${entry.relativePath}');
-      var current = parent;
-      while (current != '/' && current != '.' && current.isNotEmpty) {
-        result.add(current.substring(1));
-        current = path.posix.dirname(current);
-      }
-    }
-    return result;
-  }
+  Set<String> get requiredBoardDirectories =>
+      boardDirectoriesForUploads(uploads);
 
   /// Directory paths that must exist locally before downloading.
   Set<String> get requiredLocalDirectories {
@@ -274,6 +264,29 @@ class BoardSyncPlan {
   String toString() =>
       'BoardSyncPlan(entries=${entries.length}, upload=$uploadCount, '
       'download=$downloadCount, conflict=${conflicts.length})';
+}
+
+/// Board directories the given [entries] need before their uploads can start.
+///
+/// The executor calls this with the rows it is actually about to transfer
+/// rather than with the whole plan: rows the user left unticked (including
+/// everything `.pyrsyncignore` covers) must not leave empty directories behind
+/// on the board.
+Set<String> boardDirectoriesForUploads(Iterable<BoardSyncEntry> entries) {
+  final result = <String>{};
+  for (final entry in entries) {
+    if (entry.action != BoardSyncAction.uploadNew &&
+        entry.action != BoardSyncAction.uploadChanged) {
+      continue;
+    }
+    final parent = path.posix.dirname('/${entry.relativePath}');
+    var current = parent;
+    while (current != '/' && current != '.' && current.isNotEmpty) {
+      result.add(current.substring(1));
+      current = path.posix.dirname(current);
+    }
+  }
+  return result;
 }
 
 /// How the caller wants mtime differences treated.

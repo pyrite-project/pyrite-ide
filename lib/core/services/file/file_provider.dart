@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
@@ -326,9 +327,11 @@ class FileNotifier extends StateNotifier<Directory?> {
     // Upload pre-flight: sum what the batch will move and fail *before* any
     // file is written when the device reports too little free space. The check
     // silently degrades when the port has no usable statvfs.
+    final ignore = await _uploadIgnoreFilter();
+    if (!context.mounted) return;
     final passedPreflight = await _preflightUpload(context, [
       for (final node in nodes) node.id,
-    ]);
+    ], ignore: ignore);
     if (passedPreflight == null) return;
 
     final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
@@ -443,6 +446,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 targetPath,
                 cancel: cancelToken,
                 preflightSpace: false,
+                ignore: ignore,
               );
           transferredFolders.add(targetPath);
         } else {
@@ -533,7 +537,9 @@ class FileNotifier extends StateNotifier<Directory?> {
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
 
-    final budget = await _preflightUpload(context, sourcePaths);
+    final ignore = await _uploadIgnoreFilter();
+    if (!context.mounted) return;
+    final budget = await _preflightUpload(context, sourcePaths, ignore: ignore);
     if (budget == null) return;
 
     final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
@@ -626,6 +632,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                 targetPath,
                 cancel: cancelToken,
                 preflightSpace: false,
+                ignore: ignore,
               );
           transferredFolders.add(targetPath);
         } else {
@@ -1006,6 +1013,18 @@ class FileNotifier extends StateNotifier<Directory?> {
     }
   }
 
+  /// `.pyrsyncignore` bound to the open workspace, or `null` when none is open.
+  ///
+  /// Every folder upload resolves it once, so the ignore list means the same
+  /// thing whether the user syncs the workspace or uploads a folder by hand.
+  /// A single explicitly selected file is still transferred: the list describes
+  /// trees, not one deliberate action.
+  Future<SyncIgnoreFilter?> _uploadIgnoreFilter() async {
+    final root = ref.read(fileProvider)?.path;
+    if (root == null) return null;
+    return loadSyncIgnoreFilter(root);
+  }
+
   /// Runs the upload space pre-flight for [localPaths].
   ///
   /// Returns the budget on success/graceful degradation, or `null` when the
@@ -1014,11 +1033,13 @@ class FileNotifier extends StateNotifier<Directory?> {
   ///
   /// The required size is accumulated across the whole batch ("批量时累加总
   /// 大小") so a batch that individually fits but collectively does not is
-  /// rejected before the first write.
+  /// rejected before the first write. Files covered by [ignore] are excluded
+  /// from the sum because the upload will not transfer them either.
   Future<SpaceBudgetResult?> _preflightUpload(
     BuildContext context,
-    List<String> localPaths,
-  ) async {
+    List<String> localPaths, {
+    SyncIgnoreFilter? ignore,
+  }) async {
     final ops = ref.read(boardProvider).ops;
     String translateBudget(
       I18nKey key, [
@@ -1026,7 +1047,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     ]) => translateWithReplacements(ref, key, replacements);
     final int requiredBytes;
     try {
-      requiredBytes = await ops.localTransferSize(localPaths);
+      requiredBytes = await ops.localTransferSize(localPaths, ignore: ignore);
     } catch (error) {
       // Size probing is part of the pre-flight only; failing to size a path is
       // not a reason to block the upload, but it must be visible in the log.
@@ -1378,7 +1399,11 @@ class FileNotifier extends StateNotifier<Directory?> {
         boardFolderPath: boardFolderTarget?.id,
       );
       final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
-      final budget = await _preflightUpload(context, [selected.id]);
+      final ignore = await _uploadIgnoreFilter();
+      if (!context.mounted) return;
+      final budget = await _preflightUpload(context, [
+        selected.id,
+      ], ignore: ignore);
       if (budget == null) return;
       try {
         await ref
@@ -1388,6 +1413,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               selected.id,
               targetPath,
               cancel: progressNotifier.beginCancelToken(),
+              ignore: ignore,
             );
         ref
             .read(tabbedViewControllerProvider.notifier)

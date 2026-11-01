@@ -7,9 +7,17 @@ import 'package:path/path.dart' as path;
 /// Name of the ignore list read from the local workspace root.
 ///
 /// The file is a plain list of workspace-relative paths, one per line: `#`
-/// starts a comment and blank lines are skipped. It only changes what the sync
-/// preview pre-selects — nothing is deleted, and every ignored row can still be
-/// ticked by hand.
+/// starts a comment and blank lines are skipped.
+///
+/// The list has two consumers, both of which must honour it:
+/// * the sync preview, which starts the matching rows unchecked — nothing is
+///   deleted, and every ignored row can still be ticked by hand;
+/// * folder uploads (`BoardTransfer.uploadFolder`), which skip the matching
+///   paths entirely so a `build/` or `node_modules/` tree never reaches the
+///   board's small filesystem.
+///
+/// Uploading one explicitly selected file still transfers it: the ignore list
+/// describes trees, not a single deliberate action.
 const String syncIgnoreFileName = '.pyrsyncignore';
 
 /// One parsed line of a `.pyrsyncignore` file.
@@ -159,3 +167,49 @@ Future<SyncIgnoreRules> loadSyncIgnoreRules(String localRoot) async {
     return const SyncIgnoreRules.empty();
   }
 }
+
+/// [SyncIgnoreRules] bound to the root they were read from.
+///
+/// The rules themselves match workspace-relative paths, but a folder upload
+/// only knows absolute paths. This wrapper does the translation once, so every
+/// caller (sync preview, folder upload, upload pre-flight) applies exactly the
+/// same answer for the same file.
+class SyncIgnoreFilter {
+  const SyncIgnoreFilter({required this.rules, required this.root});
+
+  /// Rules parsed from `<root>/.pyrsyncignore`; empty means "nothing listed".
+  final SyncIgnoreRules rules;
+
+  /// Absolute directory the rules are relative to (normally the workspace).
+  final String root;
+
+  bool get isEmpty => rules.isEmpty;
+
+  bool get isNotEmpty => rules.isNotEmpty;
+
+  /// Whether [absolutePath] is covered by the ignore list.
+  ///
+  /// Paths outside [root] are never ignored: the list only describes the
+  /// workspace, and a user who drags in an unrelated file means to upload it.
+  /// The `.pyrsyncignore` file itself is always ignored (see
+  /// [SyncIgnoreRules.shouldIgnore]) so the IDE's own configuration never
+  /// lands on the board.
+  bool isIgnored(String absolutePath) {
+    final normalizedRoot = path.normalize(root);
+    final normalizedPath = path.normalize(absolutePath);
+    if (!path.isWithin(normalizedRoot, normalizedPath)) return false;
+    final relative = path.relative(normalizedPath, from: normalizedRoot);
+    if (relative == '.') return false;
+    return rules.shouldIgnore(relative);
+  }
+
+  @override
+  String toString() => 'SyncIgnoreFilter($root, $rules)';
+}
+
+/// Reads `<root>/.pyrsyncignore` and binds it to [root].
+///
+/// Always returns a filter: even an empty or missing list still hides the
+/// `.pyrsyncignore` file itself from folder uploads.
+Future<SyncIgnoreFilter> loadSyncIgnoreFilter(String root) async =>
+    SyncIgnoreFilter(rules: await loadSyncIgnoreRules(root), root: root);

@@ -220,6 +220,39 @@ void main() {
     expect(progress.state.cancelled, isFalse);
   });
 
+  test(
+    'does not create directories for entries left out of the selection',
+    () async {
+      await writeLocal('main.py', 'print(1)');
+      await writeLocal('build/out.bin', 'artifact');
+      final backend = _FakeBoardBackend();
+      final container = ProviderContainer(
+        overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+      );
+      addTearDown(container.dispose);
+
+      final executor = BoardSyncExecutor(
+        ops: container.read(_testOpsProvider),
+        progress: container.read(fileTransferProgressProvider.notifier),
+      );
+
+      final result = await executor.execute(
+        plan: planOf([
+          uploadEntry('main.py', 8),
+          uploadEntry('build/out.bin', 8).copyWith(ignoredByDefault: true),
+        ]),
+        localRoot: tempDir.path,
+        selectedPaths: {'main.py'},
+      );
+
+      // An ignored path that stays unticked must not leave an empty `/build`
+      // directory behind on the board.
+      expect(result.uploaded, 1);
+      expect(backend.writtenPaths, ['main.py']);
+      expect(backend.folders, isEmpty);
+    },
+  );
+
   test('downloads board files into the local workspace', () async {
     final backend = _FakeBoardBackend();
     backend.files['boot.py'] = Uint8List.fromList('import sys'.codeUnits);

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 
 /// In-memory BoardFileBackend that stores files under keys without the
@@ -175,6 +176,49 @@ void main() {
     expect(skipped, 0);
     expect(backend.writtenPaths, ['target/a.py']);
     expect(String.fromCharCodes(backend.files['target/a.py']!), 'short');
+  });
+
+  test('uploadFolder never transfers what .pyrsyncignore covers', () async {
+    await writeLocal('main.py', 'print(1)');
+    await writeLocal('build/out.bin', 'artifact');
+    await writeLocal('build/deep/out.bin', 'artifact');
+    await writeLocal('vendor/lib.py', 'vendored');
+    await writeLocal('.pyrsyncignore', 'build\nvendor\n');
+    final backend = _FakeBoardBackend();
+    final container = ProviderContainer(
+      overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+    );
+    addTearDown(container.dispose);
+
+    final ignore = await loadSyncIgnoreFilter(tempDir.path);
+    await transferOf(container).uploadFolder(
+      tempDir.path,
+      '/target',
+      preflightSpace: false,
+      ignore: ignore,
+    );
+
+    // Only the file the ignore list does not mention reaches the board: the
+    // ignored trees are not written, and neither are their directories.
+    expect(backend.writtenPaths, ['target/main.py']);
+    expect(backend.folders, isNot(contains('/target/build')));
+    expect(backend.folders, isNot(contains('/target/vendor')));
+  });
+
+  test('uploadFolder transfers everything when no filter is passed', () async {
+    await writeLocal('main.py', 'print(1)');
+    await writeLocal('build/out.bin', 'artifact');
+    final backend = _FakeBoardBackend();
+    final container = ProviderContainer(
+      overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+    );
+    addTearDown(container.dispose);
+
+    await transferOf(
+      container,
+    ).uploadFolder(tempDir.path, '/target', preflightSpace: false);
+
+    expect(backend.writtenPaths, ['target/build/out.bin', 'target/main.py']);
   });
 
   test('downloadFolder skips files the workspace already holds', () async {
