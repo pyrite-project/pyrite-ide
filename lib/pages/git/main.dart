@@ -1769,16 +1769,10 @@ class _BranchTile extends ConsumerWidget {
             ),
             if (branch.trackingLabel.isNotEmpty)
               PillBadge(label: branch.trackingLabel),
-            if (branch.isCurrent)
-              const Padding(
-                padding: EdgeInsetsDirectional.only(start: 6),
-                child: PillBadge(label: I18nKey.gitCurrentBranch),
-              )
-            else
-              TextButton(
-                onPressed: isBusy ? null : onCheckout,
-                child: const UseText(I18nKey.gitCheckout),
-              ),
+            _BranchActionSlot(
+              isCurrent: branch.isCurrent,
+              onCheckout: isBusy ? null : onCheckout,
+            ),
             if (!branch.isRemote)
               IconButton(
                 tooltip: translateInContext(
@@ -1830,6 +1824,51 @@ class _BranchTile extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// 分支行右侧动作位的居中槽位：「切换」按钮与「当前」徽标共用。
+///
+/// 两种状态互斥，但盒子宽度不同（按钮有 12dp 内边距、徽标只有 8dp），
+/// 直接相邻排列会让右边缘对齐、文字中心错开。这里让两个候选子节点都参与
+/// 布局（只绘制其中一个），槽位宽度取二者较大值并把内容居中，于是两种
+/// 状态的文字中心始终落在同一条竖线上；宽度也随文案自适应，换成更长的
+/// 语言不会被裁切。
+class _BranchActionSlot extends StatelessWidget {
+  const _BranchActionSlot({required this.isCurrent, required this.onCheckout});
+
+  final bool isCurrent;
+  final VoidCallback? onCheckout;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        _reserve(
+          visible: !isCurrent,
+          child: TextButton(
+            onPressed: onCheckout,
+            child: const UseText(I18nKey.gitCheckout),
+          ),
+        ),
+        _reserve(
+          visible: isCurrent,
+          child: const PillBadge(label: I18nKey.gitCurrentBranch),
+        ),
+      ],
+    );
+  }
+
+  /// 隐藏时仍保留占位与布局，只是不绘制、不响应点击。
+  Widget _reserve({required bool visible, required Widget child}) {
+    return Visibility(
+      visible: visible,
+      maintainSize: true,
+      maintainAnimation: true,
+      maintainState: true,
+      child: child,
     );
   }
 }
