@@ -1,5 +1,6 @@
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/models/window_placement.dart';
 
 /// A folded region captured for a session, keyed by document lines.
 ///
@@ -61,6 +62,14 @@ class PersistedTab {
   /// that no longer match the restored document are applied best-effort.
   final List<PersistedFoldRange> foldedRanges;
 
+  /// Marks an outline tab in the saved strip.
+  ///
+  /// Outline tabs hold no file, so [filePath] is empty for them; they restore
+  /// in the position they were saved at, keeping a saved outline layout
+  /// (including one dragged into the editor bar) over the usual birth column.
+  /// False for sessions written before this field existed.
+  final bool isOutline;
+
   PersistedTab({
     required this.filePath,
     this.isBoardFile = false,
@@ -70,6 +79,7 @@ class PersistedTab {
     this.cursorOffset,
     this.scrollLine,
     this.foldedRanges = const [],
+    this.isOutline = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -81,10 +91,31 @@ class PersistedTab {
     'cursorOffset': cursorOffset,
     'scrollLine': scrollLine,
     'foldedRanges': foldedRanges.map((f) => f.toJson()).toList(),
+    'isOutline': isOutline,
   };
 
+  /// Parses a persisted tab list, dropping entries that cannot describe a tab.
+  ///
+  /// `tabs.json` also carries every unsaved buffer, and `TabsPersistence.load`
+  /// turns a parse error into "no session at all". One corrupt entry therefore
+  /// used to cost the user every open tab and every unsaved edit, so unusable
+  /// entries are skipped and the rest still restore.
+  static List<PersistedTab> listFromJson(Object? value) {
+    if (value is! List) return const [];
+    final tabs = <PersistedTab>[];
+    for (final entry in value.whereType<Map<String, dynamic>>()) {
+      final tab = PersistedTab.fromJson(entry);
+      // An outline marker is the one tab allowed to have no file behind it.
+      if (tab.filePath.isEmpty && !tab.isOutline) continue;
+      tabs.add(tab);
+    }
+    return tabs;
+  }
+
   factory PersistedTab.fromJson(Map<String, dynamic> json) => PersistedTab(
-    filePath: json['filePath'] as String,
+    // A missing path is handled by [listFromJson]; reading it as empty here
+    // keeps one bad entry from throwing out of the whole parse.
+    filePath: json['filePath']?.toString() ?? '',
     isBoardFile: json['isBoardFile'] as bool? ?? false,
     boardFilePath: json['boardFilePath'] as String?,
     isSaved: json['isSaved'] as bool? ?? true,
@@ -97,18 +128,110 @@ class PersistedTab {
             .map(PersistedFoldRange.fromJson)
             .toList() ??
         const [],
+    isOutline: json['isOutline'] as bool? ?? false,
   );
+}
+
+/// One editor group as persisted: its tabs and which of them was selected.
+class PersistedEditorGroup {
+  final List<PersistedTab> tabs;
+
+  /// File path of the tab selected in this group at save time, resolved the
+  /// same way [PersistedTab] selection is: by path, never by index.
+  final String? selectedTabPath;
+
+  PersistedEditorGroup({required this.tabs, this.selectedTabPath});
+
+  Map<String, dynamic> toJson() => {
+    'tabs': tabs.map((t) => t.toJson()).toList(),
+    'selectedTabPath': selectedTabPath,
+  };
+
+  factory PersistedEditorGroup.fromJson(Map<String, dynamic> json) =>
+      PersistedEditorGroup(
+        tabs: PersistedTab.listFromJson(json['tabs']),
+        selectedTabPath: json['selectedTabPath'] as String?,
+      );
+}
+
+/// The editor area's layout as persisted.
+///
+/// A group is a leaf pointing into [TabsPersistedData.groups]; a split holds an
+/// axis and its children. The tree is written nested, exactly as it stands, so
+/// any number of nested splits restores as it was left.
+class PersistedEditorLayout {
+  /// Axis of a split node: `horizontal` or `vertical`. Null for a group leaf.
+  final String? axis;
+
+  /// Index into [TabsPersistedData.groups] for a group leaf.
+  final int? groupIndex;
+
+  /// Children of a split node, empty for a group leaf.
+  final List<PersistedEditorLayout> children;
+
+  /// The children's relative sizes, or null for equal shares.
+  final List<double>? weights;
+
+  PersistedEditorLayout.split(this.axis, this.children, {this.weights})
+    : groupIndex = null;
+
+  PersistedEditorLayout.group(this.groupIndex)
+    : axis = null,
+      children = const [],
+      weights = null;
+
+  bool get isSplit => axis != null;
+
+  Map<String, dynamic> toJson() => {
+    if (axis != null) 'axis': axis,
+    if (groupIndex != null) 'groupIndex': groupIndex,
+    if (isSplit) 'children': children.map((c) => c.toJson()).toList(),
+    if (weights != null) 'weights': weights,
+  };
+
+  factory PersistedEditorLayout.fromJson(Map<String, dynamic> json) {
+    final axis = json['axis'] as String?;
+    // A split node carries `axis`; a group leaf carries `groupIndex`. The group
+    // index is absent on splits, so the axis is the only reliable discriminant.
+    if (axis != null) {
+      return PersistedEditorLayout.split(
+        axis,
+        (json['children'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(PersistedEditorLayout.fromJson)
+            .toList(),
+        weights: (json['weights'] as List<dynamic>?)
+            ?.whereType<num>()
+            .map((weight) => weight.toDouble())
+            .toList(),
+      );
+    }
+    final groupIndex = (json['groupIndex'] as num?)?.toInt() ?? 0;
+    return PersistedEditorLayout.group(groupIndex);
+  }
 }
 
 class PersistedData {
   final String? projectPath;
+
+  /// The tabs of a session saved with a single editor group.
   final List<PersistedTab> tabs;
+
+  /// One entry per editor group of a split session, in layout order.
+  final List<PersistedEditorGroup> tabGroups;
+
+  /// The editor area's layout tree, or null for a single group.
+  final PersistedEditorLayout? tabLayout;
+
+  /// Which of [tabGroups] is the primary group.
+  final int tabPrimaryGroupIndex;
   final int selectedTabIndex;
 
   /// File path of the tab that was selected, preferred over [selectedTabIndex]
   /// when restoring because the rebuilt tab list does not share the saved
   /// index space. See `TabsPersistedData.selectedTabPath`.
   final String? selectedTabPath;
+
   final String themeMode;
   final String themeStyle;
   final int? themeColorValue;
@@ -117,6 +240,10 @@ class PersistedData {
   final bool welcomeCompleted;
   final String activeLocale;
   final bool alwaysOnTop;
+
+  /// Window geometry restored at startup, or null when the previous session
+  /// did not persist one (or it failed validation).
+  final WindowPlacement? windowPlacement;
   final String editorTextFont;
   final double editorFontSize;
   final bool editorWordWrap;
@@ -157,12 +284,16 @@ class PersistedData {
   final int tabletSelectedIndex;
   final bool functionPageShow;
   final bool consolePageShow;
-  final bool expansionPageShow;
+  final String consoleDockSide;
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
+  final bool deviceRunChdirToScriptDir;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
+
+  /// Last port in use; empty when the IDE never had a device connected.
+  final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
@@ -174,6 +305,9 @@ class PersistedData {
   final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
+
+  /// Ordering of both file trees: `name` or `type`.
+  final String fileSortMode;
   final String confirmShortcut;
   final String cancelShortcut;
   final String webReplHost;
@@ -191,6 +325,9 @@ class PersistedData {
   PersistedData({
     this.projectPath,
     this.tabs = const [],
+    this.tabGroups = const [],
+    this.tabLayout,
+    this.tabPrimaryGroupIndex = 0,
     this.selectedTabIndex = 0,
     this.selectedTabPath,
     this.themeMode = 'system',
@@ -201,6 +338,7 @@ class PersistedData {
     this.welcomeCompleted = false,
     this.activeLocale = 'zh-CN',
     this.alwaysOnTop = false,
+    this.windowPlacement,
     this.editorTextFont = 'JetBrains Mono',
     this.editorFontSize = 15,
     this.editorWordWrap = false,
@@ -241,12 +379,14 @@ class PersistedData {
     this.tabletSelectedIndex = 0,
     this.functionPageShow = true,
     this.consolePageShow = true,
-    this.expansionPageShow = true,
+    this.consoleDockSide = 'bottom',
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,
+    this.deviceRunChdirToScriptDir = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
+    this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
@@ -258,6 +398,7 @@ class PersistedData {
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
+    this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
     this.webReplHost = '',
@@ -316,4 +457,5 @@ class DataContributionKeys {
   static const theme = 'theme';
   static const i18n = 'i18n';
   static const stubs = 'stubs';
+  static const lspServer = 'lsp_server';
 }

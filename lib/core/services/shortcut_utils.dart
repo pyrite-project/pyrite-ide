@@ -41,6 +41,25 @@ String replaceShortcutLabel() => usesCommandShortcut ? 'Cmd+Alt+H' : 'Ctrl+H';
 
 String toggleCommentShortcutLabel() => usesCommandShortcut ? 'Cmd+/' : 'Ctrl+/';
 
+/// Labels for the workspace-level shortcuts the command palette and menus
+/// advertise. The bindings themselves live in `FunctionPage`; keeping the
+/// spelling here means a menu and its tooltip cannot drift apart.
+String commandPaletteShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+P' : 'Ctrl+Shift+P';
+
+String quickOpenShortcutLabel() => usesCommandShortcut ? 'Cmd+P' : 'Ctrl+P';
+
+String reopenClosedTabShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+T' : 'Ctrl+Shift+T';
+
+String splitEditorShortcutLabel() => usesCommandShortcut ? 'Cmd+\\' : 'Ctrl+\\';
+
+String splitEditorDownShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+\\' : 'Ctrl+Shift+\\';
+
+String closeEditorGroupShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Alt+W' : 'Ctrl+Alt+W';
+
 /// Labels for the editor shortcuts that are registered inline in
 /// `EditCore.build` rather than through [CodeForgeKeyboardShortcuts].
 ///

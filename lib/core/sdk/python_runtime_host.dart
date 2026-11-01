@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -305,7 +306,12 @@ class PythonRuntimeHost {
         if (await session.tempDirectory.exists()) {
           await session.tempDirectory.delete(recursive: true);
         }
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[runtime] restart cleanup of '
+          '${session.pluginId} temp dir failed: $error',
+        );
+      }
     }
     await _withStartupLock(() async {
       await _resetRuntime();
@@ -557,14 +563,24 @@ class PythonRuntimeHost {
       session._stoppedCallbackInvoked = true;
       try {
         await session._onStopped();
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[runtime] onStopped callback for '
+          '${session.pluginId} failed: $error',
+        );
+      }
     }
     if (programExited) {
       try {
         if (await session.tempDirectory.exists()) {
           await session.tempDirectory.delete(recursive: true);
         }
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[runtime] temp dir cleanup for '
+          '${session.pluginId} failed: $error',
+        );
+      }
       session._state = finalState;
       if (identical(_sessions[session.pluginId], session)) {
         _sessions.remove(session.pluginId);

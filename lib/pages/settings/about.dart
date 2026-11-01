@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -166,7 +167,6 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                 children: [
                   SettingsSection(
                     title: I18nKey.aboutRuntimePaths,
-                    description: I18nKey.aboutRuntimePathsDescription,
                     children: [
                       _CopyableInfoTile(
                         icon: Icons.folder_outlined,
@@ -191,11 +191,16 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                         title: I18nKey.aboutTempDirectory,
                         value: info.tempPath,
                       ),
+                      const SectionDivider(),
+                      _CopyableInfoTile(
+                        icon: Icons.receipt_long_outlined,
+                        title: I18nKey.aboutLogFile,
+                        value: info.logPath,
+                      ),
                     ],
                   ),
                   SettingsSection(
                     title: I18nKey.aboutRuntimeStatus,
-                    description: I18nKey.aboutRuntimeStatusDescription,
                     children: [
                       _InfoTile(
                         icon: Icons.computer,
@@ -253,7 +258,6 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
                   ),
                   SettingsSection(
                     title: I18nKey.aboutKeySettings,
-                    description: I18nKey.aboutKeySettingsDescription,
                     children: [
                       _InfoTile(
                         icon: Icons.speed,
@@ -353,6 +357,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
     final layers = ref.read(microPythonStubsLayers);
     return _DiagnosticInfo(
       platform: Platform.operatingSystem,
+      logPath: GitDebugLog.path,
       supportPath: support.path,
       pluginPath: path.join(support.path, 'plugin'),
       cachePath: cache.path,
@@ -373,7 +378,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
       autoReconnect: ref.read(serialAutoReconnect),
       stubsEnabled: ref.read(microPythonStubsEnabled),
       stubsLayersSummary: layers.isEmpty
-          ? I18nKey.settingsLspNotConfigured.fallback
+          ? translateForWidget(ref, I18nKey.settingsLspNotConfigured)
           : layers
                 .map((layer) => '${layer.provider}/${layer.profile}')
                 .join(', '),
@@ -388,6 +393,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
       'Plugin directory: ${info.pluginPath}',
       'Cache directory: ${info.cachePath}',
       'Temp directory: ${info.tempPath}',
+      'Log file: ${info.logPath}',
       'Python runtime asset: ${info.pythonAsset}',
       'Python runtime boot: assets/python_runtime_boot.zip',
       'Plugins: installed=${info.pluginCount}, enabled=${info.enabledPluginCount}, data=${info.dataPluginCount}',
@@ -409,6 +415,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
 class _DiagnosticInfo {
   const _DiagnosticInfo({
     required this.platform,
+    required this.logPath,
     required this.supportPath,
     required this.pluginPath,
     required this.cachePath,
@@ -426,6 +433,13 @@ class _DiagnosticInfo {
   });
 
   final String platform;
+
+  /// Path of the rotating debug log.
+  ///
+  /// The log is written to a hidden directory outside the app bundle, so
+  /// without this row a user reporting a crash has no way to find it.
+  final String logPath;
+
   final String supportPath;
   final String pluginPath;
   final String cachePath;
@@ -454,7 +468,6 @@ class FeatureModern extends StatelessWidget {
       children: [
         SettingsSection(
           title: I18nKey.aboutModernExperience,
-          description: I18nKey.aboutModernExperienceDescription,
           children: const [
             _InfoTile(
               icon: Icons.dashboard_customize_outlined,
@@ -477,7 +490,6 @@ class FeatureModern extends StatelessWidget {
         ),
         SettingsSection(
           title: I18nKey.aboutModernPreview,
-          description: I18nKey.aboutModernPreviewDescription,
           children: const [
             _MaterialComponentShowcase(),
             _ThemeModePreview(),
@@ -501,7 +513,6 @@ class FeaturePowerful extends StatelessWidget {
       children: [
         SettingsSection(
           title: I18nKey.aboutPowerfulCapability,
-          description: I18nKey.aboutPowerfulCapabilityDescription,
           children: const [
             _CapabilityExpansion(
               icon: Icons.code,
@@ -536,7 +547,6 @@ class FeaturePowerful extends StatelessWidget {
         ),
         const SettingsSection(
           title: I18nKey.aboutCurrentConfigSnapshot,
-          description: I18nKey.aboutCurrentConfigSnapshotDescription,
           children: [_RuntimeSettingsSnapshot()],
         ),
         SettingsSection(
@@ -578,12 +588,10 @@ class FeatureCrossPlatform extends StatelessWidget {
       children: [
         const SettingsSection(
           title: I18nKey.aboutPlatformCapability,
-          description: I18nKey.aboutPlatformCapabilityDescription,
           children: [_PlatformMatrix()],
         ),
         SettingsSection(
           title: I18nKey.aboutCurrentPlatform,
-          description: I18nKey.aboutCurrentPlatformDescription,
           children: [
             _InfoTile(
               icon: Icons.computer,
@@ -636,7 +644,6 @@ class AboutProject extends StatelessWidget {
       children: [
         SettingsSection(
           title: I18nKey.aboutEcosystemLayers,
-          description: I18nKey.aboutEcosystemLayersDescription,
           children: const [
             _EcosystemTile(
               icon: Icons.hub_outlined,
@@ -665,12 +672,10 @@ class AboutProject extends StatelessWidget {
         ),
         const SettingsSection(
           title: I18nKey.aboutEcosystemStatus,
-          description: I18nKey.aboutEcosystemStatusDescription,
           children: [_EcosystemSnapshot()],
         ),
         SettingsSection(
           title: I18nKey.aboutModuleExpansion,
-          description: I18nKey.aboutModuleExpansionDescription,
           children: const [
             _CapabilityExpansion(
               icon: Icons.edit_note_outlined,
@@ -806,7 +811,9 @@ class _CopyableInfoTile extends StatelessWidget {
         if (context.mounted) {
           showIdeSuccess(
             context,
-            I18nKey.aboutCopied.fallback.replaceAll('{title}', title.fallback),
+            translateInContextWithReplacements(context, I18nKey.aboutCopied, {
+              'title': translateInContext(context, title),
+            }),
           );
         }
       },
@@ -842,7 +849,10 @@ class _MaterialComponentShowcaseState
               FilledButton.icon(
                 onPressed: () => showIdeSuccess(
                   context,
-                  I18nKey.aboutFilledButtonAvailable.fallback,
+                  translateInContext(
+                    context,
+                    I18nKey.aboutFilledButtonAvailable,
+                  ),
                 ),
                 icon: const Icon(Icons.check),
                 label: const Text("Filled"),
@@ -850,7 +860,10 @@ class _MaterialComponentShowcaseState
               OutlinedButton.icon(
                 onPressed: () => showIdeMessage(
                   context,
-                  I18nKey.aboutOutlinedButtonAvailable.fallback,
+                  translateInContext(
+                    context,
+                    I18nKey.aboutOutlinedButtonAvailable,
+                  ),
                 ),
                 icon: const Icon(Icons.touch_app_outlined),
                 label: const Text("Outlined"),
@@ -866,7 +879,7 @@ class _MaterialComponentShowcaseState
                 label: const Text("ActionChip"),
                 onPressed: () => showIdeSuccess(
                   context,
-                  I18nKey.aboutActionChipTriggered.fallback,
+                  translateInContext(context, I18nKey.aboutActionChipTriggered),
                 ),
               ),
             ],
@@ -920,7 +933,7 @@ class _RuntimeSettingsSnapshot extends ConsumerWidget {
           icon: Icons.layers_outlined,
           title: "MicroPython Stubs Layers",
           subtitle: layers.isEmpty
-              ? I18nKey.settingsLspNotConfigured.fallback
+              ? translateForWidget(ref, I18nKey.settingsLspNotConfigured)
               : layers
                     .map((layer) => '${layer.provider}/${layer.profile}')
                     .join(', '),
@@ -929,16 +942,15 @@ class _RuntimeSettingsSnapshot extends ConsumerWidget {
         _InfoTile(
           icon: Icons.terminal_outlined,
           title: I18nKey.aboutTerminalDisplay,
-          subtitle: I18nKey.aboutTerminalDisplayValue.fallback
-              .replaceAll('{font}', ref.watch(terminalFontFamily))
-              .replaceAll(
-                '{size}',
-                ref.watch(terminalFontSize).toStringAsFixed(0),
-              )
-              .replaceAll(
-                '{height}',
-                ref.watch(terminalLineHeight).toStringAsFixed(1),
-              ),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutTerminalDisplayValue,
+            {
+              'font': ref.watch(terminalFontFamily),
+              'size': ref.watch(terminalFontSize).toStringAsFixed(0),
+              'height': ref.watch(terminalLineHeight).toStringAsFixed(1),
+            },
+          ),
         ),
       ],
     );
@@ -968,27 +980,34 @@ class _EcosystemSnapshot extends ConsumerWidget {
         _InfoTile(
           icon: Icons.extension_outlined,
           title: I18nKey.aboutPluginCount,
-          subtitle: I18nKey.aboutPluginStatsValue.fallback
-              .replaceAll('{installed}', plugins.length.toString())
-              .replaceAll('{enabled}', enabled.toString())
-              .replaceAll('{data}', dataPlugins.toString()),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutPluginStatsValue,
+            {
+              'installed': plugins.length.toString(),
+              'enabled': enabled.toString(),
+              'data': dataPlugins.toString(),
+            },
+          ),
         ),
         const SectionDivider(),
         _InfoTile(
           icon: Icons.layers_outlined,
           title: I18nKey.aboutContributionRecords,
-          subtitle: I18nKey.aboutContributionRecordsValue.fallback.replaceAll(
-            '{count}',
-            contributions.length.toString(),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutContributionRecordsValue,
+            {'count': contributions.length.toString()},
           ),
         ),
         const SectionDivider(),
         _InfoTile(
           icon: Icons.code_outlined,
           title: "Stubs Provider",
-          subtitle: I18nKey.aboutStubsProviderValue.fallback.replaceAll(
-            '{count}',
-            registry.allStubsProviders.length.toString(),
+          subtitle: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.aboutStubsProviderValue,
+            {'count': registry.allStubsProviders.length.toString()},
           ),
         ),
       ],
@@ -1184,6 +1203,9 @@ class _EcosystemTile extends StatelessWidget {
 Future<void> _copyPath(BuildContext context, String path) async {
   await Clipboard.setData(ClipboardData(text: path));
   if (context.mounted) {
-    showIdeSuccess(context, I18nKey.aboutDocsPathCopied.fallback);
+    showIdeSuccess(
+      context,
+      translateInContext(context, I18nKey.aboutDocsPathCopied),
+    );
   }
 }

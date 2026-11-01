@@ -344,11 +344,24 @@ class PluginRunManager {
     if (_stopped) return;
     if (_transportState == PluginTransportState.ready && _protocolReady) return;
     if (_connecting) {
+      // Bounded wait: a hung transport.start() would otherwise leave _connecting
+      // true forever and park every caller in this poll loop.
+      final waitStarted = DateTime.now();
       await Future.doWhile(() async {
+        if (_stopped) return false;
         await Future.delayed(const Duration(milliseconds: 50));
-        return _connecting;
+        if (!_connecting) return false;
+        return DateTime.now().difference(waitStarted) <
+            const Duration(seconds: 30);
       });
       if (_transportState == PluginTransportState.ready) return;
+      if (_stopped) return;
+      if (_connecting) {
+        throw PluginProtocolException(
+          'Timed out waiting for a concurrent connect() of plugin '
+          '${pluginId.isEmpty ? 'standalone' : pluginId}',
+        );
+      }
     }
 
     _connecting = true;

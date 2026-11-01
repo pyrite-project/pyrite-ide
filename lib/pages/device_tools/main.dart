@@ -84,11 +84,40 @@ class _ToolsState extends ConsumerState<Tools> {
             itemCount: state.portNames.length,
             itemBuilder: (context, index) {
               final portInfo = state.portInfos[index];
+              final sessions = ref
+                  .read(serialProvider.notifier)
+                  .sessions
+                  .sessions;
+              final session = sessions
+                  .where((item) => item.portPath == portInfo.path)
+                  .firstOrNull;
+              final isActive = session?.isActive ?? false;
               return ExpansionTile(
                 visualDensity: compact ? VisualDensity.compact : null,
-                leading: const Icon(Icons.developer_board_outlined),
+                leading: Icon(
+                  isActive
+                      ? Icons.check_circle
+                      : session != null
+                      ? Icons.usb
+                      : Icons.developer_board_outlined,
+                  color: isActive
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
                 title: Text(portInfo.path),
-                subtitle: Text(portInfo.description),
+                subtitle: Text(
+                  isActive
+                      ? translateInContext(
+                          context,
+                          I18nKey.devicesSessionActive,
+                        )
+                      : session != null
+                      ? translateInContext(
+                          context,
+                          I18nKey.devicesSessionInactive,
+                        )
+                      : portInfo.description,
+                ),
                 childrenPadding: EdgeInsetsDirectional.fromSTEB(
                   16,
                   0,
@@ -96,20 +125,69 @@ class _ToolsState extends ConsumerState<Tools> {
                   compact ? 8 : 12,
                 ),
                 children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: webReplActive
-                          ? null
-                          : () {
-                              ref
+                  if (session == null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: webReplActive
+                            ? null
+                            : () {
+                                ref
+                                    .read(serialProvider.notifier)
+                                    .connectPort(portInfo.path);
+                              },
+                        icon: const Icon(Icons.power_settings_new),
+                        label: const UseText(I18nKey.devicesConnectSerial),
+                      ),
+                    )
+                  else
+                    // The port is already open. Connecting it again would only
+                    // switch to it, so the two actions are labelled for what
+                    // they do instead of offering "connect" a second time.
+                    Row(
+                      children: [
+                        if (!isActive)
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              onPressed: () => ref
                                   .read(serialProvider.notifier)
-                                  .connectPort(portInfo.path);
-                            },
-                      icon: const Icon(Icons.power_settings_new),
-                      label: const UseText(I18nKey.devicesConnectSerial),
+                                  .activateSession(session.id),
+                              icon: const Icon(Icons.swap_horiz),
+                              label: Text(
+                                translateInContext(
+                                  context,
+                                  I18nKey.devicesSessionSwitch,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                translateInContext(
+                                  context,
+                                  I18nKey.devicesSessionInUse,
+                                ),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => ref
+                              .read(serialProvider.notifier)
+                              .closeSessionFor(portInfo.path),
+                          icon: const Icon(Icons.link_off),
+                          label: Text(
+                            translateInContext(
+                              context,
+                              I18nKey.devicesSessionDisconnect,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
                   buildDetailListTile(
                     context,
                     'Description',
@@ -167,16 +245,13 @@ class _ToolsState extends ConsumerState<Tools> {
                           : I18nKey.devicesDisconnected,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    UseText(
-                      isConnected
-                          ? selectedPortName ?? I18nKey.devicesSerialConnected
-                          : I18nKey.devicesConnectionHint,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: isConnected
-                            ? scheme.onPrimaryContainer
-                            : scheme.onSurfaceVariant,
+                    if (isConnected)
+                      UseText(
+                        selectedPortName ?? I18nKey.devicesSerialConnected,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onPrimaryContainer,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

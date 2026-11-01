@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -16,11 +17,18 @@ class LocalFileItemsNotifier
     extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   final Ref ref;
 
-  LocalFileItemsNotifier(this.ref) : super(const []);
+  LocalFileItemsNotifier(this.ref) : super(const []) {
+    // A sort change re-reads the open folder so the new order also reaches the
+    // folders that are already expanded, not just the next one opened.
+    ref.listen(fileSortModeProvider, (_, _) {
+      if (ref.read(fileProvider) != null) buildRootFileListItems();
+    });
+  }
 
   Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
     final items = await local.buildFileListItems(
       await ref.read(fileProvider.notifier).getFileList(),
+      sortMode: ref.read(fileSortModeProvider),
     );
     state = items;
     await ref.read(localFileTreeViewControllerProvider).replaceRoots(items);
@@ -90,7 +98,10 @@ localFileTreeViewControllerProvider = Provider(
     },
     loadChildren: (node) async {
       if (node.canLoadChildren == true) {
-        return await local.buildFileListItems(await local.getFileList(node.id));
+        return await local.buildFileListItems(
+          await local.getFileList(node.id),
+          sortMode: ref.read(fileSortModeProvider),
+        );
       } else {
         return [];
       }

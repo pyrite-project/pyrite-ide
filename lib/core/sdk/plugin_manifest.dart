@@ -503,6 +503,7 @@ class PluginManifestValidator {
     'board.write',
     'editor.read',
     'editor.write',
+    'editor.keys',
     'persistence.read',
     'persistence.write',
     'tab.create',
@@ -527,6 +528,7 @@ class PluginManifestValidator {
   };
   static const configurationTypes = {
     'string',
+    'password',
     'integer',
     'number',
     'boolean',
@@ -884,7 +886,7 @@ class PluginManifestValidator {
   bool _matchesConfigurationType(String type, Object? value) {
     if (value == null) return true;
     return switch (type) {
-      'string' => value is String,
+      'string' || 'password' => value is String,
       'integer' => value is int,
       'number' => value is num && value.isFinite,
       'boolean' => value is bool,

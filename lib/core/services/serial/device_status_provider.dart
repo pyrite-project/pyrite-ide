@@ -103,23 +103,60 @@ print('$_statusMarker' + json.dumps(result))
   }
 
   DeviceStatus _parseResult(String raw) {
-    for (final line in raw.split('\n')) {
-      final trimmed = line.trim();
-      if (trimmed.startsWith(_statusMarker)) {
-        final jsonStr = trimmed.substring(_statusMarker.length);
-        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return DeviceStatus(
-          ramUsed: decoded['ram_used'] as int? ?? 0,
-          ramTotal: decoded['ram_total'] as int? ?? 0,
-          flashUsed: decoded['flash_used'] as int? ?? 0,
-          flashTotal: decoded['flash_total'] as int? ?? 0,
-          firmwareVersion: decoded['firmware_version']?.toString() ?? 'unknown',
-          platformModel: decoded['platform_model']?.toString() ?? 'unknown',
-        );
-      }
+    final status = parseDeviceStatusOutput(raw);
+    if (status == null) {
+      throw StateError(translate(ref, I18nKey.devicesStatusParseError));
     }
-    throw StateError(translate(ref, I18nKey.devicesStatusParseError));
+    return status;
   }
+}
+
+/// Extracts the status line printed by the query script.
+///
+/// Returns null when no complete marker line is present. Lines that carry the
+/// marker but do not decode are skipped rather than fatal: the REPL echoes the
+/// script back, so a truncated copy of the payload can precede the real one,
+/// and one bad line must not discard the good line behind it.
+DeviceStatus? parseDeviceStatusOutput(String raw) {
+  for (final line in raw.split('\n')) {
+    final trimmed = line.trim();
+    if (!trimmed.startsWith(_statusMarker)) continue;
+    final decoded = _decodeStatusPayload(
+      trimmed.substring(_statusMarker.length),
+    );
+    if (decoded == null) continue;
+    return DeviceStatus(
+      ramUsed: _asByteCount(decoded['ram_used']),
+      ramTotal: _asByteCount(decoded['ram_total']),
+      flashUsed: _asByteCount(decoded['flash_used']),
+      flashTotal: _asByteCount(decoded['flash_total']),
+      firmwareVersion: decoded['firmware_version']?.toString() ?? 'unknown',
+      platformModel: decoded['platform_model']?.toString() ?? 'unknown',
+    );
+  }
+  return null;
+}
+
+/// Decodes one marker payload, or null when the line is not a JSON object.
+Map<String, dynamic>? _decodeStatusPayload(String payload) {
+  try {
+    final decoded = jsonDecode(payload);
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Reads a byte count from one payload field.
+///
+/// A plain `as int?` threw on a port whose `gc.mem_free()` comes back as a
+/// float, turning a readable status into a parse error. Anything unusable
+/// reads as zero, which the panel already renders as "unknown".
+int _asByteCount(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }
 
 final deviceStatusProvider =

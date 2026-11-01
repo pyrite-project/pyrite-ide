@@ -1,7 +1,7 @@
 # Maintainer: Pyrite Project <https://github.com/pyrite-project>
 
 pkgname=pyride-bin
-pkgver=1.0.2
+pkgver=1.2.0
 pkgrel=1
 pkgdesc='A modern and powerful MicroPython IDE (prebuilt binary)'
 arch=('x86_64')
@@ -31,7 +31,7 @@ source=(
   'pyride.desktop'
 )
 sha256sums=(
-  '39e08965ed81edc8460f3b17a05648fe7714d9f8015ec6880da1f7f54499c457'
+  'dc518824062e7e39405d22a5885cd5f0909eaa78e7c8c808f1c88f2ee897708e'
   '24b0e25cebec583be1b329f4427d783f912a3362ccad0704f625298db351daba'
   '8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef'
   'e58f1be19125edaf1d9bd002cc3a9ad414bfbd23d3a0c620367a83273936d915'

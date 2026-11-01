@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 
@@ -102,6 +103,8 @@ class DataRegistry extends ChangeNotifier {
   final Map<String, Map<String, Map<String, dynamic>>> _locales = {};
   // providerId → StubsProviderEntry
   final Map<String, StubsProviderEntry> _stubsProviders = {};
+  // serverId → LspServerProfileEntry
+  final Map<String, LspServerProfileEntry> _lspServers = {};
   // Merged locale → messages (all plugins combined, later plugins override)
   Map<String, Map<String, dynamic>> _mergedLocales = {};
 
@@ -246,6 +249,30 @@ class DataRegistry extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── LSP servers ──
+
+  List<LspServerProfileEntry> get allLspServers =>
+      _lspServers.values.toList()
+        ..sort((a, b) => a.serverId.compareTo(b.serverId));
+
+  LspServerProfileEntry? getLspServer(String serverId) => _lspServers[serverId];
+
+  void registerLspServer(LspServerProfileEntry entry) {
+    final existing = _lspServers[entry.serverId];
+    if (existing != null && existing.pluginId != entry.pluginId) {
+      throw StateError('LSP server id already registered: ${entry.serverId}');
+    }
+    _lspServers[entry.serverId] = entry;
+    notifyListeners();
+  }
+
+  void removeLspServer(String pluginId, String serverId) {
+    final existing = _lspServers[serverId];
+    if (existing == null || existing.pluginId != pluginId) return;
+    _lspServers.remove(serverId);
+    notifyListeners();
+  }
+
   void restoreContributions(List<DataContributionRecord> records) {
     for (final record in records) {
       if (!record.enabled) continue;
@@ -253,6 +280,11 @@ class DataRegistry extends ChangeNotifier {
         final entry = StubsProviderEntry.fromJson(record.payload);
         if (entry.providerId.isNotEmpty) {
           _stubsProviders[entry.providerId] = entry;
+        }
+      } else if (record.kind == DataContributionKeys.lspServer) {
+        final entry = LspServerProfileEntry.fromJson(record.payload);
+        if (entry.serverId.isNotEmpty) {
+          _lspServers[entry.serverId] = entry;
         }
       } else if (record.kind == DataContributionKeys.theme) {
         final themeName = record.contributionId;
@@ -299,8 +331,18 @@ class DataRegistry extends ChangeNotifier {
     for (final providerId in stubsToRemove) {
       _stubsProviders.remove(providerId);
     }
+    final lspServersToRemove = _lspServers.entries
+        .where((entry) => entry.value.pluginId == pluginId)
+        .map((entry) => entry.key)
+        .toList();
+    for (final serverId in lspServersToRemove) {
+      _lspServers.remove(serverId);
+    }
     if (hadLocales) _rebuildMergedLocales();
-    if (hadThemes || hadLocales || stubsToRemove.isNotEmpty) {
+    if (hadThemes ||
+        hadLocales ||
+        stubsToRemove.isNotEmpty ||
+        lspServersToRemove.isNotEmpty) {
       notifyListeners();
     }
   }

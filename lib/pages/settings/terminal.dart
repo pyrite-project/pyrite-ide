@@ -55,7 +55,6 @@ class TerminalSettings extends ConsumerWidget {
       children: [
         SettingsSection(
           title: I18nKey.settingsTerminalSerialSection,
-          description: I18nKey.settingsTerminalSerialDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.speed),
@@ -71,9 +70,6 @@ class TerminalSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsTerminalAutoReconnect),
-              subtitle: const UseText(
-                I18nKey.settingsTerminalAutoReconnectSubtitle,
-              ),
               value: ref.watch(serialAutoReconnect),
               onChanged: (value) {
                 ref.read(serialAutoReconnect.notifier).state = value;
@@ -104,10 +100,18 @@ class TerminalSettings extends ConsumerWidget {
             ),
 
             SwitchListTile(
-              title: const UseText(I18nKey.settingsTerminalChineseToUnicode),
+              title: const UseText(I18nKey.settingsTerminalRunInScriptDir),
               subtitle: const UseText(
-                I18nKey.settingsTerminalChineseToUnicodeSubtitle,
+                I18nKey.settingsTerminalRunInScriptDirSubtitle,
               ),
+              value: ref.watch(deviceRunChdirToScriptDir),
+              onChanged: (value) {
+                ref.read(deviceRunChdirToScriptDir.notifier).state = value;
+              },
+            ),
+
+            SwitchListTile(
+              title: const UseText(I18nKey.settingsTerminalChineseToUnicode),
               value: ref.watch(chineseToUnicodeConversion),
               onChanged: (value) {
                 ref.read(chineseToUnicodeConversion.notifier).state = value;
@@ -155,7 +159,6 @@ class TerminalSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsTerminalDisplaySection,
-          description: I18nKey.settingsTerminalDisplayDescription,
           children: [
             ListTile(
               leading: const Icon(Icons.font_download_outlined),
@@ -197,9 +200,6 @@ class TerminalSettings extends ConsumerWidget {
             SwitchListTile(
               secondary: const Icon(Icons.visibility_outlined),
               title: const UseText(I18nKey.settingsTerminalMinimumContrast),
-              subtitle: const UseText(
-                I18nKey.settingsTerminalMinimumContrastSubtitle,
-              ),
               value: ref.watch(terminalMinimumContrast),
               onChanged: (value) =>
                   ref.read(terminalMinimumContrast.notifier).state = value,
@@ -210,12 +210,11 @@ class TerminalSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "WebREPL",
-          description: I18nKey.settingsTerminalWebReplDescription,
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsTerminalWebReplEnable),
               subtitle: webReplInfo.errorMessage == null
-                  ? const UseText(I18nKey.settingsTerminalWebReplEnableSubtitle)
+                  ? null
                   : Text(webReplInfo.errorMessage!),
               value: switch (webReplInfo.state) {
                 WebReplState.waitingPassword || WebReplState.connected => true,
@@ -234,7 +233,8 @@ class TerminalSettings extends ConsumerWidget {
               leading: const Icon(Icons.wifi),
               title: const UseText(I18nKey.settingsTerminalDeviceIp),
               subtitle: Text(
-                webReplEndpoint ?? I18nKey.settingsTerminalUnset.fallback,
+                webReplEndpoint ??
+                    translateForWidget(ref, I18nKey.settingsTerminalUnset),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
@@ -260,8 +260,8 @@ class TerminalSettings extends ConsumerWidget {
               title: const UseText(I18nKey.settingsTerminalPassword),
               subtitle: Text(
                 ref.watch(webReplPassword).isEmpty
-                    ? I18nKey.settingsTerminalUnset.fallback
-                    : I18nKey.settingsTerminalSet.fallback,
+                    ? translateForWidget(ref, I18nKey.settingsTerminalUnset)
+                    : translateForWidget(ref, I18nKey.settingsTerminalSet),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showInputDialog(
@@ -481,7 +481,9 @@ class TerminalSettings extends ConsumerWidget {
                   min: 10,
                   max: 28,
                   divisions: 18,
-                  value: size,
+                  // Clamp: a size persisted by an older build can fall outside
+                  // the range, and Slider asserts on that.
+                  value: size.clamp(10.0, 28.0),
                   label: size.toStringAsFixed(0),
                   onChanged: (value) =>
                       ref.read(terminalFontSize.notifier).state = value,
@@ -520,7 +522,9 @@ class TerminalSettings extends ConsumerWidget {
                   min: 1.0,
                   max: 1.8,
                   divisions: 8,
-                  value: lineHeight,
+                  // Same clamp as the font-size slider: persisted values are not
+                  // guaranteed to be inside the range.
+                  value: lineHeight.clamp(1.0, 1.8),
                   label: lineHeight.toStringAsFixed(1),
                   onChanged: (value) =>
                       ref.read(terminalLineHeight.notifier).state = value,
@@ -795,14 +799,14 @@ class _TerminalCustomColorsSection extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            subtitle: UseText(
-              enabled
-                  ? I18nKey.settingsTerminalCustomSectionDescription
-                  : I18nKey.settingsTerminalColorsPluginLocked,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            subtitle: enabled
+                ? null
+                : UseText(
+                    I18nKey.settingsTerminalColorsPluginLocked,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
             children: const [_TerminalCustomColors()],
           ),
         ),
@@ -848,7 +852,7 @@ class _TerminalColorPreview extends StatelessWidget {
       height: 1.45,
     );
     return Semantics(
-      label: I18nKey.settingsTerminalCustomPreview.fallback,
+      label: translateInContext(context, I18nKey.settingsTerminalCustomPreview),
       child: Container(
         width: double.infinity,
         constraints: const BoxConstraints(minHeight: 88),

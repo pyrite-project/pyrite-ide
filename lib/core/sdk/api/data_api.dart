@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
@@ -28,6 +29,14 @@ abstract class SdkStubsCommands {
   static const String get = 'sdk.stubs.get';
   static const String list = 'sdk.stubs.list';
   static const String resolveLayers = 'sdk.stubs.resolve_layers';
+}
+
+abstract class SdkLspCommands {
+  static const String contribute = 'sdk.lsp.contribute';
+  static const String registerRuntime = 'sdk.lsp.register_runtime';
+  static const String revoke = 'sdk.lsp.revoke';
+  static const String get = 'sdk.lsp.get';
+  static const String list = 'sdk.lsp.list';
 }
 
 class SdkDataApi {
@@ -99,6 +108,22 @@ class SdkDataApi {
       SdkStubsCommands.resolveLayers,
       _handleStubsResolveLayers,
     );
+    runManager.registerHandler(
+      SdkLspCommands.contribute,
+      (envelope, respond) =>
+          _handleLspContribute(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkLspCommands.registerRuntime,
+      (envelope, respond) =>
+          _handleLspContribute(runManager, envelope, respond),
+    );
+    runManager.registerHandler(
+      SdkLspCommands.revoke,
+      (envelope, respond) => _handleLspRevoke(runManager, envelope, respond),
+    );
+    runManager.registerHandler(SdkLspCommands.get, _handleLspGet);
+    runManager.registerHandler(SdkLspCommands.list, _handleLspList);
   }
 
   void _respondOk(
@@ -533,6 +558,141 @@ class SdkDataApi {
         .read(dataRegistryProvider)
         .resolveStubsLayers(parsedLayers);
     _respondOk(envelope, respond, data: resolved);
+  }
+
+  // ── LSP server handlers ──
+
+  void _handleLspContribute(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final pluginId = runManager.pluginId;
+    final serverId = (payload['server_id']?.toString().isNotEmpty == true)
+        ? payload['server_id'].toString()
+        : pluginId;
+    final label = payload['label']?.toString() ?? '';
+    final rawMatch = payload['match'];
+    final rawConfiguration = payload['configuration'];
+    final scope = payload['scope']?.toString() ?? 'auto';
+
+    if (serverId.isEmpty) {
+      _respondError(envelope, respond, '缺少 server_id');
+      return;
+    }
+    if (rawConfiguration is! Map) {
+      _respondError(envelope, respond, 'configuration 必须是对象');
+      return;
+    }
+
+    final match = LspServerMatchRules.fromJson(
+      Map<String, dynamic>.from(rawMatch as Map? ?? {}),
+    );
+    // Executable rules keep a contributed profile from claiming launches it
+    // was not written for: without one, the profile would match every launch
+    // of the declared transports and hijack the built-in servers.
+    if (match.executables.isEmpty) {
+      _respondError(envelope, respond, 'match.executables 不能为空');
+      return;
+    }
+    final configuration = LspServerConfigurationSpec.fromJson(
+      Map<String, dynamic>.from(rawConfiguration),
+    );
+    if (configuration.mode == LspServerConfigurationSpec.sectionedMode &&
+        (configuration.section ?? '').isEmpty) {
+      _respondError(envelope, respond, 'sectioned 配置缺少 section');
+      return;
+    }
+
+    try {
+      final entry = LspServerProfileEntry(
+        pluginId: pluginId,
+        serverId: serverId,
+        label: label,
+        match: match,
+        configuration: configuration,
+        environment: stringMap(payload['environment']),
+      );
+      ref.read(dataRegistryProvider).registerLspServer(entry);
+      if (scope == 'contribution' || scope == 'auto') {
+        _upsertContribution(
+          DataContributionRecord(
+            pluginId: pluginId,
+            pluginType: runManager.pluginType,
+            kind: DataContributionKeys.lspServer,
+            contributionId: serverId,
+            payload: entry.toJson(),
+          ),
+        );
+      }
+      runManager.onOutput?.call(
+        '[$pluginId] registered lsp server $serverId: '
+        'executables=${match.executables.join(', ')}',
+      );
+      refreshOpenLspStubsConfiguration(ref.read);
+    } catch (error) {
+      _respondError(envelope, respond, error.toString());
+      return;
+    }
+
+    runManager.onDataChanged?.call();
+    _respondOk(envelope, respond, data: true);
+  }
+
+  void _handleLspRevoke(
+    PluginRunManager runManager,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final serverId = payload['server_id']?.toString() ?? '';
+    if (serverId.isEmpty) {
+      _respondError(envelope, respond, '缺少 server_id');
+      return;
+    }
+    ref
+        .read(dataRegistryProvider)
+        .removeLspServer(runManager.pluginId, serverId);
+    ref.read(dataContributionsProvider.notifier).state = [
+      for (final item in ref.read(dataContributionsProvider))
+        if (!(item.kind == DataContributionKeys.lspServer &&
+            item.pluginId == runManager.pluginId &&
+            item.contributionId == serverId))
+          item,
+    ];
+    refreshOpenLspStubsConfiguration(ref.read);
+    _respondOk(envelope, respond, data: true);
+  }
+
+  void _handleLspGet(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final serverId = payload['server_id']?.toString();
+    if (serverId == null || serverId.isEmpty) {
+      _respondError(envelope, respond, '缺少 server_id');
+      return;
+    }
+    final entry = ref.read(dataRegistryProvider).getLspServer(serverId);
+    if (entry == null) {
+      _respondError(envelope, respond, '未知 LSP server: $serverId');
+      return;
+    }
+    _respondOk(envelope, respond, data: entry.toJson());
+  }
+
+  void _handleLspList(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final servers = ref
+        .read(dataRegistryProvider)
+        .allLspServers
+        .map((entry) => entry.toJson())
+        .toList();
+    _respondOk(envelope, respond, data: servers);
   }
 }
 

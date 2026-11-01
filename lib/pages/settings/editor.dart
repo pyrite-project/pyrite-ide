@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -27,7 +28,6 @@ class EditorSettings extends ConsumerWidget {
       children: [
         SettingsSection(
           title: I18nKey.settingsEditorFontSection,
-          description: I18nKey.settingsEditorFontDescription,
           children: [
             ListTile(
               title: const UseText(I18nKey.settingsTerminalFont),
@@ -81,7 +81,6 @@ class EditorSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsEditorUploadConfirmSection,
-          description: I18nKey.settingsEditorUploadConfirmDescription,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -109,7 +108,6 @@ class EditorSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsEditorShortcutsSection,
-          description: I18nKey.settingsEditorShortcutsDescription,
           children: [
             ShortcutRecorderTile(
               title: I18nKey.settingsEditorConfirmAction,
@@ -131,7 +129,6 @@ class EditorSettings extends ConsumerWidget {
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorWordWrap),
-              subtitle: const UseText(I18nKey.settingsEditorWordWrapSubtitle),
               value: ref.watch(editorWordWrap),
               onChanged: (value) {
                 ref.read(editorWordWrap.notifier).state = value;
@@ -140,7 +137,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorLineNumber),
-              subtitle: const UseText(I18nKey.settingsEditorLineNumberSubtitle),
               value: ref.watch(editorLineNumber),
               onChanged: (value) =>
                   ref.read(editorLineNumber.notifier).state = value,
@@ -148,9 +144,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorGutterDivider),
-              subtitle: const UseText(
-                I18nKey.settingsEditorGutterDividerSubtitle,
-              ),
               value: ref.watch(editorGutterDivider),
               onChanged: (value) =>
                   ref.read(editorGutterDivider.notifier).state = value,
@@ -158,9 +151,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorSmoothCursor),
-              subtitle: const UseText(
-                I18nKey.settingsEditorSmoothCursorSubtitle,
-              ),
               value: ref.watch(editorSmoothCursor),
               onChanged: (value) =>
                   ref.read(editorSmoothCursor.notifier).state = value,
@@ -176,9 +166,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorCodeFolding),
-              subtitle: const UseText(
-                I18nKey.settingsEditorCodeFoldingSubtitle,
-              ),
               value: ref.watch(editorCodeFolding),
               onChanged: (value) =>
                   ref.read(editorCodeFolding.notifier).state = value,
@@ -186,7 +173,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorGuideLines),
-              subtitle: const UseText(I18nKey.settingsEditorGuideLinesSubtitle),
               value: ref.watch(editorGuideLines),
               onChanged: (value) =>
                   ref.read(editorGuideLines.notifier).state = value,
@@ -204,9 +190,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorKeyboardSuggestions),
-              subtitle: const UseText(
-                I18nKey.settingsEditorKeyboardSuggestionsSubtitle,
-              ),
               value: ref.watch(editorKeyboardSuggestions),
               onChanged: (value) =>
                   ref.read(editorKeyboardSuggestions.notifier).state = value,
@@ -214,7 +197,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorSpaceAsTab),
-              subtitle: const UseText(I18nKey.settingsEditorSpaceAsTabSubtitle),
               value: ref.watch(editorUseSpaceAsTab),
               onChanged: (value) =>
                   ref.read(editorUseSpaceAsTab.notifier).state = value,
@@ -224,9 +206,10 @@ class EditorSettings extends ConsumerWidget {
               leading: const Icon(Icons.keyboard_tab),
               title: const UseText(I18nKey.settingsEditorTabSize),
               subtitle: Text(
-                I18nKey.settingsEditorTabSizeValue.fallback.replaceAll(
-                  '{count}',
-                  ref.watch(editorTabSize).toString(),
+                translateForWidgetWithReplacements(
+                  ref,
+                  I18nKey.settingsEditorTabSizeValue,
+                  {'count': ref.watch(editorTabSize).toString()},
                 ),
               ),
               trailing: const Icon(Icons.chevron_right),
@@ -243,9 +226,6 @@ class EditorSettings extends ConsumerWidget {
 
             SwitchListTile(
               title: const UseText(I18nKey.settingsEditorFormatOnSave),
-              subtitle: const UseText(
-                I18nKey.settingsEditorFormatOnSaveSubtitle,
-              ),
               value: ref.watch(editorFormatOnSave),
               onChanged: (value) =>
                   ref.read(editorFormatOnSave.notifier).state = value,
@@ -283,7 +263,9 @@ class EditorSettings extends ConsumerWidget {
                   min: min.toDouble(),
                   max: max.toDouble(),
                   divisions: max - min,
-                  value: current.toDouble(),
+                  // Same reason as the font-size slider: the value comes from
+                  // persisted settings and may predate the current range.
+                  value: current.clamp(min, max).toDouble(),
                   label: current.toString(),
                   onChanged: (next) {
                     setState(() => current = next.round());
@@ -305,7 +287,17 @@ class EditorSettings extends ConsumerWidget {
       children.add(
         SimpleDialogOption(
           child: ListTile(
-            title: Text(getFontDisplayName(name)),
+            title: Text(
+              getFontDisplayName(
+                name,
+                translate: (key, [replacements = const {}]) =>
+                    translateInContextWithReplacements(
+                      context,
+                      key,
+                      replacements,
+                    ),
+              ),
+            ),
             subtitle: Text(
               "print('Pyrite IDE')",
               style: TextStyle(fontFamily: value.isEmpty ? null : value),
@@ -360,7 +352,10 @@ class EditorSettings extends ConsumerWidget {
                   min: 10,
                   max: 28,
                   divisions: 18,
-                  value: size,
+                  // A size saved by an older build (or hand-edited in
+                  // settings.json) can sit outside the range; Slider asserts on
+                  // that instead of clamping for us.
+                  value: size.clamp(10.0, 28.0),
                   label: size.toStringAsFixed(0),
                   onChanged: (value) =>
                       ref.read(editorFontSize.notifier).state = value,
@@ -435,16 +430,16 @@ class EditorSettings extends ConsumerWidget {
 }
 
 class ShortcutRecorderTile extends StatefulWidget {
-  final Object title;
-  final String value;
-  final ValueChanged<String> onChanged;
-
   const ShortcutRecorderTile({
     super.key,
     required this.title,
     required this.value,
     required this.onChanged,
   });
+
+  final Object title;
+  final String value;
+  final ValueChanged<String> onChanged;
 
   @override
   State<ShortcutRecorderTile> createState() => _ShortcutRecorderTileState();

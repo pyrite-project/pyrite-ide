@@ -45,4 +45,36 @@ void main() {
     expect(diff.addedRanges, [(120, 120), (250, 250)]);
     expect(diff.removedRanges, [(afterLine: 119, content: 'line 120')]);
   });
+
+  test('firstChangedLine points at the first added line', () {
+    final diff = computeDiff('a\nb\nc', 'a\nx\nb\nc\ny');
+
+    expect(diff.firstChangedLine, 1);
+  });
+
+  test('firstChangedLine prefers an earlier removal over a later addition', () {
+    final diff = computeDiff('a\ndrop\nb', 'a\nb\nx\ny');
+
+    expect(diff.addedRanges, [(2, 3)]);
+    expect(diff.removedRanges, [(afterLine: 0, content: 'drop')]);
+    // The removed block renders between lines 0 and 1, ahead of the first
+    // added line at index 2.
+    expect(diff.firstChangedLine, 1);
+  });
+
+  test(
+    'firstChangedLine maps a leading removal to the top of the document',
+    () {
+      final diff = computeDiff('drop\nkeep', 'keep');
+
+      expect(diff.removedRanges.single.afterLine, -1);
+      expect(diff.firstChangedLine, 0);
+    },
+  );
+
+  test('firstChangedLine is null when the texts match', () {
+    final diff = computeDiff('same', 'same');
+
+    expect(diff.firstChangedLine, isNull);
+  });
 }

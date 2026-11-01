@@ -12,8 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:m3_floating_toolbar/m3_floating_toolbar.dart';
-import 'package:m3_floating_toolbar/m3_floating_toolbar_action.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
@@ -27,8 +25,14 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/search/search_provider.dart';
+import 'package:pyrite_ide/core/services/search/search_service.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_run_directory.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart'
+    show activeEditorTabProvider;
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
+import 'package:pyrite_ide/shared/pyrite_floating_toolbar.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
@@ -38,6 +42,7 @@ import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -57,13 +62,18 @@ class EditCore extends ConsumerStatefulWidget {
 class _EditCoreState extends ConsumerState<EditCore> {
   late FindController _findController;
 
+  /// Whether the find bar was active at the previous notification, to detect
+  /// the moment it opens.
+  bool _findWasActive = false;
+
   @override
   void initState() {
     super.initState();
     // Providers must exist before build watches them; creating them here
     // keeps build free of side effects.
     ensurePendingFileProviders(widget.file.path);
-    _findController = FindController(widget.editorController);
+    _findController = FindController(widget.editorController)
+      ..addListener(_onFindControllerChanged);
   }
 
   @override
@@ -71,7 +81,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.editorController != widget.editorController) {
       _findController.dispose();
-      _findController = FindController(widget.editorController);
+      _findController = FindController(widget.editorController)
+        ..addListener(_onFindControllerChanged);
+      _findWasActive = false;
     }
   }
 
@@ -81,8 +93,44 @@ class _EditCoreState extends ConsumerState<EditCore> {
     super.dispose();
   }
 
+  void _onFindControllerChanged() {
+    final wasActive = _findWasActive;
+    _findWasActive = _findController.isActive;
+    // When the bar opens, the panel's query wins over any stale or seeded
+    // text. An empty panel query leaves the bar untouched so the
+    // selection-seeded start of a search survives.
+    final options = ref.read(searchOptionsProvider);
+    if (_findController.isActive && !wasActive && options.pattern.isNotEmpty) {
+      _applyPanelOptions(options);
+    }
+  }
+
+  /// Pushes the shared panel options into this editor's find bar.
+  ///
+  /// No-op while the bar is closed: setting the query on a closed bar would
+  /// light up search highlights in an editor showing no find widget.
+  void _applyPanelOptions(SearchOptions options) {
+    final controller = _findController;
+    if (!controller.isActive) return;
+    if (controller.findInputController.text != options.pattern) {
+      controller.findInputController.text = options.pattern;
+    }
+    if (controller.replaceInputController.text != options.replaceText) {
+      controller.replaceInputController.text = options.replaceText;
+    }
+    controller
+      ..caseSensitive = options.caseSensitive
+      ..matchWholeWord = options.wholeWord
+      ..isRegex = options.isRegExp;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The left search panel is the source of truth for the find bar's
+    // content: anything typed or toggled there lands in this editor's bar.
+    ref.listen(searchOptionsProvider, (_, options) {
+      _applyPanelOptions(options);
+    });
     final pending = ref.watch(pendingUploadProviderMap[widget.file.path]!);
     final pendingDownload = ref.watch(
       pendingDownloadProviderMap[widget.file.path]!,
@@ -216,28 +264,20 @@ class _EditCoreState extends ConsumerState<EditCore> {
                 right: 0,
                 bottom: 16,
                 child: Center(
-                  child: M3FloatingToolbar(
+                  child: PyriteFloatingToolbar(
                     actions: [
-                      M3FloatingToolbarAction(
+                      PyriteFloatingToolbarAction(
                         icon: Icons.close,
                         label: translateForWidget(ref, I18nKey.commonCancel),
                         onPressed: () => _handleCancel(context, ref),
-                        semanticLabel: translateForWidget(
-                          ref,
-                          I18nKey.commonCancel,
-                        ),
                       ),
-                      M3FloatingToolbarAction(
+                      PyriteFloatingToolbarAction(
                         icon: Icons.cloud_upload,
                         label: translateForWidget(
                           ref,
                           I18nKey.editorConfirmUpload,
                         ),
                         onPressed: () => _confirmUpload(ref, pending, context),
-                        semanticLabel: translateForWidget(
-                          ref,
-                          I18nKey.editorConfirmUpload,
-                        ),
                       ),
                     ],
                   ),
@@ -249,18 +289,14 @@ class _EditCoreState extends ConsumerState<EditCore> {
                 right: 0,
                 bottom: 16,
                 child: Center(
-                  child: M3FloatingToolbar(
+                  child: PyriteFloatingToolbar(
                     actions: [
-                      M3FloatingToolbarAction(
+                      PyriteFloatingToolbarAction(
                         icon: Icons.close,
                         label: translateForWidget(ref, I18nKey.commonCancel),
                         onPressed: () => _handleCancel(context, ref),
-                        semanticLabel: translateForWidget(
-                          ref,
-                          I18nKey.commonCancel,
-                        ),
                       ),
-                      M3FloatingToolbarAction(
+                      PyriteFloatingToolbarAction(
                         icon: Icons.cloud_download,
                         label: translateForWidget(
                           ref,
@@ -268,10 +304,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
                         ),
                         onPressed: () =>
                             _confirmDownload(ref, pendingDownload, context),
-                        semanticLabel: translateForWidget(
-                          ref,
-                          I18nKey.editorConfirmDownload,
-                        ),
                       ),
                     ],
                   ),
@@ -317,7 +349,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
   }
 
   void _openFind({bool replace = false}) {
-    // Carry the current selection into the query, VSCode-style.
+    // Carry the current selection into the query, VSCode-style. When the
+    // panel holds a query, the activation hook in _onFindControllerChanged
+    // replaces this seed with it — the panel wins.
     final selection = widget.editorController.selection;
     if (!selection.isCollapsed &&
         selection.start >= 0 &&
@@ -781,6 +815,23 @@ class _EditCoreState extends ConsumerState<EditCore> {
     // Prefill the dialog with the symbol being renamed so the user edits the
     // name in place instead of retyping it.
     final offset = _lspOffset(controller, textOffset);
+    final line = controller.getLineAtOffset(offset);
+    final character = offset - controller.getLineStartOffset(line);
+    // Ask the server first whether this position is renameable at all. Without
+    // this probe, pressing F2 on whitespace or a keyword showed the user a raw
+    // "textDocument/rename failed" string; here the request simply declines
+    // and nothing opens.
+    final bool renameable;
+    try {
+      renameable =
+          await config.prepareRename(filePath, line, character) != null;
+    } catch (error) {
+      if (!context.mounted) return;
+      _showLspRequestError(ref, error);
+      return;
+    }
+    if (!renameable || !context.mounted) return;
+
     final currentName = symbolAtOffset(controller.text, offset);
     final newName = await showDialog<String>(
       context: context,
@@ -804,8 +855,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ),
     );
     if (newName == null || newName.trim().isEmpty) return;
-    final line = controller.getLineAtOffset(offset);
-    final character = offset - controller.getLineStartOffset(line);
     try {
       final edit = await config.renameSymbol(
         filePath,
@@ -917,11 +966,16 @@ class _EditCoreState extends ConsumerState<EditCore> {
     }
   }
 
+  /// Drops the pending-diff presentation from the selected editor: clears the
+  /// diff decorations and returns the buffer to its normal editable state.
+  void _releaseDiffPreview(WidgetRef ref) {
+    ref.read(editorControllerMapProvider.notifier).getSelectedController()
+      ?..clearGitDiffDecorations()
+      ..readOnly = false;
+  }
+
   void _handleCancel(BuildContext context, WidgetRef ref) {
-    ref
-        .read(editorControllerMapProvider.notifier)
-        .getSelectedController()
-        ?.clearGitDiffDecorations();
+    _releaseDiffPreview(ref);
     // print(ref.read(editorControllerMapProvider));
 
     ref.read(pendingUploadProviderMap[widget.file.path]!.notifier).state = null;
@@ -936,10 +990,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
     BuildContext context,
   ) async {
     try {
-      ref
-          .read(editorControllerMapProvider.notifier)
-          .getSelectedController()
-          ?.clearGitDiffDecorations();
+      _releaseDiffPreview(ref);
       final currentContent = pending.content;
       await ref
           .read(boardProvider)
@@ -992,10 +1043,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
             filePaths: [pending.localPath],
           );
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-      ref
-          .read(editorControllerMapProvider.notifier)
-          .getSelectedController()
-          ?.clearGitDiffDecorations();
+      _releaseDiffPreview(ref);
 
       ref
           .read(ideMessageProvider.notifier)
@@ -1108,8 +1156,10 @@ class _GoToLineDialogState extends ConsumerState<_GoToLineDialog> {
 ///
 /// The hover fill, the active fill and the border are all painted by the same
 /// [BoxDecoration] on the same square, so no state can draw a rectangle offset
-/// from the others. The gap between neighbouring buttons comes from padding
-/// around that square rather than a margin on it.
+/// from the others. The gaps between neighbouring buttons and around the
+/// cluster come from padding around that square rather than a margin on it;
+/// horizontally each side carries half the inset, since adjacent paddings add
+/// up.
 class _FindBarToggle extends StatefulWidget {
   const _FindBarToggle({
     required this.label,
@@ -1130,11 +1180,7 @@ class _FindBarToggle extends StatefulWidget {
 }
 
 class _FindBarToggleState extends State<_FindBarToggle> {
-  static const double _size = _EditorFindBar._buttonSize - 2;
-
-  /// Sibling toggles share the find bar's inset, so every button in the row has
-  /// the same corner radius.
-  static const double _inset = _EditorFindBar._inset;
+  static const double _size = _EditorFindBar._toggleSize;
 
   bool _hovered = false;
 
@@ -1148,8 +1194,13 @@ class _FindBarToggleState extends State<_FindBarToggle> {
       child: Semantics(
         container: true,
         child: Padding(
-          // Separates adjacent toggles without shrinking the painted square.
-          padding: const EdgeInsets.only(left: 2),
+          // Vertically the full inset — it is the square's only clearance from
+          // the row edges. Horizontally half of it: the neighbouring toggle's
+          // half adds up to one full inset between the squares.
+          padding: const EdgeInsets.symmetric(
+            horizontal: _EditorFindBar._toggleInset / 2,
+            vertical: _EditorFindBar._toggleInset,
+          ),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) => setState(() => _hovered = true),
@@ -1161,7 +1212,9 @@ class _FindBarToggleState extends State<_FindBarToggle> {
                 height: _size,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  borderRadius: context.nestedCorners(_inset),
+                  // Same radius as the inputs, so the bar reads as one shape
+                  // language instead of two.
+                  borderRadius: context.innerCorners,
                   color: widget.active
                       ? widget.foreground.withAlpha(36)
                       : _hovered
@@ -1213,10 +1266,23 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   static const double _rowHeight = 32;
   static const double _buttonSize = 28;
 
-  /// Horizontal inset between the find bar surface and its children. Nested
-  /// surfaces derive their radius from this so their arcs stay concentric
-  /// with the bar.
+  /// Side of the painted square of an option toggle (`Aa` / `ab` / `.*`).
+  static const double _toggleSize = 24;
+
+  /// Clear space between a toggle's painted square and the input's top and
+  /// bottom edges. Neighbouring toggles each carry half of it so their squares
+  /// end up this far apart — the same room they keep from the edges — and the
+  /// row closes with a half inset so the last square keeps the full distance
+  /// from the input's right edge. Same value the left search panel's toggles
+  /// use, so both bars space their toggles identically.
+  static const double _toggleInset = 3;
+
+  /// Horizontal inset between the find bar surface and its children.
   static const double _inset = 8;
+
+  /// Vertical gap between the find row and the replace row — the same
+  /// breathing room the left search panel keeps between its two inputs.
+  static const double _rowGap = 4;
 
   /// Minimum width of the match counter, used while it shows a result.
   static const double _matchCounterMinWidth = 34;
@@ -1242,10 +1308,11 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
       _buttonSize + _gapAfterLeadingButton + _leadingIconSize + _gapAroundField;
 
   /// Width of everything between the find input and the right edge except the
-  /// match counter: the gap in front of it plus the six trailing buttons
-  /// (three option toggles and three nav buttons). The counter's measured
+  /// match counter: the gap in front of it and the three nav buttons. The
+  /// option toggles live inside the find input — same as the left search
+  /// panel — so they consume the input's own width. The counter's measured
   /// width is added at build time.
-  static const double _trailingWidth = _gapAroundField + _buttonSize * 6;
+  static const double _trailingWidth = _gapAroundField + _buttonSize * 3;
 
   @override
   Size get preferredSize => Size.fromHeight(controller.isReplaceMode ? 80 : 44);
@@ -1334,36 +1401,46 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                         const SizedBox(width: _gapAroundField),
                         SizedBox(
                           width: fieldWidth,
-                          child: _textField(
-                            context,
+                          child: _field(
                             controller: controller.findInputController,
                             focusNode: controller.findInputFocusNode,
                             hintText: tr(I18nKey.editorFindHint),
                             onSubmitted: (_) => _shiftHeld
                                 ? controller.previous()
                                 : controller.next(),
+                            // The toggles sit inside the input's border, the
+                            // way the left search panel lays its bar out.
+                            trailing: [
+                              _toggle(
+                                label: 'Aa',
+                                tooltip: tr(I18nKey.editorFindCaseSensitive),
+                                active: controller.caseSensitive,
+                                onPressed: controller.toggleCaseSensitive,
+                              ),
+                              _toggle(
+                                label: 'ab',
+                                tooltip: tr(I18nKey.editorFindWholeWord),
+                                active: controller.matchWholeWord,
+                                onPressed: controller.toggleMatchWholeWord,
+                              ),
+                              _toggle(
+                                label: '.*',
+                                tooltip: tr(I18nKey.editorFindRegex),
+                                active: controller.isRegex,
+                                onPressed: controller.toggleRegex,
+                              ),
+                              // The trailing half of the last toggle's side
+                              // inset, so the cluster ends the same distance
+                              // from the input's right edge that the squares
+                              // keep from the top and bottom edges.
+                              const SizedBox(
+                                width: _EditorFindBar._toggleInset / 2,
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: _gapAroundField),
                         counter.widget,
-                        _toggle(
-                          label: 'Aa',
-                          tooltip: tr(I18nKey.editorFindCaseSensitive),
-                          active: controller.caseSensitive,
-                          onPressed: controller.toggleCaseSensitive,
-                        ),
-                        _toggle(
-                          label: 'ab',
-                          tooltip: tr(I18nKey.editorFindWholeWord),
-                          active: controller.matchWholeWord,
-                          onPressed: controller.toggleMatchWholeWord,
-                        ),
-                        _toggle(
-                          label: '.*',
-                          tooltip: tr(I18nKey.editorFindRegex),
-                          active: controller.isRegex,
-                          onPressed: controller.toggleRegex,
-                        ),
                         _navButton(
                           icon: Icons.keyboard_arrow_up,
                           tooltip: tr(I18nKey.editorFindPrevious),
@@ -1382,7 +1459,8 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                       ],
                     ),
                   ),
-                  if (controller.isReplaceMode)
+                  if (controller.isReplaceMode) ...[
+                    const SizedBox(height: _rowGap),
                     SizedBox(
                       height: _rowHeight,
                       child: Row(
@@ -1400,8 +1478,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                           const SizedBox(width: _gapAroundField),
                           SizedBox(
                             width: fieldWidth,
-                            child: _textField(
-                              context,
+                            child: _field(
                               controller: controller.replaceInputController,
                               focusNode: controller.replaceInputFocusNode,
                               hintText: tr(I18nKey.editorReplaceHint),
@@ -1429,6 +1506,7 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                         ],
                       ),
                     ),
+                  ],
                 ],
               );
             },
@@ -1440,36 +1518,57 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
 
   static bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
-  Widget _textField(
-    BuildContext context, {
+  /// One input of the find bar, laid out like the left search panel's: a
+  /// bordered box the option toggles can sit inside of, with the editable
+  /// filling the room that is left.
+  Widget _field({
     required TextEditingController controller,
     required FocusNode focusNode,
     required String hintText,
     required ValueChanged<String> onSubmitted,
+    List<Widget> trailing = const [],
   }) {
-    final borderColor = foreground.withAlpha(46);
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      maxLines: 1,
-      style: TextStyle(color: foreground, fontSize: 13),
-      cursorColor: foreground,
-      onSubmitted: onSubmitted,
-      decoration: InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: _fieldBackground,
-        hintText: hintText,
-        hintStyle: TextStyle(color: foreground.withAlpha(110), fontSize: 13),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: context.nestedCorners(_EditorFindBar._inset),
-          borderSide: BorderSide(color: borderColor),
+    return ListenableBuilder(
+      listenable: focusNode,
+      builder: (context, child) => Container(
+        height: _rowHeight,
+        decoration: BoxDecoration(
+          color: _fieldBackground,
+          borderRadius: context.innerCorners,
+          border: Border.all(
+            color: focusNode.hasFocus
+                ? foreground.withAlpha(120)
+                : foreground.withAlpha(46),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: context.nestedCorners(_EditorFindBar._inset),
-          borderSide: BorderSide(color: foreground.withAlpha(160)),
-        ),
+        child: child,
+      ),
+      // Built once and reused on focus changes; only the box decoration needs
+      // to be rebuilt there.
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                maxLines: 1,
+                style: TextStyle(color: foreground, fontSize: 13),
+                cursorColor: foreground,
+                onSubmitted: onSubmitted,
+                decoration: InputDecoration.collapsed(
+                  hintText: hintText,
+                  hintStyle: TextStyle(
+                    color: foreground.withAlpha(110),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          ...trailing,
+        ],
       ),
     );
   }
@@ -1544,6 +1643,12 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon, size: 17),
+      // Without this the Material tap target inflates the button to 48px, which
+      // would overflow the row and invalidate the width the inputs are sized
+      // against.
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
       color: foreground.withAlpha(215),
       disabledColor: foreground.withAlpha(70),
       hoverColor: foreground.withAlpha(26),
@@ -1585,12 +1690,34 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
   var started = false;
   beginReplRunOutput();
 
+  // With the setting on, the run executes from the file's own directory so
+  // relative imports and data paths work unchanged. Device files know their
+  // directory directly; workspace files follow the board-sync mapping of the
+  // workspace root onto the device root.
+  final activeTabValue = ref.read(activeEditorTabProvider).value;
+  final runDirectory = ref.read(deviceRunChdirToScriptDir)
+      ? resolveDeviceRunWorkingDirectory(
+          isBoardFile: activeTabValue?.isBoardFile,
+          boardFilePath: activeTabValue?.boardFilePath,
+          localFilePath: activeTabValue?.filePath,
+          workspaceRootPath: ref.read(fileProvider)?.path,
+        )
+      : null;
+
   try {
-    await saveFile(context, ref, quiet: true);
+    // Running what is on screen is not the same as saving it. A quick
+    // experiment should not rewrite the file, and with format-on-save enabled
+    // it should not reformat it either. The buffer is what gets executed, so
+    // the unsaved text is exactly what the user is looking at.
     ref.read(consolePageShow.notifier).state = true;
     await runPythonOnActiveDeviceStreaming(
       ref,
       controller.text,
+      // A stale module imported by an earlier run would keep executing its
+      // cached bytecode even after the file was re-uploaded; soft reset
+      // clears sys.modules so every run starts from the on-device files.
+      softReset: true,
+      workingDirectory: runDirectory,
       onStarted: () {
         started = true;
         ref
@@ -1780,8 +1907,6 @@ class _EditorContextMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isTouch = details.isMobile;
     final screenSize = MediaQuery.sizeOf(context);
     final modifier = usesCommandShortcut ? 'Cmd' : 'Ctrl';
@@ -1793,10 +1918,11 @@ class _EditorContextMenu extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (details.hasSelection && !details.readOnly)
-          _menuItem(
+          PyriteMenuRow(
             icon: Icons.cut,
             label: translateForWidget(ref, I18nKey.menuCut),
             shortcut: '$modifier+X',
+            isTouch: isTouch,
             onTap: () {
               details.controller.cut();
               details.close();
@@ -1804,10 +1930,11 @@ class _EditorContextMenu extends ConsumerWidget {
           ),
 
         if (details.hasSelection)
-          _menuItem(
+          PyriteMenuRow(
             icon: Icons.copy,
             label: translateForWidget(ref, I18nKey.menuCopy),
             shortcut: '$modifier+C',
+            isTouch: isTouch,
             onTap: () {
               details.controller.copy();
               details.close();
@@ -1815,33 +1942,36 @@ class _EditorContextMenu extends ConsumerWidget {
           ),
 
         if (!details.readOnly)
-          _menuItem(
+          PyriteMenuRow(
             icon: Icons.paste,
             label: translateForWidget(ref, I18nKey.menuPaste),
             shortcut: '$modifier+V',
+            isTouch: isTouch,
             onTap: () async {
               await details.controller.paste();
               details.close();
             },
           ),
 
-        _menuItem(
+        PyriteMenuRow(
           icon: Icons.select_all,
           label: translateForWidget(ref, I18nKey.menuSelectAll),
           shortcut: '$modifier+A',
+          isTouch: isTouch,
           onTap: () {
             details.controller.selectAll();
             details.close();
           },
         ),
 
-        if (details.items.isNotEmpty) const Divider(height: 1),
+        if (details.items.isNotEmpty) const PyriteMenuDivider(),
 
         for (final item in details.items)
-          _menuItem(
+          PyriteMenuRow(
             icon: item.icon,
             label: item.label,
             shortcut: item.description,
+            isTouch: isTouch,
             onTap: () {
               details.onItemPressed(item);
             },
@@ -1849,58 +1979,15 @@ class _EditorContextMenu extends ConsumerWidget {
       ],
     );
 
-    return Material(
-      elevation: 8,
-      color: colorScheme.surfaceContainer,
-      borderRadius: context.outerCorners,
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minWidth: isTouch ? min(200.0, maxWidth) : 200,
-          maxWidth: maxWidth,
-          maxHeight: isTouch
-              ? min(420.0, max(180.0, screenSize.height * 0.6))
-              : double.infinity,
-        ),
-        child: isTouch
-            ? SingleChildScrollView(child: menu)
-            : IntrinsicWidth(child: menu),
-      ),
-    );
-  }
-
-  Widget _menuItem({
-    required String label,
-    required String shortcut,
-    required VoidCallback onTap,
-    IconData? icon,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: details.isMobile ? 16 : 12,
-          vertical: details.isMobile ? 12 : 9,
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 20,
-              child: icon == null
-                  ? null
-                  : Icon(icon, size: details.isMobile ? 20 : 16),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            if (!details.isMobile && shortcut.isNotEmpty) ...[
-              const SizedBox(width: 24),
-              Text(shortcut, style: const TextStyle(fontSize: 11)),
-            ],
-          ],
-        ),
-      ),
+    return PyriteMenuSurface(
+      minWidth: isTouch ? min(200.0, maxWidth) : 200,
+      maxWidth: maxWidth,
+      maxHeight: isTouch
+          ? min(420.0, max(180.0, screenSize.height * 0.6))
+          : null,
+      child: isTouch
+          ? SingleChildScrollView(child: menu)
+          : IntrinsicWidth(child: menu),
     );
   }
 }

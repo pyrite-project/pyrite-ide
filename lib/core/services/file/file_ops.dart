@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -27,6 +29,42 @@ class DiffInfo {
     required this.unifiedLines,
     required this.addCount,
     required this.removeCount,
+  });
+
+  /// Zero-based line in the *new* text where the first change shows up.
+  ///
+  /// Added lines sit at their own index; a removed block is rendered as a
+  /// virtual block after `afterLine`, so its visible position is the line
+  /// that follows (the top of the document when `afterLine` is -1). Returns
+  /// null when the texts do not differ.
+  int? get firstChangedLine {
+    int? line;
+    if (addedRanges.isNotEmpty) line = addedRanges.first.$1;
+    for (final range in removedRanges) {
+      final visible = range.afterLine < 0 ? 0 : range.afterLine + 1;
+      if (line == null || visible < line) line = visible;
+    }
+    return line;
+  }
+}
+
+/// Moves the editor caret to the diff's first change and scrolls it into view.
+///
+/// Call right after the diff decorations are applied; the scroll is deferred
+/// one frame because the editor for a just-opened tab is not mounted yet.
+void revealFirstDifference(CodeForgeController? controller, DiffInfo diff) {
+  final line = diff.firstChangedLine;
+  if (controller == null || line == null) return;
+  final offset = controller
+      .getLineStartOffset(line)
+      .clamp(0, controller.length);
+  controller.selection = TextSelection.collapsed(offset: offset);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    try {
+      controller.scrollToLine(line);
+    } on StateError {
+      // The tab may have been closed before its editor was mounted.
+    }
   });
 }
 
@@ -344,6 +382,8 @@ class FileTransferProgressState {
     this.message,
     this.failed = false,
     this.bytesPerSecond,
+    this.cancelRequested = false,
+    this.cancelled = false,
   });
 
   final bool isActive;
@@ -358,10 +398,23 @@ class FileTransferProgressState {
   final bool failed;
   final double? bytesPerSecond;
 
+  /// The user pressed "cancel"; the loop will stop at the next file boundary.
+  final bool cancelRequested;
+
+  /// The loop already stopped because of cancellation.
+  final bool cancelled;
+
   double? get progress {
     if (bytesTotal <= 0) return null;
     return (bytesDone / bytesTotal).clamp(0, 1).toDouble();
   }
+
+  /// Whether the progress area should offer a cancel button.
+  ///
+  /// Cancelling is only offered while a batch is running and no cancel has
+  /// been requested yet; an in-flight single file cannot be aborted safely
+  /// because the device transaction is mid-write.
+  bool get canCancel => isActive && !failed && !cancelRequested && !cancelled;
 
   FileTransferProgressState copyWith({
     bool? isActive,
@@ -375,6 +428,8 @@ class FileTransferProgressState {
     String? message,
     bool? failed,
     double? bytesPerSecond,
+    bool? cancelRequested,
+    bool? cancelled,
   }) {
     return FileTransferProgressState(
       isActive: isActive ?? this.isActive,
@@ -388,17 +443,33 @@ class FileTransferProgressState {
       message: message ?? this.message,
       failed: failed ?? this.failed,
       bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
+      cancelRequested: cancelRequested ?? this.cancelRequested,
+      cancelled: cancelled ?? this.cancelled,
     );
   }
 }
 
 class FileTransferProgressNotifier
     extends StateNotifier<FileTransferProgressState> {
-  FileTransferProgressNotifier() : super(const FileTransferProgressState());
+  FileTransferProgressNotifier({I18nTranslate? translate})
+    : _tr = translate ?? fallbackTranslate,
+      super(const FileTransferProgressState());
+
+  /// Renders the default progress messages in the active locale.
+  final I18nTranslate _tr;
 
   Timer? _clearTimer;
   DateTime? _transferStartTime;
   DateTime? _lastProgressUpdate;
+
+  /// Token handed to the running batch. `null` when no batch owns one.
+  FileTransferCancelToken? _cancelToken;
+
+  /// Token for the current/last batch, or `null` if none was created.
+  ///
+  /// Exposed so a UI that started a transfer outside the file page can reuse
+  /// it; the file page reads it through [beginCancelToken].
+  FileTransferCancelToken? get cancelToken => _cancelToken;
 
   void start({
     required FileTransferDirection direction,
@@ -409,6 +480,8 @@ class FileTransferProgressNotifier
     _clearTimer?.cancel();
     _transferStartTime = null;
     _lastProgressUpdate = null;
+    // A new batch never inherits the previous batch's cancellation.
+    _cancelToken = FileTransferCancelToken();
     state = FileTransferProgressState(
       isActive: true,
       direction: direction,
@@ -416,6 +489,48 @@ class FileTransferProgressNotifier
       totalFiles: totalFiles,
       message: message,
     );
+  }
+
+  /// Creates a fresh cancellation token for a batch that is about to run.
+  ///
+  /// Call this right after [start]; the returned token must be passed down to
+  /// the upload/download loops, which call `throwIfTransferCancelled` at each
+  /// file boundary. Reusing the token from [cancelToken] is equivalent but
+  /// reads worse at call sites.
+  FileTransferCancelToken beginCancelToken() {
+    final token = _cancelToken ?? FileTransferCancelToken();
+    _cancelToken = token;
+    return token;
+  }
+
+  /// Requests cancellation of the running batch.
+  ///
+  /// Only sets the flag; the loop that owns the token decides when it is safe
+  /// to stop (always between whole files, never mid-transaction), which keeps
+  /// the device and its REPL usable.
+  void requestCancel() {
+    if (!state.isActive || state.failed) return;
+    _cancelToken?.cancel();
+    state = state.copyWith(
+      cancelRequested: true,
+      message: _tr(I18nKey.fileTransferCancelling),
+    );
+  }
+
+  /// Marks the batch as cancelled and resets the state so the UI clears.
+  ///
+  /// The progress area keeps the "cancelled" message briefly so the user gets
+  /// feedback, then falls back to the idle state like [complete] does.
+  void cancelledByUser({String? message}) {
+    _cancelToken = null;
+    state = state.copyWith(
+      isActive: true,
+      cancelled: true,
+      cancelRequested: false,
+      bytesDone: 0,
+      message: message ?? _tr(I18nKey.fileTransferCancelled),
+    );
+    _scheduleClear();
   }
 
   void startFile({
@@ -464,6 +579,7 @@ class FileTransferProgressNotifier
   }
 
   void complete({required String message}) {
+    _cancelToken = null;
     state = state.copyWith(
       isActive: true,
       bytesDone: state.bytesTotal,
@@ -474,12 +590,19 @@ class FileTransferProgressNotifier
   }
 
   void fail(String message) {
-    state = state.copyWith(isActive: true, message: message, failed: true);
+    _cancelToken = null;
+    state = state.copyWith(
+      isActive: true,
+      message: message,
+      failed: true,
+      cancelRequested: false,
+    );
     _scheduleClear(delay: const Duration(seconds: 5));
   }
 
   void clear() {
     _clearTimer?.cancel();
+    _cancelToken = null;
     state = const FileTransferProgressState();
   }
 
@@ -499,7 +622,7 @@ final fileTransferProgressProvider =
     StateNotifierProvider<
       FileTransferProgressNotifier,
       FileTransferProgressState
-    >((ref) => FileTransferProgressNotifier());
+    >((ref) => FileTransferProgressNotifier(translate: translateFor(ref)));
 
 // ---------------------------------------------------------------------------
 // Conflict resolution

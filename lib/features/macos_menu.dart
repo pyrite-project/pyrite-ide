@@ -1,14 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/features/command_palette/command_palette.dart';
+import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
+import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 
 class MacOSMenu extends ConsumerWidget {
   const MacOSMenu({super.key, required this.app});
@@ -22,6 +31,27 @@ class MacOSMenu extends ConsumerWidget {
 
   List<PlatformMenuItem> _build(BuildContext context, WidgetRef ref) {
     String t(I18nKey key) => translateForWidget(ref, key);
+
+    // The menu bar sits above the MaterialApp, so its own context cannot push
+    // a route; dialogs go through the root navigator instead.
+    void openPalette(PaletteLaunchMode mode) {
+      final paletteContext = appContext;
+      if (paletteContext == null) return;
+      unawaited(
+        showCommandPalette(
+          paletteContext,
+          mode: mode,
+          hooks: editorPaletteHooks(),
+        ),
+      );
+    }
+
+    void runEditor(Future<void> Function(BuildContext context) action) {
+      final editorContext = appContext;
+      if (editorContext == null) return;
+      unawaited(action(editorContext));
+    }
+
     return [
       PlatformMenu(
         label: appName,
@@ -91,6 +121,42 @@ class MacOSMenu extends ConsumerWidget {
               ),
             ],
           ),
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: t(I18nKey.menuReopenClosedTab),
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyT,
+                  meta: true,
+                  shift: true,
+                ),
+                onSelected: () => runEditor(
+                  (editor) async => await reopenClosedEditorTab(editor, ref),
+                ),
+              ),
+            ],
+          ),
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: t(I18nKey.menuCommandPalette),
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyP,
+                  meta: true,
+                  shift: true,
+                ),
+                onSelected: () => openPalette(PaletteLaunchMode.commands),
+              ),
+              PlatformMenuItem(
+                label: t(I18nKey.menuQuickOpen),
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyP,
+                  meta: true,
+                ),
+                onSelected: () => openPalette(PaletteLaunchMode.files),
+              ),
+            ],
+          ),
         ],
       ),
       PlatformMenu(
@@ -125,20 +191,60 @@ class MacOSMenu extends ConsumerWidget {
       PlatformMenu(
         label: t(I18nKey.menuView),
         menus: [
-          PlatformMenuItem(
-            label: t(I18nKey.menuToggleFunctionPanel),
-            onSelected: () => ref.read(functionPageShow.notifier).state = !ref
-                .read(functionPageShow),
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: t(I18nKey.menuToggleFunctionPanel),
+                onSelected: () => ref.read(functionPageShow.notifier).state =
+                    !ref.read(functionPageShow),
+              ),
+              PlatformMenuItem(
+                label: t(I18nKey.menuToggleConsolePanel),
+                onSelected: () => ref.read(consolePageShow.notifier).state =
+                    !ref.read(consolePageShow),
+              ),
+              PlatformMenuItem(
+                label: t(I18nKey.consoleResetLayout),
+                onSelected: () =>
+                    resetTerminalLayout(ProviderScope.containerOf(context)),
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: t(I18nKey.menuToggleConsolePanel),
-            onSelected: () => ref.read(consolePageShow.notifier).state = !ref
-                .read(consolePageShow),
-          ),
-          PlatformMenuItem(
-            label: t(I18nKey.menuToggleExpansionPanel),
-            onSelected: () => ref.read(expansionPageShow.notifier).state = !ref
-                .read(expansionPageShow),
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: t(I18nKey.menuSplitRight),
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.backslash,
+                  meta: true,
+                ),
+                onSelected: () => splitActiveEditor(ref, PaneEdge.right),
+              ),
+              PlatformMenuItem(
+                label: t(I18nKey.menuSplitDown),
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.backslash,
+                  meta: true,
+                  shift: true,
+                ),
+                onSelected: () => splitActiveEditor(ref, PaneEdge.bottom),
+              ),
+              PlatformMenuItem(
+                label: t(I18nKey.menuCloseGroup),
+                shortcut: const SingleActivator(
+                  LogicalKeyboardKey.keyW,
+                  meta: true,
+                  alt: true,
+                ),
+                onSelected: () => runEditor(
+                  (editor) async => await closeActiveEditorGroup(editor, ref),
+                ),
+              ),
+              PlatformMenuItem(
+                label: t(I18nKey.menuResetEditorLayout),
+                onSelected: () => resetEditorLayout(ref),
+              ),
+            ],
           ),
         ],
       ),

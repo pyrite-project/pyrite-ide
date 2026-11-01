@@ -40,6 +40,14 @@ post_install do |installer|
     flutter_additional_macos_build_settings(target)
     target.build_configurations.each do |config|
       config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '13.0'
+      # Xcode 27 beta's ld64 emits dylibs that dyld rejects ("mis-aligned
+      # LINKEDIT string pool") when chained fixups are enabled (deployment
+      # target >= 12.0), and rustc reports that as E0463 while loading
+      # cargokit-built proc-macro dylibs. cargo drops rustflags for proc-macro
+      # host units under --target, so force the linker flag at the rustc level.
+      if ['super_native_extensions', 'code_forge'].include?(target.name)
+        config.build_settings['RUSTC'] = File.expand_path('rustc_link_fixup.sh', __dir__)
+      end
     end
   end
 end

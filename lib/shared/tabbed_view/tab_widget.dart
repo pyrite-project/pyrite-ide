@@ -7,14 +7,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
-import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
-import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
-
 import 'package:super_context_menu/super_context_menu.dart';
+import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_chrome.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
 import 'package:tabbed_view/src/draggable_config.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 import 'package:tabbed_view/src/tab_status.dart';
@@ -129,16 +131,10 @@ class TabWidget extends ConsumerWidget {
       onExit: (event) => updateHoveredIndex(null),
       child: provider.draggingTabIndex == null
           ? GestureDetector(
-              onTap: () {
-                final editorController = ref.read(tabbedViewControllerProvider);
-                if (identical(provider.controller, editorController)) {
-                  ref
-                      .read(tabbedViewControllerProvider.notifier)
-                      .onTabTap(tab, index);
-                } else {
-                  provider.controller.selectedIndex = index;
-                }
-              },
+              onTap: () => provider.controller.selectedIndex = index,
+              onTertiaryTapDown: tab.closable
+                  ? (_) => _closeTab(context, index)
+                  : null,
               onSecondaryTapDown: (details) {
                 if (provider.onTabSecondaryTap != null) {
                   TabData tab = provider.controller.tabs[index];
@@ -152,9 +148,17 @@ class TabWidget extends ConsumerWidget {
 
     // super_context_menu combines the menu and native drag configuration into
     // one long-press session only when the menu is inside DraggableWidget.
-    if (tab.closable) {
+    final chrome = tab.value;
+    if (chrome is TabChrome) {
+      // A tab that brings its own menu offers it in whichever strip hosts it:
+      // a console surface is not closable, so the close menu would hide it.
       widget = PyriteContextMenuWidget(
-        menuProvider: (_) => _buildContextMenu(context, index),
+        menuProvider: (_) => chrome.buildTabMenu(context),
+        child: widget,
+      );
+    } else if (tab.closable) {
+      widget = PyriteContextMenuWidget(
+        menuProvider: (_) => _buildContextMenu(context, index, ref),
         child: widget,
       );
     }
@@ -208,7 +212,7 @@ class TabWidget extends ConsumerWidget {
     return ref.watch(tabProblemCountsProvider(value.filePath));
   }
 
-  Menu _buildContextMenu(BuildContext context, int index) {
+  Menu _buildContextMenu(BuildContext context, int index, WidgetRef ref) {
     final container = ProviderScope.containerOf(context);
     final registry = container.read(dataRegistryProvider);
     final locale = container.read(activeLocaleProvider);
@@ -219,6 +223,15 @@ class TabWidget extends ConsumerWidget {
     final toRight = tabsToTheRightOf(tabs, index);
     MenuActionAttributes disabledWhen(bool isDisabled) =>
         MenuActionAttributes(disabled: isDisabled);
+
+    // The same strip hosts console tabs; splitting and closing a group only
+    // mean something for a group in the editor layout tree.
+    final group = provider.controller;
+    final isEditorGroup = ref.read(editorLayoutProvider).contains(group);
+    final splitLayout = ref.read(editorLayoutProvider.notifier);
+    final canSplit =
+        isEditorGroup &&
+        splitLayout.canSplitGroup(from: group, target: group, tab: tab);
 
     return Menu(
       children: [
@@ -242,6 +255,24 @@ class TabWidget extends ConsumerWidget {
           title: tr(I18nKey.tabContextMenuCloseAll),
           callback: () => closeTabs(context, provider, tabs),
         ),
+        if (isEditorGroup) ...[
+          MenuSeparator(),
+          MenuAction(
+            title: tr(I18nKey.editorSplitRight),
+            attributes: disabledWhen(!canSplit),
+            callback: () => splitEditorGroup(ref, group, tab, PaneEdge.right),
+          ),
+          MenuAction(
+            title: tr(I18nKey.editorSplitDown),
+            attributes: disabledWhen(!canSplit),
+            callback: () => splitEditorGroup(ref, group, tab, PaneEdge.bottom),
+          ),
+          MenuSeparator(),
+          MenuAction(
+            title: tr(I18nKey.editorCloseGroup),
+            callback: () => closeEditorGroup(context, group, last: tab),
+          ),
+        ],
       ],
     );
   }

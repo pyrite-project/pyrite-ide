@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:code_forge/code_forge.dart';
-import 'package:code_forge/src/rust/frb_generated.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

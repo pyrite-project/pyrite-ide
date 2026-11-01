@@ -74,6 +74,11 @@ class PluginConfigStore {
   }
 
   /// Validates and stores [value], persists, and emits [ConfigurationTopics.changed].
+  ///
+  /// The in-memory map is committed only after the disk write succeeds: a
+  /// value that lives in memory but not in `configuration.json` would silently
+  /// vanish on the next start, which is far more confusing than the write
+  /// error the caller sees here.
   Future<Object?> set(String pluginId, String id, Object? value) async {
     await _ensureLoaded(pluginId);
     final contribution = _contribution(pluginId, id);
@@ -81,9 +86,23 @@ class PluginConfigStore {
       throw StateError('Unknown configuration: $id');
     }
     _validate(contribution, value);
-    final previous = await get(pluginId, id);
-    _values.putIfAbsent(pluginId, () => {})[id] = value;
-    await _persist(pluginId);
+    // Rollback needs the raw stored entry, not `previous`: the effective value
+    // substitutes the contribution default, and persisting that default would
+    // turn "no stored value" into an explicit one.
+    final stored = _values[pluginId]?[id];
+    final previous = stored ?? contribution.defaultValue;
+    final values = _values.putIfAbsent(pluginId, () => {});
+    values[id] = value;
+    try {
+      await _persist(pluginId);
+    } catch (_) {
+      if (stored == null) {
+        values.remove(id);
+      } else {
+        values[id] = stored;
+      }
+      rethrow;
+    }
     if (!_jsonEquals(previous, value)) {
       _emit(ConfigurationTopics.changed, {
         'pluginId': pluginId,
@@ -155,6 +174,12 @@ class PluginConfigStore {
       case 'string':
         if (value is! String) {
           throw ArgumentError.value(value, 'value', 'Expected string');
+        }
+      case 'password':
+        // Passwords are strings at rest, but the error must not carry the
+        // value: store errors surface in dialogs and logs.
+        if (value is! String) {
+          throw ArgumentError('Expected a password string');
         }
       case 'number':
         if (value is! num) {

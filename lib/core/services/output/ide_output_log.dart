@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:xterm/xterm.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 enum IdeOutputSource { ide, plugin, terminal }
 
@@ -22,7 +24,12 @@ class IdeOutputEntry {
 }
 
 class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
-  IdeOutputLogNotifier() : super(const []);
+  IdeOutputLogNotifier({I18nTranslate? translate})
+    : _tr = translate ?? fallbackTranslate,
+      super(const []);
+
+  /// Renders the source tag in the active locale when an entry is written.
+  final I18nTranslate _tr;
 
   static const int maxEntries = 1000;
   static DebugPrintCallback? debugMirror;
@@ -116,8 +123,8 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
   String _sourceLabel(IdeOutputSource source) {
     return switch (source) {
       IdeOutputSource.ide => 'IDE',
-      IdeOutputSource.plugin => '插件',
-      IdeOutputSource.terminal => '终端',
+      IdeOutputSource.plugin => _tr(I18nKey.outputSourcePlugin),
+      IdeOutputSource.terminal => _tr(I18nKey.outputSourceTerminal),
     };
   }
 }
@@ -127,5 +134,5 @@ final TerminalController ideOutputController = TerminalController();
 
 final ideOutputLogProvider =
     StateNotifierProvider<IdeOutputLogNotifier, List<IdeOutputEntry>>(
-      (ref) => IdeOutputLogNotifier(),
+      (ref) => IdeOutputLogNotifier(translate: translateFor(ref)),
     );

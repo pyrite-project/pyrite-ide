@@ -1,5 +1,6 @@
 enum I18nKey {
   navFiles('nav.files', '文件'),
+  navSearch('nav.search', '搜索'),
   navDevices('nav.devices', '设备'),
   navGit('nav.git', 'Git'),
   navPlugins('nav.plugins', '插件'),
@@ -7,47 +8,25 @@ enum I18nKey {
   navEditor('nav.editor', '编辑器'),
   settingsTitle('settings.title', '设置'),
   settingsWorkspaceSection('settings.workspace.section', '工作区'),
-  settingsWorkspaceDescription(
-    'settings.workspace.description',
-    '编辑器、终端和语言服务。',
-  ),
   settingsEditorTitle('settings.editor.title', '编辑器'),
-  settingsEditorSubtitle('settings.editor.subtitle', '字体、字号、折行、行号'),
   settingsTerminalTitle('settings.terminal.title', '调试与终端'),
-  settingsTerminalSubtitle('settings.terminal.subtitle', '波特率、自动重连、REPL'),
   settingsLspTitle('settings.lsp.title', '语言服务器'),
-  settingsLspSubtitle('settings.lsp.subtitle', '补全、诊断和连接地址'),
   settingsInterfaceSection('settings.interface.section', '界面'),
-  settingsInterfaceDescription('settings.interface.description', '主题、颜色和显示偏好。'),
   settingsStyleTitle('settings.style.title', '外观与风格'),
-  settingsStyleSubtitle('settings.style.subtitle', '主题模式与配色'),
   settingsFunctionPanelTitle('settings.function_panel.title', '功能面板'),
-  settingsFunctionPanelSubtitle(
-    'settings.function_panel.subtitle',
-    '显示/隐藏功能导航面板',
-  ),
   settingsConsolePanelTitle('settings.console_panel.title', '控制台面板'),
-  settingsConsolePanelSubtitle(
-    'settings.console_panel.subtitle',
-    '显示/隐藏控制台输出面板',
+  settingsFileSortTitle('settings.file_sort.title', '文件排序'),
+  settingsFileSortSubtitle(
+    'settings.file_sort.subtitle',
+    '本地与设备文件树同时生效，文件夹始终在前',
   ),
-  settingsExpansionPanelTitle('settings.expansion_panel.title', '扩展面板'),
-  settingsExpansionPanelSubtitle(
-    'settings.expansion_panel.subtitle',
-    '显示/隐藏扩展信息面板',
-  ),
+  settingsFileSortByName('settings.file_sort.name', '按名称'),
+  settingsFileSortByType('settings.file_sort.type', '按类型'),
   settingsWelcomeTitle('settings.welcome.title', '重新显示欢迎引导'),
-  settingsWelcomeSubtitle('settings.welcome.subtitle', '重新显示首次启动引导'),
   settingsAboutTitle('settings.about.title', '关于'),
-  settingsAboutSubtitle('settings.about.subtitle', '产品信息和当前阶段'),
   settingsLanguageTitle('settings.language.title', '语言'),
-  settingsLanguageSubtitle('settings.language.subtitle', '切换 IDE 显示语言'),
   settingsLanguageSystemDefault('settings.language.default', '默认'),
   welcomeTitle('welcome.title', '欢迎使用 PyriteIDE'),
-  welcomeDescription(
-    'welcome.description',
-    '配置好文件访问和设备连接后，就可以开始管理本地项目与 MicroPython 开发板。',
-  ),
   welcomeStart('welcome.start', '开始'),
   androidPermissionsTitle('welcome.android_permissions.title', 'Android 权限'),
   androidPermissionStorage('welcome.android_permissions.storage', '文件读写'),
@@ -125,6 +104,47 @@ enum I18nKey {
     'plugins.detail.manifest_invalid',
     'Manifest 无效或未通过校验，插件无法运行',
   ),
+  pluginsDetailOverviewDescription(
+    'plugins.detail.overview_description',
+    '标识、版本与当前运行状态。',
+  ),
+  pluginsDetailConfigDescription(
+    'plugins.detail.config_description',
+    '插件声明的设置项。改动会立即保存并通知插件。',
+  ),
+  pluginsDetailPermissionsDescription(
+    'plugins.detail.permissions_description',
+    '插件声明需要访问的宿主资源与操作。',
+  ),
+  pluginsDetailContributionsDescription(
+    'plugins.detail.contributions_description',
+    '插件注册到宿主的导航容器、视图与命令。',
+  ),
+  pluginsDetailSearchSettings('plugins.detail.search_settings', '搜索设置'),
+  pluginsDetailFilterAll('plugins.detail.filter_all', '全部'),
+  pluginsDetailFilterModified('plugins.detail.filter_modified', '已修改'),
+  pluginsDetailSettingCount('plugins.detail.setting_count', '{count} 项设置'),
+  pluginsDetailLoading('plugins.detail.loading', '正在加载设置…'),
+  pluginsDetailNoMatch('plugins.detail.no_match', '没有匹配的设置'),
+  pluginsDetailNoMatchHint('plugins.detail.no_match_hint', '换个关键词，或清除筛选条件后重试。'),
+  pluginsDetailModified('plugins.detail.modified', '已修改'),
+  pluginsDetailResetToDefault('plugins.detail.reset_to_default', '恢复默认值'),
+  pluginsDetailDefaultValue('plugins.detail.default_value', '默认值：{value}'),
+  pluginsDetailEditValue('plugins.detail.edit_value', '编辑值'),
+  pluginsDetailEditPassword('plugins.detail.edit_password', '编辑密码'),
+  pluginsDetailShowPassword('plugins.detail.show_password', '显示密码'),
+  pluginsDetailHidePassword('plugins.detail.hide_password', '隐藏密码'),
+  pluginsDetailEditJson('plugins.detail.edit_json', '编辑 JSON'),
+  pluginsDetailSave('plugins.detail.save', '保存'),
+  pluginsDetailUnset('plugins.detail.unset', '未设置'),
+  pluginsDetailInvalidNumber('plugins.detail.invalid_number', '不是有效的数字'),
+  pluginsDetailInvalidInteger('plugins.detail.invalid_integer', '不是有效的整数'),
+  pluginsDetailInvalidJson('plugins.detail.invalid_json', '不是有效的 JSON：{error}'),
+  pluginsDetailSaveFailed('plugins.detail.save_failed', '保存失败：{error}'),
+  pluginsDiagnosticsDescription(
+    'plugins.diagnostics.description',
+    '进程通信与激活的实时统计，随插件运行更新。',
+  ),
   pluginsActionOpen('plugins.action.open', '打开'),
   commonYes('common.yes', '是'),
   commonNo('common.no', '否'),
@@ -148,6 +168,12 @@ enum I18nKey {
   fileActionClearSelection('file.action.clear_selection', '清除选择'),
   fileActionExitSelection('file.action.exit_selection', '退出选择模式'),
   fileActionSelectItems('file.action.select_items', '选择项目'),
+  fileConfirmUploadTitle('file.confirm.upload.title', '上传到设备'),
+  fileConfirmUploadMessage(
+    'file.confirm.upload.message',
+    '将 {count} 个项目上传到设备文件夹 {folder}？',
+  ),
+  fileConfirmUploadAction('file.confirm.upload.action', '上传'),
   fileActionNewFile('file.action.new_file', '新建文件'),
   fileActionNewFolder('file.action.new_folder', '新建文件夹'),
   fileActionRefreshLocal('file.action.refresh_local', '刷新本地文件'),
@@ -234,7 +260,7 @@ enum I18nKey {
     '无法在文件资源管理器中打开：{error}',
   ),
   fileMessageOpenInFinderFailed(
-    'file.message.open_in_file_manager_failed',
+    'file.message.open_in_finder_failed',
     '无法在访达中打开：{error}',
   ),
   fileMessageMoveFailed('file.message.move_failed', '移动失败：{error}'),
@@ -413,7 +439,6 @@ enum I18nKey {
   devicesConnected('devices.connection.connected', '设备已连接'),
   devicesDisconnected('devices.connection.disconnected', '暂未连接设备'),
   devicesSerialConnected('devices.connection.serial_connected', '已建立串口连接'),
-  devicesConnectionHint('devices.connection.hint', '选择下方串口后，REPL 与文件同步会使用该设备。'),
   devicesShowStatus('devices.action.show_status', '查看设备状态'),
   devicesHideStatus('devices.action.hide_status', '收起设备状态'),
   devicesDisconnect('devices.action.disconnect', '断开'),
@@ -445,10 +470,6 @@ enum I18nKey {
   devicesStatusNotConnected('devices.status.not_connected', '设备未连接'),
   devicesStatusParseError('devices.status.parse_error', '未能从设备响应中解析到状态数据'),
   settingsStyleThemeMode('settings.style.theme_mode.title', '主题模式'),
-  settingsStyleThemeModeDescription(
-    'settings.style.theme_mode.description',
-    '界面跟随系统，或固定为亮色/暗色。',
-  ),
   settingsStyleThemeModePluginLockedDark(
     'settings.style.theme_mode.plugin_locked_dark',
     '当前插件主题已锁定为暗色模式。',
@@ -463,7 +484,7 @@ enum I18nKey {
   settingsStyleThemeStyle('settings.style.theme_style.title', '主题风格'),
   settingsStyleThemeStyleDescription(
     'settings.style.theme_style.description',
-    '组件样式与信息密度。',
+    '信息密度',
   ),
   settingsStylePluginThemeDisabledDescription(
     'settings.style.plugin_theme_disabled.description',
@@ -473,49 +494,29 @@ enum I18nKey {
   settingsStyleCompact('settings.style.variant.compact', '紧凑'),
   settingsStyleComfortable('settings.style.variant.comfortable', '舒适'),
   settingsStyleThemeColor('settings.style.theme_color.title', '主题颜色'),
-  settingsStyleThemeColorDescription(
-    'settings.style.theme_color.description',
-    '使用系统动态色，或指定固定主题色。',
-  ),
   settingsStyleFollowSystem('settings.style.follow_system', '跟随系统'),
   settingsStylePluginTheme('settings.style.plugin_theme.title', '插件主题'),
   settingsStylePluginThemeDescription(
     'settings.style.plugin_theme.description',
-    '使用插件提供的主题配色，会覆盖主题风格和主题颜色。',
+    '覆盖主题风格与颜色',
   ),
   settingsStyleBuiltin('settings.style.builtin', '内置'),
-  settingsStyleBuiltinSubtitle(
-    'settings.style.builtin.subtitle',
-    '使用系统动态色或自定义主题色',
-  ),
   settingsStyleDarkOnly('settings.style.dark_only', '仅暗色'),
   settingsStyleLightOnly('settings.style.light_only', '仅亮色'),
   settingsStyleMenuStyle('settings.style.menu_style.title', '菜单样式'),
-  settingsStyleMenuStyleDescription(
-    'settings.style.menu_style.description',
-    '桌面右键菜单的样式。',
-  ),
   settingsStyleMd3ContextMenu(
     'settings.style.md3_context_menu.title',
     'Material Design 3 右键菜单',
   ),
   settingsStyleMd3ContextMenuSubtitle(
     'settings.style.md3_context_menu.subtitle',
-    '用应用内绘制的菜单替代系统默认菜单',
+    '替代系统菜单',
   ),
   settingsTerminalSerialSection('settings.terminal.serial.title', '串口设置'),
-  settingsTerminalSerialDescription(
-    'settings.terminal.serial.description',
-    '开发板串口连接参数。',
-  ),
   settingsTerminalBaudRate('settings.terminal.baud_rate', '波特率'),
   settingsTerminalAutoReconnect(
     'settings.terminal.auto_reconnect.title',
     '自动重连',
-  ),
-  settingsTerminalAutoReconnectSubtitle(
-    'settings.terminal.auto_reconnect.subtitle',
-    '断开后自动尝试重新连接',
   ),
   settingsTerminalSignalDetection(
     'settings.terminal.signal_detection.title',
@@ -531,15 +532,19 @@ enum I18nKey {
   ),
   settingsTerminalEnsureFilesystemSubtitle(
     'settings.terminal.ensure_filesystem.subtitle',
-    '尝试挂载尚未就绪的设备文件系统，默认关闭',
+    '挂载未就绪的文件系统（默认关闭）',
+  ),
+  settingsTerminalRunInScriptDir(
+    'settings.terminal.run_in_script_dir.title',
+    '运行时切换到脚本所在目录',
+  ),
+  settingsTerminalRunInScriptDirSubtitle(
+    'settings.terminal.run_in_script_dir.subtitle',
+    '运行前先在设备上切到该文件所在目录',
   ),
   settingsTerminalChineseToUnicode(
     'settings.terminal.chinese_to_unicode.title',
     '中文转 Unicode',
-  ),
-  settingsTerminalChineseToUnicodeSubtitle(
-    'settings.terminal.chinese_to_unicode.subtitle',
-    '输入中文时自动转为 \\uXXXX 转义',
   ),
   settingsTerminalReplMode('settings.terminal.repl_mode.title', 'REPL 模式'),
   settingsTerminalReplModeSubtitle(
@@ -589,10 +594,6 @@ enum I18nKey {
     'ESP32 DTR/RTS',
   ),
   settingsTerminalDisplaySection('settings.terminal.display.title', '终端显示'),
-  settingsTerminalDisplayDescription(
-    'settings.terminal.display.description',
-    'REPL、日志和桌面终端的字体样式。',
-  ),
   settingsTerminalFont('settings.terminal.font', '字体'),
   settingsTerminalFontSize('settings.terminal.font_size', '字体大小'),
   settingsTerminalLineHeight('settings.terminal.line_height', '行高'),
@@ -620,17 +621,13 @@ enum I18nKey {
     'settings.terminal.minimum_contrast.title',
     '增强低对比度文字',
   ),
-  settingsTerminalMinimumContrastSubtitle(
-    'settings.terminal.minimum_contrast.subtitle',
-    '必要时调整前景色，保证与背景清晰可辨',
-  ),
   settingsTerminalOverrideBackground(
     'settings.terminal.override_background.title',
     '覆盖终端背景颜色',
   ),
   settingsTerminalOverrideBackgroundSubtitle(
     'settings.terminal.override_background.subtitle',
-    '忽略终端程序自带的背景色，仅影响桌面终端',
+    '仅影响桌面终端',
   ),
   settingsTerminalCustomForeground(
     'settings.terminal.custom.foreground',
@@ -643,10 +640,6 @@ enum I18nKey {
   settingsTerminalCustomSection(
     'settings.terminal.custom.section.title',
     '自定义终端颜色',
-  ),
-  settingsTerminalCustomSectionDescription(
-    'settings.terminal.custom.section.description',
-    '设置默认前景色和背景色。',
   ),
   settingsTerminalCustomPreview('settings.terminal.custom.preview', '终端预览'),
   settingsTerminalCustomBaseColors(
@@ -666,17 +659,9 @@ enum I18nKey {
     'settings.terminal.custom.reset_done',
     '终端颜色已恢复默认值',
   ),
-  settingsTerminalWebReplDescription(
-    'settings.terminal.webrepl.description',
-    '通过 WiFi WebSocket 连接 MicroPython 设备。',
-  ),
   settingsTerminalWebReplEnable(
     'settings.terminal.webrepl.enable.title',
     '启用 WebREPL',
-  ),
-  settingsTerminalWebReplEnableSubtitle(
-    'settings.terminal.webrepl.enable.subtitle',
-    '通过 WiFi 连接到设备的 WebREPL 服务',
   ),
   settingsTerminalDeviceIp('settings.terminal.webrepl.device_ip', '设备 IP 地址'),
   settingsTerminalExampleIp(
@@ -710,11 +695,7 @@ enum I18nKey {
   commonCreate('common.create', '创建'),
   commonRetry('common.retry', '重试'),
   commonRefresh('common.refresh', '刷新'),
-  settingsEditorFontSection('settings.editor.font_section.title', '字体'),
-  settingsEditorFontDescription(
-    'settings.editor.font_section.description',
-    '代码编辑区的字体与字号。',
-  ),
+  settingsEditorFontSection('settings.editor.font_section.title', '排版'),
   settingsEditorThemeSection('settings.editor.theme_section.title', '编辑器主题'),
   settingsEditorThemeDescription(
     'settings.editor.theme_section.description',
@@ -729,91 +710,44 @@ enum I18nKey {
     'settings.editor.upload_confirm.title',
     '上传确认',
   ),
-  settingsEditorUploadConfirmDescription(
-    'settings.editor.upload_confirm.description',
-    '上传文件存在差异时的确认方式。',
-  ),
   settingsEditorFloatingToolbar(
     'settings.editor.upload_confirm.toolbar',
     '浮动工具栏',
   ),
   settingsEditorConfirmDialog('settings.editor.upload_confirm.dialog', '确认对话框'),
   settingsEditorShortcutsSection('settings.editor.shortcuts.title', '快捷键'),
-  settingsEditorShortcutsDescription(
-    'settings.editor.shortcuts.description',
-    '上传/下载确认的快捷键。',
-  ),
   settingsEditorConfirmAction('settings.editor.shortcuts.confirm', '确认操作'),
   settingsEditorCancelAction('settings.editor.shortcuts.cancel', '取消操作'),
   settingsEditorBehaviorSection('settings.editor.behavior.title', '编辑行为'),
   settingsEditorWordWrap('settings.editor.word_wrap.title', '自动折行'),
-  settingsEditorWordWrapSubtitle(
-    'settings.editor.word_wrap.subtitle',
-    '超出编辑器宽度时折行显示',
-  ),
   settingsEditorLineNumber('settings.editor.line_number.title', '显示行号'),
-  settingsEditorLineNumberSubtitle(
-    'settings.editor.line_number.subtitle',
-    '在代码左侧显示行号',
-  ),
   settingsEditorGutterDivider(
     'settings.editor.gutter_divider.title',
     '显示行号分隔线',
   ),
-  settingsEditorGutterDividerSubtitle(
-    'settings.editor.gutter_divider.subtitle',
-    '在行号和代码之间画一条分隔线',
-  ),
   settingsEditorSmoothCursor('settings.editor.smooth_cursor.title', '平滑光标'),
-  settingsEditorSmoothCursorSubtitle(
-    'settings.editor.smooth_cursor.subtitle',
-    '光标移动时平滑滑动到新位置',
-  ),
   settingsEditorMinimap('settings.editor.minimap.title', '代码缩略图'),
-  settingsEditorMinimapSubtitle(
-    'settings.editor.minimap.subtitle',
-    '在右侧显示全文缩略图，自动折行时隐藏',
-  ),
+  settingsEditorMinimapSubtitle('settings.editor.minimap.subtitle', '自动折行时隐藏'),
   settingsEditorCodeFolding('settings.editor.code_folding.title', '代码折叠'),
-  settingsEditorCodeFoldingSubtitle(
-    'settings.editor.code_folding.subtitle',
-    '显示折叠图标，可折叠代码块',
-  ),
   settingsEditorGuideLines('settings.editor.guide_lines.title', '缩进参考线'),
-  settingsEditorGuideLinesSubtitle(
-    'settings.editor.guide_lines.subtitle',
-    '显示每一级缩进的竖线',
-  ),
   settingsEditorLocalSuggestions(
     'settings.editor.local_suggestions.title',
     '本地补全',
   ),
   settingsEditorLocalSuggestionsSubtitle(
     'settings.editor.local_suggestions.subtitle',
-    '不依赖 LSP 的本地补全，大文件可能稍慢',
+    '大文件可能稍慢',
   ),
   settingsEditorKeyboardSuggestions(
     'settings.editor.keyboard_suggestions.title',
     '键盘补全建议',
   ),
-  settingsEditorKeyboardSuggestionsSubtitle(
-    'settings.editor.keyboard_suggestions.subtitle',
-    '允许系统虚拟键盘显示输入建议',
-  ),
   settingsEditorSpaceAsTab('settings.editor.space_as_tab.title', 'Tab 输入空格'),
-  settingsEditorSpaceAsTabSubtitle(
-    'settings.editor.space_as_tab.subtitle',
-    '按 Tab 插入空格而不是制表符',
-  ),
   settingsEditorTabSize('settings.editor.tab_size', 'Tab 大小'),
   settingsEditorTabSizeValue('settings.editor.tab_size.value', '{count} 个字符'),
   settingsEditorFormatOnSave(
     'settings.editor.format_on_save.title',
     '保存时格式化文档',
-  ),
-  settingsEditorFormatOnSaveSubtitle(
-    'settings.editor.format_on_save.subtitle',
-    '保存前由语言服务器格式化当前文件',
   ),
   settingsEditorSelectFont('settings.editor.select_font', '选择编辑器字体'),
   settingsEditorSelectTheme('settings.editor.select_theme', '选择编辑器主题'),
@@ -824,7 +758,6 @@ enum I18nKey {
     '改动会在新打开的编辑器标签页中生效。',
   ),
   settingsLspEnable('settings.lsp.enable.title', '启用语言服务器'),
-  settingsLspEnableSubtitle('settings.lsp.enable.subtitle', '提供补全、诊断和跳转等编辑能力'),
   settingsLspConnectionType('settings.lsp.connection_type', '连接方式'),
   settingsLspWebSocketSubtitle('settings.lsp.websocket.subtitle', '远程服务器'),
   settingsLspStdioSubtitle('settings.lsp.stdio.subtitle', '本地进程'),
@@ -858,10 +791,6 @@ enum I18nKey {
     'settings.lsp.basedpyright.title',
     'BasedPyright',
   ),
-  settingsLspBasedPyrightDescription(
-    'settings.lsp.basedpyright.description',
-    'BasedPyright 的类型检查严格程度。',
-  ),
   settingsLspBasedPyrightTypeCheckingMode(
     'settings.lsp.basedpyright.type_checking_mode',
     '类型检查严格程度',
@@ -887,10 +816,6 @@ enum I18nKey {
     '全部',
   ),
   settingsLspDiagnosticsSection('settings.lsp.diagnostics.title', '诊断显示'),
-  settingsLspDiagnosticsDescription(
-    'settings.lsp.diagnostics.description',
-    '控制是否显示语言服务器返回的问题标记。',
-  ),
   settingsLspWarningDiagnostics(
     'settings.lsp.warning_diagnostics.title',
     '显示警告诊断',
@@ -904,15 +829,7 @@ enum I18nKey {
     'settings.lsp.error_diagnostics.subtitle',
     '错误以下划线标出',
   ),
-  settingsLspStubsDescription(
-    'settings.lsp.stubs.description',
-    '配置 pylsp 等语言服务使用的 MicroPython 类型存根。',
-  ),
   settingsLspEnableStubs('settings.lsp.stubs.enable.title', '启用 Stubs'),
-  settingsLspEnableStubsSubtitle(
-    'settings.lsp.stubs.enable.subtitle',
-    '语言服务可读取已配置的 stubs layer',
-  ),
   settingsLspAutoDetectLayer(
     'settings.lsp.stubs.auto_detect.title',
     '自动检测 Layer',
@@ -927,7 +844,7 @@ enum I18nKey {
   settingsLspFeaturesSection('settings.lsp.features.title', '语言服务器功能'),
   settingsLspFeaturesDescription(
     'settings.lsp.features.description',
-    '开关 CodeForge 请求的语言服务器功能。改动立即生效，但能力声明要重新连接后才会更新。',
+    '改动立即生效；能力声明需重连后更新',
   ),
   settingsLspSemanticHighlighting(
     'settings.lsp.feature.semantic_highlighting',
@@ -938,15 +855,7 @@ enum I18nKey {
     '按服务器返回的语义标记着色，替代本地语法高亮。',
   ),
   settingsLspCodeCompletion('settings.lsp.feature.code_completion', '代码补全'),
-  settingsLspCodeCompletionDescription(
-    'settings.lsp.feature.code_completion.description',
-    '输入时向服务器请求补全候选。',
-  ),
   settingsLspHoverInfo('settings.lsp.feature.hover_info', '悬浮提示'),
-  settingsLspHoverInfoDescription(
-    'settings.lsp.feature.hover_info.description',
-    '悬停符号时向服务器请求文档与类型信息。',
-  ),
   settingsLspCodeAction('settings.lsp.feature.code_action', '代码操作'),
   settingsLspCodeActionDescription(
     'settings.lsp.feature.code_action.description',
@@ -981,20 +890,8 @@ enum I18nKey {
     '在代码之间显示参数名、推断类型等标注。',
   ),
   settingsLspGoToDefinition('settings.lsp.feature.go_to_definition', '跳转定义'),
-  settingsLspGoToDefinitionDescription(
-    'settings.lsp.feature.go_to_definition.description',
-    '跳转符号时向服务器请求定义位置。',
-  ),
   settingsLspRename('settings.lsp.feature.rename', '重命名符号'),
-  settingsLspRenameDescription(
-    'settings.lsp.feature.rename.description',
-    '重命名时向服务器请求跨文件的修改。',
-  ),
   settingsLspScope('settings.lsp.scope', '语言服务器生效范围'),
-  settingsLspScopeDescription(
-    'settings.lsp.scope.description',
-    '决定哪些文件会启动语言服务器。',
-  ),
   settingsLspAlwaysStart('settings.lsp.scope.always_start', '对所有文件启用'),
   settingsLspAlwaysStartDescription(
     'settings.lsp.scope.always_start.description',
@@ -1140,6 +1037,12 @@ enum I18nKey {
     'settings.lsp.stubs.extra_paths_helper',
     '每行一个本地路径，会追加给语言服务使用。',
   ),
+  settingsLspStubsRestartTitle('settings.lsp.stubs.restart.title', '需要重启语言服务器'),
+  settingsLspStubsRestartContent(
+    'settings.lsp.stubs.restart.content',
+    'MicroPython Stubs 设置已保存。当前打开的文件使用的 Zuban 通过环境变量读取 stubs，'
+        '重启 IDE，或关闭该工作区的全部文件后重新打开，新设置才会生效。',
+  ),
   settingsLspAddress('settings.lsp.websocket.address_label', '地址'),
   settingsLspAddressHint(
     'settings.lsp.websocket.address_hint',
@@ -1160,19 +1063,12 @@ enum I18nKey {
   aboutTitle('about.title', '关于'),
   aboutAppDetailsTitle('about.app_details.title', '应用与设备信息'),
   aboutRuntimePaths('about.runtime_paths.title', '运行路径'),
-  aboutRuntimePathsDescription(
-    'about.runtime_paths.description',
-    '这些路径直接对应应用数据、插件和缓存位置。',
-  ),
   aboutSupportDirectory('about.runtime_paths.support_directory', '应用支持目录'),
   aboutPluginDirectory('about.runtime_paths.plugin_directory', '插件目录'),
   aboutCacheDirectory('about.runtime_paths.cache_directory', '缓存目录'),
   aboutTempDirectory('about.runtime_paths.temp_directory', '临时目录'),
+  aboutLogFile('about.runtime_paths.log_file', '调试日志文件'),
   aboutRuntimeStatus('about.runtime_status.title', '运行状态'),
-  aboutRuntimeStatusDescription(
-    'about.runtime_status.description',
-    '从当前 Provider 状态读取，便于判断配置是否已生效。',
-  ),
   aboutCurrentPlatform('about.runtime_status.current_platform', '当前平台'),
   aboutPluginStats('about.runtime_status.plugin_stats', '插件统计'),
   aboutPluginStatsValue(
@@ -1184,10 +1080,6 @@ enum I18nKey {
     '记录 {records} 项，Stubs provider {providers} 个。',
   ),
   aboutKeySettings('about.key_settings.title', '关键设置'),
-  aboutKeySettingsDescription(
-    'about.key_settings.description',
-    '展示会影响调试、串口和语言服务行为的实际配置。',
-  ),
   aboutDefaultBaudRate('about.key_settings.default_baud_rate', '默认波特率'),
   aboutSerialAutoReconnect(
     'about.key_settings.serial_auto_reconnect',
@@ -1198,10 +1090,7 @@ enum I18nKey {
     '{status}，Layers: {layers}',
   ),
   aboutDiagnosticsSummary('about.diagnostics.title', '诊断摘要'),
-  aboutDiagnosticsDescription(
-    'about.diagnostics.description',
-    '复制这段内容可以直接用于反馈环境问题。',
-  ),
+  aboutDiagnosticsDescription('about.diagnostics.description', '用于反馈环境问题'),
   aboutViewFullSummary('about.diagnostics.view_full_summary', '查看完整摘要'),
   aboutCopyDiagnostics('about.diagnostics.copy', '复制诊断信息'),
   aboutCopyDiagnosticsSubtitle(
@@ -1267,7 +1156,6 @@ enum I18nKey {
   menuPaste('menu.edit.paste', '粘贴'),
   menuFunctionPanel('menu.view.function_panel', '功能'),
   menuConsolePanel('menu.view.console_panel', '控制台'),
-  menuExpansionPanel('menu.view.expansion_panel', '扩展'),
   editorToolbarDownload('editor.toolbar.download', '下载'),
   editorToolbarUpload('editor.toolbar.upload', '上传'),
   editorToolbarRun('editor.toolbar.run', '运行'),
@@ -1305,10 +1193,14 @@ enum I18nKey {
   problemsPanelCollapseAll('problems.panel.collapse_all', '全部折叠'),
   problemsPanelExpandAll('problems.panel.expand_all', '全部展开'),
   bottomPanelResize('bottom_panel.resize', '调整底部面板大小'),
+  consoleResetLayout('console.reset_layout', '重置终端布局'),
+  consolePanelPosition('console.panel_position', '面板位置'),
+  consoleDockLeft('console.dock.left', '停靠到左侧'),
+  consoleDockTop('console.dock.top', '停靠到顶部'),
+  consoleDockRight('console.dock.right', '停靠到右侧'),
+  consoleDockBottom('console.dock.bottom', '停靠到底部'),
   bottomPanelShowFunctionPanel('bottom_panel.function.show', '显示功能面板'),
   bottomPanelHideFunctionPanel('bottom_panel.function.hide', '隐藏功能面板'),
-  bottomPanelShowExpansionPanel('bottom_panel.expansion.show', '显示扩展面板'),
-  bottomPanelHideExpansionPanel('bottom_panel.expansion.hide', '隐藏扩展面板'),
   bottomPanelAndroidTerminalUnsupported(
     'bottom_panel.terminal.android_unsupported',
     'Android 暂不支持桌面终端',
@@ -1437,6 +1329,22 @@ enum I18nKey {
   editorGoToLine('editor.go_to_line', '跳转到行'),
   editorGoToLineHint('editor.go_to_line.hint', '行号（1-{lines}）'),
   editorGoToLineInvalid('editor.go_to_line.invalid', '行号超出范围，请输入 1-{lines}'),
+  editorOutlineTitle('editor.outline.title', '大纲'),
+  editorOutlineUnavailable('editor.outline.unavailable', '打开一个文件以查看符号大纲'),
+  editorOutlineLoading('editor.outline.loading', '正在读取符号…'),
+  editorOutlineEmpty('editor.outline.empty', '这个文件没有可用的符号'),
+  editorOutlineCount('editor.outline.count', '{count} 个符号'),
+  editorOutlineReveal('editor.outline.reveal', '跳转到 {name}'),
+  editorOutlineRefresh('editor.outline.refresh', '刷新大纲'),
+  editorOutlineError('editor.outline.error', '读取大纲失败：{error}'),
+  editorOutlineSourceUnavailable(
+    'editor.outline.source_unavailable',
+    '无法读取文件内容，大纲不可用',
+  ),
+  editorOutlineTooLarge(
+    'editor.outline.too_large',
+    '文件过大，无法生成大纲（限制 1 MiB / 20,000 行）',
+  ),
   editorFileBinaryDialogTitle('editor.file.binary.title', '无法编辑二进制文件'),
   editorFileBinaryDialogBody(
     'editor.file.binary.body',
@@ -1457,7 +1365,7 @@ enum I18nKey {
   editorFileReloadedFromDisk('editor.file.reloaded_from_disk', '已重新加载：{path}'),
   editorFileDeletedOnDisk(
     'editor.file.deleted_on_disk',
-    '{path} 已被外部删除，编辑器已切换为只读',
+    '{path} 已被外部删除，保存将重新创建该文件',
   ),
   editorFileSavedAs('file.message.saved_as', '已另存为：{path}'),
   editorCommentUnsupported('editor.comment.unsupported', '当前语言不支持注释切换'),
@@ -1496,7 +1404,6 @@ enum I18nKey {
   lspStartFailedOutput('lsp.output.start_failed', 'LSP 启动失败：{error}'),
   menuToggleFunctionPanel('menu.view.toggle_function_panel', '切换“功能”开启状态'),
   menuToggleConsolePanel('menu.view.toggle_console_panel', '切换“控制台”开启状态'),
-  menuToggleExpansionPanel('menu.view.toggle_expansion_panel', '切换“扩展”开启状态'),
   statusWelcomePage('status.welcome_page', '欢迎页'),
   statusNoCodeFile('status.no_code_file', '当前未打开代码文件'),
   statusLocal('status.local', '本地'),
@@ -1521,8 +1428,8 @@ enum I18nKey {
   statusOpenConsole('status.open_console', '打开控制台'),
   statusShowRepl('status.show_repl', '显示 REPL'),
   statusOpenMenu('status.open_menu', '打开菜单'),
-  statusCursorPosition('status.cursor_position', '行 {line}，列 {column}'),
-  statusSelectionCount('status.selection_count', '已选 {count} 个字符'),
+  statusCursorPosition('status.cursor_position', '{line}:{column}'),
+  statusSelectionCount('status.selection_count', '已选 {count}'),
   statusProblems('status.problems', '{errors} 个错误，{warnings} 个警告'),
   statusProblemsErrorsOnly('status.problems_errors_only', '{errors} 个错误'),
   statusProblemsWarningsOnly('status.problems_warnings_only', '{warnings} 个警告'),
@@ -1565,10 +1472,6 @@ enum I18nKey {
   aboutCardEcosystem('about.card.ecosystem', '生态布局'),
   aboutModernTitle('about.modern.title', '现代化的 PyriteIDE'),
   aboutModernExperience('about.modern.experience.title', '界面体验'),
-  aboutModernExperienceDescription(
-    'about.modern.experience.description',
-    '围绕开发工作流设计，减少干扰并保持信息密度。',
-  ),
   aboutModernSimple('about.modern.simple', '简洁，一致'),
   aboutModernResponsive('about.modern.responsive.title', '响应式布局'),
   aboutModernResponsiveSubtitle(
@@ -1581,24 +1484,12 @@ enum I18nKey {
     '标签页、未保存状态和编辑器状态会在会话间恢复。',
   ),
   aboutModernPreview('about.modern.preview.title', '交互预览'),
-  aboutModernPreviewDescription(
-    'about.modern.preview.description',
-    '直接展示 PyriteIDE 常用的 Material Design 3 控件。',
-  ),
   aboutPowerfulTitle('about.powerful.title', '强大的 PyriteIDE'),
   aboutPowerfulCapability('about.powerful.capability.title', '开发能力'),
-  aboutPowerfulCapabilityDescription(
-    'about.powerful.capability.description',
-    '编辑、设备、语言服务和插件能力组合成完整工作流。',
-  ),
   aboutEditorLsp('about.powerful.editor_lsp', '编辑器与 LSP'),
   aboutDeviceSerial('about.powerful.device_serial', '设备与串口'),
   aboutPluginSdk('about.powerful.plugin_sdk', '插件 SDK'),
   aboutCurrentConfigSnapshot('about.powerful.config_snapshot.title', '当前配置快照'),
-  aboutCurrentConfigSnapshotDescription(
-    'about.powerful.config_snapshot.description',
-    '从真实设置 provider 读取，不展示静态宣传语。',
-  ),
   aboutQuickLinks('about.powerful.quick_links.title', '快捷入口'),
   aboutTerminalSettingsLink('about.powerful.terminal_settings', '调试与终端设置'),
   aboutTerminalSettingsLinkSubtitle(
@@ -1612,14 +1503,6 @@ enum I18nKey {
   ),
   aboutCrossPlatformTitle('about.cross_platform.title', '跨平台的 PyriteIDE'),
   aboutPlatformCapability('about.cross_platform.capability.title', '平台能力'),
-  aboutPlatformCapabilityDescription(
-    'about.cross_platform.capability.description',
-    '选择平台查看主要支持能力。',
-  ),
-  aboutCurrentPlatformDescription(
-    'about.cross_platform.current_platform.description',
-    '从 Dart 运行时读取的系统信息。',
-  ),
   aboutOperatingSystem('about.cross_platform.os', '操作系统'),
   aboutSystemVersion('about.cross_platform.system_version', '系统版本'),
   aboutDesignPrinciples('about.cross_platform.design_principles.title', '设计原则'),
@@ -1646,10 +1529,6 @@ enum I18nKey {
   ),
   aboutEcosystemTitle('about.ecosystem.title', '生态布局'),
   aboutEcosystemLayers('about.ecosystem.layers.title', '生态层次'),
-  aboutEcosystemLayersDescription(
-    'about.ecosystem.layers.description',
-    'PyriteIDE 的能力被拆成核心、运行时、插件和数据贡献几个层次。',
-  ),
   aboutCoreLayerSubtitle(
     'about.ecosystem.core.subtitle',
     '编辑器、设置、标签页、输出面板和设备工作流。',
@@ -1667,15 +1546,7 @@ enum I18nKey {
     '插件进程通过 bridge 与 IDE 通信，Data 插件贡献完成即可退出。',
   ),
   aboutEcosystemStatus('about.ecosystem.status.title', '当前生态状态'),
-  aboutEcosystemStatusDescription(
-    'about.ecosystem.status.description',
-    '从插件管理器和数据 registry 读取当前状态。',
-  ),
   aboutModuleExpansion('about.ecosystem.module_expansion.title', '模块展开'),
-  aboutModuleExpansionDescription(
-    'about.ecosystem.module_expansion.description',
-    '查看每个生态模块负责的边界。',
-  ),
   aboutDeveloperEntry('about.ecosystem.developer_entry.title', '开发者入口'),
   aboutPluginSdkDocs('about.ecosystem.plugin_sdk_docs', '插件与 SDK 文档'),
   aboutDocsPathCopied('about.ecosystem.docs_path_copied', '文档路径已复制'),
@@ -1735,8 +1606,6 @@ enum I18nKey {
   settingsFontCustom('settings.font.custom', '自定义'),
   settingsUploadConfirmToolbar('settings.upload_confirm.toolbar', '浮动工具栏'),
   settingsUploadConfirmDialog('settings.upload_confirm.dialog', '确认对话框'),
-  expansionWelcomeTab('expansion.welcome.tab', '欢迎'),
-  expansionWelcomeContent('expansion.welcome.content', '欢迎使用拓展页'),
   statusRunningCode('status.running.code', '代码执行中...'),
   statusInterrupt('status.interrupt', '中断'),
   statusForceReset('status.force_reset', '强制重置'),
@@ -1744,10 +1613,489 @@ enum I18nKey {
   statusForceResetDevice('status.force_reset.device', '强制重置设备连接'),
   sdkDefaultOpenFolderTitle('sdk.dialog.open_folder_title', '选择文件夹'),
   sdkDefaultOpenFileTitle('sdk.dialog.open_file_title', '选择文件'),
-  sdkDefaultOpenFilesTitle('sdk.dialog.open_files_title', '选择多个文件');
+  sdkDefaultOpenFilesTitle('sdk.dialog.open_files_title', '选择多个文件'),
+
+  // Global search / cross-file replace page.
+  searchTitle('search.title', '搜索'),
+  searchNoProject('search.no_project', '先打开一个项目目录再搜索。'),
+  searchScanned('search.scanned', '{scanned}/{total} 个文件'),
+  searchCancel('search.cancel', '取消'),
+  searchFilesMatched('search.files_matched', '{files} 个文件'),
+  searchMatchesInFile('search.matches_in_file', '{count} 处匹配'),
+  searchExpandAll('search.expand_all', '全部展开'),
+  searchCollapseAll('search.collapse_all', '全部折叠'),
+  searchEmpty('search.empty', '没有匹配结果'),
+  searchConfirmReplaceTitle('search.confirm_replace.title', '确认跨文件替换'),
+  searchConfirmReplaceBody(
+    'search.confirm_replace.body',
+    '将在 {files} 个文件中替换 {matches} 处匹配。此操作会直接写回磁盘，且不可撤销。',
+  ),
+  searchReplaceDone('search.replace_done', '已替换 {matches} 处'),
+
+  // ── Git：操作结果、错误与状态标签 ──
+  gitMessageOpenFolderFirst('git.message.open_folder_first', '请先打开一个本地文件夹。'),
+  gitMessageRepositoryInitialized(
+    'git.message.repository_initialized',
+    '已初始化 Git 仓库',
+  ),
+  gitMessageStaged('git.message.staged', '已暂存 {path}'),
+  gitMessageUnstaged('git.message.unstaged', '已取消暂存 {path}'),
+  gitMessageDiscarded('git.message.discarded', '已放弃 {path} 的工作区更改'),
+  gitMessageStagedAll('git.message.staged_all', '已暂存全部更改'),
+  gitMessageUnstagedAll('git.message.unstaged_all', '已取消暂存全部更改'),
+  gitMessageCommitted('git.message.committed', '提交完成'),
+  gitMessageBranchCreated('git.message.branch_created', '已创建分支 {name}'),
+  gitMessageBranchCheckedOut('git.message.branch_checked_out', '已切换到 {name}'),
+  gitMessageBranchStashedAndCheckedOut(
+    'git.message.branch_stashed_checked_out',
+    '已储藏更改并切换到 {name}',
+  ),
+  gitMessageBranchMigratedAndCheckedOut(
+    'git.message.branch_migrated_checked_out',
+    '已切换到 {name}，并尝试迁移更改',
+  ),
+  gitMessageBranchForceCheckedOut(
+    'git.message.branch_force_checked_out',
+    '已强制切换到 {name}',
+  ),
+  gitMessageBranchDiscardedAndCheckedOut(
+    'git.message.branch_discarded_checked_out',
+    '已放弃冲突文件并切换到 {name}',
+  ),
+  gitMessageStashCreated('git.message.stash_created', '已储藏更改'),
+  gitMessageStashApplied('git.message.stash_applied', '已应用 stash #{index}'),
+  gitMessageStashPopped('git.message.stash_popped', '已弹出 stash #{index}'),
+  gitMessageStashDropped('git.message.stash_dropped', '已删除 stash #{index}'),
+  gitMessageRemoteAdded('git.message.remote_added', '已添加远端 {name}'),
+  gitMessageMergeStarted('git.message.merge_started', '已开始合并 {target}'),
+  gitMessageRebaseStarted(
+    'git.message.rebase_started',
+    '已执行 rebase 到 {target}',
+  ),
+  gitMessageRebaseContinued('git.message.rebase_continued', '已继续 rebase'),
+  gitMessageRebaseAborted('git.message.rebase_aborted', '已中止 rebase'),
+  gitMessageCherryPicked('git.message.cherry_picked', '已 cherry-pick {target}'),
+  gitMessageMarkedResolved('git.message.marked_resolved', '已标记 {path} 为已解决'),
+  gitMessageConflictResolvedApplied(
+    'git.message.conflict_resolved_applied',
+    '已应用冲突解决结果',
+  ),
+  gitMessageTagCreated('git.message.tag_created', '已创建标签 {name}'),
+  gitMessageTagCreatedAnnotated(
+    'git.message.tag_created_annotated',
+    '已创建 annotated 标签 {name}',
+  ),
+  gitMessageTagDeleted('git.message.tag_deleted', '已删除标签 {name}'),
+  gitMessageTagDeletedLocalAndRemote(
+    'git.message.tag_deleted_local_remote',
+    '已删除本地与 {remote} 上的标签 {name}',
+  ),
+  gitMessageRemoteBranchDeleted(
+    'git.message.remote_branch_deleted',
+    '已删除远端分支 {branch}',
+  ),
+  gitMessageRemoteBranchDeletedFull(
+    'git.message.remote_branch_deleted_full',
+    '已删除远端分支 {remote}/{branch}',
+  ),
+  gitMessageBranchDeleted('git.message.branch_deleted', '已删除分支 {name}'),
+  gitMessageBranchDeletedWithRemote(
+    'git.message.branch_deleted_with_remote',
+    '已删除本地与 {name} 分支',
+  ),
+  gitMessageBranchRenamed('git.message.branch_renamed', '已重命名为 {name}'),
+  gitMessageRemoteUrlUpdated(
+    'git.message.remote_url_updated',
+    '已更新远端 {name} 的 URL',
+  ),
+  gitMessageRemoteRenamed(
+    'git.message.remote_renamed',
+    '已将远端 {from} 重命名为 {to}',
+  ),
+  gitMessageRemoteDeleted('git.message.remote_deleted', '已删除远端 {name}'),
+  gitMessageBlameEmpty('git.message.blame_empty', '{path} 还没有 blame 信息'),
+  gitMessageBlameLoaded(
+    'git.message.blame_loaded',
+    '已读取 {path} 的 blame（{count} 段）',
+  ),
+  gitMessageWorktreeCreated(
+    'git.message.worktree_created',
+    '已创建 worktree {name}',
+  ),
+  gitMessageWorktreePruned(
+    'git.message.worktree_pruned',
+    '已清理 worktree {name}',
+  ),
+  gitMessageSubmoduleUpdated(
+    'git.message.submodule_updated',
+    '已更新 submodule {name}',
+  ),
+  gitMessageCommitGraphWritten(
+    'git.message.commit_graph_written',
+    '已写入 commit graph 索引',
+  ),
+  gitMessagePathSelected('git.message.path_selected', '已选择 {path}'),
+  gitMessagePathHistoryFound(
+    'git.message.path_history_found',
+    '已选择 {path}，找到 {count} 条文件历史',
+  ),
+  gitMessageTagPushed('git.message.tag_pushed', '已将标签 {tag} 推送到 {remote}'),
+  gitMessageFetched('git.message.fetched', '已从 {remote} 获取更新'),
+  gitMessagePushed('git.message.pushed', '已推送 {branch} 到 {remote}'),
+  gitMessagePulled('git.message.pulled', '已从 {remote} 拉取并合并到 {branch}'),
+  gitErrorNotARepository('git.error.not_a_repository', '当前工作区不是 Git 仓库。'),
+  gitErrorCannotResolveRemoteBranch(
+    'git.error.cannot_resolve_remote_branch',
+    '无法解析远端分支：{name}',
+  ),
+  gitStatusUnbornHead('git.status.unborn_head', '未提交仓库'),
+  gitStatusConflicted('git.status.conflicted', '冲突'),
+  gitStatusStagedNew('git.status.staged_new', '已暂存新增'),
+  gitStatusStagedModified('git.status.staged_modified', '已暂存修改'),
+  gitStatusStagedDeleted('git.status.staged_deleted', '已暂存删除'),
+  gitStatusStagedRenamed('git.status.staged_renamed', '已暂存重命名'),
+  gitStatusStagedTypeChange('git.status.staged_type_change', '已暂存类型变化'),
+  gitStatusUntracked('git.status.untracked', '未跟踪'),
+  gitStatusWorktreeModified('git.status.worktree_modified', '工作区修改'),
+  gitStatusWorktreeDeleted('git.status.worktree_deleted', '工作区删除'),
+  gitStatusWorktreeRenamed('git.status.worktree_renamed', '工作区重命名'),
+  gitStatusWorktreeTypeChange('git.status.worktree_type_change', '工作区类型变化'),
+  gitStatusIgnored('git.status.ignored', '已忽略'),
+  gitStateIdle('git.state.idle', '空闲'),
+  gitStateMerging('git.state.merging', '合并中'),
+  gitStateCherryPicking('git.state.cherry_picking', 'Cherry-pick 中'),
+  gitStateRebasing('git.state.rebasing', 'Rebase 中'),
+  gitStateReverting('git.state.reverting', 'Revert 中'),
+  gitStateBisecting('git.state.bisecting', 'Bisect 中'),
+  gitStateApplyMailbox('git.state.apply_mailbox', 'Apply mailbox 中'),
+  gitErrorCheckoutBlockedLocalChanges(
+    'git.error.checkout_blocked_local_changes',
+    '以下本地更改会被切换分支覆盖，请先处理后重试。',
+  ),
+  gitBlameShow('git.blame.show', '显示 blame'),
+  gitBlameHide('git.blame.hide', '隐藏 blame'),
+  gitBlameLineCount('git.blame.line_count', '{count} 行'),
+  gitBlameNoCommit('git.blame.no_commit', '{path} 还没有 commit 可以归因。'),
+  gitIsolateTimeout('git.isolate.timeout', 'Git 操作超时（{seconds} 秒）：{label}'),
+  gitStatusSummaryFallback('git.status.summary_fallback', 'Git 仓库'),
+  gitDialogRenameBranch('git.dialog.rename_branch', '重命名分支'),
+  gitDialogDeleteRemoteBranch('git.dialog.delete_remote_branch', '删除远端分支'),
+  gitDialogDeleteRemoteBranchBody(
+    'git.dialog.delete_remote_branch.body',
+    '确定在远端删除分支 {branch}？该操作会影响其他协作者。',
+  ),
+  gitDialogDeleteLocalBranch(
+    'git.dialog.delete_local_branch',
+    '删除本地分支 {branch}',
+  ),
+  gitDialogDeleteLocalBranchBody(
+    'git.dialog.delete_local_branch.body',
+    '已合并的分支会直接删除；未合并分支需要勾选强制删除。',
+  ),
+  gitDialogDeleteLocalBranchForce(
+    'git.dialog.delete_local_branch.force',
+    '强制删除（丢弃未合并的提交）',
+  ),
+  gitDialogDeleteAlsoRemote(
+    'git.dialog.delete_also_remote',
+    '同时删除远端分支 {branch}',
+  ),
+  gitDialogDeleteNoRemote('git.dialog.delete_no_remote', '远端没有同名分支'),
+  gitDialogTagMessage(
+    'git.dialog.tag.message',
+    'Tag 消息（留空则创建 lightweight tag）',
+  ),
+  gitDialogDeleteTag('git.dialog.delete_tag', '删除标签'),
+  gitDialogDeleteTagBody('git.dialog.delete_tag.body', '确定删除本地标签 {name}？'),
+  gitDialogDeleteTagRemote('git.dialog.delete_tag.remote', '同时删除远端标签'),
+  gitDialogDeleteTagRemoteBody(
+    'git.dialog.delete_tag.remote_body',
+    '是否同时删除远端（{remotes}）上的同名标签 {name}？取消则只删除本地标签。',
+  ),
+  gitDialogEditRemoteUrl('git.dialog.edit_remote_url', '编辑远端 URL'),
+  gitDialogEditRemoteUrlConfirm(
+    'git.dialog.edit_remote_url.confirm',
+    '修改远端 URL',
+  ),
+  gitDialogEditRemoteUrlBody(
+    'git.dialog.edit_remote_url.body',
+    '把 {remote} 的 URL 从 {from} 改为 {to} ?',
+  ),
+  gitDialogRenameRemote('git.dialog.rename_remote', '重命名远端'),
+  gitDialogRenameRemoteBody(
+    'git.dialog.rename_remote.body',
+    '把远端 {from} 重命名为 {to} ? 所有 remote-tracking 分支与配置会一起更新。',
+  ),
+  gitDialogDeleteRemote('git.dialog.delete_remote', '删除远端'),
+  gitDialogDeleteRemoteBody(
+    'git.dialog.delete_remote.body',
+    '确定删除远端 {name}？这会移除 {name} 的配置与所有 remote-tracking 分支，本地提交不会受影响。',
+  ),
+  gitTooltipRenameBranch('git.tooltip.rename_branch', '重命名分支'),
+  gitTooltipDeleteBranch('git.tooltip.delete_branch', '删除分支'),
+  gitTooltipRemoteSettings('git.tooltip.remote_settings', '远端设置'),
+  gitMenuRenameBranch('git.menu.rename_branch', '重命名分支'),
+  gitMenuDeleteBranch('git.menu.delete_branch', '删除分支'),
+  gitMenuEditUrl('git.menu.edit_url', '编辑 URL'),
+  gitMenuRenameRemote('git.menu.rename_remote', '重命名远端'),
+  gitErrorBranchIsCurrent(
+    'git.error.branch_is_current',
+    '不能删除当前分支 {name}，请先切换到其他分支。',
+  ),
+
+  // ── 设备：同步预览与传输 ──
+  devicesSessionActive('devices.session.active', '已连接 · 当前设备'),
+  devicesSessionInactive('devices.session.inactive', '已连接 · 点击切换'),
+  devicesSessionSwitch('devices.session.switch', '切换到此设备'),
+  devicesSessionInUse('devices.session.in_use', '当前正在使用此设备'),
+  devicesSessionDisconnect('devices.session.disconnect', '断开'),
+  devicesSyncTitle('devices.sync.title', '同步到设备'),
+  devicesSyncToggleAll('devices.sync.toggle_all', '全选/全不选'),
+  devicesSyncEmpty('devices.sync.empty', '没有可同步的文件'),
+  devicesSyncIgnoredGroup(
+    'devices.sync.ignored.group',
+    '已按 .pyrsyncignore 忽略 {count} 项',
+  ),
+  devicesSyncSelected('devices.sync.selected', '{count} 项 · {size}'),
+  devicesSyncCancel('devices.sync.cancel', '取消'),
+  devicesSyncCancelling('devices.sync.cancelling', '取消中…'),
+  devicesSyncApply('devices.sync.apply', '同步'),
+  devicesSyncDirectionBoth('devices.sync.direction.both', '双向同步'),
+  devicesSyncDirectionLocal('devices.sync.direction.local', '仅本地 → 设备'),
+  devicesSyncDirectionBoard('devices.sync.direction.board', '仅设备 → 本地'),
+  devicesSyncSelectAll('devices.sync.select_all', '全选'),
+  devicesSyncDirBoth('devices.sync.dir.both', '双向'),
+  devicesSyncDirUpload('devices.sync.dir.upload', '上传'),
+  devicesSyncDirDownload('devices.sync.dir.download', '下载'),
+  devicesSyncRowAdded('devices.sync.row.added', '新增（上传）'),
+  devicesSyncRowModifiedUpload('devices.sync.row.modified_upload', '修改（上传）'),
+  devicesSyncRowBoardOnly('devices.sync.row.board_only', '仅设备端存在（下载）'),
+  devicesSyncRowModifiedDownload(
+    'devices.sync.row.modified_download',
+    '修改（下载）',
+  ),
+  devicesSyncRowUnchanged('devices.sync.row.unchanged', '相同'),
+  devicesSyncRowConflict('devices.sync.row.conflict', '冲突（需选择）'),
+  devicesSyncKeepLocal('devices.sync.conflict.keep_local', '保留本地'),
+  devicesSyncKeepBoard('devices.sync.conflict.keep_board', '保留设备'),
+  devicesSyncReasonSizeMismatch('devices.sync.reason.size_mismatch', '大小不同'),
+  devicesSyncReasonSameSize('devices.sync.reason.same_size', '大小相同但修改时间不同'),
+  devicesSyncNoteMissingMtime(
+    'devices.sync.note.missing_mtime',
+    '{reason}；其中一方未提供修改时间，按本地较新处理',
+  ),
+  devicesSyncNoteLocalChanged(
+    'devices.sync.note.local_changed',
+    '{reason}；本地在上次同步后修改过',
+  ),
+  devicesSyncNoteBoardChanged(
+    'devices.sync.note.board_changed',
+    '{reason}；板端在上次同步后修改过',
+  ),
+  devicesSyncNoteBothChanged(
+    'devices.sync.note.both_changed',
+    '{reason}；两侧在上次同步后都修改过，需要选择保留哪一侧',
+  ),
+  devicesSyncNoteMtimeClose(
+    'devices.sync.note.mtime_close',
+    '{reason}；修改时间相近，需要选择保留哪一侧',
+  ),
+  devicesSyncNoteLocalNewer(
+    'devices.sync.note.local_newer',
+    '{reason}；本地更新时间较新',
+  ),
+  devicesSyncNoteBoardNewer(
+    'devices.sync.note.board_newer',
+    '{reason}；板端更新时间较新',
+  ),
+  devicesSyncRunning('devices.sync.run.running', '正在同步本地工作区与设备…'),
+  devicesSyncDone('devices.sync.run.done', '同步完成'),
+  devicesSyncCancelled('devices.sync.run.cancelled', '同步已取消'),
+  devicesSyncDoneWithFailures(
+    'devices.sync.run.done_with_failures',
+    '同步完成但有 {count} 个文件失败',
+  ),
+  devicesSyncFailed('devices.sync.run.failed', '同步失败：{error}'),
+  devicesSyncRunSummary(
+    'devices.sync.run.summary',
+    '已上传 {uploaded} 个、下载 {downloaded} 个、跳过 {skipped} 个',
+  ),
+  devicesSyncRunSummaryFailed(
+    'devices.sync.run.summary_failed',
+    '、失败 {count} 个',
+  ),
+  devicesSyncRunSummaryCancelled('devices.sync.run.summary_cancelled', '（已取消）'),
+  devicesSpaceInsufficient(
+    'devices.transfer.space_insufficient',
+    '设备空间不足：需要 {required}（{requiredBytes} 字节），可用 {free}（{freeBytes} 字节）',
+  ),
+  devicesSpaceUnknown('devices.transfer.space_unknown', '设备未上报可用空间，已跳过预检'),
+  devicesSpaceSufficient(
+    'devices.transfer.space_sufficient',
+    '空间充足：需要 {required}，可用 {free}',
+  ),
+
+  // ── 终端：搜索、右键菜单与链接 ──
+  terminalSearchHint('terminal.search.hint', '搜索终端输出（Ctrl/Cmd+F）'),
+  terminalSearchPrevious('terminal.search.previous', '上一个匹配项'),
+  terminalSearchNext('terminal.search.next', '下一个匹配项'),
+  terminalSearchCaseSensitive('terminal.search.case_sensitive', '区分大小写'),
+  terminalSearchClose('terminal.search.close', '关闭搜索'),
+  terminalSearchNoResults('terminal.search.no_results', '无结果'),
+  terminalSearchCounter('terminal.search.counter', '{current}/{total}'),
+  terminalMenuCopy('terminal.menu.copy', '复制'),
+  terminalMenuPaste('terminal.menu.paste', '粘贴'),
+  terminalMenuSelectAll('terminal.menu.select_all', '全选'),
+  terminalMenuClear('terminal.menu.clear', '清屏'),
+  terminalMenuSearch('terminal.menu.search', '搜索'),
+  terminalUrlCopied('terminal.link.url_copied', '已复制链接到剪贴板'),
+  terminalUrlRejected('terminal.link.url_rejected', '不支持打开该链接'),
+  terminalUrlOpenFailed('terminal.link.url_open_failed', '无法打开链接，已复制到剪贴板'),
+  terminalFileNotFound('terminal.link.file_not_found', '找不到链接指向的文件：{path}'),
+
+  // ── 插件、输出源与其余零散文案 ──
+  pluginsDiagnostics('plugins.diagnostics.title', '运行诊断'),
+  pluginsDiagnosticsEmpty('plugins.diagnostics.empty', '暂无会话诊断数据'),
+  pluginsMetricState('plugins.metric.state', '状态'),
+  pluginsMetricActivation('plugins.metric.activation', '激活耗时'),
+  pluginsMetricMessages('plugins.metric.messages', '消息'),
+  pluginsMetricMessagesValue(
+    'plugins.metric.messages_value',
+    '发送 {sent} / 接收 {received}',
+  ),
+  pluginsMetricQueue('plugins.metric.queue', '队列'),
+  pluginsMetricFailures('plugins.metric.failures', '故障计数'),
+  pluginsMonitorRestartRuntime(
+    'plugins.monitor.restart_runtime',
+    '重启 Python runtime',
+  ),
+  pluginsMonitorTabState('plugins.monitor.tab.state', '运行状态'),
+  pluginsMonitorTabOutput('plugins.monitor.tab.output', '输出'),
+  pluginsMonitorTabPermissions('plugins.monitor.tab.permissions', '权限'),
+  pluginsMonitorRestarted('plugins.monitor.restarted', 'Python runtime 已重启'),
+  pluginsMonitorRestartFailed(
+    'plugins.monitor.restart_failed',
+    'Python runtime 重启失败: {error}',
+  ),
+  pluginsMonitorRestartCount('plugins.monitor.restart_count', '{count} 次重启'),
+  pluginsMonitorNoSession('plugins.monitor.no_session', '暂无插件会话诊断数据'),
+  pluginsMonitorNoOutput('plugins.monitor.no_output', '暂无插件输出'),
+  pluginsMonitorHealthFailed(
+    'plugins.monitor.health_failed',
+    '健康检查失败: {error}',
+  ),
+  pluginsMonitorDeliveryPaused(
+    'plugins.monitor.delivery_paused',
+    '事件和 patch 投递已暂停',
+  ),
+  pluginsMonitorMetricLatency(
+    'plugins.monitor.metric.latency',
+    '激活 / RPC p50 / p95',
+  ),
+  pluginsMonitorMetricTraffic('plugins.monitor.metric.traffic', '发送 / 接收'),
+  pluginsMonitorMetricMessages(
+    'plugins.monitor.metric.messages',
+    '{sent} / {received} 消息',
+  ),
+  pluginsMonitorMetricQueueDepth(
+    'plugins.monitor.metric.queue_depth',
+    '队列 当前 / 高水位',
+  ),
+  pluginsMonitorMetricFaults(
+    'plugins.monitor.metric.faults',
+    '超时 / 取消 / 丢弃 / 错误',
+  ),
+  pluginsMonitorHealthUnchecked('plugins.monitor.health_unchecked', '未检查'),
+  pluginsMonitorHealthFailedShort('plugins.monitor.health_failed_short', '失败'),
+  pluginsMonitorResume('plugins.monitor.resume', '恢复事件和 View 投递'),
+  pluginsMonitorRestart('plugins.monitor.restart', '重启插件'),
+  pluginsMonitorAll('plugins.monitor.all', '全部'),
+  pluginsMonitorClear('plugins.monitor.clear', '清空输出'),
+  pluginsViewUnavailable('plugins.view.unavailable', '插件视图不可用'),
+  pluginsStartFailed('plugins.start_failed', '插件启动失败'),
+  pluginsNotFound('plugins.not_found', '插件不存在'),
+  commonRetryInline('common.retry_inline', '重试'),
+  appThemeStandard('app.theme.standard', '标准'),
+  appThemeCompact('app.theme.compact', '紧凑'),
+  appThemeComfortable('app.theme.comfortable', '舒适'),
+  outputSourcePlugin('output.source.plugin', '插件'),
+  outputSourceTerminal('output.source.terminal', '终端'),
+  fileTransferCancelling('file.transfer.cancelling', '正在取消，将在当前文件完成后停止…'),
+  fileTransferCancelled('file.transfer.cancelled', '传输已取消'),
+  fileTransferProgressSuffix(
+    'file.transfer.progress_suffix',
+    '（已完成 {done}，跳过 {skipped}）',
+  ),
+  gitPageLoadFailed('git.page.load_failed', '无法加载 Git 页面：{error}'),
+  lspPickVirtualEnv('lsp.pick_virtual_env', '选择虚拟环境目录'),
+  lspClearEnvironment('lsp.clear_environment', '清空'),
+  fileSyncToDeviceTooltip('file.sync.to_device_tooltip', '同步到设备…'),
+  fileSyncNothingLocal('file.sync.nothing_local', '本地工作区没有可同步的文件'),
+  fileSyncNothingBoth('file.sync.nothing_both', '两侧内容一致，无需同步'),
+  fileSyncFirstFailure(
+    'file.sync.first_failure',
+    '{summary} 首个失败：{path} — {error}',
+  ),
+  fileMessageSyncFailed('file.message.sync_failed', '同步失败：{error}'),
+  fileMessageSyncPlanFailed(
+    'file.message.sync_plan_failed',
+    '生成同步清单失败：{error}',
+  ),
+  gitStatusRepositoryFallback('git.status.repository_fallback', 'Git 仓库'),
+  paletteOpen('palette.open', '命令面板'),
+  paletteSearchHint('palette.search_hint', '搜索命令、文件或设置'),
+  paletteCommandsOnlyHint('palette.commands_only_hint', '搜索命令'),
+  paletteEmpty('palette.empty', '没有匹配的命令或文件'),
+  paletteSectionRecent('palette.section.recent', '最近使用'),
+  paletteSectionCommands('palette.section.commands', '命令'),
+  paletteSectionFiles('palette.section.files', '项目文件'),
+  paletteSectionNavigation('palette.section.navigation', '导航'),
+  paletteSectionSettings('palette.section.settings', '设置'),
+  paletteFileIndexLoading('palette.file_index.loading', '正在索引项目文件…'),
+  paletteFileIndexEmpty('palette.file_index.empty', '当前项目没有可打开的文件'),
+  paletteFileIndexNoProject(
+    'palette.file_index.no_project',
+    '打开项目文件夹后可以快速打开文件',
+  ),
+  paletteFileIndexError('palette.file_index.error', '无法读取项目文件：{error}'),
+  paletteFileIndexRetry('palette.file_index.retry', '重试'),
+  paletteFileIndexTruncated('palette.file_index.truncated', '仅显示前 {limit} 个文件'),
+  paletteExecuteFailed('palette.execute_failed', '命令执行失败：{error}'),
+  paletteDisabled('palette.disabled', '当前不可用'),
+  paletteFileModeHint('palette.file_mode_hint', '快速打开项目文件'),
+  paletteShortcutHint('palette.shortcut_hint', '↑↓ 选择 · Enter 执行 · Esc 关闭'),
+  editorSplitRight('editor.split.right', '向右拆分编辑器'),
+  editorSplitDown('editor.split.down', '向下拆分编辑器'),
+  editorCloseGroup('editor.close_group', '关闭编辑器组'),
+  editorResetLayout('editor.reset_layout', '重置编辑器布局'),
+  editorReopenClosedTab('editor.reopen_closed_tab', '重新打开关闭的标签页'),
+  editorNoClosedTab('editor.no_closed_tab', '没有可重新打开的标签页'),
+  editorReopenMissing('editor.reopen_missing', '文件已被删除，无法重新打开：{path}'),
+  editorReopenFailed('editor.reopen_failed', '无法重新打开 {path}：{error}'),
+  menuReopenClosedTab('menu.reopen_closed_tab', '重新打开关闭的标签页'),
+  menuCommandPalette('menu.command_palette', '命令面板…'),
+  menuQuickOpen('menu.quick_open', '快速打开文件…'),
+  menuSplitRight('menu.split_right', '向右拆分'),
+  menuSplitDown('menu.split_down', '向下拆分'),
+  menuCloseGroup('menu.close_group', '关闭编辑器组'),
+  menuResetEditorLayout('menu.reset_editor_layout', '重置编辑器布局');
 
   const I18nKey(this.key, this.fallback);
 
   final String key;
   final String fallback;
+}
+
+/// Fills `{placeholder}` values into a key's fallback text.
+///
+/// For layers with no `Ref` — a pure-Dart service, an isolate job — that still
+/// need to produce a message. The result is the fallback language, which is the
+/// honest answer there: the layer that finally shows it can translate the key
+/// itself when it has a registry.
+String applyI18nFallback(I18nKey key, [Map<String, String> values = const {}]) {
+  var text = key.fallback;
+  for (final entry in values.entries) {
+    text = text.replaceAll('{${entry.key}}', entry.value);
+  }
+  return text;
 }
