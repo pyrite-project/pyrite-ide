@@ -10,6 +10,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
@@ -52,10 +53,12 @@ import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
 import 'package:pyrite_ide/features/terminal/desktop_terminal_surface.dart';
+import 'package:pyrite_ide/features/terminal/terminal_context_menu.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_handlers.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -526,20 +529,15 @@ Future<void> _showNavigationContextMenu(
   List<ResolvedMenuItem> items,
   Offset globalPosition,
 ) async {
-  final selected = await showMenu<String>(
-    context: context,
-    position: RelativeRect.fromLTRB(
-      globalPosition.dx,
-      globalPosition.dy,
-      globalPosition.dx,
-      globalPosition.dy,
-    ),
-    items: [
+  final selected = await showPyriteMenu<String>(
+    context,
+    globalPosition: globalPosition,
+    entries: [
       for (final item in items)
-        PopupMenuItem<String>(
+        PyriteMenuEntry(
           value: item.commandId,
+          label: item.title,
           enabled: item.enabled,
-          child: Text(item.title),
         ),
     ],
   );
@@ -1077,8 +1075,49 @@ class OutputLogView extends ConsumerWidget {
       theme: buildTerminalTheme(context, ref),
       textStyle: buildTerminalStyle(ref),
       key: ValueKey('output_${surface.toARGB32()}'),
+      onSecondaryTapUp: (details, cell) =>
+          _showOutputLogContextMenu(context, ref, details.globalPosition),
     );
   }
+}
+
+/// The log's right-click menu drops paste and search: the log is output-only,
+/// with nothing to paste into and no search bar to open.
+const Set<TerminalContextAction> _outputLogMenuActions = {
+  TerminalContextAction.copy,
+  TerminalContextAction.selectAll,
+  TerminalContextAction.clear,
+};
+
+bool get _outputLogHasSelection {
+  final selection = ideOutputController.selection;
+  if (selection == null || selection.isCollapsed) return false;
+  return ideOutputTerminal.buffer.getText(selection).isNotEmpty;
+}
+
+Future<void> _showOutputLogContextMenu(
+  BuildContext context,
+  WidgetRef ref,
+  Offset globalPosition,
+) async {
+  final action = await showTerminalContextMenu(
+    context,
+    globalPosition: globalPosition,
+    hasSelection: _outputLogHasSelection,
+    actions: _outputLogMenuActions,
+  );
+  if (!context.mounted || action == null) return;
+  // Clearing goes through the notifier so the entry list behind the log's own
+  // clear button is emptied along with the terminal buffer.
+  if (action == TerminalContextAction.clear) {
+    ref.read(ideOutputLogProvider.notifier).clear();
+    return;
+  }
+  await applyTerminalContextAction(
+    action,
+    terminal: ideOutputTerminal,
+    controller: ideOutputController,
+  );
 }
 
 class DesktopTerminalView extends ConsumerStatefulWidget {
@@ -1322,6 +1361,10 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
   final scheme = Theme.of(context).colorScheme;
   final appearance = ref.watch(terminalAppearance);
   final minimumContrastRatio = ref.watch(terminalMinimumContrast) ? 4.5 : 1.0;
+  // One selection tint for every surface in the app: the terminal is painted
+  // by xterm, so it cannot inherit the theme's `textSelectionTheme` and has to
+  // be handed the same color explicitly.
+  final selection = AppSelection.text(scheme);
   late final TerminalTheme baseTheme;
   if (appearance == TerminalAppearance.custom) {
     final palette = ref.watch(terminalCustomPalette);
@@ -1331,6 +1374,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
       palette: palette.length == 16
           ? palette.map(Color.new).toList()
           : kDefaultTerminalCustomPalette.map(Color.new).toList(),
+      selection: selection,
       minimumContrastRatio: minimumContrastRatio,
     );
   } else if (appearance == TerminalAppearance.light ||
@@ -1344,6 +1388,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
           ? scheme.surface
           : const Color(0xFFFFFFFF),
       palette: _lightTerminalPalette,
+      selection: selection,
       minimumContrastRatio: minimumContrastRatio,
     );
   } else {
@@ -1356,6 +1401,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
           ? scheme.surface
           : defaultTheme.background,
       palette: _paletteFromTheme(defaultTheme),
+      selection: selection,
       minimumContrastRatio: minimumContrastRatio,
     );
   }
@@ -1382,6 +1428,9 @@ TerminalTheme _applyPluginTerminalTheme(
     foreground: pluginTheme.terminalForeground ?? base.foreground,
     background: pluginTheme.terminalBackground ?? base.background,
     palette: pluginTheme.terminalAnsi ?? _paletteFromTheme(base),
+    // A plugin theme may repaint the palette, never the selection tint: the
+    // app-wide selection color has to stay recognisable across surfaces.
+    selection: base.selection,
     minimumContrastRatio: base.minimumContrastRatio,
   );
 }
@@ -1428,11 +1477,12 @@ TerminalTheme _terminalThemeFromPalette({
   required Color foreground,
   required Color background,
   required List<Color> palette,
+  required Color selection,
   required double minimumContrastRatio,
 }) {
   return TerminalTheme(
     cursor: foreground.withValues(alpha: 0.8),
-    selection: foreground.withValues(alpha: 0.3),
+    selection: selection,
     foreground: foreground,
     background: background,
     black: palette[0],

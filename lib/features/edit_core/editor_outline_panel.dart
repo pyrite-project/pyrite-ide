@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:code_forge/code_forge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 
 /// Outline of the symbols in the file the editor is currently showing.
 ///
@@ -413,47 +414,24 @@ class _EditorOutlinePanelState extends ConsumerState<EditorOutlinePanel> {
     String path,
     CodeForgeController? controller,
   ) async {
-    final overlay = Overlay.of(context).context.findRenderObject();
-    if (overlay is! RenderBox) return;
-    final action = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        Rect.fromPoints(details.globalPosition, details.globalPosition),
-        Offset.zero & overlay.size,
-      ),
-      items: [
-        PopupMenuItem(
+    final action = await showPyriteMenu<String>(
+      context,
+      globalPosition: details.globalPosition,
+      entries: [
+        PyriteMenuEntry(
           value: 'reveal',
-          child: Row(
-            children: [
-              const Icon(Icons.open_in_new, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  translateForWidgetWithReplacements(
-                    ref,
-                    I18nKey.editorOutlineReveal,
-                    {'name': node.name},
-                  ),
-                ),
-              ),
-            ],
+          icon: Icons.open_in_new,
+          label: translateForWidgetWithReplacements(
+            ref,
+            I18nKey.editorOutlineReveal,
+            {'name': node.name},
           ),
         ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
+        PyriteMenuEntry(
           value: 'refresh',
-          child: Row(
-            children: [
-              const Icon(Icons.refresh, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  translateForWidget(ref, I18nKey.editorOutlineRefresh),
-                ),
-              ),
-            ],
-          ),
+          icon: Icons.refresh,
+          label: translateForWidget(ref, I18nKey.editorOutlineRefresh),
+          dividerBefore: true,
         ),
       ],
     );

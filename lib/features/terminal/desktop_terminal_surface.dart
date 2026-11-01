@@ -246,56 +246,15 @@ class _DesktopTerminalSurfaceState extends State<DesktopTerminalSurface> {
       hasSelection: _hasSelection,
     );
     if (!mounted || action == null) return;
-    switch (action) {
-      case TerminalContextAction.copy:
-        await _copySelection();
-      case TerminalContextAction.paste:
-        await _paste();
-      case TerminalContextAction.selectAll:
-        _selectAll();
-      case TerminalContextAction.clear:
-        _clear();
-      case TerminalContextAction.search:
-        _openSearch();
+    if (action == TerminalContextAction.search) {
+      _openSearch();
+      return;
     }
-  }
-
-  Future<void> _copySelection() async {
-    final selection = widget.controller.selection;
-    if (selection == null) return;
-    final text = widget.terminal.buffer.getText(selection);
-    if (text.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: text));
-  }
-
-  Future<void> _paste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text;
-    if (text == null || text.isEmpty) return;
-    // `paste` honours bracketed paste mode, which is how a shell protects a
-    // pasted multi-line block from executing immediately.
-    widget.terminal.paste(text);
-    widget.controller.clearSelection();
-  }
-
-  void _selectAll() {
-    final terminal = widget.terminal;
-    final buffer = terminal.buffer;
-    widget.controller.setSelection(
-      buffer.createAnchor(0, 0),
-      buffer.createAnchor(terminal.viewWidth, buffer.height - 1),
-      mode: SelectionMode.line,
+    await applyTerminalContextAction(
+      action,
+      terminal: widget.terminal,
+      controller: widget.controller,
     );
-  }
-
-  /// Clears the screen and scrollback.
-  ///
-  /// The program is not signalled: an interactive shell redraws its prompt the
-  /// next time it writes, while clearing the buffer directly also works for a
-  /// REPL that is not reading stdin at this instant.
-  void _clear() {
-    widget.terminal.clear();
-    widget.controller.clearSelection();
   }
 
   // ---- links ---------------------------------------------------------------

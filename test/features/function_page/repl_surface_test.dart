@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -515,6 +516,123 @@ void main() {
 
     expect(repl.onOutput, same(previousOutput));
     expect(replClearSink, same(previousClear));
+  });
+
+  testWidgets('right-click offers the terminal menu on the transcript', (
+    tester,
+  ) async {
+    await _pumpSurface(tester);
+    writeReplOutput('boot output\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(
+      find.textContaining('boot output'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('粘贴'), findsOneWidget);
+    expect(find.text('全选'), findsOneWidget);
+    expect(find.text('清屏'), findsOneWidget);
+    expect(find.text('搜索'), findsNothing);
+
+    await tester.tap(find.text('清屏'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('boot output'), findsNothing);
+  });
+
+  testWidgets('select all and copy from the menu fill the clipboard', (
+    tester,
+  ) async {
+    String? clipboard;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await _pumpSurface(tester);
+    writeReplOutput('boot output\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(
+      find.textContaining('boot output'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全选'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.textContaining('boot output'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('复制'));
+    await tester.pumpAndSettle();
+
+    // The device-echoed prompt is filtered out of the transcript; the gutter
+    // renders it, so the selectable text ends after 'boot output'.
+    expect(clipboard, 'boot output\n');
+  });
+
+  testWidgets('paste from the menu inserts into the local input', (
+    tester,
+  ) async {
+    String? clipboard = 'print(42)';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('ready\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(
+      find.textContaining('ready'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('粘贴'));
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(replInputControllerProvider).text.text,
+      'print(42)',
+    );
   });
 }
 

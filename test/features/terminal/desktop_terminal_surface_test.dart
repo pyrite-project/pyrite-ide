@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -152,5 +153,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.highlights, isEmpty);
+  });
+
+  testWidgets('right-click opens the menu and select all selects the buffer', (
+    tester,
+  ) async {
+    terminal.write('log line\r\n');
+    await pumpSurface(tester);
+
+    await tester.tap(find.byType(TerminalView), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('全选'), findsOneWidget);
+
+    await tester.tap(find.text('全选'));
+    await tester.pumpAndSettle();
+
+    final selection = controller.selection;
+    expect(selection, isNotNull);
+    expect(terminal.buffer.getText(selection!), contains('log line'));
   });
 }

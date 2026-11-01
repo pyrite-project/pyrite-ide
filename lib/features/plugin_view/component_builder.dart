@@ -17,6 +17,7 @@ import 'package:pyrite_ide/features/plugin_view/plugin_split_view.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_video_player.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 
 /// Signature for dispatching a component event back to the plugin.
 ///
@@ -1427,9 +1428,6 @@ class ComponentBuilder {
           return true;
         }
         if (method == 'show' && mountedContext != null) {
-          final overlay =
-              Overlay.of(mountedContext).context.findRenderObject()
-                  as RenderBox;
           final box = mountedContext.findRenderObject() as RenderBox?;
           final origin = arguments['x'] is num && arguments['y'] is num
               ? Offset(
@@ -1437,23 +1435,38 @@ class ComponentBuilder {
                   (arguments['y'] as num).toDouble(),
                 )
               : box?.localToGlobal(Offset.zero) ?? Offset.zero;
+          // Dividers group the rows that follow them, so they are folded into
+          // the next entry instead of being rendered as their own row.
+          final entries = <PyriteMenuEntry<String>>[];
+          var dividerPending = false;
+          for (final item in _entryList(props['items'])) {
+            if (item['type'] == 'divider') {
+              dividerPending = entries.isNotEmpty;
+              continue;
+            }
+            final itemId = item['id']?.toString();
+            entries.add(
+              PyriteMenuEntry(
+                value: itemId ?? '',
+                label: item['label']?.toString() ?? '',
+                // A row without an id has nothing to report, so it stays
+                // visible but unpickable, exactly like a disabled row.
+                enabled: item['enabled'] != false && itemId != null,
+                dividerBefore: dividerPending,
+              ),
+            );
+            dividerPending = false;
+          }
+          if (entries.isEmpty) {
+            popup.isOpen = false;
+            return true;
+          }
           popup.isOpen = true;
           unawaited(
-            showMenu<String>(
-              context: mountedContext,
-              position: RelativeRect.fromRect(
-                Rect.fromLTWH(origin.dx, origin.dy, 1, 1),
-                Offset.zero & overlay.size,
-              ),
-              items: [
-                for (final item in _entryList(props['items']))
-                  if (item['type'] != 'divider')
-                    PopupMenuItem<String>(
-                      value: item['id']?.toString(),
-                      enabled: item['enabled'] != false,
-                      child: Text(item['label']?.toString() ?? ''),
-                    ),
-              ],
+            showPyriteMenu<String>(
+              mountedContext,
+              globalPosition: origin,
+              entries: entries,
             ).then((selected) {
               popup.isOpen = false;
               if (selected != null) {

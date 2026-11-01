@@ -46,5 +46,21 @@ void main() {
 
       expect(clear.shortcut, isEmpty);
     });
+
+    test('an action set subsets the menu in canonical order', () {
+      final items = terminalContextMenuItems(
+        hasSelection: false,
+        actions: {TerminalContextAction.clear, TerminalContextAction.copy},
+      );
+
+      expect(items.map((item) => item.action), [
+        TerminalContextAction.copy,
+        TerminalContextAction.clear,
+      ]);
+    });
+
+    test('an empty action set yields an empty menu', () {
+      expect(terminalContextMenuItems(hasSelection: false, actions: {}), isEmpty);
+    });
   });
 }

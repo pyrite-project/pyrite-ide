@@ -3,16 +3,19 @@
 ///
 /// The model is separate from the popup so the enable rules — copy only with a
 /// selection, everything else always usable — can be asserted without pumping
-/// a menu. The popup itself intentionally mirrors the editor's
-/// `_EditorContextMenu` row (icon, label, shortcut hint) rather than inventing a
-/// second menu style.
+/// a menu. The popup itself is built from the app-wide menu widgets
+/// ([PyriteMenuRow], [PyriteMenuSurface]) rather than inventing a second menu
+/// style: icon, label and shortcut hint in the same rows the editor uses.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
+import 'package:xterm/xterm.dart';
 
 enum TerminalContextAction { copy, paste, selectAll, clear, search }
 
@@ -30,14 +33,19 @@ typedef TerminalContextItem = ({
 /// Copy is disabled rather than hidden: a terminal menu whose row count changes
 /// under the cursor is a menu that moves its own items, and "copy" being greyed
 /// out is the standard way to say "nothing selected yet".
+///
+/// [actions] subsets the menu for surfaces where an action would do nothing —
+/// the output log has nothing to paste into and no search bar, the REPL
+/// transcript has no search bar — while keeping the canonical order above.
 List<TerminalContextItem> terminalContextMenuItems({
   required bool hasSelection,
   bool isMacOS = false,
   I18nTranslate? translate,
+  Set<TerminalContextAction>? actions,
 }) {
   final tr = translate ?? fallbackTranslate;
   final modifier = isMacOS ? 'Cmd' : 'Ctrl';
-  return [
+  final items = [
     (
       action: TerminalContextAction.copy,
       label: tr(I18nKey.terminalMenuCopy),
@@ -74,88 +82,95 @@ List<TerminalContextItem> terminalContextMenuItems({
       enabled: true,
     ),
   ];
+  if (actions == null) return items;
+  return [
+    for (final item in items)
+      if (actions.contains(item.action)) item,
+  ];
 }
 
 /// Shows the terminal menu at [globalPosition] and reports the pick.
 ///
-/// `showMenu` is used instead of the tree's `PyriteContextMenuWidget` because
-/// the terminal already owns its pointer gestures: xterm sends right clicks to
-/// the running program when that program asked for mouse reporting, and a
-/// second gesture recognizer wrapping the view would compete with xterm's and
-/// break that path. Driving the menu from `TerminalView.onSecondaryTapUp` keeps
-/// exactly one owner of the pointer stream.
+/// The menu is driven from `TerminalView.onSecondaryTapUp` rather than from the
+/// tree's `PyriteContextMenuWidget` because the terminal already owns its
+/// pointer gestures: xterm sends right clicks to the running program when that
+/// program asked for mouse reporting, and a second gesture recognizer wrapping
+/// the view would compete with xterm's and break that path. Driving the menu
+/// from the pointer callback keeps exactly one owner of the pointer stream.
+///
+/// It is rendered by [showPyriteMenu] rather than `showMenu` so it opens
+/// instantly and matches the editor's menu surface — the same rounded panel,
+/// the same row metrics. See `pyrite_menu.dart`.
 Future<TerminalContextAction?> showTerminalContextMenu(
   BuildContext context, {
   required Offset globalPosition,
   required bool hasSelection,
+  Set<TerminalContextAction>? actions,
 }) {
-  // The overlay's coordinate space is the app window; RelativeRect needs the
-  // menu anchored at the pointer, with the same point as both ends of the
-  // rectangle so it grows down-right from the click.
-  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-  final position = RelativeRect.fromRect(
-    Rect.fromPoints(globalPosition, globalPosition),
-    Offset.zero & overlay.size,
-  );
-
   final items = terminalContextMenuItems(
     hasSelection: hasSelection,
     isMacOS: usesCommandShortcut,
     translate: (key, [replacements = const {}]) =>
         translateInContextWithReplacements(context, key, replacements),
+    actions: actions,
   );
 
-  return showMenu<TerminalContextAction>(
-    context: context,
-    position: position,
-    items: [
+  return showPyriteMenu<TerminalContextAction>(
+    context,
+    globalPosition: globalPosition,
+    entries: [
       for (final item in items)
-        PopupMenuItem<TerminalContextAction>(
+        PyriteMenuEntry(
           value: item.action,
+          label: item.label,
+          icon: item.icon,
+          shortcut: item.shortcut,
           enabled: item.enabled,
-          height: 36,
-          child: _TerminalContextMenuRow(item: item),
         ),
     ],
   );
 }
 
-class _TerminalContextMenuRow extends StatelessWidget {
-  const _TerminalContextMenuRow({required this.item});
-
-  final TerminalContextItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final foreground = item.enabled
-        ? scheme.onSurface
-        : scheme.onSurface.withAlpha(97);
-    return Row(
-      children: [
-        Icon(item.icon, size: 16, color: foreground),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            item.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: foreground),
-          ),
-        ),
-        if (item.shortcut.isNotEmpty) ...[
-          const SizedBox(width: 16),
-          Text(
-            item.shortcut,
-            style: TextStyle(
-              fontSize: 11,
-              color: item.enabled
-                  ? scheme.onSurfaceVariant
-                  : scheme.onSurface.withAlpha(97),
-            ),
-          ),
-        ],
-      ],
-    );
+/// Applies a picked menu action to an xterm [terminal] and its [controller].
+///
+/// Search is deliberately absent: only a surface that owns a search bar can
+/// open one, so surfaces that put `search` in their menu handle that pick
+/// themselves before deferring the rest here.
+Future<void> applyTerminalContextAction(
+  TerminalContextAction action, {
+  required Terminal terminal,
+  required TerminalController controller,
+}) async {
+  switch (action) {
+    case TerminalContextAction.copy:
+      final selection = controller.selection;
+      if (selection == null) return;
+      final text = terminal.buffer.getText(selection);
+      if (text.isEmpty) return;
+      await Clipboard.setData(ClipboardData(text: text));
+    case TerminalContextAction.paste:
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text;
+      if (text == null || text.isEmpty) return;
+      // `paste` honours bracketed paste mode, which is how a shell protects a
+      // pasted multi-line block from executing immediately.
+      terminal.paste(text);
+      controller.clearSelection();
+    case TerminalContextAction.selectAll:
+      final buffer = terminal.buffer;
+      controller.setSelection(
+        buffer.createAnchor(0, 0),
+        buffer.createAnchor(terminal.viewWidth, buffer.height - 1),
+        mode: SelectionMode.line,
+      );
+    case TerminalContextAction.clear:
+      // Clears the screen and scrollback. The program is not signalled: an
+      // interactive shell redraws its prompt the next time it writes, while
+      // clearing the buffer directly also works for a REPL that is not reading
+      // stdin at this instant.
+      terminal.clear();
+      controller.clearSelection();
+    case TerminalContextAction.search:
+      break;
   }
 }

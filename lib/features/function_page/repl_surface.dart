@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path/path.dart' as path;
@@ -25,7 +26,9 @@ import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/features/terminal/terminal_context_menu.dart';
 
 /// Input history is bucketed per device: the label of the attached board, or
 /// empty when nothing is attached.
@@ -198,7 +201,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
             color: widget.backgroundColor,
             child: Listener(
               behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => _handleSurfacePointerDown(),
+              onPointerDown: _handleSurfacePointerDown,
               child: LayoutBuilder(
                 builder: (context, _) {
                   final inputVisible = _input.hasVisibleInput;
@@ -240,6 +243,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: _handleTranscriptTap,
+        onSecondaryTapUp: _showTranscriptContextMenu,
         child: Text.rich(
           _buildTranscriptSpan(
             outputStyle,
@@ -465,7 +469,11 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     return TextSpan(children: spans, style: outputStyle);
   }
 
-  void _handleSurfacePointerDown() {
+  /// Clears the output selection and refocuses the input, but only for the
+  /// primary button: the transcript's right-click menu needs the selection to
+  /// survive the press that opens it.
+  void _handleSurfacePointerDown(PointerDownEvent event) {
+    if (event.buttons != kPrimaryButton) return;
     _clearOutputSelection();
     if (_input.hasVisibleInput) {
       _requestInputFocus(force: true, preserveScroll: true);
@@ -1094,11 +1102,67 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
         screenHeight - globalBottomRight.dy < 200 && globalTopLeft.dy > 200;
   }
 
-  bool _copyOutputSelection() {
-    final text = _selectedOutput;
-    if (text == null || text.isEmpty) return false;
-    unawaited(Clipboard.setData(ClipboardData(text: text)));
+  bool _copyOutputSelection([String? text]) {
+    final value = text ?? _selectedOutput;
+    if (value == null || value.isEmpty) return false;
+    unawaited(Clipboard.setData(ClipboardData(text: value)));
     return true;
+  }
+
+  /// The REPL's right-click menu drops search: the transcript has no search
+  /// bar to open.
+  static const Set<TerminalContextAction> _replMenuActions = {
+    TerminalContextAction.copy,
+    TerminalContextAction.paste,
+    TerminalContextAction.selectAll,
+    TerminalContextAction.clear,
+  };
+
+  Future<void> _showTranscriptContextMenu(TapUpDetails details) async {
+    // Captured before the menu opens: the menu must act on what was selected
+    // when the user right-clicked, not on whatever the selection has become by
+    // the time a row is picked.
+    //
+    // The menu itself does not take focus (see `showPyriteMenu`), which is what
+    // keeps the highlight visible behind it — a route that grabbed focus would
+    // make the SelectionArea drop its selection on the spot.
+    final selected = _selectedOutput;
+    final action = await showTerminalContextMenu(
+      context,
+      globalPosition: details.globalPosition,
+      hasSelection: selected != null && selected.isNotEmpty,
+      actions: _replMenuActions,
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case TerminalContextAction.copy:
+        _copyOutputSelection(selected);
+      case TerminalContextAction.paste:
+        await _pasteIntoReplInput();
+      case TerminalContextAction.selectAll:
+        // No cause: the toolbar cause would pop the built-in selection toolbar
+        // on top of the menu the pick came from.
+        _selectionKey.currentState?.selectableRegion.selectAll();
+      case TerminalContextAction.clear:
+        _clearTranscript();
+      case TerminalContextAction.search:
+        break;
+    }
+  }
+
+  /// Pastes the clipboard where typing would go: the local input editor while
+  /// it is editable, the device otherwise — the same split Ctrl+V follows.
+  Future<void> _pasteIntoReplInput() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    if (_input.isInlineEditable) {
+      _input.insert(text);
+      _requestInputFocus(force: true, preserveScroll: true);
+      _scheduleScrollToBottom(force: true);
+      return;
+    }
+    await _pasteToDevice();
   }
 
   void _clearOutputSelection() {
@@ -1625,9 +1689,7 @@ class _InlineReplEditor extends StatelessWidget {
         maxLines: null,
         autofocus: false,
         onChanged: onChanged,
-        selectionColor: Theme.of(
-          context,
-        ).colorScheme.primary.withValues(alpha: .25),
+        selectionColor: AppSelection.text(Theme.of(context).colorScheme),
       ),
     );
   }

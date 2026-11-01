@@ -42,6 +42,7 @@ import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -1906,8 +1907,6 @@ class _EditorContextMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isTouch = details.isMobile;
     final screenSize = MediaQuery.sizeOf(context);
     final modifier = usesCommandShortcut ? 'Cmd' : 'Ctrl';
@@ -1919,10 +1918,11 @@ class _EditorContextMenu extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (details.hasSelection && !details.readOnly)
-          _menuItem(
+          PyriteMenuRow(
             icon: Icons.cut,
             label: translateForWidget(ref, I18nKey.menuCut),
             shortcut: '$modifier+X',
+            isTouch: isTouch,
             onTap: () {
               details.controller.cut();
               details.close();
@@ -1930,10 +1930,11 @@ class _EditorContextMenu extends ConsumerWidget {
           ),
 
         if (details.hasSelection)
-          _menuItem(
+          PyriteMenuRow(
             icon: Icons.copy,
             label: translateForWidget(ref, I18nKey.menuCopy),
             shortcut: '$modifier+C',
+            isTouch: isTouch,
             onTap: () {
               details.controller.copy();
               details.close();
@@ -1941,33 +1942,36 @@ class _EditorContextMenu extends ConsumerWidget {
           ),
 
         if (!details.readOnly)
-          _menuItem(
+          PyriteMenuRow(
             icon: Icons.paste,
             label: translateForWidget(ref, I18nKey.menuPaste),
             shortcut: '$modifier+V',
+            isTouch: isTouch,
             onTap: () async {
               await details.controller.paste();
               details.close();
             },
           ),
 
-        _menuItem(
+        PyriteMenuRow(
           icon: Icons.select_all,
           label: translateForWidget(ref, I18nKey.menuSelectAll),
           shortcut: '$modifier+A',
+          isTouch: isTouch,
           onTap: () {
             details.controller.selectAll();
             details.close();
           },
         ),
 
-        if (details.items.isNotEmpty) const Divider(height: 1),
+        if (details.items.isNotEmpty) const PyriteMenuDivider(),
 
         for (final item in details.items)
-          _menuItem(
+          PyriteMenuRow(
             icon: item.icon,
             label: item.label,
             shortcut: item.description,
+            isTouch: isTouch,
             onTap: () {
               details.onItemPressed(item);
             },
@@ -1975,58 +1979,15 @@ class _EditorContextMenu extends ConsumerWidget {
       ],
     );
 
-    return Material(
-      elevation: 8,
-      color: colorScheme.surfaceContainer,
-      borderRadius: context.outerCorners,
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minWidth: isTouch ? min(200.0, maxWidth) : 200,
-          maxWidth: maxWidth,
-          maxHeight: isTouch
-              ? min(420.0, max(180.0, screenSize.height * 0.6))
-              : double.infinity,
-        ),
-        child: isTouch
-            ? SingleChildScrollView(child: menu)
-            : IntrinsicWidth(child: menu),
-      ),
-    );
-  }
-
-  Widget _menuItem({
-    required String label,
-    required String shortcut,
-    required VoidCallback onTap,
-    IconData? icon,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: details.isMobile ? 16 : 12,
-          vertical: details.isMobile ? 12 : 9,
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 20,
-              child: icon == null
-                  ? null
-                  : Icon(icon, size: details.isMobile ? 20 : 16),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            if (!details.isMobile && shortcut.isNotEmpty) ...[
-              const SizedBox(width: 24),
-              Text(shortcut, style: const TextStyle(fontSize: 11)),
-            ],
-          ],
-        ),
-      ),
+    return PyriteMenuSurface(
+      minWidth: isTouch ? min(200.0, maxWidth) : 200,
+      maxWidth: maxWidth,
+      maxHeight: isTouch
+          ? min(420.0, max(180.0, screenSize.height * 0.6))
+          : null,
+      child: isTouch
+          ? SingleChildScrollView(child: menu)
+          : IntrinsicWidth(child: menu),
     );
   }
 }
