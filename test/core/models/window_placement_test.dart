@@ -88,7 +88,7 @@ void main() {
 
     test('rejects implausibly small sizes', () {
       expect(
-        WindowPlacement.fromJson({'x': 0, 'y': 0, 'width': 399, 'height': 800}),
+        WindowPlacement.fromJson({'x': 0, 'y': 0, 'width': 319, 'height': 800}),
         isNull,
       );
       expect(
@@ -101,7 +101,7 @@ void main() {
         isNull,
       );
       expect(
-        WindowPlacement.fromJson({'x': 0, 'y': 0, 'width': 400, 'height': 300}),
+        WindowPlacement.fromJson({'x': 0, 'y': 0, 'width': 320, 'height': 300}),
         isNotNull,
       );
     });
@@ -178,12 +178,12 @@ void main() {
 
     test('grows windows below the minimum size', () {
       const placement = WindowPlacement(
-        bounds: Rect.fromLTWH(100, 100, 500, 400),
+        bounds: Rect.fromLTWH(100, 100, 200, 300),
       );
 
       expect(
         placement.clampToVisibleAreas([primary]).bounds,
-        const Rect.fromLTWH(100, 100, 900, 600),
+        const Rect.fromLTWH(100, 100, 320, 480),
       );
     });
 
