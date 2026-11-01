@@ -29,9 +29,20 @@ const String _monoFont = 'JetBrainsMono';
 /// Width of the label column in a detail row, so values line up vertically.
 const double _labelWidth = 132;
 
-/// Width of the value control in a setting row. Fixed so every row's control
-/// edge lines up, the way a settings editor's input column does.
-const double _controlWidth = 160;
+/// Row width at which a setting row switches to its compact form.
+///
+/// Measured on the row rather than on the window: the detail page caps its
+/// content at 880, so a window breakpoint would not track the space the
+/// control actually gets. 600 is the same split the app uses for its
+/// mobile/desktop layout modes.
+const double _compactRowWidth = 600;
+
+/// Share of a wide row's width given to the value control, clamped so a
+/// control is never too narrow to read a URL in, nor so wide that the title
+/// column starts wrapping.
+const double _controlShare = 0.42;
+const double _controlMinWidth = 200;
+const double _controlMaxWidth = 360;
 
 /// Height of the settings filter bar's search field.
 ///
@@ -648,6 +659,10 @@ class _MetricsSection extends ConsumerWidget {
 /// description under the title and the setting id under that. Every row is
 /// editable according to its declared type, and a row whose value differs from
 /// its default is marked and can be reset.
+///
+/// Rows narrow themselves down: below [_compactRowWidth] the control moves
+/// under the title and scalar values are edited through a dialog instead of an
+/// inline field, so the list stays usable on a phone-sized window.
 class _ConfigurationSection extends ConsumerStatefulWidget {
   const _ConfigurationSection({required this.pluginId});
 
@@ -884,38 +899,55 @@ class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
   Widget _filterBar(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return Row(
-      children: [
-        Expanded(child: _searchField(context)),
-        const SizedBox(width: 10),
-        SegmentedButton<bool>(
-          showSelectedIcon: false,
-          style: SegmentedButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            textStyle: theme.textTheme.labelSmall,
-            padding: const EdgeInsetsDirectional.symmetric(horizontal: 10),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            side: BorderSide(color: scheme.outlineVariant),
+    final filter = SegmentedButton<bool>(
+      showSelectedIcon: false,
+      style: SegmentedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        textStyle: theme.textTheme.labelSmall,
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 10),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      segments: [
+        ButtonSegment<bool>(
+          value: false,
+          label: UseText(I18nKey.pluginsDetailFilterAll),
+        ),
+        ButtonSegment<bool>(
+          value: true,
+          label: Text(
+            '${translateForWidget(ref, I18nKey.pluginsDetailFilterModified)}'
+            ' · $_modifiedCount',
           ),
-          segments: [
-            ButtonSegment<bool>(
-              value: false,
-              label: UseText(I18nKey.pluginsDetailFilterAll),
-            ),
-            ButtonSegment<bool>(
-              value: true,
-              label: Text(
-                '${translateForWidget(ref, I18nKey.pluginsDetailFilterModified)}'
-                ' · $_modifiedCount',
-              ),
-            ),
-          ],
-          selected: {_onlyModified},
-          onSelectionChanged: (next) =>
-              setState(() => _onlyModified = next.first),
         ),
       ],
+      selected: {_onlyModified},
+      onSelectionChanged: (next) => setState(() => _onlyModified = next.first),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Side by side while there is room for both; stacked on a narrow
+        // screen, where sharing one line would squeeze the search box down to
+        // a few characters.
+        if (constraints.maxWidth >= _compactRowWidth) {
+          return Row(
+            children: [
+              Expanded(child: _searchField(context)),
+              const SizedBox(width: 10),
+              filter,
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _searchField(context),
+            const SizedBox(height: 8),
+            Align(alignment: AlignmentDirectional.centerEnd, child: filter),
+          ],
+        );
+      },
     );
   }
 
@@ -978,7 +1010,15 @@ const String _passwordMask = '••••••••';
 /// Visual hierarchy follows the settings editor: the title is the strongest
 /// element, the description is secondary, and the setting id is tertiary and
 /// dim. A row whose value differs from the declaration's default shows a
-/// leading reset affordance so it can be restored in one click.
+/// reset affordance so it can be restored in one click.
+///
+/// The control follows the width the row actually has:
+///
+/// * A wide row keeps the label on the left and edits the value in place, in
+///   an MD3 text field on the right. Nothing is hidden behind a dialog.
+/// * A narrow row stacks the control under the label and reduces it to the
+///   value plus a small edit button, because a field wide enough to type into
+///   would leave no room for the title. The button opens the editor dialog.
 class _SettingRow extends StatelessWidget {
   const _SettingRow({
     required this.item,
@@ -999,11 +1039,18 @@ class _SettingRow extends StatelessWidget {
   Object? get _value => item['value'];
   Object? get _default => item['default'];
   bool get _isPassword => _type == 'password';
+  bool get _isStructured => _type == 'array' || _type == 'object';
 
   List<Object?> get _enumValues =>
       (item['enum'] as List<dynamic>?)?.cast<Object?>() ?? const [];
 
   bool get _modified => jsonEncode(_value) != jsonEncode(_default);
+
+  /// Whether the setting currently holds nothing at all. A password counts as
+  /// unset only when its string is empty, since the row never inspects its
+  /// contents beyond that.
+  bool get _isEmpty =>
+      _value == null || (_isPassword && (_value?.toString() ?? '').isEmpty);
 
   /// Text the row shows for its current value. Passwords never render their
   /// underlying string.
@@ -1015,79 +1062,269 @@ class _SettingRow extends StatelessWidget {
     return _display(_value);
   }
 
+  /// Text an editable control starts from. Unlike [_valueText] this is the
+  /// real value, including a password's, so it can be edited in place.
+  String get _editableText {
+    if (_value == null) return '';
+    return _value is String ? _value as String : jsonEncode(_value);
+  }
+
+  /// Label of the affordance that opens the editor dialog on a narrow row.
+  I18nKey get _editLabel {
+    if (_isPassword) return I18nKey.pluginsDetailEditPassword;
+    if (_isStructured) return I18nKey.pluginsDetailEditJson;
+    return I18nKey.pluginsDetailEditValue;
+  }
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The row decides for itself rather than taking the window's width:
+        // the section never has to guess how much space a control will end up
+        // with once the page's own gutters are applied.
+        final wide = constraints.maxWidth >= _compactRowWidth;
+        return Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(13, 10, 12, 10),
+          child: wide
+              ? _wideLayout(
+                  context,
+                  (constraints.maxWidth * _controlShare)
+                      .clamp(_controlMinWidth, _controlMaxWidth)
+                      .toDouble(),
+                )
+              : _compactLayout(context),
+        );
+      },
+    );
+  }
+
+  /// Label block: title, description, setting id.
+  Widget _label(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final modified = _modified;
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(13, 10, 12, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (_description.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    _description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 5),
-                Text(
-                  _id,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontFamily: _monoFont,
-                    color: scheme.outline,
-                  ),
-                ),
-              ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (_description.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(
+            _description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(width: 12),
-          // Reset sits immediately left of the control it restores; absent
-          // on untouched rows so only the gap distinguishes them.
-          if (modified && onReset != null) ...[
-            IconButton(
-              icon: const Icon(Icons.restart_alt, size: 18),
-              tooltip: translateInContext(
-                context,
-                I18nKey.pluginsDetailResetToDefault,
-              ),
-              onPressed: onReset,
-              color: scheme.primary,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              padding: EdgeInsets.zero,
-              visualDensity: VisualDensity.compact,
-              style: IconButton.styleFrom(
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
-          _control(context),
         ],
+        const SizedBox(height: 5),
+        Text(
+          _id,
+          style: theme.textTheme.labelSmall?.copyWith(
+            fontFamily: _monoFont,
+            color: scheme.outline,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Label on the left, control in a fixed column on the right.
+  Widget _wideLayout(BuildContext context, double controlWidth) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: _label(context)),
+        const SizedBox(width: 12),
+        // The reset slot keeps its width whether or not the button is shown.
+        // A row that becomes modified therefore never shifts its control, and
+        // the field beside it keeps its element -- and the caret -- while the
+        // store round-trip rebuilds the row.
+        SizedBox(
+          width: 34,
+          child: _modified && onReset != null
+              ? _resetButton(context, onReset!)
+              : null,
+        ),
+        SizedBox(width: controlWidth, child: _wideControl(context)),
+      ],
+    );
+  }
+
+  /// Label above the control, because a field wide enough to type into would
+  /// leave nothing for the title.
+  Widget _compactLayout(BuildContext context) {
+    // A switch needs no room to the side, so it stays on the trailing edge
+    // instead of taking a line of its own.
+    if (_type == 'boolean') {
+      return Row(
+        children: [
+          Expanded(child: _label(context)),
+          const SizedBox(width: 12),
+          Switch(value: _value == true, onChanged: onChanged),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(context),
+        const SizedBox(height: 8),
+        if (_enumValues.isNotEmpty)
+          _enumControl(context)
+        else
+          _compactValueRow(context),
+      ],
+    );
+  }
+
+  Widget _wideControl(BuildContext context) {
+    if (_type == 'boolean') {
+      return Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: Switch(value: _value == true, onChanged: onChanged),
+      );
+    }
+    if (_enumValues.isNotEmpty) return _enumControl(context);
+    return _inlineField(context);
+  }
+
+  /// Value plus a small edit button, which opens the editor dialog.
+  Widget _compactValueRow(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final empty = _isEmpty;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            empty
+                ? translateInContext(context, I18nKey.pluginsDetailUnset)
+                : _valueText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            // Trailing, so the value sits against its button instead of
+            // drifting to the far end of a line of its own.
+            textAlign: TextAlign.end,
+            style: theme.textTheme.bodySmall?.copyWith(
+              // "Not set" is prose, not a value: it keeps the UI font so the
+              // mono face's missing CJK glyphs cannot turn it into tofu.
+              fontFamily: empty ? null : _monoFont,
+              color: empty ? scheme.onSurfaceVariant : scheme.onSurface,
+            ),
+          ),
+        ),
+        if (_modified && onReset != null) _resetButton(context, onReset!),
+        IconButton(
+          icon: Icon(
+            _isPassword ? Icons.key_outlined : Icons.edit_outlined,
+            size: 16,
+          ),
+          tooltip: translateInContext(context, _editLabel),
+          onPressed: () => _openEditor(context),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+          visualDensity: VisualDensity.compact,
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _resetButton(BuildContext context, VoidCallback onReset) {
+    final scheme = Theme.of(context).colorScheme;
+    return IconButton(
+      icon: const Icon(Icons.restart_alt, size: 18),
+      tooltip: translateInContext(context, I18nKey.pluginsDetailResetToDefault),
+      onPressed: onReset,
+      color: scheme.primary,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }
 
-  Widget _control(BuildContext context) {
-    if (_type == 'boolean') {
-      return Switch(value: _value == true, onChanged: onChanged);
+  /// The value, edited in place. This is the wide row's whole point: a
+  /// setting is a field you type in, not a button that opens a dialog.
+  Widget _inlineField(BuildContext context) {
+    return _SettingField(
+      // Keyed by setting id so the text follows its own setting when the
+      // search filter reorders or drops rows around it.
+      key: ValueKey(_id),
+      text: _editableText,
+      hintText: translateInContext(context, I18nKey.pluginsDetailUnset),
+      obscure: _isPassword,
+      multiline: _isStructured,
+      numeric: _type == 'integer' || _type == 'number',
+      onCommit: (text) => _commitText(context, text),
+    );
+  }
+
+  /// Applies text typed into an inline field, returning the message to show
+  /// when it cannot be stored.
+  ///
+  /// A value that did not change is dropped here rather than written back:
+  /// every write persists the plugin's whole configuration file and notifies
+  /// the plugin, so merely tabbing through a row must not do any work.
+  String? _commitText(BuildContext context, String text) {
+    switch (_type) {
+      case 'integer':
+        final parsed = int.tryParse(text.trim());
+        if (parsed == null) {
+          return translateInContext(
+            context,
+            I18nKey.pluginsDetailInvalidInteger,
+          );
+        }
+        if (jsonEncode(parsed) != jsonEncode(_value)) onChanged(parsed);
+        return null;
+      case 'number':
+        final parsed = num.tryParse(text.trim());
+        if (parsed == null) {
+          return translateInContext(
+            context,
+            I18nKey.pluginsDetailInvalidNumber,
+          );
+        }
+        if (jsonEncode(parsed) != jsonEncode(_value)) onChanged(parsed);
+        return null;
+      case 'array':
+      case 'object':
+        Object? decoded;
+        try {
+          decoded = jsonDecode(text);
+        } catch (error) {
+          return translateInContextWithReplacements(
+            context,
+            I18nKey.pluginsDetailInvalidJson,
+            {'error': '$error'},
+          );
+        }
+        final wrongShape =
+            (_type == 'array' && decoded is! List) ||
+            (_type == 'object' && decoded is! Map);
+        if (wrongShape) {
+          return translateInContextWithReplacements(
+            context,
+            I18nKey.pluginsDetailInvalidJson,
+            {'error': _type},
+          );
+        }
+        if (jsonEncode(decoded) != jsonEncode(_value)) onChanged(decoded);
+        return null;
+      default:
+        if (text != (_value?.toString() ?? '')) onChanged(text);
+        return null;
     }
-    if (_enumValues.isNotEmpty) return _enumControl(context);
-    return _valueButton(context);
   }
 
   /// A select box for a declared `enum`, matching the values the store will
@@ -1104,10 +1341,7 @@ class _SettingRow extends StatelessWidget {
       }
     }
     return Container(
-      constraints: const BoxConstraints(
-        maxWidth: _controlWidth + 20,
-        minHeight: 28,
-      ),
+      constraints: const BoxConstraints(minHeight: 28),
       padding: const EdgeInsetsDirectional.fromSTEB(10, 0, 4, 0),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
@@ -1150,53 +1384,9 @@ class _SettingRow extends StatelessWidget {
     );
   }
 
-  /// An input-box-looking button for string / number / password / array /
-  /// object values.
+  /// Opens the editor dialog for this setting.
   ///
-  /// Long or structured values open a dialog; the row itself stays single
-  /// line so a settings list keeps a constant row height. Passwords render
-  /// their fixed mask instead of the stored string.
-  Widget _valueButton(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final empty =
-        _value == null || (_isPassword && (_value?.toString() ?? '').isEmpty);
-    return OutlinedButton(
-      onPressed: () => _openEditor(context),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: empty ? scheme.onSurfaceVariant : scheme.onSurface,
-        backgroundColor: scheme.surfaceContainerHighest,
-        minimumSize: const Size(0, 28),
-        padding: const EdgeInsetsDirectional.fromSTEB(10, 0, 8, 0),
-        side: BorderSide(color: scheme.outlineVariant),
-        shape: RoundedRectangleBorder(borderRadius: context.innerCorners),
-        textStyle: theme.textTheme.bodySmall?.copyWith(fontFamily: _monoFont),
-      ),
-      child: SizedBox(
-        width: _controlWidth,
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                empty
-                    ? translateInContext(context, I18nKey.pluginsDetailUnset)
-                    : (_isPassword ? _passwordMask : _valueText),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(
-              _isPassword ? Icons.key_outlined : Icons.edit_outlined,
-              size: 14,
-              color: scheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
+  /// Only reachable from a narrow row: a wide one edits in place.
   Future<void> _openEditor(BuildContext context) async {
     if (_type == 'array' || _type == 'object') {
       await _editJson(context);
@@ -1449,6 +1639,177 @@ class _SettingRow extends StatelessWidget {
     if (value == null) return 'null';
     if (value is String) return value;
     return jsonEncode(value);
+  }
+}
+
+/// An MD3 text field that edits one setting in place.
+///
+/// The value is committed when the field loses focus or the user presses
+/// Enter -- never per keystroke. Every commit round-trips through the store,
+/// rewrites the plugin's configuration file and notifies the plugin, which is
+/// far too much work to do while someone is still typing.
+class _SettingField extends StatefulWidget {
+  const _SettingField({
+    super.key,
+    required this.text,
+    required this.hintText,
+    required this.onCommit,
+    this.obscure = false,
+    this.multiline = false,
+    this.numeric = false,
+  });
+
+  /// The stored value as text. A change here replaces what the field shows,
+  /// unless the user is still editing it.
+  final String text;
+
+  /// Shown while the setting holds nothing, so an empty field still reads as
+  /// "not set" rather than as a rendering bug.
+  final String hintText;
+
+  /// Applies [text]. Returns the message to show when the value is rejected,
+  /// or null once it has been handed to the store.
+  final String? Function(String text) onCommit;
+
+  final bool obscure;
+  final bool multiline;
+  final bool numeric;
+
+  @override
+  State<_SettingField> createState() => _SettingFieldState();
+}
+
+class _SettingFieldState extends State<_SettingField> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.text,
+  );
+  final FocusNode _focus = FocusNode();
+
+  /// The text last handed to [widget.onCommit], so leaving a field that was
+  /// never edited writes nothing back.
+  late String _committed = widget.text;
+
+  String? _error;
+  var _revealed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_handleFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SettingField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.text == oldWidget.text) return;
+    _committed = widget.text;
+    // A value changed from outside -- a reset, or the store normalising what
+    // was typed -- replaces the text. A focused field is left alone: whatever
+    // is in it is still being edited.
+    if (!_focus.hasFocus && _controller.text != widget.text) {
+      _controller.text = widget.text;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_handleFocusChange);
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (!_focus.hasFocus) _commit();
+  }
+
+  void _commit() {
+    final text = _controller.text;
+    if (text == _committed) {
+      if (_error != null) setState(() => _error = null);
+      return;
+    }
+    final error = widget.onCommit(text);
+    if (!mounted) return;
+    if (error == null) _committed = text;
+    setState(() => _error = error);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final border = OutlineInputBorder(
+      borderRadius: context.innerCorners,
+      borderSide: BorderSide(color: scheme.outlineVariant),
+    );
+    return TextField(
+      controller: _controller,
+      focusNode: _focus,
+      style: theme.textTheme.bodySmall?.copyWith(
+        fontFamily: _monoFont,
+        color: scheme.onSurface,
+      ),
+      obscureText: widget.obscure && !_revealed,
+      autocorrect: false,
+      enableSuggestions: !widget.obscure,
+      keyboardType: widget.numeric
+          ? TextInputType.number
+          : (widget.multiline ? TextInputType.multiline : null),
+      minLines: widget.multiline ? 1 : null,
+      maxLines: widget.multiline ? 4 : 1,
+      textInputAction: widget.multiline
+          ? TextInputAction.newline
+          : TextInputAction.done,
+      onSubmitted: widget.multiline ? null : (_) => _commit(),
+      // A click elsewhere commits. Desktop fields do not drop focus on their
+      // own, and a value that only lands on Enter reads as unsaved.
+      onTapOutside: (_) => _focus.unfocus(),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest,
+        hintText: widget.hintText,
+        hintStyle: theme.textTheme.bodySmall?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+        contentPadding: const EdgeInsetsDirectional.fromSTEB(10, 9, 10, 9),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: border.copyWith(
+          borderSide: BorderSide(color: scheme.primary, width: 1.5),
+        ),
+        errorText: _error,
+        errorStyle: theme.textTheme.labelSmall?.copyWith(color: scheme.error),
+        errorMaxLines: 3,
+        suffixIcon: widget.obscure ? _revealButton(context) : null,
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 32,
+        ),
+      ),
+    );
+  }
+
+  Widget _revealButton(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+        size: 16,
+      ),
+      tooltip: translateInContext(
+        context,
+        _revealed
+            ? I18nKey.pluginsDetailHidePassword
+            : I18nKey.pluginsDetailShowPassword,
+      ),
+      onPressed: () => setState(() => _revealed = !_revealed),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
   }
 }
 
