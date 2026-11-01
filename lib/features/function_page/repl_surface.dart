@@ -59,6 +59,10 @@ final replTranscriptControllerProvider = Provider<ReplTranscriptController>((
   return controller;
 });
 
+/// Default scrollbar thickness, mirroring the private constant the framework's
+/// scrollbar uses when the theme does not set one.
+const double _fallbackScrollbarThickness = 8;
+
 class ReplSurface extends ConsumerStatefulWidget {
   const ReplSurface({
     super.key,
@@ -78,7 +82,10 @@ class ReplSurface extends ConsumerStatefulWidget {
 class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   final _focusNode = FocusNode(debugLabel: 'repl-input');
   final _scrollController = ScrollController();
-  final _selectionKey = GlobalKey<SelectionAreaState>();
+
+  /// The transcript's scroll viewport, used to keep a drag inside what the user
+  /// can actually see.
+  final _transcriptViewportKey = GlobalKey();
   final _inputBlockKey = GlobalKey();
   final _editableTextKey = GlobalKey<EditableTextState>();
 
@@ -103,6 +110,19 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   void Function()? _previousRunStartedSink;
   void Function()? _previousRunFinishedSink;
   String? _selectedOutput;
+
+  /// The transcript's selection, held as text offsets.
+  ///
+  /// Offsets, not a painted range: the highlight has to survive scrolling, a
+  /// resize, and new output arriving below it. The REPL paints the highlight
+  /// itself (see [_TranscriptSelectionPainter]) because `SelectionArea` clamps
+  /// a drag that leaves the paragraph to the paragraph's corners, which turns a
+  /// near-miss at the top edge into "select everything from the first line".
+  TextSelection? _transcriptSelection;
+  bool _draggingTranscript = false;
+
+  /// Last primary press on the transcript, for double-click word selection.
+  ({DateTime at, Offset position})? _lastTranscriptTap;
   String _promptFilterPending = '';
   int _displayAnsiState = 0;
   bool _displayAtLineStart = true;
@@ -111,6 +131,13 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   String? _activePrompt;
   String? _pendingDeviceEcho;
   double? _focusScrollAnchor;
+  Timer? _focusScrollTimer;
+
+  /// How long the transcript holds its offset after the input takes focus.
+  ///
+  /// Long enough to cover the `bringIntoView` scroll that follows a focus
+  /// request, short enough that a click never feels like it locks the panel.
+  static const Duration _focusScrollHold = Duration(milliseconds: 200);
   OverlayEntry? _completionOverlay;
   OverlayEntry? _signatureOverlay;
   Timer? _completionDebounce;
@@ -170,6 +197,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       replRunFinishedSink = _previousRunFinishedSink;
     }
     _scrollController.removeListener(_keepFocusScrollPosition);
+    _focusScrollTimer?.cancel();
     _completion.removeListener(_syncCompletionOverlay);
     _completionDebounce?.cancel();
     _signature.removeListener(_syncSignatureOverlay);
@@ -205,18 +233,22 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
               child: LayoutBuilder(
                 builder: (context, _) {
                   final inputVisible = _input.hasVisibleInput;
-                  return Scrollbar(
-                    controller: _scrollController,
-                    child: SingleChildScrollView(
+                  return NotificationListener<ScrollNotification>(
+                    onNotification: _handleScrollNotification,
+                    child: Scrollbar(
                       controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!_transcript.isEmpty) _buildTranscript(context),
-                          _buildInputBlock(context, visible: inputVisible),
-                        ],
+                      child: SingleChildScrollView(
+                        key: _transcriptViewportKey,
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (!_transcript.isEmpty) _buildTranscript(context),
+                            _buildInputBlock(context, visible: inputVisible),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -233,34 +265,172 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     final outputStyle = _outputStyle();
     final promptStyle = _promptStyle(context);
     final scheme = Theme.of(context).colorScheme;
-    return SelectionArea(
-      key: _selectionKey,
-      onSelectionChanged: (content) {
-        final value = content?.plainText;
-        if (!mounted || value == _selectedOutput) return;
-        setState(() => _selectedOutput = value);
-      },
-      child: GestureDetector(
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: Listener(
         behavior: HitTestBehavior.translucent,
-        onTapUp: _handleTranscriptTap,
-        onSecondaryTapUp: _showTranscriptContextMenu,
-        child: Text.rich(
-          _buildTranscriptSpan(
-            outputStyle,
-            promptStyle,
-            TextStyle(
-              // A link-coloured, underlined file:line is the affordance that
-              // says this is clickable, and a traceback is exactly where the
-              // user is looking when they want to go there.
-              color: scheme.primary,
-              decoration: TextDecoration.underline,
-              decorationColor: scheme.primary.withValues(alpha: .5),
+        onPointerDown: _handleTranscriptPointerDown,
+        onPointerMove: _handleTranscriptPointerMove,
+        onPointerUp: _handleTranscriptPointerUp,
+        onPointerCancel: _handleTranscriptPointerUp,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapUp: _handleTranscriptTap,
+          onSecondaryTapUp: _showTranscriptContextMenu,
+          child: CustomPaint(
+            // Painted behind the text, in the paragraph's own coordinates, so
+            // the highlight scrolls with the transcript without bookkeeping.
+            painter: _TranscriptSelectionPainter(
+              textKey: _transcriptTextKey,
+              selection: _transcriptSelection,
+              textLength: _transcript.text.length,
+              color: AppSelection.text(scheme),
+            ),
+            child: Text.rich(
+              _buildTranscriptSpan(
+                outputStyle,
+                promptStyle,
+                TextStyle(
+                  // A link-coloured, underlined file:line is the affordance
+                  // that says this is clickable, and a traceback is exactly
+                  // where the user is looking when they want to go there.
+                  color: scheme.primary,
+                  decoration: TextDecoration.underline,
+                  decorationColor: scheme.primary.withValues(alpha: .5),
+                ),
+              ),
+              key: _transcriptTextKey,
+              softWrap: true,
             ),
           ),
-          key: _transcriptTextKey,
-          softWrap: true,
         ),
       ),
+    );
+  }
+
+  /// Whether [kind] is a pointer that selects text instead of scrolling it.
+  ///
+  /// Mirrors Flutter's own rule for `SelectableRegion`: a finger drag belongs to
+  /// the scroll view, a mouse or pen drag selects.
+  static bool _selectsWithPointer(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.mouse ||
+      kind == PointerDeviceKind.stylus ||
+      kind == PointerDeviceKind.invertedStylus;
+
+  /// Text offset under [globalPosition], clamped to the visible viewport.
+  ///
+  /// Clamping is the point of this method: without it a drag that overshoots the
+  /// panel maps onto content that is scrolled out of sight, and the selection
+  /// silently grows to cover text the user cannot see.
+  int? _transcriptOffsetAt(Offset globalPosition) {
+    final paragraph = _transcriptTextKey.currentContext?.findRenderObject();
+    if (paragraph is! RenderParagraph) return null;
+    var position = globalPosition;
+    final viewport = _transcriptViewportKey.currentContext?.findRenderObject();
+    if (viewport is RenderBox && viewport.hasSize) {
+      final rect = viewport.localToGlobal(Offset.zero) & viewport.size;
+      position = Offset(position.dx, position.dy.clamp(rect.top, rect.bottom));
+    }
+    final local = paragraph.globalToLocal(position);
+    final length = _transcript.text.length;
+    return paragraph.getPositionForOffset(local).offset.clamp(0, length);
+  }
+
+  void _handleTranscriptPointerDown(PointerDownEvent event) {
+    if (event.buttons != kPrimaryButton) return;
+    if (!_selectsWithPointer(event.kind)) return;
+    // The scrollbar overlaps the transcript, so a press on the thumb would
+    // otherwise begin a selection drag instead of scrolling.
+    if (_isOnScrollbar(event.position)) return;
+    final offset = _transcriptOffsetAt(event.position);
+    if (offset == null) return;
+    final now = DateTime.now();
+    final last = _lastTranscriptTap;
+    final isDoubleTap =
+        last != null &&
+        now.difference(last.at) < const Duration(milliseconds: 400) &&
+        (last.position - event.position).distance < 8;
+    _lastTranscriptTap = (at: now, position: event.position);
+    if (isDoubleTap) {
+      // Double-click selects the word under the pointer, the same affordance a
+      // text field offers; the drag below would otherwise collapse it again.
+      final word = _transcriptWordRangeAt(offset);
+      _draggingTranscript = false;
+      if (word != null) {
+        _setTranscriptSelection(
+          TextSelection(baseOffset: word.$1, extentOffset: word.$2),
+        );
+      }
+      return;
+    }
+    _draggingTranscript = true;
+    _setTranscriptSelection(TextSelection.collapsed(offset: offset));
+  }
+
+  /// Word boundaries around [offset], or `null` when the offset sits between
+  /// words and has nothing to select.
+  (int, int)? _transcriptWordRangeAt(int offset) {
+    final paragraph = _transcriptTextKey.currentContext?.findRenderObject();
+    if (paragraph is! RenderParagraph) return null;
+    final word = paragraph.getWordBoundary(TextPosition(offset: offset));
+    if (word.start == word.end) return null;
+    return (word.start, word.end);
+  }
+
+  void _handleTranscriptPointerMove(PointerMoveEvent event) {
+    if (!_draggingTranscript) return;
+    if (event.buttons != kPrimaryButton) {
+      _endTranscriptDrag();
+      return;
+    }
+    final offset = _transcriptOffsetAt(event.position);
+    if (offset == null) return;
+    final base = _transcriptSelection?.baseOffset ?? offset;
+    _setTranscriptSelection(
+      TextSelection(baseOffset: base, extentOffset: offset),
+    );
+  }
+
+  void _handleTranscriptPointerUp(PointerEvent _) => _endTranscriptDrag();
+
+  void _endTranscriptDrag() {
+    if (!_draggingTranscript) return;
+    _draggingTranscript = false;
+    // A press that never moved leaves nothing to copy; drop it so the menu does
+    // not offer "copy" for an empty range.
+    if (_transcriptSelection?.isCollapsed ?? true) {
+      _setTranscriptSelection(null);
+    }
+  }
+
+  /// Stores [selection] (clamped to the current transcript) and republishes the
+  /// selected text for the menu and Ctrl+C.
+  void _setTranscriptSelection(TextSelection? selection) {
+    if (!mounted) return;
+    final text = _transcript.text;
+    final normalized = selection == null
+        ? null
+        : TextSelection(
+            baseOffset: selection.baseOffset.clamp(0, text.length),
+            extentOffset: selection.extentOffset.clamp(0, text.length),
+          );
+    final value = normalized == null || normalized.isCollapsed
+        ? null
+        : text.substring(normalized.start, normalized.end);
+    // The transcript is one huge paragraph: rebuilding it for a pointer move
+    // that stays inside the same character would cost a full re-layout.
+    if (normalized == _transcriptSelection && value == _selectedOutput) return;
+    setState(() {
+      _transcriptSelection = normalized;
+      _selectedOutput = value;
+    });
+  }
+
+  void _selectAllTranscript() {
+    final text = _transcript.text;
+    if (text.isEmpty) return;
+    _setTranscriptSelection(
+      TextSelection(baseOffset: 0, extentOffset: text.length),
     );
   }
 
@@ -474,10 +644,53 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   /// survive the press that opens it.
   void _handleSurfacePointerDown(PointerDownEvent event) {
     if (event.buttons != kPrimaryButton) return;
-    _clearOutputSelection();
+    if (_isOnScrollbar(event.position)) {
+      // Grabbing the scrollbar is not a click into the panel: taking focus here
+      // would arm [_focusScrollAnchor], and that anchor cannot tell the input's
+      // focus scroll apart from the thumb drag, so it would revert the drag on
+      // every frame and leave the thumb frozen under the pointer.
+      _focusScrollAnchor = null;
+      return;
+    }
+    // A press on the transcript starts its own selection (a click collapses it),
+    // so clearing here would wipe the word a double-click just selected.
+    if (!_isOnTranscript(event.position)) _clearOutputSelection();
     if (_input.hasVisibleInput) {
       _requestInputFocus(force: true, preserveScroll: true);
     }
+  }
+
+  /// Whether [globalPosition] lands on the transcript's scrollbar.
+  ///
+  /// The scrollbar is painted on top of the transcript, so a press on the thumb
+  /// also reaches the transcript's own pointer handlers. Without this guard a
+  /// drag of the thumb would both start a text selection and be reverted by the
+  /// focus scroll anchor. The scrollbar uses its default orientation, so the
+  /// strip is the trailing edge of the viewport.
+  bool _isOnScrollbar(Offset globalPosition) {
+    final viewport = _transcriptViewportKey.currentContext?.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) return false;
+    if (!_scrollController.hasClients) return false;
+    // Nothing is painted (and nothing is draggable) when the content fits.
+    final position = _scrollController.position;
+    if (position.maxScrollExtent - position.minScrollExtent <= 0) return false;
+    final rect = viewport.localToGlobal(Offset.zero) & viewport.size;
+    if (!rect.contains(globalPosition)) return false;
+    // Same geometry the scrollbar paints with: the track hugs the trailing edge,
+    // inset by the window's safe-area padding and `thickness` wide.
+    final safeRight = MediaQuery.paddingOf(context).right;
+    final theme = ScrollbarTheme.of(context);
+    final thickness =
+        theme.thickness?.resolve(<WidgetState>{}) ??
+        _fallbackScrollbarThickness;
+    return globalPosition.dx >= rect.right - safeRight - thickness;
+  }
+
+  bool _isOnTranscript(Offset globalPosition) {
+    final paragraph = _transcriptTextKey.currentContext?.findRenderObject();
+    if (paragraph is! RenderBox || !paragraph.hasSize) return false;
+    final rect = paragraph.localToGlobal(Offset.zero) & paragraph.size;
+    return rect.contains(globalPosition);
   }
 
   void _onPromptMode(ReplInteractionMode mode) {
@@ -743,13 +956,23 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
         ? _scrollController.offset
         : null;
     _focusScrollAnchor = preservedOffset;
+    if (preservedOffset != null) {
+      // The anchor is released on a clock, not on a frame count. `EditableText`
+      // scrolls itself into view while taking focus, and that scroll can land on
+      // any of the next few frames — but a frame is only guaranteed to arrive
+      // while something else is animating. Waiting for frames therefore risked
+      // leaving the anchor set indefinitely, which pinned every later scroll to
+      // the offset the user happened to click at.
+      _focusScrollTimer?.cancel();
+      _focusScrollTimer = Timer(_focusScrollHold, () {
+        _focusScrollAnchor = null;
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _hasClaimedInitialFocus = true;
       _focusNode.requestFocus();
-      if (preservedOffset != null) {
-        _restoreFocusScrollOffset(preservedOffset, 4);
-      }
+      if (preservedOffset != null) _restoreFocusScrollOffset(preservedOffset);
     });
   }
 
@@ -765,21 +988,35 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     position.jumpTo(target.toDouble());
   }
 
-  void _restoreFocusScrollOffset(double offset, int framesRemaining) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final position = _scrollController.position;
-      final target = offset.clamp(
-        position.minScrollExtent,
-        position.maxScrollExtent,
-      );
-      position.jumpTo(target.toDouble());
-      if (framesRemaining > 1) {
-        _restoreFocusScrollOffset(offset, framesRemaining - 1);
-      } else {
-        _focusScrollAnchor = null;
-      }
-    });
+  /// Drops the scroll anchor as soon as the user scrolls on their own.
+  ///
+  /// The anchor only exists to undo the scroll `EditableText` performs while
+  /// taking focus. A wheel or drag scroll is the user's decision and must win,
+  /// otherwise the transcript would look pinned to whatever offset the last
+  /// click happened at.
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is UserScrollNotification &&
+        notification.direction != ScrollDirection.idle) {
+      _focusScrollAnchor = null;
+    }
+    return false;
+  }
+
+  /// Puts the transcript back where it was before the input took focus.
+  void _restoreFocusScrollOffset(double offset) {
+    // A user scroll releases the anchor; once that happened this restore is no
+    // longer wanted and would only yank the transcript back.
+    if (_focusScrollAnchor == null) return;
+    if (!mounted || !_scrollController.hasClients) {
+      _focusScrollAnchor = null;
+      return;
+    }
+    final position = _scrollController.position;
+    final target = offset.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    position.jumpTo(target.toDouble());
   }
 
   void _handleTextChanged(String value) {
@@ -1140,9 +1377,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       case TerminalContextAction.paste:
         await _pasteIntoReplInput();
       case TerminalContextAction.selectAll:
-        // No cause: the toolbar cause would pop the built-in selection toolbar
-        // on top of the menu the pick came from.
-        _selectionKey.currentState?.selectableRegion.selectAll();
+        _selectAllTranscript();
       case TerminalContextAction.clear:
         _clearTranscript();
       case TerminalContextAction.search:
@@ -1166,10 +1401,8 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   }
 
   void _clearOutputSelection() {
-    _selectionKey.currentState?.selectableRegion.clearSelection();
-    if (_selectedOutput != null && mounted) {
-      setState(() => _selectedOutput = null);
-    }
+    if (_transcriptSelection == null && _selectedOutput == null) return;
+    _setTranscriptSelection(null);
   }
 
   void _clearTranscript() {
@@ -1713,4 +1946,57 @@ class _ReplStringSink implements StringSink {
 
   @override
   void writeln([Object? object = '']) => onWrite('${object ?? ''}\n');
+}
+
+/// Paints the REPL transcript's selection highlight.
+///
+/// The rectangles come from the transcript's own [RenderParagraph], which is the
+/// only object that knows how the text wrapped. They are therefore in the
+/// paragraph's coordinate space, so the highlight scrolls with the text instead
+/// of having to be repositioned on every scroll.
+class _TranscriptSelectionPainter extends CustomPainter {
+  const _TranscriptSelectionPainter({
+    required this.textKey,
+    required this.selection,
+    required this.textLength,
+    required this.color,
+  });
+
+  /// Key of the [Text.rich] whose [RenderParagraph] owns the layout.
+  final GlobalKey textKey;
+
+  /// Range to highlight; `null` or collapsed paints nothing.
+  final TextSelection? selection;
+
+  /// Length of the text the offsets refer to. A change means the boxes may have
+  /// moved even when the offsets did not, so it is part of [shouldRepaint].
+  final int textLength;
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final current = selection;
+    if (current == null || current.isCollapsed) return;
+    final paragraph = textKey.currentContext?.findRenderObject();
+    if (paragraph is! RenderParagraph) return;
+    // The transcript drops its oldest lines once it is long enough, which moves
+    // every offset; clamp instead of handing the paragraph a stale range.
+    final length = paragraph.text.toPlainText().length;
+    final start = current.start.clamp(0, length);
+    final end = current.end.clamp(0, length);
+    if (start == end) return;
+    final paint = Paint()..color = color;
+    for (final box in paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: start, extentOffset: end),
+    )) {
+      canvas.drawRect(box.toRect(), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TranscriptSelectionPainter oldDelegate) =>
+      oldDelegate.selection != selection ||
+      oldDelegate.textLength != textLength ||
+      oldDelegate.color != color;
 }
