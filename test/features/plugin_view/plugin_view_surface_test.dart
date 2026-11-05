@@ -422,6 +422,146 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('an empty model does not reset component state', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _instance,
+          renderer: RendererTokens.outline,
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> tree() => [
+      {
+        'id': 'root',
+        'component': {
+          'type': 'Column',
+          'props': {'id': 'root'},
+          'children': [
+            {
+              'type': 'ExpansionTile',
+              'props': {'id': 'details', 'title': 'Details'},
+              'children': [
+                {
+                  'type': 'Text',
+                  'props': {'value': 'hidden child'},
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    store.installSnapshot(instance: _instance, revision: 1, nodes: tree());
+    await tester.pump();
+    expect(find.text('hidden child'), findsNothing);
+
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(find.text('hidden child'), findsOneWidget);
+
+    // sdk.view.open installs an empty loading model before the next snapshot.
+    // Holding no tree must not prune the component state behind it.
+    store.installSnapshot(instance: _instance, revision: 2, nodes: const []);
+    await tester.pump();
+
+    store.installSnapshot(instance: _instance, revision: 3, nodes: tree());
+    await tester.pump();
+
+    expect(find.text('hidden child'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a failed component build does not reset component state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _instance,
+          renderer: RendererTokens.outline,
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> tree() => [
+      {
+        'id': 'root',
+        'component': {
+          'type': 'Column',
+          'props': {'id': 'root'},
+          'children': [
+            {
+              'type': 'ExpansionTile',
+              'props': {'id': 'details', 'title': 'Details'},
+              'children': [
+                {
+                  'type': 'Text',
+                  'props': {'value': 'hidden child'},
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    store.installSnapshot(instance: _instance, revision: 1, nodes: tree());
+    await tester.pump();
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(find.text('hidden child'), findsOneWidget);
+
+    store.installSnapshot(
+      instance: _instance,
+      revision: 2,
+      nodes: [
+        {
+          'id': 'root',
+          'component': {'type': 'Frobnicator'},
+        },
+      ],
+    );
+    await tester.pump();
+    expect(find.textContaining('unknown component'), findsOneWidget);
+
+    store.installSnapshot(instance: _instance, revision: 3, nodes: tree());
+    await tester.pump();
+
+    expect(find.text('hidden child'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a renderer node with a type field is not a component tree', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _instance,
+          renderer: RendererTokens.outline,
+        ),
+      ),
+    );
+    store.installSnapshot(
+      instance: _instance,
+      revision: 1,
+      nodes: [
+        {'id': 'n1', 'label': 'Widget', 'type': 'logLine'},
+      ],
+    );
+    await tester.pump();
+
+    expect(find.text('Widget'), findsOneWidget);
+    expect(find.textContaining('unknown component'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a malformed component tree renders an error boundary', (
     tester,
   ) async {

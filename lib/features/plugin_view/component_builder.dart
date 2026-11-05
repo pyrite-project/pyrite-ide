@@ -65,18 +65,29 @@ class ComponentBuilder {
   final String? pluginRootPath;
 
   bool _hostAppBarActionsConsumed = false;
+  bool _buildSucceeded = false;
 
   bool get hostAppBarActionsConsumed => _hostAppBarActionsConsumed;
+
+  /// Whether the last [build] produced a real component tree.
+  ///
+  /// A validation failure (or an exception while building) returns an error
+  /// boundary and leaves this false, so the caller can avoid pruning host
+  /// state for components that merely weren't reached during a bad build.
+  bool get buildSucceeded => _buildSucceeded;
 
   /// Validates [node] and builds it, returning an error boundary when the tree
   /// is malformed so a bad plugin can't crash the page.
   Widget build(BuildContext context, Map<String, dynamic> node) {
     _hostAppBarActionsConsumed = false;
+    _buildSucceeded = false;
     final validation = registry.validate(node, limits: limits);
     if (!validation.isValid) {
       return ComponentErrorBoundary(diagnostics: validation.diagnostics);
     }
-    return _build(context, node);
+    final result = _build(context, node);
+    _buildSucceeded = true;
+    return result;
   }
 
   Widget _build(BuildContext context, Map<String, dynamic> node) {
@@ -801,6 +812,7 @@ class ComponentBuilder {
           ),
         );
       case 'ExpansionTile':
+        final expansionId = _id(props);
         return ExpansionTile(
           initiallyExpanded: props['initiallyExpanded'] == true,
           enabled: _enabled(props),
@@ -808,10 +820,18 @@ class ComponentBuilder {
           subtitle: props['subtitle'] == null
               ? null
               : Text(props['subtitle'].toString()),
-          onExpansionChanged: _hasEvent(node, 'expansionChanged')
-              ? (value) =>
-                    onEvent(_id(props), 'expansionChanged', {'value': value})
-              : null,
+          onExpansionChanged: (value) {
+            // Keep the last user choice in host state. The widget's own State
+            // is disposed whenever the surface has to unmount the tree (an
+            // empty model during sdk.view.open, a failed validation build),
+            // so restoring the snapshot would otherwise collapse it again.
+            if (expansionId.isNotEmpty) {
+              hostState.setOverride(expansionId, 'initiallyExpanded', value);
+            }
+            if (_hasEvent(node, 'expansionChanged')) {
+              onEvent(expansionId, 'expansionChanged', {'value': value});
+            }
+          },
           children: [for (final child in children) _build(context, child)],
         );
       case 'CircleAvatar':

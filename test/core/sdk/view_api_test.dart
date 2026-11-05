@@ -214,6 +214,56 @@ void main() {
     await started.manager.stop();
   });
 
+  test(
+    'open keeps an existing snapshot instead of installing an empty model',
+    () async {
+      final started = await _start(container);
+      await _request(
+        started.manager,
+        started.transport,
+        SdkCommands.viewSnapshot,
+        {
+          ..._viewKeys(),
+          'revision': 7,
+          'nodes': [
+            {
+              'id': 'root',
+              'component': {
+                'type': 'Column',
+                'props': {'id': 'root'},
+                'children': <Map<String, dynamic>>[],
+              },
+            },
+          ],
+        },
+      );
+
+      final open = await _request(
+        started.manager,
+        started.transport,
+        SdkCommands.viewOpen,
+        _viewKeys(),
+      );
+      expect(open['type'], SdkCommands.responseOk);
+
+      final model = container
+          .read(viewModelStoreProvider)
+          .model(
+            const ViewInstanceId(
+              pluginId: 'view-test',
+              sessionId: 'session-1',
+              viewId: 'outline',
+              instanceId: 'i1',
+            ),
+          );
+      expect(model, isNotNull);
+      expect(model!.revision, 7);
+      expect(model.state, ViewState.ready);
+      expect(model.nodes.single['id'], 'root');
+      await started.manager.stop();
+    },
+  );
+
   test('snapshot node budget rejects oversized models', () async {
     final started = await _start(container);
     final response = await _request(

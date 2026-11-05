@@ -151,9 +151,15 @@ class SdkView {
       _error(envelope, respond, 'invalid_request', 'Missing viewId/instanceId');
       return;
     }
-    // Open registers an empty, loading instance until the first snapshot.
-    _store.installSnapshot(instance: instance, revision: 0, nodes: const []);
-    _store.setState(instance, ViewState.loading);
+    // Open is idempotent: only register the empty loading model when the
+    // instance has never been snapshotted. Re-opening an existing view (a
+    // sidebar re-mount, a plugin calling open again) must keep its nodes and
+    // state, otherwise the surface rebuilds from an empty model and every
+    // component key, controller, and expansion flag is discarded.
+    if (_store.model(instance) == null) {
+      _store.installSnapshot(instance: instance, revision: 0, nodes: const []);
+      _store.setState(instance, ViewState.loading);
+    }
     _ok(envelope, respond, {'instance': instance.toJson()});
   }
 
