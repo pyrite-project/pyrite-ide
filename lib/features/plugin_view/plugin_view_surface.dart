@@ -347,10 +347,13 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
             );
     }
 
-    // Renderer path. An empty model (for example the one installed by
-    // sdk.view.open) must not prune either: the surface has nothing to render
-    // yet, but the components from the previous model still own state.
-    final prunable = model.nodes.isNotEmpty;
+    // Renderer path. Only the transient empty model installed by
+    // sdk.view.open (ViewState.loading) must skip pruning: the components
+    // from the previous model still own state. An intentional empty snapshot
+    // becomes ViewState.empty and must prune, otherwise a later tree that
+    // reuses the same component ids inherits stale controllers, keys, and
+    // prop overrides from the removed tree.
+    final prunable = model.state != ViewState.loading;
     if (prunable) _hostState.beginBuild();
     final result = _registry.build(
       context,

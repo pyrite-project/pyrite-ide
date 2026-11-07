@@ -463,15 +463,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('hidden child'), findsOneWidget);
 
-    // sdk.view.open installs an empty loading model before the next snapshot.
-    // Holding no tree must not prune the component state behind it.
+    // sdk.view.open installs an empty model and marks it loading before the
+    // next snapshot. Holding no tree must not prune the state behind it.
     store.installSnapshot(instance: _instance, revision: 2, nodes: const []);
+    store.setState(_instance, ViewState.loading);
     await tester.pump();
 
     store.installSnapshot(instance: _instance, revision: 3, nodes: tree());
     await tester.pump();
 
     expect(find.text('hidden child'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an intentional empty snapshot prunes component state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _instance,
+          renderer: RendererTokens.outline,
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> tree() => [
+      {
+        'id': 'root',
+        'component': {
+          'type': 'Column',
+          'props': {'id': 'root'},
+          'children': [
+            {
+              'type': 'ExpansionTile',
+              'props': {'id': 'details', 'title': 'Details'},
+              'children': [
+                {
+                  'type': 'Text',
+                  'props': {'value': 'hidden child'},
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    store.installSnapshot(instance: _instance, revision: 1, nodes: tree());
+    await tester.pump();
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(find.text('hidden child'), findsOneWidget);
+
+    // No loading state: the plugin intentionally emptied the view. The old
+    // tree's state must be pruned so a later tree with the same ids starts
+    // from scratch.
+    store.installSnapshot(instance: _instance, revision: 2, nodes: const []);
+    await tester.pump();
+    expect(store.model(_instance)!.state, ViewState.empty);
+
+    store.installSnapshot(instance: _instance, revision: 3, nodes: tree());
+    await tester.pump();
+
+    expect(find.text('hidden child'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
