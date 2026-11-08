@@ -770,6 +770,149 @@ void main() {
     expect(controller.tabs, orderedEquals([first, sourceTab, second, third]));
   });
 
+  Future<
+    ({
+      ScrollPosition position,
+      void Function(double coordinate) dragAt,
+      NativeTabDragRegistration registration,
+    })
+  >
+  pumpOverflowingStrip(WidgetTester tester) async {
+    // The tabs are wider than the strip, so the strip can scroll at all.
+    final tabs = [
+      for (var i = 0; i < 6; i++) TabData(text: 'tab $i', textSize: 100),
+    ];
+    final controller = TabbedViewController(tabs);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: SizedBox(
+            width: 300,
+            height: 200,
+            child: pyrite.TabbedView(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = tester.widget<SingleChildScrollView>(
+      find.byType(SingleChildScrollView).first,
+    );
+    final position = scrollable.controller!.position;
+    expect(position.maxScrollExtent, greaterThan(0));
+
+    final registration = NativeTabDragRegistry.register(
+      controller: controller,
+      tab: tabs.first,
+      dragScope: 'editor',
+    );
+    addTearDown(registration.dispose);
+    final session = _FakeDropSession(registration.localData);
+    final monitor = tester.widget<DropMonitor>(find.byType(DropMonitor));
+    void dragAt(double coordinate) => monitor.onDropOver?.call(
+      MonitorDropOverEvent(
+        session: session,
+        position: DropPosition(
+          local: Offset(coordinate, 10),
+          global: Offset(coordinate, 10),
+        ),
+        isInside: true,
+      ),
+    );
+    return (position: position, dragAt: dragAt, registration: registration);
+  }
+
+  testWidgets('a drag passing an edge on its way out does not scroll', (
+    tester,
+  ) async {
+    final strip = await pumpOverflowingStrip(tester);
+
+    // Crossing the trailing edge -- the way a tab is dragged out of its group
+    // -- spends less than the dwell there.
+    for (final coordinate in [150.0, 280.0, 299.0]) {
+      strip.dragAt(coordinate);
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    strip.dragAt(150);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(strip.position.pixels, 0);
+  });
+
+  testWidgets('a drag resting at an edge scrolls toward the hidden tabs', (
+    tester,
+  ) async {
+    final strip = await pumpOverflowingStrip(tester);
+
+    strip.dragAt(strip.position.viewportDimension - 1);
+    await tester.pump();
+    await tester.pump(nativeTabAutoScrollDwell);
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(strip.position.pixels, greaterThan(0));
+  });
+
+  testWidgets('a console tab drops onto the editor strip', (tester) async {
+    // The console and the editor are two separate controllers, which is what
+    // lets a panel tab be dragged into the editor area.
+    final consoleTab = TabData(text: 'REPL');
+    final consoleController = TabbedViewController([consoleTab]);
+    addTearDown(consoleController.dispose);
+    final editorTab = TabData(text: 'editor');
+    final editorController = TabbedViewController([editorTab]);
+    addTearDown(editorController.dispose);
+
+    final registration = NativeTabDragRegistry.register(
+      controller: consoleController,
+      tab: consoleTab,
+      dragScope: null,
+    );
+    addTearDown(registration.dispose);
+    final session = _FakeDropSession(registration.localData);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 100,
+            height: 40,
+            child: NativeTabDropRegion(
+              provider: _crossStripProvider(editorController),
+              position: TabBarPosition.top,
+              targetTab: editorTab,
+              child: const ColoredBox(color: Colors.black),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final region = tester.widget<DropRegion>(find.byType(DropRegion));
+    final position = DropPosition(
+      local: const Offset(90, 20),
+      global: tester.getCenter(find.byType(NativeTabDropRegion)),
+    );
+    final operation = await Future<DropOperation>.value(
+      region.onDropOver(DropOverEvent(session: session, position: position)),
+    );
+    expect(operation, DropOperation.move);
+
+    await region.onPerformDrop(
+      PerformDropEvent(
+        session: session,
+        position: position,
+        acceptedOperation: operation,
+      ),
+    );
+
+    expect(consoleController.tabs, isEmpty);
+    expect(editorController.tabs, orderedEquals([editorTab, consoleTab]));
+  });
+
   test('only successful native operations count as accepted', () {
     expect(nativeTabDragWasAccepted(DropOperation.move), isTrue);
     expect(nativeTabDragWasAccepted(DropOperation.copy), isTrue);
@@ -778,6 +921,29 @@ void main() {
     expect(nativeTabDragWasAccepted(DropOperation.userCancelled), isFalse);
     expect(nativeTabDragWasAccepted(DropOperation.forbidden), isFalse);
   });
+}
+
+/// A drop region belonging to a strip whose controller is not the drag source.
+TabbedViewProvider _crossStripProvider(TabbedViewController controller) {
+  return TabbedViewProvider(
+    controller: controller,
+    contentBuilder: null,
+    tabReorderEnabled: true,
+    contentClip: true,
+    unselectedTabButtonsBehavior: UnselectedTabButtonsBehavior.allDisabled,
+    closeButtonTooltip: null,
+    tabsAreaButtonsBuilder: null,
+    tabRemoveInterceptor: null,
+    onTabSecondaryTap: null,
+    onTabDrag: (_) {},
+    draggingTabIndex: null,
+    onDraggableBuild: null,
+    canDrop: null,
+    onBeforeDropAccept: null,
+    // No scope on either side, so the shared drag treats them as one system.
+    dragScope: null,
+    trailing: null,
+  );
 }
 
 TabbedViewProvider _provider(

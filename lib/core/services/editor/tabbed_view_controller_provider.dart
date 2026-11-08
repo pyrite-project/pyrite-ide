@@ -7,16 +7,18 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/closed_tab_history.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
 import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
 import 'package:pyrite_ide/core/services/editor/external_file_change.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
@@ -26,12 +28,20 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/editor/welcome.dart';
 
+/// Owns the primary editor group and the lifecycle of every editor tab.
+///
+/// The state is the primary group's controller and is never replaced: every
+/// group, this one included, is changed in place and notifies through its
+/// own controller. Operations that concern a document look for its tab in
+/// every group, since the editor area can be split.
 class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   final Ref ref;
   VoidCallback? onUnsavedChange;
@@ -80,6 +90,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// every time.
   final Map<String, FileDiskStamp> _declinedExternalChanges = {};
 
+  /// Paths already reported as missing from disk.
+  ///
+  /// A deleted file stays deleted until someone recreates it, so without this
+  /// every window activation would raise the same notice again. Cleared when
+  /// the path reappears or the tab closes, so a second deletion is announced
+  /// the second time rather than being swallowed by the first one's record.
+  final Set<String> _notifiedMissingFiles = {};
+
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
 
@@ -87,6 +105,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     return TabbedViewController([
       TabData(
         closable: false,
+        // Pinned as well as unclosable: the welcome page is the editor's
+        // floor, so it can be neither closed nor dragged into another group.
+        draggable: false,
         value: TabDataValue(type: "page", filePath: "welcome"),
         text: "${translate(ref, I18nKey.editorWelcomeTab)}   ",
         content: EditorWelcome(),
@@ -220,9 +241,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         savedText: _lastSavedText[value.filePath],
         currentText: editorController.text,
       );
-      if (!changed) return;
-      if (!value.isSaved) onUnsavedChange?.call();
-      _publishTabsPreservingSelection();
+      if (changed && !value.isSaved) onUnsavedChange?.call();
     }
 
     _unsavedListeners[file.path] = unsavedListener;
@@ -249,20 +268,29 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         return;
       }
 
-      state.addTab(newTab);
-      refreshFileTabTitles(state.tabs);
-      state = TabbedViewController(List.from(state.tabs));
-      state.selectTab(newTab);
+      openTab(newTab);
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
   }
 
+  /// Opens [file] -- or lets the user pick one -- as an editor tab.
+  ///
+  /// The optional restore arguments are for reopening a tab the user closed:
+  /// pass [initialText] and [savedBaseline] for a tab that had unsaved edits,
+  /// [isSaved] false so the modified dot comes back, [encoding] and
+  /// [byteOrderMark] so a later save reproduces the file's bytes, and
+  /// [initialCaretOffset] to put the caret back where it was.
   Future openFile(
     BuildContext context, {
     File? file,
     bool isBoardFile = false,
     String? boardFilePath,
     String? initialText,
+    String? savedBaseline,
+    bool isSaved = true,
+    String? encoding,
+    bool byteOrderMark = false,
+    int? initialCaretOffset,
   }) async {
     file ??= await local.sysGetFile();
     if (file != null) {
@@ -275,22 +303,17 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       // casings of one Windows directory) looking like different files, so the
       // duplicate check compares resolved identities as well.
       final identity = openFileIdentity(file.path);
-      for (TabData tab in state.tabs) {
-        final value = tab.value as TabDataValue;
-        final sameLocalFile =
-            value.filePath == file.path ||
+      final openPath = file.path;
+      final open = _findOpenTab(
+        (value) =>
+            value.filePath == openPath ||
             (value.isBoardFile != true &&
-                openFileIdentity(value.filePath) == identity);
-        final sameBoardFile =
-            boardFilePath != null && value.boardFilePath == boardFilePath;
-        if (sameLocalFile || sameBoardFile) {
-          TabbedViewController newController = TabbedViewController(
-            List.from(state.tabs),
-          );
-          newController.selectTab(tab);
-          state = newController;
-          return;
-        }
+                openFileIdentity(value.filePath) == identity) ||
+            (boardFilePath != null && value.boardFilePath == boardFilePath),
+      );
+      if (open != null) {
+        focusTab(open);
+        return;
       }
 
       // Fresh file: classify its bytes before anything reaches a tab. Binary
@@ -298,8 +321,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       // encoding retry; unreadable files fall through to the old no-op.
       var text = initialText;
       var openReadOnly = false;
-      String? encoding;
-      var byteOrderMark = false;
+      // A restored unsaved buffer has no bytes to classify, so the encoding it
+      // was closed with travels through untouched. A file read from disk is
+      // classified from what it holds now, which is what a save must write.
+      var fileEncoding = encoding;
+      var fileByteOrderMark = byteOrderMark;
       if (text == null) {
         final FileTextPreparation prepared;
         try {
@@ -328,12 +354,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             );
             if (decoded == null) return;
             text = decoded.text;
-            encoding = decoded.encoding;
+            fileEncoding = decoded.encoding;
           default:
             text = prepared.text;
             openReadOnly = prepared.readOnly;
-            encoding = prepared.encoding;
-            byteOrderMark = prepared.byteOrderMark;
+            fileEncoding = prepared.encoding;
+            fileByteOrderMark = prepared.byteOrderMark;
         }
       }
 
@@ -351,22 +377,20 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             .createNewUndoRedoController(),
         isBoardFile: isBoardFile,
         boardFilePath: boardFilePath,
-        encoding: encoding,
-        byteOrderMark: byteOrderMark,
+        isSaved: isSaved,
+        savedBaseline: savedBaseline,
+        encoding: fileEncoding,
+        byteOrderMark: fileByteOrderMark,
       );
 
       if (newTab == null) {
         return;
       }
 
-      state.addTab(newTab);
-      refreshFileTabTitles(state.tabs);
-
-      TabbedViewController newController = TabbedViewController(
-        List.from(state.tabs),
-      );
-      newController.selectTab(newTab);
-      state = newController;
+      openTab(newTab);
+      if (initialCaretOffset != null) {
+        _restoreCaretAfterOpen(newTab, initialCaretOffset);
+      }
       if (context.mounted) {
         if (ResponsiveBreakpoints.of(context).isMobile) {
           ref.read(mobileSelectedIndex.notifier).state = 3;
@@ -377,9 +401,32 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
   }
 
+  /// Puts the caret back in a tab that was just reopened.
+  ///
+  /// Deferred to after the frame that mounts the editor: the scroll needs its
+  /// viewport, and the selection is only meaningful once the tab is showing.
+  /// The offset is clamped to the buffer, which may have shrunk on disk while
+  /// the tab was closed.
+  void _restoreCaretAfterOpen(TabData tab, int caretOffset) {
+    final controller = editorTabValueOf(tab)?.editorController;
+    if (controller == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final offset = caretOffset.clamp(0, controller.length).toInt();
+      try {
+        controller.selection = TextSelection.collapsed(offset: offset);
+        controller.scrollToLine(controller.getLineAtOffset(offset));
+      } on StateError {
+        // The editor has no mounted viewport yet; the caret still applies.
+      } on RangeError {
+        // The document changed between the clamp and the scroll.
+      }
+    });
+  }
+
   void renameLocalOpenPath(String oldPath, String newPath) {
     var changed = false;
-    for (final tab in state.tabs) {
+    for (final tab in _editorTabs) {
       final value = tab.value;
       if (value is! TabDataValue ||
           value.type != 'file' ||
@@ -395,13 +442,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       _replaceFileTab(tab, value, renamedPath, value.boardFilePath);
       changed = true;
     }
-    if (changed) _publishRenamedTabs();
+    if (changed) _refreshTitles();
   }
 
   Future<void> renameBoardOpenPath(String oldPath, String newPath) async {
     var changed = false;
     final cacheMigrations = <Future<void>>[];
-    for (final tab in state.tabs) {
+    for (final tab in _editorTabs) {
       final value = tab.value;
       final boardFilePath = value is TabDataValue ? value.boardFilePath : null;
       if (value is! TabDataValue ||
@@ -434,7 +481,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       _replaceFileTab(tab, value, renamedCachePath, renamedBoardPath);
       changed = true;
     }
-    if (changed) _publishRenamedTabs();
+    if (changed) _refreshTitles();
     await Future.wait(cacheMigrations);
   }
 
@@ -443,8 +490,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     Iterable<String> filePaths = const [],
     Iterable<String> folderPaths = const [],
   }) {
+    final tabs = _editorTabs;
     final result = markOpenFilesAffectedByTransferUnsaved(
-      state.tabs,
+      tabs,
       boardFiles: boardFiles,
       filePaths: filePaths,
       folderPaths: folderPaths,
@@ -463,13 +511,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     // by an actual save, which is the intended behaviour.
     _lastSavedText.addAll(
       reseedOpenFileTransferBaselines(
-        state.tabs,
+        tabs,
         boardFiles: boardFiles,
         affectedPaths: affectedPaths,
       ),
     );
 
-    _publishTabsPreservingSelection();
     if (result.newlyUnsaved) onUnsavedChange?.call();
     final key = boardFiles
         ? I18nKey.fileMessageOpenBoardFilesOverwritten
@@ -487,19 +534,26 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         );
   }
 
-  /// Republishes the tab list so listeners (and the tab strip) see the new
-  /// `TabDataValue` instances produced by the dirty/saved transitions.
+  /// Every tab of every editor group.
   ///
-  /// No frame guard is needed here: the only caller that can run mid-frame is
-  /// the editor's unsaved listener, and `CodeForgeController.notifyListeners`
-  /// now defers out of the build phase before reaching it.
-  void _publishTabsPreservingSelection() {
-    final selectedIndex = state.selectedIndex;
-    final newController = TabbedViewController(List.from(state.tabs));
-    if (selectedIndex != null && selectedIndex < newController.tabs.length) {
-      newController.selectedIndex = selectedIndex;
-    }
-    state = newController;
+  /// The editor area can be split, so whatever concerns a document -- a
+  /// rename, a save, a change made on disk -- has to look in every group, not
+  /// only in the primary one this notifier owns.
+  List<TabData> get _editorTabs => ref.read(editorLayoutProvider).tabs.toList();
+
+  /// Disambiguates file tab titles across every group.
+  void _refreshTitles() => refreshFileTabTitles(_editorTabs);
+
+  /// Adds [tab] to the group the user is working in and shows it there.
+  ///
+  /// Every new tab -- a file, a git diff, a plugin view -- opens this way, so
+  /// a split editor puts it where the user is looking rather than in the
+  /// primary group.
+  void openTab(TabData tab) {
+    final group = ref.read(activeEditorControllerProvider);
+    group.addTab(tab);
+    group.selectedIndex = group.tabs.length - 1;
+    _refreshTitles();
   }
 
   void _replaceFileTab(
@@ -573,16 +627,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     if (declined != null) {
       _declinedExternalChanges[newPath] = declined;
     }
-  }
-
-  void _publishRenamedTabs() {
-    final selectedIndex = state.selectedIndex;
-    refreshFileTabTitles(state.tabs);
-    final newController = TabbedViewController(List.from(state.tabs));
-    if (selectedIndex != null && selectedIndex < newController.tabs.length) {
-      newController.selectedIndex = selectedIndex;
-    }
-    state = newController;
+    // A rename is not a deletion, and the new path is present by definition,
+    // so any "reported missing" record belongs to the path that no longer
+    // exists and must not follow the tab to its new name.
+    _notifiedMissingFiles.remove(oldPath);
   }
 
   Future<void> _writeBoardCache({
@@ -610,21 +658,16 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     final tabId = 'git-diff:${staged ? 'staged' : 'unstaged'}:$filePath';
     final tabTitle = _gitDiffTabTitle(ref, filePath, staged);
 
-    for (final tab in state.tabs) {
-      final value = tab.value;
-      if (value is! TabDataValue ||
-          value.type != 'git_diff' ||
-          value.filePath != tabId) {
-        continue;
-      }
-      final controller = value.editorController;
+    final open = _findOpenTab(
+      (value) => value.type == 'git_diff' && value.filePath == tabId,
+    );
+    if (open != null) {
+      final controller = editorTabValueOf(open)?.editorController;
       if (controller != null) {
         setGitDiffPatch(controller, patch);
       }
-      tab.text = tabTitle;
-      final newController = TabbedViewController(List.from(state.tabs));
-      newController.selectTab(tab);
-      state = newController;
+      open.text = tabTitle;
+      focusTab(open);
       return;
     }
 
@@ -649,10 +692,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       content: GitDiffEditor(controller: controller, filePath: filePath),
     );
 
-    state.addTab(tab);
-    final newController = TabbedViewController(List.from(state.tabs));
-    newController.selectTab(tab);
-    state = newController;
+    openTab(tab);
   }
 
   /// Opens [viewId] as an editor tab hosting a [PluginViewSurface].
@@ -666,7 +706,61 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     required String viewId,
     required String renderer,
     String? title,
-    bool expansion = false,
+    TabbedViewController? targetGroup,
+  }) {
+    final built = _buildPluginViewTab(
+      pluginId: pluginId,
+      viewId: viewId,
+      renderer: renderer,
+      title: title,
+    );
+    if (built == null) return null;
+    // Without an explicit group the tab opens where the user is looking; with
+    // one, it lands exactly there -- the group a plugin named by its index.
+    if (targetGroup == null) {
+      openTab(built.tab);
+    } else {
+      targetGroup.addTab(built.tab);
+      targetGroup.selectedIndex = targetGroup.tabs.length - 1;
+      _refreshTitles();
+    }
+    return built.instance;
+  }
+
+  /// Opens a plugin view as a tab on the docked console panel.
+  ///
+  /// The console sits outside the editor layout tree, so such a tab is not
+  /// persisted and stays invisible to the document services -- acceptable for
+  /// a view, whose lifetime is the plugin session anyway. A hidden or empty
+  /// panel is brought back: a view landing in a pane the user cannot see
+  /// would be lost.
+  ViewInstanceId? openPluginViewInConsole({
+    required String pluginId,
+    required String viewId,
+    required String renderer,
+    String? title,
+  }) {
+    final built = _buildPluginViewTab(
+      pluginId: pluginId,
+      viewId: viewId,
+      renderer: renderer,
+      title: title,
+    );
+    if (built == null) return null;
+    final console = ref.read(consoleTabbedViewControllerProvider);
+    console.addTab(built.tab);
+    console.selectedIndex = console.tabs.length - 1;
+    ref.read(consolePageShow.notifier).state = true;
+    _markConsoleFocused();
+    return built.instance;
+  }
+
+  /// Builds, without placing it, the tab hosting a plugin view.
+  ({ViewInstanceId instance, TabData tab})? _buildPluginViewTab({
+    required String pluginId,
+    required String viewId,
+    required String renderer,
+    String? title,
   }) {
     final manager = ref
         .read(pluginRunManagerProvider)
@@ -712,30 +806,54 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         title: title,
       ),
     );
-
-    if (expansion) {
-      final controller = ref.read(expansionViewController);
-      controller.addTab(tab);
-      final newController = TabbedViewController(List.from(controller.tabs));
-      newController.selectTab(tab);
-      ref.read(expansionViewController.notifier).state = newController;
-      return instance;
-    }
-
-    state.addTab(tab);
-    final newController = TabbedViewController(List.from(state.tabs));
-    newController.selectTab(tab);
-    state = newController;
-    return instance;
+    return (instance: instance, tab: tab);
   }
 
-  void onTabTap(TabData tabData, int newTabIndex) async {
-    // print("tap");
-    TabbedViewController newController = TabbedViewController(
-      List.from(state.tabs),
-    );
-    newController.selectedIndex = newTabIndex;
-    state = newController;
+  /// Marks the console the pane the user is working in.
+  void _markConsoleFocused() {
+    ref.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.console;
+  }
+
+  /// The open tab hosting the document [match] accepts, in any group.
+  TabData? _findOpenTab(bool Function(TabDataValue) match) {
+    for (final tab in _editorTabs) {
+      // A console surface can be dragged into an editor group; it has no
+      // document to compare, so it is never the tab being reopened.
+      final value = editorTabValueOf(tab);
+      if (value != null && match(value)) return tab;
+    }
+    return null;
+  }
+
+  /// Shows [tab] in whichever group holds it, and focuses that group.
+  ///
+  /// Returns false when no editor group holds [tab]. The group has to take
+  /// focus as well: the shared editing commands act on the focused group.
+  bool focusTab(TabData tab) {
+    for (final group in ref.read(editorLayoutProvider).controllers) {
+      final index = group.tabs.indexOf(tab);
+      if (index < 0) continue;
+      group.selectedIndex = index;
+      ref.read(editorLayoutProvider.notifier).focus(group);
+      return true;
+    }
+    return false;
+  }
+
+  /// Shows a console-hosted [tab] and marks the console the focused pane.
+  ///
+  /// Returns false when the console does not hold [tab]. A hidden panel is
+  /// brought back: activating a view in a pane the user cannot see would be
+  /// lost.
+  bool focusConsoleTab(TabData tab) {
+    final console = ref.read(consoleTabbedViewControllerProvider);
+    final index = console.tabs.indexOf(tab);
+    if (index < 0) return false;
+    console.selectedIndex = index;
+    ref.read(consolePageShow.notifier).state = true;
+    _markConsoleFocused();
+    return true;
   }
 
   void closePluginView(TabDataValue value) {
@@ -763,13 +881,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         );
   }
 
-  void afterTabClose(int index, TabData tabData) async {
+  /// Releases what a closed tab held, whichever group it was closed in.
+  ///
+  /// Called after the tab left its controller. Tabs that are not documents --
+  /// a console surface -- own nothing here.
+  Future<void> afterTabClose(TabData tabData) async {
     final value = tabData.value;
-    refreshFileTabTitles(state.tabs);
-    TabbedViewController newController = TabbedViewController(
-      List.from(state.tabs),
-    );
-    state = newController;
+    _refreshTitles();
 
     if (value is! TabDataValue) return;
     final filePath = value.filePath;
@@ -787,6 +905,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     }
 
     if (value.type != 'file') return;
+
+    // Capture before anything below releases the buffer: reopening a closed
+    // tab needs the text the editor was showing, not what the file holds.
+    _rememberClosedTab(value);
 
     if (pendingUploadProviderMap[filePath] != null) {
       ref.read(pendingUploadProviderMap[filePath]!.notifier).state = null;
@@ -810,9 +932,102 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     _lastSavedText.remove(filePath);
     _diskStamps.remove(filePath);
     _declinedExternalChanges.remove(filePath);
+    _notifiedMissingFiles.remove(filePath);
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
     value.undoRedoController?.dispose();
+  }
+
+  /// Remembers a closing local file tab so it can be reopened.
+  ///
+  /// Runs before the resources below are released: the record holds the buffer
+  /// itself, which is what lets an unsaved tab whose file was never written
+  /// come back. Board files are skipped -- closing one deletes its cache file,
+  /// so there is nothing meaningful to reopen -- as are git diffs and plugin
+  /// views, which return before this is reached.
+  void _rememberClosedTab(TabDataValue value) {
+    if (value.isBoardFile == true) return;
+    final controller = value.editorController;
+    if (controller == null) return;
+    final selection = controller.selection;
+    ref
+        .read(closedTabHistoryProvider)
+        .push(
+          ClosedTabRecord(
+            path: value.filePath,
+            text: controller.text,
+            savedText: _lastSavedText[value.filePath],
+            isSaved: value.isSaved,
+            encoding: value.encoding,
+            byteOrderMark: value.byteOrderMark,
+            caretOffset: selection.isValid ? selection.baseOffset : null,
+          ),
+        );
+  }
+
+  /// Reopens the local file tab that was closed most recently.
+  ///
+  /// Returns true when the file is open again or was already open. An empty
+  /// history, a file that no longer exists and a failed open are reported to
+  /// the user and return false: each is a distinct answer to "why did nothing
+  /// happen?", so they do not wear the same message.
+  Future<bool> reopenLastClosedTab(BuildContext context) async {
+    final record = ref.read(closedTabHistoryProvider).take();
+    if (record == null) {
+      if (context.mounted) {
+        showIdeWarning(context, translate(ref, I18nKey.editorNoClosedTab));
+      }
+      return false;
+    }
+
+    final file = File(record.path);
+    if (!await file.exists()) {
+      if (context.mounted) {
+        showIdeWarning(
+          context,
+          translateWithReplacements(ref, I18nKey.editorReopenMissing, {
+            'path': record.path,
+          }),
+        );
+      }
+      return false;
+    }
+
+    final open = _findOpenTab((value) => value.filePath == record.path);
+    if (open != null) {
+      focusTab(open);
+      return true;
+    }
+    if (!context.mounted) return false;
+
+    try {
+      // A clean tab opens from disk, exactly as the file tree would open it.
+      // A dirty one is rebuilt from its recorded buffer with the recorded
+      // saved text as the diff baseline, so its modified dot is honest.
+      await openFile(
+        context,
+        file: file,
+        initialText: record.isSaved ? null : record.text,
+        savedBaseline: record.isSaved ? null : record.savedText,
+        isSaved: record.isSaved,
+        encoding: record.encoding,
+        byteOrderMark: record.byteOrderMark,
+        initialCaretOffset: record.caretOffset,
+      );
+    } catch (error) {
+      if (context.mounted) {
+        showIdeError(
+          context,
+          translateWithReplacements(ref, I18nKey.editorReopenFailed, {
+            'path': record.path,
+            'error': '$error',
+          }),
+        );
+      }
+      return false;
+    }
+
+    return _findOpenTab((value) => value.filePath == record.path) != null;
   }
 
   /// Marks a tab clean after its buffer was written to the backing store.
@@ -831,8 +1046,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     // Our own write is not an external change; move the stamp forward so the
     // next check does not report the save as someone else's edit.
     unawaited(_recordDiskStamp(value.file ?? File(value.filePath)));
-    if (!state.tabs.contains(tab) || !markFileTabSaved(tab)) return;
-    _publishTabsPreservingSelection();
+    // Wherever the tab sits -- any group, or already closed -- the dot goes:
+    // the leading widget notifies the strip that shows it.
+    markFileTabSaved(tab);
   }
 
   Future<void> _recordDiskStamp(File file) async {
@@ -842,6 +1058,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       return;
     }
     _diskStamps[file.path] = stamp;
+    // The path exists again — most often because the user just saved over the
+    // deletion. A later deletion deserves its own notice, so the record of the
+    // previous one goes away here rather than waiting for a full reconcile
+    // pass that the stamp shortcut would skip.
+    _notifiedMissingFiles.remove(file.path);
   }
 
   /// Reconciles every open local file with what is on disk now.
@@ -858,7 +1079,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// instead -- the running pass sees everything this one would have.
   Future<void> checkExternalChanges(BuildContext context) {
     return _reconcilePass.runIfIdle(() async {
-      for (final tab in List<TabData>.from(state.tabs)) {
+      for (final tab in _editorTabs) {
         final value = tab.value;
         if (value is! TabDataValue ||
             value.type != 'file' ||
@@ -932,29 +1153,44 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     switch (action) {
       case ExternalChangeAction.none:
         _declinedExternalChanges.remove(value.filePath);
+        _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
       case ExternalChangeAction.touchOnly:
         _declinedExternalChanges.remove(value.filePath);
+        _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
       case ExternalChangeAction.deleted:
         _diskStamps.remove(value.filePath);
         _declinedExternalChanges.remove(value.filePath);
-        // The buffer stays readable — the user may still want to copy out of it
-        // or undo — but a save must not recreate a file someone deliberately
-        // removed.
-        value.editorController?.readOnly = true;
-        ref
-            .read(ideMessageProvider.notifier)
-            .show(
-              translateWithReplacements(ref, I18nKey.editorFileDeletedOnDisk, {
-                'path': value.filePath,
-              }),
-              type: IdeMessageType.warning,
-              duration: const Duration(seconds: 12),
-              closeable: true,
-            );
+        // The buffer stays editable. Locking it was meant to stop a save from
+        // recreating a file someone deliberately removed, but the editor is in
+        // no position to know that: a branch switch, a stash pop or a formatter
+        // cleaning up can all make a path vanish and come back, and a save is
+        // an explicit user action, not an accident to be prevented. Writing
+        // here recreates the path, which is exactly what "save this file"
+        // means when the file is gone.
+        //
+        // Only the first discovery is worth a notice; repeating it on every
+        // focus change would nag about a state the user already knows. A save
+        // skips it entirely: the write that follows recreates the path, so a
+        // notice saying it is gone would be contradicted a moment later.
+        if (!onSaveConflict && _notifiedMissingFiles.add(value.filePath)) {
+          ref
+              .read(ideMessageProvider.notifier)
+              .show(
+                translateWithReplacements(
+                  ref,
+                  I18nKey.editorFileDeletedOnDisk,
+                  {'path': value.filePath},
+                ),
+                type: IdeMessageType.warning,
+                duration: const Duration(seconds: 12),
+                closeable: true,
+              );
+        }
       case ExternalChangeAction.reload:
         _declinedExternalChanges.remove(value.filePath);
+        _notifiedMissingFiles.remove(value.filePath);
         await _reloadTabFromDisk(tab, value, diskText!);
       case ExternalChangeAction.prompt:
         if (!context.mounted) return action;
@@ -1017,7 +1253,6 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     value.undoRedoController?.clear();
     await _recordDiskStamp(value.file ?? File(value.filePath));
     markFileTabSaved(tab);
-    _publishTabsPreservingSelection();
     ref
         .read(ideMessageProvider.notifier)
         .success(
@@ -1027,19 +1262,52 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         );
   }
 
+  /// Restores a session saved with a single group into the primary group.
+  ///
+  /// The tabs join the welcome page the primary already holds.
   Future<void> restoreTabs(
     List<PersistedTab> persistedTabs,
     int selectedIndex, {
     String? selectedTabPath,
   }) async {
+    state.addTabs(await _restoreGroupTabs(persistedTabs));
+    _refreshTitles();
+    final restoredIndex = _resolveRestoredSelection(
+      state.tabs,
+      selectedTabPath,
+      selectedIndex,
+    );
+    if (restoredIndex != null) state.selectedIndex = restoredIndex;
+  }
+
+  /// Builds the tabs for one persisted group, skipping files that vanished.
+  ///
+  /// The welcome tab is not part of this: it is the primary group's floor and
+  /// comes from [_buildTabbedViewController], so a restored group never carries
+  /// a second one.
+  Future<List<TabData>> _restoreGroupTabs(
+    List<PersistedTab> persistedTabs,
+  ) async {
+    // Reading and classifying the files is independent per file, so it all
+    // happens at once. The controllers are still created one by one, in tab
+    // order, since each may start a language server session.
+    final preparations = await Future.wait([
+      for (final persisted in persistedTabs)
+        _prepareRestoredFile(File(persisted.filePath)),
+    ]);
     final List<TabData> tabs = [];
-
-    tabs.addAll(_buildTabbedViewController(ref).tabs);
-
-    for (final persisted in persistedTabs) {
+    for (var i = 0; i < persistedTabs.length; i++) {
+      final persisted = persistedTabs[i];
+      // An outline tab carries no file: it restores in the position it was
+      // saved in, which is how a saved layout beats the outline's split-right
+      // birth position.
+      if (persisted.isOutline) {
+        tabs.add(buildOutlineTab(translate(ref, I18nKey.editorOutlineTitle)));
+        continue;
+      }
+      final prepared = preparations[i];
+      if (prepared == null) continue;
       final file = File(persisted.filePath);
-      final exists = await file.exists();
-      if (!exists) continue;
 
       // Classify the bytes once, here, for two reasons the headless path
       // cannot get any other way: a non-UTF-8 file would make the controller's
@@ -1049,30 +1317,24 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       // falling through to the controller's malformed-tolerant read-only path.
       String? restoredEncoding;
       var restoredByteOrderMark = false;
-      String? savedBaseline;
       String? initialText;
       var restoreReadOnly = false;
-      try {
-        final prepared = await prepareFileForEditing(file);
-        switch (prepared) {
-          case UndecodableFilePrepared():
-            break;
-          case BinaryFilePrepared():
-            initialText = prepared.text;
-            restoreReadOnly = true;
-          default:
-            initialText = prepared.text;
-            restoredEncoding = prepared.encoding;
-            restoredByteOrderMark = prepared.byteOrderMark;
-            restoreReadOnly = prepared.readOnly;
-        }
-        // The on-disk text is the baseline for an unsaved restore: the buffer is
-        // seeded with the unsaved content, so without this the comparison would
-        // measure the buffer against itself and the dot would never clear.
-        savedBaseline = prepared.text;
-      } on FileSystemException {
-        continue;
+      switch (prepared) {
+        case UndecodableFilePrepared():
+          break;
+        case BinaryFilePrepared():
+          initialText = prepared.text;
+          restoreReadOnly = true;
+        default:
+          initialText = prepared.text;
+          restoredEncoding = prepared.encoding;
+          restoredByteOrderMark = prepared.byteOrderMark;
+          restoreReadOnly = prepared.readOnly;
       }
+      // The on-disk text is the baseline for an unsaved restore: the buffer is
+      // seeded with the unsaved content, so without this the comparison would
+      // measure the buffer against itself and the dot would never clear.
+      final savedBaseline = prepared.text;
 
       final controller = await ref
           .read(editorControllerMapProvider.notifier)
@@ -1109,18 +1371,56 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         tabs.add(tab);
       }
     }
+    return tabs;
+  }
 
-    refreshFileTabTitles(tabs);
-    final newController = TabbedViewController(tabs);
-    final restoredIndex = _resolveRestoredSelection(
-      tabs,
-      selectedTabPath,
-      selectedIndex,
-    );
-    if (restoredIndex != null) {
-      newController.selectedIndex = restoredIndex;
+  /// [file] classified for a restore, or null when it vanished or can no
+  /// longer be read.
+  Future<FileTextPreparation?> _prepareRestoredFile(File file) async {
+    if (!await file.exists()) return null;
+    try {
+      return await prepareFileForEditing(file);
+    } on FileSystemException {
+      return null;
     }
-    state = newController;
+  }
+
+  /// Restores a session saved with a split editor area: every group, and the
+  /// tree that places them.
+  ///
+  /// The group at [primaryIndex] is this notifier's own controller -- it keeps
+  /// the welcome page and stays where new tabs fall back to -- and every other
+  /// group starts empty. A group whose files all vanished is dropped with the
+  /// rest of the tree's empty groups when the layout is committed.
+  Future<void> restoreEditorGroups(
+    List<PersistedEditorGroup> groups,
+    PersistedEditorLayout? node, {
+    int primaryIndex = 0,
+  }) async {
+    // [restoreEditorLayout] creates the controllers the tree is wired to, so
+    // seeding exactly those keeps the tabs and the layout from drifting apart.
+    final restored = restoreEditorLayout(
+      groups,
+      node,
+      primary: state,
+      primaryIndex: primaryIndex,
+    );
+    for (var i = 0; i < restored.controllers.length; i++) {
+      final group = restored.controllers[i];
+      group.addTabs(await _restoreGroupTabs(groups[i].tabs));
+      final selected = _resolveRestoredSelection(
+        group.tabs,
+        groups[i].selectedTabPath,
+        -1,
+      );
+      if (selected != null) {
+        group.selectedIndex = selected;
+      } else if (group.selectedIndex == null && group.tabs.isNotEmpty) {
+        group.selectedIndex = 0;
+      }
+    }
+    // Committing the tree also disambiguates the titles across every group.
+    ref.read(editorLayoutProvider.notifier).replace(restored.node);
   }
 
   /// Puts the caret and viewport back where they were.
@@ -1216,6 +1516,13 @@ final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>
 tabbedViewControllerProvider = StateNotifierProvider(
   (ref) => TabbedViewControllerNotifier(ref),
 );
+
+/// The local file tabs the user closed, most recent first.
+///
+/// The notifier captures a record as each tab closes; whatever offers "reopen
+/// closed tab" reads and takes from it.
+final Provider<ClosedTabHistory> closedTabHistoryProvider =
+    Provider<ClosedTabHistory>((ref) => ClosedTabHistory());
 
 final _boardTransferPath = path.Context(style: path.Style.posix);
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 
 /// The root navigator, so [appContext] can hand out a context that can push
 /// routes.
@@ -28,13 +29,15 @@ void setAppContext(BuildContext context) {
 }
 
 enum ThemeStyle {
-  standard('标准', 'standard'),
-  compact('紧凑', 'compact'),
-  comfortable('舒适', 'comfortable');
+  standard(I18nKey.appThemeStandard, 'standard'),
+  compact(I18nKey.appThemeCompact, 'compact'),
+  comfortable(I18nKey.appThemeComfortable, 'comfortable');
 
-  final String label;
+  /// The key this style's display name lives under; the settings page renders
+  /// it with UseText so the name follows the active locale.
+  final I18nKey labelKey;
   final String value;
-  const ThemeStyle(this.label, this.value);
+  const ThemeStyle(this.labelKey, this.value);
 
   static ThemeStyle fromValue(String? v) {
     return switch (v) {

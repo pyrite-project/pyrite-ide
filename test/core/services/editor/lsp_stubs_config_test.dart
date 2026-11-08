@@ -400,6 +400,87 @@ void main() {
     expect(config.workspaceConfiguration.containsKey('python'), isFalse);
   });
 
+  test('marks Zuban as receiving stubs through its environment', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'zuban';
+
+    final launch = container.read(
+      Provider((ref) => resolveLspLaunch(ref.read)),
+    );
+
+    expect(launch.adapter.deliversStubsViaEnvironment, isTrue);
+  });
+
+  test('marks the configuration-delivered servers as hot-applicable', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+
+    final launch = container.read(
+      Provider((ref) => resolveLspLaunch(ref.read)),
+    );
+
+    expect(launch.adapter.deliversStubsViaEnvironment, isFalse);
+  });
+
+  test('does not ask to restart without an open language server', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'zuban';
+
+    expect(
+      container.read(
+        Provider((ref) => anyOpenLspNeedsRestartForStubs(ref.read)),
+      ),
+      isFalse,
+    );
+  });
+
+  test('asks to restart while Zuban serves an open workspace', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'zuban';
+
+    expect(
+      container.read(
+        Provider(
+          (ref) => anyOpenLspNeedsRestartForStubs(
+            ref.read,
+            openWorkspacePaths: {'/tmp/pyrite-workspace'},
+          ),
+        ),
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+    'does not ask to restart while a configuration-delivered server is open',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(lspType.notifier).state = LspType.stdio;
+      container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+
+      expect(
+        container.read(
+          Provider(
+            (ref) => anyOpenLspNeedsRestartForStubs(
+              ref.read,
+              openWorkspacePaths: {'/tmp/pyrite-workspace'},
+            ),
+          ),
+        ),
+        isFalse,
+      );
+    },
+  );
+
   testWidgets('refreshes open LSP configuration from a WidgetRef', (
     tester,
   ) async {

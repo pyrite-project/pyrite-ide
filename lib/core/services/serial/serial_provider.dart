@@ -11,6 +11,7 @@ import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/port_catalog/serial_port_catalog.dart';
+import 'package:pyrite_ide/core/services/serial/serial_session_registry.dart';
 
 final DynamicLibrary? _kernel32 = Platform.isWindows
     ? DynamicLibrary.open('kernel32.dll')
@@ -42,7 +43,42 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   StreamSubscription<SerialEvent>? _eventSub;
   bool _runConnectInitialization = true;
 
-  SerialNotifier(Ref ref) : super(ref, const SerialProviderState());
+  /// Every open port, not just the active one.
+  ///
+  /// The notifier keeps its single-handle fields as a view onto the active
+  /// session: the whole app addresses "the device", and rewriting those call
+  /// sites would gain nothing a session registry does not already provide.
+  final SerialSessionRegistry sessions = SerialSessionRegistry();
+
+  SerialNotifier(Ref ref) : super(ref, const SerialProviderState()) {
+    sessions.addListener(_onSessionsChanged);
+  }
+
+  /// Mirrors the active session into this notifier's state.
+  ///
+  /// A session that disappears (unplugged, closed from the device page) has to
+  /// clear `isConnected`, otherwise every device operation would keep waiting
+  /// on a handle that no longer exists.
+  void _onSessionsChanged() {
+    final active = sessions.activeSession;
+    if (active == null) {
+      _serial = null;
+      _eventSub = null;
+      if (state.isConnected || state.selectedPortName != null) {
+        state = state.copyWith(clearSelectedPort: true, isConnected: false);
+      }
+      return;
+    }
+    _serial = active.serial;
+    _eventSub = active.events;
+    if (state.selectedPortName != active.portPath || !state.isConnected) {
+      state = state.copyWith(
+        selectedPortName: active.portPath,
+        isConnected: true,
+        baudRate: active.baudRate,
+      );
+    }
+  }
 
   @override
   Future<void> performUpdate() async {
@@ -105,7 +141,16 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
   @override
   Future<void> connectPort(String path) async {
-    await disconnectPort();
+    // Connecting a second port must not drop the first board: a session is
+    // opened alongside the existing ones and only becomes the one the IDE
+    // talks to. Re-connecting an already open port just switches to it.
+    final existing = sessions.sessionForPort(path);
+    if (existing != null) {
+      sessions.setActive(existing.id);
+      await _afterActiveChanged();
+      return;
+    }
+    await closeSessionFor(path, notify: false);
     ref.read(boardFileItemsProvider.notifier).clear();
     ref.read(deviceStatusProvider.notifier).clear();
 
@@ -115,7 +160,14 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     final config = _serialConfig();
     final ok = await serial.open(path, config);
     if (ok) {
+      final session = sessions.create(
+        portPath: path,
+        serial: serial,
+        events: _eventSub!,
+        baudRate: state.baudRate,
+      );
       _serial = serial;
+      sessions.adopt(session);
       state = state.copyWith(selectedPortName: path, isConnected: true);
       sendCommand('\x03', chunked: false);
       if (_runConnectInitialization) ensureFilesystemMountedIfEnabled();
@@ -154,16 +206,19 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   void _autoDisconnect() {
     resetReplOutputDecoder();
     final portName = state.selectedPortName;
-    _eventSub?.cancel();
-    _eventSub = null;
-    if (_serial != null) {
-      _serial!.close();
-      _serial!.dispose();
+    final active = sessions.activeSession;
+    // The handle is already gone: drop the session rather than disposing it
+    // again, and only then fall back to whatever session remains.
+    if (active != null) {
+      unawaited(closeSessionFor(active.portPath, notify: true));
+    } else {
+      _eventSub?.cancel();
+      _eventSub = null;
       _serial = null;
+      state = state.copyWith(clearSelectedPort: true, isConnected: false);
     }
-    state = state.copyWith(clearSelectedPort: true, isConnected: false);
     _catalog.scan().then((ports) {
-      if (_serial == null) {
+      if (!state.isConnected) {
         state = state.copyWith(ports: ports);
       }
     });
@@ -172,18 +227,71 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     }
   }
 
+  /// Closes the session for [portPath], if one exists.
+  ///
+  /// Called both by explicit disconnects and by an unplug; `notify` is off for
+  /// the reconnect path that immediately opens a replacement session.
+  Future<void> closeSessionFor(String portPath, {bool notify = true}) async {
+    final session = sessions.sessionForPort(portPath);
+    if (session == null) return;
+    if (notify) resetReplOutputDecoder();
+    await sessions.close(session.id);
+  }
+
+  /// Closes every open port.
+  ///
+  /// Separate from [disconnectPort] so the single-device call sites keep the
+  /// meaning they had: "drop the device I am talking to".
+  Future<void> disconnectAllPorts() async {
+    resetReplOutputDecoder();
+    cancelReconnect();
+    await sessions.closeAll();
+    state = state.copyWith(clearSelectedPort: true, isConnected: false);
+  }
+
+  /// Switches which open session the IDE talks to.
+  void activateSession(String id) {
+    if (!sessions.setActive(id)) return;
+    unawaited(_afterActiveChanged());
+  }
+
+  /// Re-syncs device-scoped caches after the active session changed.
+  ///
+  /// The board file tree and the status panel describe one device; leaving the
+  /// previous board's listing on screen after a switch would show files that
+  /// live on the other board.
+  Future<void> _afterActiveChanged() async {
+    final active = sessions.activeSession;
+    if (active == null) return;
+    state = state.copyWith(
+      selectedPortName: active.portPath,
+      isConnected: true,
+      baudRate: active.baudRate,
+    );
+    ref.read(boardFileItemsProvider.notifier).clear();
+    ref.read(deviceStatusProvider.notifier).clear();
+    sendCommand('\x03', chunked: false);
+  }
+
   @override
   Future<void> disconnectPort() async {
     resetReplOutputDecoder();
     cancelReconnect();
-    await _eventSub?.cancel();
-    _eventSub = null;
-    if (_serial != null) {
-      await _serial!.close();
-      await _serial!.dispose();
-      _serial = null;
+    final active = sessions.activeSession;
+    if (active != null) {
+      await sessions.close(active.id);
+    } else {
+      await _eventSub?.cancel();
+      _eventSub = null;
+      if (_serial != null) {
+        await _serial!.close();
+        await _serial!.dispose();
+        _serial = null;
+      }
     }
-    state = state.copyWith(clearSelectedPort: true, isConnected: false);
+    if (sessions.activeSession == null) {
+      state = state.copyWith(clearSelectedPort: true, isConnected: false);
+    }
   }
 
   @override
@@ -317,14 +425,13 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
     debugPrint('[serial] reconnecting at $newBaud baud');
 
-    // Disconnect first.
+    // Close this port's session (not every port) before reopening it at the
+    // new rate: a baud change only concerns the board being retuned, and the
+    // other boards must stay connected.
+    await closeSessionFor(portName, notify: false);
     await _eventSub?.cancel();
     _eventSub = null;
-    if (_serial != null) {
-      await _serial!.close();
-      await _serial!.dispose();
-      _serial = null;
-    }
+    _serial = null;
 
     // Update the baud rate in state.
     state = state.copyWith(baudRate: newBaud);

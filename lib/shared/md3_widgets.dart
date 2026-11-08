@@ -56,45 +56,83 @@ class PaneHeader extends ConsumerWidget {
         8,
         isCompact ? 2 : (comfortable ? 8 : 6),
       ),
-
-      child: Row(
-        children: [
-          if (leadingIcon != null) ...[
-            Icon(
-              leadingIcon,
-              size: tokens.headerIconSize,
-              color: scheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final titleBlock = Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              UseText(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle,
+              ),
+              if (subtitle != null && !isCompact)
                 UseText(
-                  title,
+                  subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: titleStyle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
-                if (subtitle != null && !isCompact)
-                  UseText(
-                    subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            ],
+          );
+          final actionsBlock = Wrap(
+            spacing: 2,
+            alignment: WrapAlignment.end,
+            children: actions,
+          );
+          // A narrow pane keeps its title readable by moving the controls onto
+          // their own line. Leaving them in one Row squeezed the text down to
+          // an ellipsis (or nothing at all) as soon as a pane carried four or
+          // five buttons.
+          final stacked = actions.isNotEmpty && constraints.maxWidth < 320;
+          if (!stacked) {
+            return Row(
+              children: [
+                if (leadingIcon != null) ...[
+                  Icon(
+                    leadingIcon,
+                    size: tokens.headerIconSize,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(child: titleBlock),
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  actionsBlock,
+                ],
+              ],
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (leadingIcon != null) ...[
+                    Icon(
+                      leadingIcon,
+                      size: tokens.headerIconSize,
                       color: scheme.onSurfaceVariant,
                     ),
-                  ),
-              ],
-            ),
-          ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Wrap(spacing: 2, children: actions),
-          ],
-        ],
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(child: titleBlock),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: actionsBlock,
+              ),
+            ],
+          );
+        },
       ),
     );
   }

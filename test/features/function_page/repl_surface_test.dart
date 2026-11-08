@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -96,7 +100,7 @@ void main() {
 
     final transcript = tester.widget<Text>(
       find.descendant(
-        of: find.byType(SelectionArea),
+        of: find.byType(ReplSurface),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Text &&
@@ -158,6 +162,46 @@ void main() {
 
     expect(scroll.offset, closeTo(before, 1));
   });
+
+  testWidgets(
+    'scrollbar thumb can be dragged',
+    (tester) async {
+      await _pumpSurface(tester, height: 200);
+      // The prompt is what leaves the inline input on screen, and it is what the
+      // panel focuses when the transcript is clicked.
+      writeReplOutput(
+        '${List.generate(60, (index) => 'line $index\r\n').join()}>>> ',
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final scroll = tester
+          .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .controller!;
+      scroll.jumpTo(scroll.position.maxScrollExtent / 2);
+      await tester.pump();
+      // The thumb only accepts pointer events once the fade-in has run.
+      await tester.pump(const Duration(milliseconds: 400));
+      final before = scroll.offset;
+
+      final gesture = await tester.startGesture(
+        _thumbCenter(tester, scroll),
+        kind: PointerDeviceKind.mouse,
+      );
+      // A real press is followed by a frame in which the panel focuses its input.
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      expect(scroll.offset, greaterThan(before));
+
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      expect(scroll.offset, closeTo(before, 1));
+      await gesture.up();
+    },
+    // The scrollbar only accepts thumb drags on desktop platforms.
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
 
   testWidgets('filters ANSI-wrapped prompts without duplicating the gutter', (
     tester,
@@ -442,6 +486,53 @@ void main() {
     },
   );
 
+  testWidgets('reports a traceback frame whose file cannot be located', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    writeReplOutput(
+      'Traceback (most recent call last):\r\n'
+      '  File "<stdin>", line 4, in <module>\r\n'
+      '  File "definitely_missing_9f2a.py", line 2, in c\r\n'
+      "NameError: name 'ErrorHere' isn't defined\r\n",
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // <stdin> is never a jump target, so the one real frame is the only link.
+    final transcript = container.read(replTranscriptControllerProvider).text;
+    final frameStart = transcript.indexOf('definitely_missing_9f2a.py');
+    final frameEnd = transcript.indexOf(', line 2', frameStart);
+
+    // The whole transcript is one paragraph, so its centre is not on the
+    // frame's line; tap the laid-out box of the frame span instead.
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.byType(RichText).first,
+    );
+    final boxes = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: frameStart, extentOffset: frameEnd),
+    );
+    expect(boxes, isNotEmpty, reason: 'frame should occupy a laid-out box');
+
+    final origin = tester.getTopLeft(find.byType(ReplSurface));
+    await tester.tapAt(origin + boxes.first.toRect().center);
+    await tester.pump();
+    await tester.pump();
+
+    // The frame was styled like a link, so a silent no-op read as a dead
+    // console rather than a file that is not on this machine.
+    expect(
+      container.read(replTranscriptControllerProvider).text,
+      contains('cannot locate definitely_missing_9f2a.py'),
+    );
+  });
+
   testWidgets('keeps multiline input and transcript in one scroll document', (
     tester,
   ) async {
@@ -516,7 +607,436 @@ void main() {
     expect(repl.onOutput, same(previousOutput));
     expect(replClearSink, same(previousClear));
   });
+
+  testWidgets('right-click offers the terminal menu on the transcript', (
+    tester,
+  ) async {
+    await _pumpSurface(tester);
+    writeReplOutput('boot output\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(
+      find.textContaining('boot output'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('粘贴'), findsOneWidget);
+    expect(find.text('全选'), findsOneWidget);
+    expect(find.text('清屏'), findsOneWidget);
+    expect(find.text('搜索'), findsNothing);
+
+    await tester.tap(find.text('清屏'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('boot output'), findsNothing);
+  });
+
+  testWidgets('select all and copy from the menu fill the clipboard', (
+    tester,
+  ) async {
+    String? clipboard;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await _pumpSurface(tester);
+    writeReplOutput('boot output\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(
+      find.textContaining('boot output'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全选'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.textContaining('boot output'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('复制'));
+    await tester.pumpAndSettle();
+
+    // The device-echoed prompt is filtered out of the transcript; the gutter
+    // renders it, so the selectable text ends after 'boot output'.
+    expect(clipboard, 'boot output\n');
+  });
+
+  testWidgets('paste from the menu inserts into the local input', (
+    tester,
+  ) async {
+    String? clipboard = 'print(42)';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('ready\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(
+      find.textContaining('ready'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('粘贴'));
+    await tester.pumpAndSettle();
+
+    expect(container.read(replInputControllerProvider).text.text, 'print(42)');
+  });
+
+  testWidgets('the REPL menu is the only popup on right-click', (tester) async {
+    await _pumpSurface(tester);
+    writeReplOutput('menu probe\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    // The transcript paints its own selection, so no platform text toolbar can
+    // stack on top of the REPL menu the way `SelectionArea` used to.
+    await tester.tap(
+      find.textContaining('menu probe'),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('全选'), findsOneWidget);
+  });
+
+  testWidgets('a click leaves the transcript scrollable', (tester) async {
+    await _pumpSurface(tester);
+    final buffer = StringBuffer();
+    for (var i = 0; i < 120; i++) {
+      buffer.write('line $i of the transcript\r\n');
+    }
+    buffer.write('>>> ');
+    writeReplOutput(buffer.toString());
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(Scrollable).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    position.jumpTo(0);
+    await tester.pumpAndSettle();
+
+    // Clicking the transcript hands focus back to the input, and the offset it
+    // holds while doing that has to be released: a stuck anchor snaps every
+    // later scroll back, which reads as the transcript being pinned.
+    await tester.tapAt(const Offset(60, 50));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(200, 150),
+        scrollDelta: Offset(0, 200),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(position.pixels, greaterThan(0));
+  });
+
+  testWidgets('dragging to the left edge keeps the pointer line', (
+    tester,
+  ) async {
+    String? clipboard;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await _pumpSurface(tester);
+    final buffer = StringBuffer();
+    for (var i = 0; i < 120; i++) {
+      buffer.write('line $i of the transcript\r\n');
+    }
+    buffer.write('>>> ');
+    writeReplOutput(buffer.toString());
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(Scrollable).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    position.jumpTo(1000);
+    await tester.pumpAndSettle();
+
+    // Drag up and into the panel's left edge. The transcript paints its own
+    // selection, so a point left of the text maps to the start of the line under
+    // the pointer instead of the top-left corner of the whole paragraph.
+    final gesture = await tester.startGesture(
+      const Offset(60, 200),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var i = 0; i < 10; i++) {
+      await gesture.moveTo(
+        Offset(60 + (4 - 60) * (i + 1) / 10, 200 + (50 - 200) * (i + 1) / 10),
+      );
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(
+      const Offset(60, 250),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('复制'));
+    await tester.pumpAndSettle();
+
+    final lines = (clipboard ?? '').split('\n');
+    expect(lines, isNotEmpty);
+    expect(lines.first, isNot(contains('line 0 ')));
+    expect(lines.length, lessThan(40));
+  });
+
+  testWidgets('a drag above the panel stops at the top visible line', (
+    tester,
+  ) async {
+    String? clipboard;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await _pumpSurface(tester);
+    final buffer = StringBuffer();
+    for (var i = 0; i < 120; i++) {
+      buffer.write('line $i of the transcript\r\n');
+    }
+    buffer.write('>>> ');
+    writeReplOutput(buffer.toString());
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(Scrollable).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    // 1005 leaves the top line half visible: the state the old selection code
+    // turned into "select from the first line" whenever the drag left the panel.
+    position.jumpTo(1005);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      const Offset(60, 200),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var i = 0; i < 10; i++) {
+      await gesture.moveTo(Offset(60, 200 + (-60 - 200) * (i + 1) / 10));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(
+      const Offset(60, 250),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('复制'));
+    await tester.pumpAndSettle();
+
+    final lines = (clipboard ?? '').split('\n');
+    expect(lines, isNotEmpty);
+    // The selection must stop at what is on screen: the first line it covers is
+    // one of the lines around the scroll offset, never the document's first.
+    final index = RegExp(
+      r'(\d+) of the transcript',
+    ).firstMatch(lines.first)?.group(1);
+    expect(index, isNotNull);
+    expect(int.parse(index!), greaterThan(40));
+    expect(lines.length, lessThan(40));
+  });
+
+  testWidgets('double-click selects the word under the pointer', (
+    tester,
+  ) async {
+    String? clipboard;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String?;
+        } else if (call.method == 'Clipboard.getData') {
+          return <String, Object?>{'text': clipboard};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await _pumpSurface(tester);
+    writeReplOutput('alpha beta\r\n>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    final line = find.textContaining('alpha beta');
+    // The test font is fixed-width, so the sixth character starts one fontSize
+    // in: land on "beta" rather than on the space before it.
+    final target = tester.getTopLeft(line) + const Offset(6 * 14 + 4, 8);
+    await tester.tapAt(target, kind: PointerDeviceKind.mouse);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(target, kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(
+      tester.getTopLeft(line) + const Offset(4, 8),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('复制'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard, 'beta');
+  });
+
+  testWidgets('dragging the scrollbar thumb scrolls the transcript', (
+    tester,
+  ) async {
+    await _pumpSurface(tester, theme: _desktopScrollbarTheme);
+
+    final buffer = StringBuffer();
+    for (var i = 0; i < 30; i++) {
+      buffer.write('line $i of the transcript\r\n');
+    }
+    buffer.write('>>> ');
+    writeReplOutput(buffer.toString());
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final position = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    expect(position.maxScrollExtent, greaterThan(0));
+    // A prompt is on screen, so a press also runs the "take focus and hold the
+    // offset" path; that path used to revert every scroll the thumb produced.
+    position.jumpTo(0);
+    await tester.pumpAndSettle();
+
+    const pressPoint = Offset(495, 20);
+    final gesture = await tester.startGesture(
+      pressPoint,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await gesture.moveTo(pressPoint + Offset(0, 6.0 * (i + 1)));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(position.pixels, greaterThan(0));
+  });
 }
+
+/// Centre of the scrollbar thumb, which the framework paints flush against
+/// the right edge and sizes from how much of the transcript is on screen.
+Offset _thumbCenter(WidgetTester tester, ScrollController scroll) {
+  final surface = tester.getRect(find.byType(ReplSurface));
+  final metrics = scroll.position;
+  const thickness = 8.0;
+  const minThumbExtent = 18.0;
+  final visible =
+      metrics.viewportDimension /
+      (metrics.viewportDimension + metrics.maxScrollExtent);
+  final thumbExtent = math.max(minThumbExtent, surface.height * visible);
+  final travelled = surface.height - thumbExtent;
+  final top =
+      surface.top + (metrics.pixels / metrics.maxScrollExtent) * travelled;
+  return Offset(surface.right - thickness / 2, top + thumbExtent / 2);
+}
+
+/// A desktop theme whose scrollbar can be grabbed without hovering first.
+///
+/// `flutter test` defaults to the Android platform, where the Material
+/// scrollbar is an indicator only and installs no drag recognizers at all.
+final ThemeData _desktopScrollbarTheme = ThemeData(
+  platform: TargetPlatform.macOS,
+  scrollbarTheme: const ScrollbarThemeData(
+    thumbVisibility: WidgetStatePropertyAll(true),
+  ),
+);
 
 Future<void> _pumpSurface(
   WidgetTester tester, {
@@ -526,6 +1046,7 @@ Future<void> _pumpSurface(
   Color foregroundColor = Colors.white,
   bool looseConstraints = false,
   ProviderContainer? container,
+  ThemeData? theme,
 }) async {
   final surface = ReplSurface(
     backgroundColor: backgroundColor,
@@ -538,6 +1059,7 @@ Future<void> _pumpSurface(
     ),
   );
   final sized = MaterialApp(
+    theme: theme,
     home: Scaffold(
       body: SizedBox(
         width: width,

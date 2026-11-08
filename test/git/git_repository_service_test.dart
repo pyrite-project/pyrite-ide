@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,12 @@ import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
+
+/// 生产容器中总会有状态持有 pending Future 的 provider（如 PythonRuntimeHost）；
+/// 任何捕获 ref 的闭包都会经由容器摸到它，使 isolate 消息不可发送。
+final _stateWithPendingFutureProvider = Provider<Completer<void>>((ref) {
+  return Completer<void>();
+});
 
 void main() {
   test(
@@ -58,6 +65,26 @@ void main() {
       }
     },
   );
+
+  test('provider-built service stays sendable across isolates', () async {
+    // 回归：translate 曾经由 translateFor(ref) 注入，闭包捕获 ref 后服务
+    // 实例（随 _GitJob.body/describeError 捕获的 this 一起）在 Isolate.spawn
+    // 时会经由 ref 连到整个 ProviderContainer，撞上容器内 provider 状态里的
+    // pending Future，报 "object is unsendable"。种一个最小替身复现该条件。
+    final tempDir = Directory.systemTemp.createTempSync(
+      'pyrite_git_sendable_test_',
+    );
+    final container = ProviderContainer();
+
+    try {
+      container.read(_stateWithPendingFutureProvider);
+      final service = container.read(gitRepositoryServiceProvider);
+      expect(await service.discoverRoot(tempDir.path), isNull);
+    } finally {
+      container.dispose();
+      tempDir.deleteSync(recursive: true);
+    }
+  });
 
   test('GitRepositoryService includes untracked files in diffs', () async {
     final tempDir = Directory.systemTemp.createTempSync(

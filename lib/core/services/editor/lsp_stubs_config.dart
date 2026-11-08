@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_adapter.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_context.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_registry.dart';
@@ -26,7 +27,13 @@ class LspStubsConfig {
   final Map<String, String> environment;
 }
 
-LspStubsConfig buildLspStubsConfig(
+/// What the common pipeline would launch for the current settings: the
+/// resolved stubs paths, virtual environment and server adapter.
+///
+/// [buildLspStubsConfig] applies this to a full launch; callers that only need
+/// the adapter decision — such as the settings page's restart prompt for
+/// environment-delivered stubs — use it directly.
+({LspServerContext context, LspServerAdapter adapter}) resolveLspLaunch(
   LspProviderReader read, {
   String? workspacePath,
 }) {
@@ -72,6 +79,19 @@ LspStubsConfig buildLspStubsConfig(
         LspServerProfileAdapter(entry),
     ],
   ).resolve(context);
+  return (context: context, adapter: adapter);
+}
+
+LspStubsConfig buildLspStubsConfig(
+  LspProviderReader read, {
+  String? workspacePath,
+}) {
+  final (:context, :adapter) = resolveLspLaunch(
+    read,
+    workspacePath: workspacePath,
+  );
+  final paths = context.stubsPaths;
+  final virtualEnvironment = context.virtualEnvironment;
 
   final existingPythonPath = Platform.environment['PYTHONPATH'];
   final pythonPath = [
@@ -90,7 +110,7 @@ LspStubsConfig buildLspStubsConfig(
     );
   }
   environment.addAll({
-    if (stubsEnabled) ...{
+    if (context.stubsEnabled) ...{
       'PYRITE_MICROPYTHON_STUBS_ENABLED': '1',
       'PYRITE_MICROPYTHON_STUBS_PATHS': paths.join(Platform.pathSeparator),
       if (pythonPath.isNotEmpty) 'PYTHONPATH': pythonPath,

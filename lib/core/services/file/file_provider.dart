@@ -9,9 +9,13 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/device/file_hash.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
+import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -84,7 +88,11 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   Future<void> saveCurrentFile() async {
-    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
+    // Follows the focused group so a split editor saves the tab the user is
+    // looking at rather than whichever group happens to be the primary one.
+    final TabData? nowTab = ref
+        .read(activeEditorControllerProvider)
+        .selectedTab;
     await saveTab(nowTab);
   }
 
@@ -119,7 +127,10 @@ class FileNotifier extends StateNotifier<Directory?> {
         // writer would transcode a GBK buffer and drop a UTF-16 byte order
         // mark, turning a save into silent data corruption.
         if (value.encoding == null && !value.byteOrderMark) {
-          await file.writeAsString(text);
+          // Flush like the encoded branch below: whether a save survives a
+          // crash must not depend on which character set the file happens to
+          // use.
+          await file.writeAsString(text, flush: true);
         } else {
           await file.writeAsBytes(
             encodeFileText(
@@ -136,7 +147,9 @@ class FileNotifier extends StateNotifier<Directory?> {
   }
 
   void saveCurrentFileAs() async {
-    final TabData? nowTab = ref.read(tabbedViewControllerProvider).selectedTab;
+    final TabData? nowTab = ref
+        .read(activeEditorControllerProvider)
+        .selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
       final savedPath = await utils.sysSaveAs(
@@ -284,12 +297,14 @@ class FileNotifier extends StateNotifier<Directory?> {
       }
     }
     ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-    showEditorSnackBar(
-      context,
-      translateWithReplacements(ref, I18nKey.fileMessageDeletedLocalItems, {
-        'count': nodes.length.toString(),
-      }),
-    );
+    if (context.mounted) {
+      showEditorSnackBar(
+        context,
+        translateWithReplacements(ref, I18nKey.fileMessageDeletedLocalItems, {
+          'count': nodes.length.toString(),
+        }),
+      );
+    }
   }
 
   Future<void> uploadSelectedLocalItems(
@@ -308,6 +323,19 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+
+    // Upload pre-flight: sum what the batch will move and fail *before* any
+    // file is written when the device reports too little free space. The check
+    // silently degrades when the port has no usable statvfs.
+    final ignore = await _uploadIgnoreFilter();
+    if (!context.mounted) return;
+    final passedPreflight = await _preflightUpload(context, [
+      for (final node in nodes) node.id,
+    ], ignore: ignore);
+    if (passedPreflight == null) return;
+
+    final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+    final cancelToken = progressNotifier.beginCancelToken();
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -316,16 +344,31 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     try {
       for (var i = 0; i < nodes.length; i++) {
+        throwIfTransferCancelled(cancelToken);
         final node = nodes[i];
         final targetPath = buildBoardUploadTargetPath(
           sourcePath: node.id,
           boardFolderPath: boardFolderTarget,
         );
-        final exists = await _boardPathExists(
-          targetPath,
-          node.data is FolderItem,
-        );
+        final isFolder = node.data is FolderItem;
+        // The existence probe already carries the board bytes for files;
+        // comparing them up front skips identical files without a dialog.
+        final existingBoardBytes = isFolder
+            ? null
+            : await _boardFileBytesOrNull(targetPath);
+        final exists = isFolder
+            ? await _boardFolderExists(targetPath)
+            : existingBoardBytes != null;
         if (exists) {
+          if (existingBoardBytes != null &&
+              bytesIdentical(
+                await File(node.id).readAsBytes(),
+                existingBoardBytes,
+              )) {
+            skipped++;
+            continue;
+          }
+          if (!context.mounted) return;
           final canShowDiff = node.data is! FolderItem;
           final action = await _resolveConflict(
             context,
@@ -337,38 +380,45 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(
-                  ref,
-                  I18nKey.fileMessageCanceledUpload,
-                ),
-              );
-              return;
-            case FileConflictAction.showDiff:
-              if (!canShowDiff) {
+              if (context.mounted) {
                 showEditorSnackBar(
                   context,
                   translateWithReplacements(
                     ref,
-                    I18nKey.fileMessageCannotShowFolderDiff,
+                    I18nKey.fileMessageCanceledUpload,
                   ),
                 );
+              }
+              return;
+            case FileConflictAction.showDiff:
+              if (!canShowDiff) {
+                if (context.mounted) {
+                  showEditorSnackBar(
+                    context,
+                    translateWithReplacements(
+                      ref,
+                      I18nKey.fileMessageCannotShowFolderDiff,
+                    ),
+                  );
+                }
                 return;
               }
+              if (!context.mounted) return;
               final shown = await _showUploadDiff(
                 context,
                 sourcePath: node.id,
                 targetPath: targetPath,
               );
               if (!shown) {
-                showEditorSnackBar(
-                  context,
-                  translateWithReplacements(
-                    ref,
-                    I18nKey.fileMessageCannotShowDiff,
-                  ),
-                );
+                if (context.mounted) {
+                  showEditorSnackBar(
+                    context,
+                    translateWithReplacements(
+                      ref,
+                      I18nKey.fileMessageCannotShowDiff,
+                    ),
+                  );
+                }
               }
               return;
             case FileConflictAction.skip:
@@ -388,10 +438,16 @@ class FileNotifier extends StateNotifier<Directory?> {
         }
 
         if (node.data is FolderItem) {
-          await ref
+          skipped += await ref
               .read(boardProvider)
               .transfer
-              .uploadFolder(node.id, targetPath);
+              .uploadFolder(
+                node.id,
+                targetPath,
+                cancel: cancelToken,
+                preflightSpace: false,
+                ignore: ignore,
+              );
           transferredFolders.add(targetPath);
         } else {
           final bytes = await File(node.id).readAsBytes();
@@ -431,13 +487,25 @@ class FileNotifier extends StateNotifier<Directory?> {
               {'done': uploaded.toString(), 'skipped': skipped.toString()},
             ),
           );
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(ref, I18nKey.fileMessageUploadComplete, {
-          'done': uploaded.toString(),
-          'skipped': skipped.toString(),
-        }),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(ref, I18nKey.fileMessageUploadComplete, {
+            'done': uploaded.toString(),
+            'skipped': skipped.toString(),
+          }),
+        );
+      }
+    } on FileTransferCancelledException {
+      progressNotifier.cancelledByUser();
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
+          '${translateWithReplacements(ref, I18nKey.fileTransferProgressSuffix, {'done': '$uploaded', 'skipped': '$skipped'})}',
+        );
+      }
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
@@ -468,6 +536,14 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final boardFolderTarget =
         boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+
+    final ignore = await _uploadIgnoreFilter();
+    if (!context.mounted) return;
+    final budget = await _preflightUpload(context, sourcePaths, ignore: ignore);
+    if (budget == null) return;
+
+    final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+    final cancelToken = progressNotifier.beginCancelToken();
     FileConflictAction? conflictPolicy;
     var uploaded = 0;
     var skipped = 0;
@@ -476,14 +552,31 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     try {
       for (var i = 0; i < sourcePaths.length; i++) {
+        throwIfTransferCancelled(cancelToken);
         final sourcePath = sourcePaths[i];
         final isFolder = await Directory(sourcePath).exists();
         final targetPath = buildBoardUploadTargetPath(
           sourcePath: sourcePath,
           boardFolderPath: boardFolderTarget,
         );
-        final exists = await _boardPathExists(targetPath, isFolder);
+        // The existence probe already carries the board bytes for files;
+        // comparing them up front skips identical files without a dialog.
+        final existingBoardBytes = isFolder
+            ? null
+            : await _boardFileBytesOrNull(targetPath);
+        final exists = isFolder
+            ? await _boardFolderExists(targetPath)
+            : existingBoardBytes != null;
         if (exists) {
+          if (existingBoardBytes != null &&
+              bytesIdentical(
+                await File(sourcePath).readAsBytes(),
+                existingBoardBytes,
+              )) {
+            skipped++;
+            continue;
+          }
+          if (!context.mounted) return;
           final action = await _resolveConflict(
             context,
             policy: conflictPolicy,
@@ -493,22 +586,26 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(
-                  ref,
-                  I18nKey.fileMessageCanceledUpload,
-                ),
-              );
+              if (context.mounted) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCanceledUpload,
+                  ),
+                );
+              }
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(
-                  ref,
-                  I18nKey.fileMessageCannotShowDiff,
-                ),
-              );
+              if (context.mounted) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCannotShowDiff,
+                  ),
+                );
+              }
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -527,10 +624,16 @@ class FileNotifier extends StateNotifier<Directory?> {
         }
 
         if (isFolder) {
-          await ref
+          skipped += await ref
               .read(boardProvider)
               .transfer
-              .uploadFolder(sourcePath, targetPath);
+              .uploadFolder(
+                sourcePath,
+                targetPath,
+                cancel: cancelToken,
+                preflightSpace: false,
+                ignore: ignore,
+              );
           transferredFolders.add(targetPath);
         } else {
           final bytes = await File(sourcePath).readAsBytes();
@@ -570,13 +673,25 @@ class FileNotifier extends StateNotifier<Directory?> {
               {'done': uploaded.toString(), 'skipped': skipped.toString()},
             ),
           );
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(ref, I18nKey.fileMessageUploadComplete, {
-          'done': uploaded.toString(),
-          'skipped': skipped.toString(),
-        }),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(ref, I18nKey.fileMessageUploadComplete, {
+            'done': uploaded.toString(),
+            'skipped': skipped.toString(),
+          }),
+        );
+      }
+    } on FileTransferCancelledException {
+      progressNotifier.cancelledByUser();
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
+          '${translateWithReplacements(ref, I18nKey.fileTransferProgressSuffix, {'done': '$uploaded', 'skipped': '$skipped'})}',
+        );
+      }
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
@@ -640,6 +755,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             ? await Directory(targetPath).exists()
             : await File(targetPath).exists();
         if (exists) {
+          if (!context.mounted) return;
           final action = await _resolveConflict(
             context,
             policy: conflictPolicy,
@@ -649,22 +765,26 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(
-                  ref,
-                  I18nKey.fileMessageCanceledImport,
-                ),
-              );
+              if (context.mounted) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCanceledImport,
+                  ),
+                );
+              }
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(
-                  ref,
-                  I18nKey.fileMessageCannotShowDiff,
-                ),
-              );
+              if (context.mounted) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCannotShowDiff,
+                  ),
+                );
+              }
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -710,13 +830,15 @@ class FileNotifier extends StateNotifier<Directory?> {
               {'done': imported.toString(), 'skipped': skipped.toString()},
             ),
           );
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(ref, I18nKey.fileMessageImportComplete, {
-          'done': imported.toString(),
-          'skipped': skipped.toString(),
-        }),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(ref, I18nKey.fileMessageImportComplete, {
+            'done': imported.toString(),
+            'skipped': skipped.toString(),
+          }),
+        );
+      }
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
@@ -739,12 +861,16 @@ class FileNotifier extends StateNotifier<Directory?> {
         .toList(growable: false);
     if (movableNodes.isEmpty) return;
     if (!await Directory(targetFolder).exists()) {
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(ref, I18nKey.fileMessageTargetFolderMissing, {
-          'path': targetFolder,
-        }),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(
+            ref,
+            I18nKey.fileMessageTargetFolderMissing,
+            {'path': targetFolder},
+          ),
+        );
+      }
       return;
     }
 
@@ -776,13 +902,15 @@ class FileNotifier extends StateNotifier<Directory?> {
         }
         if (node.data is FolderItem &&
             _isLocalPathInside(targetFolder, sourcePath)) {
-          showEditorSnackBar(
-            context,
-            translateWithReplacements(
-              ref,
-              I18nKey.fileMessageCannotMoveFolderIntoSelf,
-            ),
-          );
+          if (context.mounted) {
+            showEditorSnackBar(
+              context,
+              translateWithReplacements(
+                ref,
+                I18nKey.fileMessageCannotMoveFolderIntoSelf,
+              ),
+            );
+          }
           skipped++;
           continue;
         }
@@ -791,6 +919,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             await FileSystemEntity.type(targetPath) !=
             FileSystemEntityType.notFound;
         if (targetExists) {
+          if (!context.mounted) return;
           final action = await _resolveConflict(
             context,
             policy: conflictPolicy,
@@ -800,19 +929,26 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           switch (action) {
             case FileConflictAction.cancel:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(ref, I18nKey.fileMessageCanceledMove),
-              );
+              if (context.mounted) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCanceledMove,
+                  ),
+                );
+              }
               return;
             case FileConflictAction.showDiff:
-              showEditorSnackBar(
-                context,
-                translateWithReplacements(
-                  ref,
-                  I18nKey.fileMessageCannotShowMoveDiff,
-                ),
-              );
+              if (context.mounted) {
+                showEditorSnackBar(
+                  context,
+                  translateWithReplacements(
+                    ref,
+                    I18nKey.fileMessageCannotShowMoveDiff,
+                  ),
+                );
+              }
               return;
             case FileConflictAction.skip:
               skipped++;
@@ -856,13 +992,15 @@ class FileNotifier extends StateNotifier<Directory?> {
               {'done': moved.toString(), 'skipped': skipped.toString()},
             ),
           );
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(ref, I18nKey.fileMessageMoveComplete, {
-          'done': moved.toString(),
-          'skipped': skipped.toString(),
-        }),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(ref, I18nKey.fileMessageMoveComplete, {
+            'done': moved.toString(),
+            'skipped': skipped.toString(),
+          }),
+        );
+      }
     } catch (error) {
       ref
           .read(fileTransferProgressProvider.notifier)
@@ -873,6 +1011,65 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
       rethrow;
     }
+  }
+
+  /// `.pyrsyncignore` bound to the open workspace, or `null` when none is open.
+  ///
+  /// Every folder upload resolves it once, so the ignore list means the same
+  /// thing whether the user syncs the workspace or uploads a folder by hand.
+  /// A single explicitly selected file is still transferred: the list describes
+  /// trees, not one deliberate action.
+  Future<SyncIgnoreFilter?> _uploadIgnoreFilter() async {
+    final root = ref.read(fileProvider)?.path;
+    if (root == null) return null;
+    return loadSyncIgnoreFilter(root);
+  }
+
+  /// Runs the upload space pre-flight for [localPaths].
+  ///
+  /// Returns the budget on success/graceful degradation, or `null` when the
+  /// check failed and the caller must abort: the failure message is already in
+  /// the progress area and a snack bar so no silent swallow happens.
+  ///
+  /// The required size is accumulated across the whole batch ("批量时累加总
+  /// 大小") so a batch that individually fits but collectively does not is
+  /// rejected before the first write. Files covered by [ignore] are excluded
+  /// from the sum because the upload will not transfer them either.
+  Future<SpaceBudgetResult?> _preflightUpload(
+    BuildContext context,
+    List<String> localPaths, {
+    SyncIgnoreFilter? ignore,
+  }) async {
+    final ops = ref.read(boardProvider).ops;
+    String translateBudget(
+      I18nKey key, [
+      Map<String, String> replacements = const {},
+    ]) => translateWithReplacements(ref, key, replacements);
+    final int requiredBytes;
+    try {
+      requiredBytes = await ops.localTransferSize(localPaths, ignore: ignore);
+    } catch (error) {
+      // Size probing is part of the pre-flight only; failing to size a path is
+      // not a reason to block the upload, but it must be visible in the log.
+      debugPrint('[file] upload pre-flight size probe failed: $error');
+      return checkSpaceBudget(null, 0, translate: translateBudget);
+    }
+    if (requiredBytes <= 0) {
+      return checkSpaceBudget(null, 0, translate: translateBudget);
+    }
+
+    final budget = await ops.preflightUploadSpace(requiredBytes);
+    if (budget.status == SpaceBudgetStatus.insufficient) {
+      ref.read(fileTransferProgressProvider.notifier).fail(budget.message);
+      if (context.mounted) {
+        showIdeError(context, budget.message);
+      }
+      return null;
+    }
+    if (budget.status == SpaceBudgetStatus.unknown) {
+      debugPrint('[file] upload pre-flight skipped: ${budget.message}');
+    }
+    return budget;
   }
 
   Future<void> _deleteLocalPath(String targetPath) async {
@@ -915,16 +1112,21 @@ class FileNotifier extends StateNotifier<Directory?> {
     }
   }
 
-  Future<bool> _boardPathExists(String targetPath, bool folder) async {
+  Future<bool> _boardFolderExists(String targetPath) async {
     try {
-      if (folder) {
-        await ref.read(boardProvider).ops.getFileList(path: targetPath);
-      } else {
-        await ref.read(boardProvider).ops.getFileBytes(targetPath);
-      }
+      await ref.read(boardProvider).ops.getFileList(path: targetPath);
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Board file bytes, or `null` when the path is missing or unreadable.
+  Future<List<int>?> _boardFileBytesOrNull(String targetPath) async {
+    try {
+      return await ref.read(boardProvider).ops.getFileBytes(targetPath);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -943,7 +1145,11 @@ class FileNotifier extends StateNotifier<Directory?> {
     required String targetPath,
     required bool isUpload,
     bool canShowDiff = false,
-  }) {
+  }) async {
+    // The conflict dialog cannot be shown once the page is gone; treating
+    // that as a user cancel routes the batch through the existing cancel
+    // handling instead of throwing on a dead context.
+    if (!context.mounted) return FileConflictAction.cancel;
     return resolveConflict(
       context,
       policy: policy,
@@ -984,6 +1190,11 @@ class FileNotifier extends StateNotifier<Directory?> {
       addedRanges: diff.addedRanges,
       removedRanges: diff.removedRanges,
     );
+    // The preview is a look at what would be uploaded, not a scratch buffer;
+    // EditCore restores editability when the pending state is confirmed or
+    // cancelled.
+    controller?.readOnly = true;
+    revealFirstDifference(controller, diff);
 
     final provider = pendingUploadProviderMap.putIfAbsent(
       sourcePath,
@@ -1055,13 +1266,16 @@ class FileNotifier extends StateNotifier<Directory?> {
         content = await local.getFileContent(sourcePath);
       } on FileSystemException {
         await _uploadLocalFileBytes(sourcePath, targetPath);
-        if (!context.mounted) return;
-        showEditorSnackBar(
-          context,
-          translateWithReplacements(ref, I18nKey.fileMessageUploadedToDevice, {
-            'path': targetPath,
-          }),
-        );
+        if (context.mounted) {
+          showEditorSnackBar(
+            context,
+            translateWithReplacements(
+              ref,
+              I18nKey.fileMessageUploadedToDevice,
+              {'path': targetPath},
+            ),
+          );
+        }
         return;
       }
 
@@ -1076,6 +1290,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         final diff = computeDiff(originContent, content);
 
         if (ref.read(uploadConfirmStyleProvider) == 'dialog') {
+          if (!context.mounted) return;
           final confirmed = await showDiffConfirmDialog(
             context,
             diff: diff,
@@ -1083,13 +1298,19 @@ class FileNotifier extends StateNotifier<Directory?> {
             isUpload: true,
           );
           if (!confirmed) {
-            showEditorSnackBar(
-              context,
-              translateWithReplacements(ref, I18nKey.fileMessageCanceledUpload),
-            );
+            if (context.mounted) {
+              showEditorSnackBar(
+                context,
+                translateWithReplacements(
+                  ref,
+                  I18nKey.fileMessageCanceledUpload,
+                ),
+              );
+            }
             return;
           }
         } else {
+          if (!context.mounted) return;
           await _showUploadDiff(
             context,
             sourcePath: selected?.id ?? selectedTab!.value.filePath,
@@ -1097,6 +1318,22 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           return;
         }
+      }
+
+      final encodedBytes = utf8.encode(content);
+      // Single large files get the same pre-flight as batches; the size is the
+      // bytes actually written, not the on-disk file length, because the editor
+      // buffer may be larger than what was last saved.
+      final singleBudget = await ref
+          .read(boardProvider)
+          .ops
+          .preflightUploadSpace(encodedBytes.length);
+      if (singleBudget.status == SpaceBudgetStatus.insufficient) {
+        ref
+            .read(fileTransferProgressProvider.notifier)
+            .fail(singleBudget.message);
+        if (context.mounted) showIdeError(context, singleBudget.message);
+        return;
       }
 
       try {
@@ -1116,7 +1353,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             .ops
             .writeFileBytesWithProgress(
               targetPath,
-              utf8.encode(content),
+              encodedBytes,
               currentFile: sourcePath,
               index: 1,
               totalFiles: 1,
@@ -1148,22 +1385,36 @@ class FileNotifier extends StateNotifier<Directory?> {
         rethrow;
       }
 
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(ref, I18nKey.fileMessageUploadedToDevice, {
-          'path': targetPath,
-        }),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(ref, I18nKey.fileMessageUploadedToDevice, {
+            'path': targetPath,
+          }),
+        );
+      }
     } else if (selected?.data is FolderItem) {
       final targetPath = buildBoardUploadTargetPath(
         sourcePath: selected!.id,
         boardFolderPath: boardFolderTarget?.id,
       );
+      final progressNotifier = ref.read(fileTransferProgressProvider.notifier);
+      final ignore = await _uploadIgnoreFilter();
+      if (!context.mounted) return;
+      final budget = await _preflightUpload(context, [
+        selected.id,
+      ], ignore: ignore);
+      if (budget == null) return;
       try {
         await ref
             .read(boardProvider)
             .transfer
-            .uploadFolder(selected.id, targetPath);
+            .uploadFolder(
+              selected.id,
+              targetPath,
+              cancel: progressNotifier.beginCancelToken(),
+              ignore: ignore,
+            );
         ref
             .read(tabbedViewControllerProvider.notifier)
             .warnOpenFilesOverwritten(
@@ -1191,14 +1442,16 @@ class FileNotifier extends StateNotifier<Directory?> {
         rethrow;
       }
 
-      showEditorSnackBar(
-        context,
-        translateWithReplacements(
-          ref,
-          I18nKey.fileMessageUploadedFolderToDevice,
-          {'path': targetPath},
-        ),
-      );
+      if (context.mounted) {
+        showEditorSnackBar(
+          context,
+          translateWithReplacements(
+            ref,
+            I18nKey.fileMessageUploadedFolderToDevice,
+            {'path': targetPath},
+          ),
+        );
+      }
     }
   }
 
@@ -1228,6 +1481,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       try {
         content = await local.getFileContent(sourcePath);
       } on FileSystemException {
+        if (!context.mounted) return;
         await _uploadSelectedLocalItem(context, selectedTab: selectedTab);
         return;
       }
@@ -1242,6 +1496,7 @@ class FileNotifier extends StateNotifier<Directory?> {
                   .read(editorControllerMapProvider)[selected?.id ??
                       selectedTab?.value.filePath]!
                   .text)) {
+        if (!context.mounted) return;
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -1287,9 +1542,11 @@ class FileNotifier extends StateNotifier<Directory?> {
           ),
         );
       } else {
+        if (!context.mounted) return;
         _uploadSelectedLocalItem(context, selectedTab: selectedTab);
       }
     } else {
+      if (!context.mounted) return;
       _uploadSelectedLocalItem(context, selectedTab: selectedTab);
     }
   }
@@ -1299,6 +1556,14 @@ class FileNotifier extends StateNotifier<Directory?> {
     String targetPath,
   ) async {
     final bytes = await File(sourcePath).readAsBytes();
+    final budget = await ref
+        .read(boardProvider)
+        .ops
+        .preflightUploadSpace(bytes.length);
+    if (budget.status == SpaceBudgetStatus.insufficient) {
+      ref.read(fileTransferProgressProvider.notifier).fail(budget.message);
+      throw InsufficientDeviceSpaceException(budget);
+    }
     try {
       ref
           .read(fileTransferProgressProvider.notifier)

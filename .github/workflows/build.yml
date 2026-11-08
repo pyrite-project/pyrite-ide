@@ -29,6 +29,13 @@ jobs:
       - name: Analyze project
         run: flutter analyze --no-fatal-infos lib test
 
+      # The suite holds well over a thousand cases; before this job existed a
+      # tag could be published with tests that had been red for weeks. The
+      # native editor runtime is not built here, so suites that need it skip
+      # themselves and report that loudly instead of silently passing.
+      - name: Run tests
+        run: flutter test --reporter expanded
+
   build:
     name: Build for ${{ matrix.target }}
     needs: analyze

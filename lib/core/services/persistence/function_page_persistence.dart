@@ -9,7 +9,7 @@ class FunctionPagePersistedData {
   final int tabletSelectedIndex;
   final bool functionPageShow;
   final bool consolePageShow;
-  final bool expansionPageShow;
+  final String consoleDockSide;
 
   FunctionPagePersistedData({
     required this.desktopSelectedIndex,
@@ -17,7 +17,7 @@ class FunctionPagePersistedData {
     required this.tabletSelectedIndex,
     this.functionPageShow = true,
     this.consolePageShow = true,
-    this.expansionPageShow = true,
+    this.consoleDockSide = 'bottom',
   });
 
   Map<String, dynamic> toJson() => {
@@ -26,7 +26,7 @@ class FunctionPagePersistedData {
     'tabletSelectedIndex': tabletSelectedIndex,
     'functionPageShow': functionPageShow,
     'consolePageShow': consolePageShow,
-    'expansionPageShow': expansionPageShow,
+    'consoleDockSide': consoleDockSide,
   };
 
   factory FunctionPagePersistedData.fromJson(Map<String, dynamic> json) =>
@@ -36,7 +36,7 @@ class FunctionPagePersistedData {
         tabletSelectedIndex: json['tabletSelectedIndex'] as int? ?? 0,
         functionPageShow: json['functionPageShow'] as bool? ?? true,
         consolePageShow: json['consolePageShow'] as bool? ?? true,
-        expansionPageShow: json['expansionPageShow'] as bool? ?? true,
+        consoleDockSide: json['consoleDockSide'] as String? ?? 'bottom',
       );
 }
 
@@ -66,7 +66,12 @@ class FunctionPagePersistence {
   Future<void> save(FunctionPagePersistedData data) async {
     try {
       final file = await _file;
-      await file.writeAsString(jsonEncode(data.toJson()));
+      // Temp file + rename, like the other JSON stores: a crash mid-write
+      // leaves truncated JSON behind, and load() turns a parse error into
+      // null, which silently resets this store to its defaults.
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.rename(file.path);
     } catch (e) {
       debugPrint('FunctionPagePersistence: Failed to save: $e');
     }
