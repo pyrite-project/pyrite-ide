@@ -36,15 +36,19 @@ void main() {
       origin: 'http://127.0.0.1:${server.port}',
     );
     metadata = {
-      'ext_id': 'com.example.hello',
-      'name': 'Hello',
+      'extension_id': 'com.example.hello',
       'version': '1.2.0',
-      'sha256': sha256.convert(packageBytes).toString(),
-      'size': packageBytes.length,
-      'type': 'ui',
-      'platforms': ['windows', 'macos'],
-      'permissions': ['editor.read'],
-      'author': 'Ann',
+      'artifact': {
+        'sha256': sha256.convert(packageBytes).toString(),
+        'size': packageBytes.length,
+      },
+      'manifest': {
+        'name': 'Hello',
+        'type': 'ui',
+        'platforms': ['windows', 'macos'],
+        'permissions': ['editor.read'],
+        'author': 'Ann',
+      },
       'installable': true,
       'moderation': {'level': 'none'},
       // A hostile registry cannot redirect the download through this field.
@@ -55,7 +59,7 @@ void main() {
       requestedPaths.add(request.uri.path);
       requestedQueries.add(request.uri.queryParameters);
       final response = request.response;
-      if (request.uri.path.endsWith('/advisories')) {
+      if (request.uri.path.endsWith('/advisories.json')) {
         response.headers.contentType = ContentType.json;
         response.write(jsonEncode(advisoryBody));
       } else if (request.uri.path.endsWith('/package.pyrix')) {
@@ -64,7 +68,7 @@ void main() {
       } else {
         response.statusCode = metadataStatus;
         response.headers.contentType = ContentType.json;
-        response.write(jsonEncode(metadata));
+        response.write(jsonEncode({'release': metadata}));
       }
       await response.close();
     });
@@ -88,7 +92,7 @@ void main() {
       expect(release.moderation.isFlagged, isFalse);
       expect(
         requestedPaths.single,
-        '/pyrite/api/v1/extensions/com.example.hello/versions/1.2.0',
+        '/pyrite/registry/extensions/com.example.hello/releases/1.2.0.json',
       );
     });
 
@@ -136,13 +140,24 @@ void main() {
     });
 
     test('refuses a malformed checksum', () async {
-      metadata['sha256'] = 'not-a-hash';
+      (metadata['artifact'] as Map<String, Object?>)['sha256'] = 'not-a-hash';
 
       expect(
         client().fetchRelease(intent),
         throwsA(isA<PluginRegistryException>()),
       );
     });
+
+    for (final field in ['artifact', 'manifest']) {
+      test('refuses a release without $field', () async {
+        metadata.remove(field);
+
+        await expectLater(
+          client().fetchRelease(intent),
+          throwsA(isA<PluginRegistryException>()),
+        );
+      });
+    }
 
     test('maps missing releases to notFound', () async {
       metadataStatus = 404;
@@ -181,7 +196,7 @@ void main() {
       String version, {
       String level = 'none',
     }) => {
-      'ext_id': id,
+      'extension_id': id,
       'version': version,
       'installable': level != 'withdrawn',
       'moderation': {
@@ -198,7 +213,7 @@ void main() {
         (pluginId: 'com.example.hello', version: '1.2.0-rc.1'),
       ]);
 
-      expect(requestedPaths.single, '/pyrite/api/v1/advisories');
+      expect(requestedPaths.single, '/pyrite/registry/advisories.json');
       expect(
         requestedQueries.single['releases'],
         '@my-org/tool@2.0.0,com.example.hello@1.2.0-rc.1',
@@ -288,7 +303,7 @@ void main() {
       expect(file.path, endsWith('com.example.hello-1.2.0.pyrix'));
       expect(
         requestedPaths.last,
-        '/pyrite/api/v1/extensions/com.example.hello/versions/1.2.0'
+        '/pyrite/registry/extensions/com.example.hello/releases/1.2.0'
         '/package.pyrix',
       );
     });

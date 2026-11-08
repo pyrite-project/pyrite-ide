@@ -94,7 +94,7 @@ class PluginAdvisory {
   });
 
   factory PluginAdvisory.fromJson(Map<String, dynamic> json) {
-    final pluginId = json['ext_id'];
+    final pluginId = json['extension_id'];
     final version = json['version'];
     if (pluginId is! String || version is! String) {
       throw const PluginRegistryException(
@@ -121,7 +121,7 @@ class PluginAdvisory {
   bool get isFlagged => moderation.isFlagged || !installable;
 
   Map<String, Object?> toJson() => {
-    'ext_id': pluginId,
+    'extension_id': pluginId,
     'version': version,
     'installable': installable,
     'moderation': moderation.toJson(),
@@ -155,9 +155,18 @@ class PluginRegistryRelease {
   });
 
   factory PluginRegistryRelease.fromJson(Map<String, dynamic> json) {
-    final sha256 = json['sha256'];
-    final size = json['size'];
-    final pluginId = json['ext_id'];
+    final artifact = json['artifact'];
+    final manifest = json['manifest'];
+    if (artifact is! Map<String, dynamic> ||
+        manifest is! Map<String, dynamic>) {
+      throw const PluginRegistryException(
+        PluginRegistryErrorCode.badResponse,
+        'The release description is incomplete',
+      );
+    }
+    final sha256 = artifact['sha256'];
+    final size = artifact['size'];
+    final pluginId = json['extension_id'];
     final version = json['version'];
     if (pluginId is! String ||
         version is! String ||
@@ -175,14 +184,14 @@ class PluginRegistryRelease {
 
     return PluginRegistryRelease(
       pluginId: pluginId,
-      name: json['name'] is String ? json['name'] as String : pluginId,
+      name: manifest['name'] is String ? manifest['name'] as String : pluginId,
       version: version,
       sha256: sha256,
       size: size,
-      type: json['type'] as String?,
-      platforms: strings(json['platforms']),
-      permissions: strings(json['permissions']),
-      author: json['author'] as String?,
+      type: manifest['type'] as String?,
+      platforms: strings(manifest['platforms']),
+      permissions: strings(manifest['permissions']),
+      author: manifest['author'] as String?,
       installable: json['installable'] == true,
       moderation: PluginModeration.fromJson(json['moderation']),
     );
@@ -209,16 +218,22 @@ class PluginRegistryClient {
 
   final HttpClient Function() _clientFactory;
 
-  Uri _releaseUri(RegistryInstallIntent intent) => Uri.parse(
-    '${intent.origin}/pyrite/api/v1/extensions/${intent.pluginId}'
-    '/versions/${intent.version}',
-  );
+  String _releaseBase(RegistryInstallIntent intent) =>
+      '${intent.origin}/pyrite/registry/extensions/${intent.pluginId}'
+      '/releases/${intent.version}';
 
   Future<PluginRegistryRelease> fetchRelease(
     RegistryInstallIntent intent,
   ) async {
-    final json = await _getJson(_releaseUri(intent));
-    final release = PluginRegistryRelease.fromJson(json);
+    final json = await _getJson(Uri.parse('${_releaseBase(intent)}.json'));
+    final entry = json['release'];
+    if (entry is! Map<String, dynamic>) {
+      throw const PluginRegistryException(
+        PluginRegistryErrorCode.badResponse,
+        'The registry returned an unexpected document',
+      );
+    }
+    final release = PluginRegistryRelease.fromJson(entry);
     if (release.pluginId != intent.pluginId ||
         release.version != intent.version) {
       throw const PluginRegistryException(
@@ -235,7 +250,7 @@ class PluginRegistryClient {
     String origin,
     List<({String pluginId, String version})> releases,
   ) async {
-    final uri = Uri.parse('$origin/pyrite/api/v1/advisories').replace(
+    final uri = Uri.parse('$origin/pyrite/registry/advisories.json').replace(
       queryParameters: {
         'releases': releases.map((r) => '${r.pluginId}@${r.version}').join(','),
       },
@@ -324,7 +339,7 @@ class PluginRegistryClient {
     final client = _clientFactory()..connectionTimeout = _requestTimeout;
     try {
       final request = await client
-          .getUrl(Uri.parse('${_releaseUri(intent)}/package.pyrix'))
+          .getUrl(Uri.parse('${_releaseBase(intent)}/package.pyrix'))
           .timeout(_requestTimeout);
       final response = await request.close().timeout(_requestTimeout);
       _checkStatus(response.statusCode);

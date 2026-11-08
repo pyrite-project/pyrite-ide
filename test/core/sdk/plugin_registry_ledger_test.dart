@@ -121,8 +121,17 @@ void main() {
 
   test('damaged entries are dropped and the rest survives', () async {
     File('${support.path}/plugin_registry_ledger.json').writeAsStringSync('''
-{"sources": {"good": {"origin": "https://x.example", "version": "1.0.0"}, "bad": 5, "worse": {"origin": 1}},
- "advisories": {"good": {"ext_id": "good", "version": "1.0.0"}, "bad": {"ext_id": 7}}}
+{
+  "sources": {
+    "good": {"origin": "https://x.example", "version": "1.0.0"},
+    "bad": 5,
+    "worse": {"origin": 1}
+  },
+  "advisories": {
+    "good": {"extension_id": "good", "version": "1.0.0"},
+    "bad": {"extension_id": 7}
+  }
+}
 ''');
 
     final snapshot = await ledger.read();
