@@ -8,6 +8,7 @@ import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
@@ -39,6 +40,16 @@ import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
 import 'package:pyrite_ide/core/sdk/environment_provider.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
+import 'package:window_manager/window_manager.dart';
+import 'package:pyrite_ide/app/routes.dart' as app_routes;
+import 'package:pyrite_ide/core/sdk/plugin_install_link.dart';
+import 'package:pyrite_ide/core/services/plugin_install_intake.dart';
+import 'package:pyrite_ide/core/sdk/plugin_advisory_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_registry_client.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
+import 'package:pyrite_ide/pages/plugins/moderation_banner.dart';
+import 'package:pyrite_ide/core/services/windows_shell_registration.dart';
 
 String? getPythonPath() {
   if (Platform.isAndroid) return "assets/android/python.zip";
@@ -464,8 +475,84 @@ Future<void> _startRuntimeAndPlugins() async {
   }
 }
 
+/// Shows the confirmation tab for a plugin the system asked the IDE to install.
+///
+/// Links can arrive while the user is on another page or the window is in the
+/// background, so both are brought forward.
+void _openPluginInstall(PluginInstallIntent intent) {
+  app_routes.routes.go(app_routes.file);
+  container
+      .read(tabbedViewControllerProvider.notifier)
+      .openPluginInstall(intent);
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    unawaited(() async {
+      await windowManager.show();
+      await windowManager.focus();
+    }());
+  }
+}
+
+/// Starts keeping an eye on plugins installed from a registry.
+///
+/// What was learned in earlier sessions is shown at once; the registries are
+/// asked shortly after startup and then whenever the periodic tick finds the
+/// last answer older than [advisoryCheckInterval].
+void _watchPluginAdvisories() {
+  final advisories = container.read(pluginAdvisoryProvider.notifier);
+  advisories.onNewAlerts = _announceAdvisories;
+  unawaited(
+    advisories.reload().then(
+      (_) => Future<void>.delayed(
+        const Duration(seconds: 30),
+        advisories.checkIfDue,
+      ),
+    ),
+  );
+  container
+      .read(periodicTaskManagerProvider)
+      .registerTask(
+        name: 'plugin-advisories',
+        interval: advisoryTickInterval,
+        callback: () => unawaited(advisories.checkIfDue()),
+      );
+}
+
+void _announceAdvisories(List<PluginAdvisory> alerts) {
+  final context = appNavigatorKey.currentContext;
+  if (context == null || alerts.isEmpty) return;
+
+  final registry = container.read(dataRegistryProvider);
+  final locale = container.read(activeLocaleProvider);
+  String translate(I18nKey key) => translateFromRegistry(registry, locale, key);
+
+  final String message;
+  if (alerts.length == 1) {
+    final alert = alerts.single;
+    final name =
+        container.read(pluginManagerProvider)[alert.pluginId]?.name ??
+        alert.pluginId;
+    message = translateWithReplacementsFromRegistry(
+      registry,
+      locale,
+      I18nKey.pluginAdvisoryAlertOne,
+      {
+        'name': name,
+        'title': pluginModerationTitleWith(translate, alert.moderation),
+      },
+    );
+  } else {
+    message = translateWithReplacementsFromRegistry(
+      registry,
+      locale,
+      I18nKey.pluginAdvisoryAlertMany,
+      {'count': '${alerts.length}'},
+    );
+  }
+  showIdeWarning(context, message);
+}
+
 // PyriteIDE: Hello World.
-void main() async {
+void main(List<String> arguments) async {
   GitDebugLog.startSession();
   GitDebugLog.log('main start');
   PyriteWidgetsBinding.ensureInitialized();
@@ -587,6 +674,19 @@ void main() async {
 
   _startAutoSave();
   _gatherConsoleOnMobileLayout();
+
+  if (Platform.isWindows) {
+    unawaited(WindowsShellRegistration().ensureRegistered());
+  }
+
+  _watchPluginAdvisories();
+
+  // The install tab needs a built UI, so requests start after the first frame.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(
+      PluginInstallIntake(onIntent: _openPluginInstall).start(arguments),
+    );
+  });
 
   // Let Flutter paint the first frame before native CPython initialization.
   // Startup plugins still wait for the runtime snapshot inside the helper.

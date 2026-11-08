@@ -28,5 +28,55 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.can1425.pyride.plugin-install</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pyride</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.can1425.pyride.pyrix</string>
+			<key>UTTypeDescription</key>
+			<string>Pyrite IDE plugin package</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.zip-archive</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>pyrix</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/x-pyrix</string>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Pyrite IDE plugin package</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.can1425.pyride.pyrix</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

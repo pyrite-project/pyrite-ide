@@ -2,10 +2,11 @@
 Type=Application
 Name=PyriteIDE
 Comment=A modern and powerful MicroPython IDE
-Exec=pyride
+Exec=pyride %U
 Icon=pyride
 Terminal=false
 Categories=Development;IDE;
+MimeType=x-scheme-handler/pyride;application/x-pyrix;
 Keywords=MicroPython;Python;IDE;Embedded;Serial;
 StartupNotify=true
 StartupWMClass=pyrite_ide

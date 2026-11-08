@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/sdk/plugin_install_link.dart';
 import 'package:pyrite_ide/core/services/editor/closed_tab_history.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
@@ -35,6 +36,7 @@ import 'package:tabbed_view/tabbed_view.dart';
 import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/editor/welcome.dart';
+import 'package:pyrite_ide/pages/plugins/install_tab.dart';
 
 /// Owns the primary editor group and the lifecycle of every editor tab.
 ///
@@ -693,6 +695,62 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     );
 
     openTab(tab);
+  }
+
+  /// Opens the confirmation tab for installing [intent], or focuses it when the
+  /// same install is already open. The tab is not a document, so it is not
+  /// persisted across restarts.
+  void openPluginInstall(PluginInstallIntent intent) {
+    final open = _findOpenTab(
+      (value) =>
+          value.type == TabDataValue.pluginInstallType &&
+          value.filePath == intent.tabId,
+    );
+    if (open != null) {
+      focusTab(open);
+      return;
+    }
+
+    final title = switch (intent) {
+      RegistryInstallIntent() => translateWithReplacements(
+        ref,
+        I18nKey.pluginInstallTabTitle,
+        {'name': intent.pluginId},
+      ),
+      LocalInstallIntent() => translate(ref, I18nKey.pluginInstallTabTitleFile),
+    };
+    openTab(
+      TabData(
+        leading: (context, status) => Padding(
+          padding: const EdgeInsetsGeometry.only(right: 4),
+          child: Icon(
+            Icons.extension_outlined,
+            size: 16,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        value: TabDataValue(
+          type: TabDataValue.pluginInstallType,
+          filePath: intent.tabId,
+        ),
+        text: title,
+        content: PluginInstallTab(intent: intent),
+      ),
+    );
+  }
+
+  /// Closes the tab whose [TabDataValue.tabId] is [tabId], wherever it sits.
+  void closeTabById(String tabId) {
+    for (final group in ref.read(editorLayoutProvider).controllers) {
+      for (final tab in group.tabs) {
+        final value = editorTabValueOf(tab);
+        if (value != null && value.tabId == tabId) {
+          group.removeTab(group.tabs.indexOf(tab));
+          _refreshTitles();
+          return;
+        }
+      }
+    }
   }
 
   /// Opens [viewId] as an editor tab hosting a [PluginViewSurface].

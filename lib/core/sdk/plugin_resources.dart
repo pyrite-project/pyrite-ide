@@ -53,7 +53,7 @@ Future<File?> resolveInstalledPluginAsset(
   String pluginId,
   String assetPath,
 ) async {
-  if (pluginId.isEmpty || path.basename(pluginId) != pluginId) return null;
+  if (!isSafePluginId(pluginId)) return null;
   final support = await getApplicationSupportDirectory();
   final pluginDirectory = await resolvePluginPackageDirectory(
     support,

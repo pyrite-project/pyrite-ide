@@ -2,6 +2,7 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include "app_links/app_links_plugin_c_api.h"
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -13,16 +14,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
+  // A pyride:// link or a double-clicked .pyrix file starts a new process. When
+  // an IDE window already exists, hand the request to it instead of opening a
+  // second window. A plain launch without arguments still opens its own window.
+  std::vector<std::string> launch_arguments = GetCommandLineArguments();
+  if (!launch_arguments.empty()) {
+    HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", nullptr);
+    if (existing != nullptr) {
+      SendAppLink(existing);
+      if (::IsIconic(existing)) {
+        ::ShowWindow(existing, SW_RESTORE);
+      }
+      ::SetForegroundWindow(existing);
+      return EXIT_SUCCESS;
+    }
+  }
+
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
 
-  std::vector<std::string> command_line_arguments =
-      GetCommandLineArguments();
-
-  project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
+  project.set_dart_entrypoint_arguments(std::move(launch_arguments));
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);

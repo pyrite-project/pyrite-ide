@@ -51,6 +51,7 @@ source=(
   "python-linux-dart-${_python_version}-${CARCH}.tar.gz::https://github.com/flet-dev/python-build/releases/download/${_python_build_date}/python-linux-dart-${_python_version}-${CARCH}.tar.gz"
   "libdart_bridge-linux-${CARCH}.so::https://github.com/flet-dev/dart-bridge/releases/download/v${_dart_bridge_version}/libdart_bridge-linux-${CARCH}.so"
   'pyride.desktop'
+  'pyride-mime.xml'
 )
 noextract=("python-linux-dart-${_python_version}-${CARCH}.tar.gz")
 sha256sums=(
@@ -63,7 +64,8 @@ sha256sums=(
   '352a771de3ace424669bf5fc876075fa69731991fbe3e80ae1294525f5625a13'
   '1ece31b3c0e2f306b364db793563da7801007f19aae16f63e2534f325ea39b81'
   'f89a2694fea152e4291f719657ee9f506ddbad271b1d769c739d6c65f0d42c15'
-  'e58f1be19125edaf1d9bd002cc3a9ad414bfbd23d3a0c620367a83273936d915'
+  '1a2c6eee65081a57d2027aa7c1954b5977c48a40ed46ade24411b34c945aa4ea'
+  'd99b1dfca70ac807b5e10a7a85d2a748e82f9d4516a45d8cac6491cca633d71f'
 )
 
 prepare() {
@@ -129,6 +131,8 @@ package() {
 
   install -Dm644 "${srcdir}/pyride.desktop" \
     "${pkgdir}/usr/share/applications/com.can1425.pyride.desktop"
+  install -Dm644 "${srcdir}/pyride-mime.xml" \
+    "${pkgdir}/usr/share/mime/packages/com.can1425.pyride.xml"
   install -Dm644 android/app/src/main/res/mipmap-xxxhdpi/launcher_icon.png \
     "${pkgdir}/usr/share/icons/hicolor/192x192/apps/pyride.png"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"

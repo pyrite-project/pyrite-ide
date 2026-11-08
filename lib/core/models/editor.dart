@@ -70,6 +70,9 @@ class TabDataValue {
   /// Discriminator for tabs whose content is a plugin view surface.
   static const String pluginViewType = 'plugin_view';
 
+  /// The confirmation tab for installing a plugin from a link or a package file.
+  static const String pluginInstallType = 'plugin_install';
+
   bool get isPluginView => type == pluginViewType;
 
   static String pluginViewPath({

@@ -64,6 +64,9 @@ dependencies:
   # Keep >= 4.4.0: image 4.11.0+ calls ZLibDecoder.decodeLazy, which only
   # exists in archive 4.4.0 and later (media_kit pulls image in transitively).
   archive: 4.4.0
+  crypto: ^3.0.6
+  pub_semver: ^2.2.0
+  app_links: ^6.4.0
   path_provider: 2.1.6
   path: 1.9.1
   ffi: 2.2.0

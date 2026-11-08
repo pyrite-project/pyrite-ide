@@ -36,21 +36,32 @@ final _windowsReservedPluginId = RegExp(
 var _transactionSequence = 0;
 
 Directory _pluginChild(Directory parent, String pluginId) {
+  final name = pluginDirectoryNameOrNull(pluginId);
+  if (name == null ||
+      name.endsWith('.') ||
+      _invalidPluginIdCharacters.hasMatch(name) ||
+      _windowsReservedPluginId.hasMatch(name)) {
+    throw const FormatException('Invalid plugin ID');
+  }
   final parentPath = path.normalize(path.absolute(parent.path));
-  final childPath = path.normalize(
-    path.absolute(path.join(parentPath, pluginId)),
-  );
-  if (pluginId.isEmpty ||
-      pluginId.trim() != pluginId ||
-      path.isAbsolute(pluginId) ||
-      path.basename(pluginId) != pluginId ||
-      pluginId.endsWith('.') ||
-      _invalidPluginIdCharacters.hasMatch(pluginId) ||
-      _windowsReservedPluginId.hasMatch(pluginId) ||
-      !path.equals(path.dirname(childPath), parentPath)) {
+  final childPath = path.normalize(path.absolute(path.join(parentPath, name)));
+  if (!path.equals(path.dirname(childPath), parentPath)) {
     throw const FormatException('Invalid plugin ID');
   }
   return Directory(childPath);
+}
+
+/// The plugin id a stored directory belongs to. A name this IDE would not have
+/// written maps to itself, so the callers' existing "invalid directory"
+/// handling still sees and cleans it up.
+String _idOfDirectory(FileSystemEntity entity) {
+  final name = path.basename(entity.path);
+  return pluginIdFromDirectoryName(name) ?? name;
+}
+
+String _idOfMarkerFile(File marker) {
+  final name = path.basename(marker.path);
+  return pluginIdFromDirectoryName(name) ?? name;
 }
 
 Future<void> _deleteDirectory(Directory directory) async {
@@ -255,7 +266,7 @@ Future<Set<String>> _recoverNewBackups(
   final failed = <String>{};
   await for (final backup in backupsRoot.list(followLinks: false)) {
     if (backup is! Directory) continue;
-    final pluginId = path.basename(backup.path);
+    final pluginId = _idOfDirectory(backup);
     try {
       final replacement = _pluginChild(newRoot, pluginId);
       final marker = pendingPluginDeletionMarker(root, pluginId);
@@ -298,7 +309,7 @@ Future<Set<String>> _recoverUnmarkedNewPackages(
   final failed = <String>{};
   await for (final entity in newRoot.list(followLinks: false)) {
     if (entity is! Directory) continue;
-    final pluginId = path.basename(entity.path);
+    final pluginId = _idOfDirectory(entity);
     try {
       final marker = pendingPluginDeletionMarker(root, pluginId);
       if (await marker.exists()) continue;
@@ -351,7 +362,7 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
   final recoveredManifests = <PluginManifestV2>[];
   await for (final backup in backupsRoot.list(followLinks: false)) {
     if (backup is! Directory) continue;
-    final pluginId = path.basename(backup.path);
+    final pluginId = _idOfDirectory(backup);
     try {
       final active = _pluginChild(activeRoot, pluginId);
       final replacement = _pluginChild(newRoot, pluginId);
@@ -472,8 +483,9 @@ Future<void> _writePendingDeletionMarker(
 String? _pluginIdFromPendingDeletionMarker(File marker) {
   final name = path.basename(marker.path);
   if (!name.endsWith('.json')) return null;
-  final pluginId = name.substring(0, name.length - '.json'.length);
-  return isSafePluginId(pluginId) ? pluginId : null;
+  return pluginIdFromDirectoryName(
+    name.substring(0, name.length - '.json'.length),
+  );
 }
 
 Future<String?> _pendingDeletionTargetVersion(File marker) async {
@@ -723,7 +735,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     if (await removalsRoot.exists()) {
       final markers = await removalsRoot.list(followLinks: false).toList();
       for (final marker in markers.whereType<File>()) {
-        final pluginId = path.basename(marker.path);
+        final pluginId = _idOfMarkerFile(marker);
         _intendedStatuses.remove(pluginId);
         final next = {...state}..remove(pluginId);
         final metadataChanged = next.length != state.length;
@@ -1021,7 +1033,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         try {
           final newManifest = PluginTomlParser.parseFromDirectory(entity);
           if (newManifest.id != manifest.id &&
-              newManifest.id == path.basename(entity.path)) {
+              newManifest.id == _idOfDirectory(entity)) {
             newManifests.add(newManifest.manifest!);
           }
         } on PluginManifestException {
@@ -1063,8 +1075,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         if (!await directory.exists()) continue;
         await for (final entity in directory.list(followLinks: false)) {
           final name = path.basename(entity.path);
-          if (name != manifest.id &&
-              name.toLowerCase() == manifest.id.toLowerCase()) {
+          final ownName = pluginDirectoryFor(manifest.id);
+          if (name != ownName && name.toLowerCase() == ownName.toLowerCase()) {
             throw const PluginManifestException(
               PluginManifestErrorCode.contributionConflict,
               'Plugin ID conflicts with an installed plugin',

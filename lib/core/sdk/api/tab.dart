@@ -258,10 +258,8 @@ class SdkTab {
     }
     // Console-hosted plugin views are not documents, but the plugin opened
     // them through this API and has to be able to find and close them again.
-    for (final tab in ref
-        .container
-        .read(consoleTabbedViewControllerProvider)
-        .tabs) {
+    for (final tab
+        in ref.container.read(consoleTabbedViewControllerProvider).tabs) {
       final value = tab.value;
       if (value is! TabDataValue) continue;
       result.add({

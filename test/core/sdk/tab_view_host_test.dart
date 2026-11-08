@@ -354,8 +354,10 @@ void main() {
 
     expect(response['type'], 'sdk.response.ok');
     expect(response['payload']['data']['placement'], 'editor');
-    expect(harness.container.read(tabbedViewControllerProvider).tabs.last.text,
-        'Outline');
+    expect(
+      harness.container.read(tabbedViewControllerProvider).tabs.last.text,
+      'Outline',
+    );
   });
 
   test('a console pane opens the view on the console strip', () async {
@@ -382,23 +384,27 @@ void main() {
     expect(harness.container.read(consolePageShow), isTrue);
   });
 
-  test('a focused pane routes the view to wherever the user last was', () async {
-    final harness = await _harness();
-    addTearDown(harness.container.dispose);
-    harness.container
-        .read(focusedWorkspacePaneProvider.notifier)
-        .state = WorkspacePane.console;
+  test(
+    'a focused pane routes the view to wherever the user last was',
+    () async {
+      final harness = await _harness();
+      addTearDown(harness.container.dispose);
+      harness.container.read(focusedWorkspacePaneProvider.notifier).state =
+          WorkspacePane.console;
 
-    final response = await _request(harness.manager, harness.transport, {
-      'viewId': _viewId,
-      'pane': 'focused',
-    });
+      final response = await _request(harness.manager, harness.transport, {
+        'viewId': _viewId,
+        'pane': 'focused',
+      });
 
-    expect(response['type'], 'sdk.response.ok');
-    expect(response['payload']['data']['placement'], 'console');
-    final console = harness.container.read(consoleTabbedViewControllerProvider);
-    expect((console.tabs.last.value as TabDataValue).isPluginView, isTrue);
-  });
+      expect(response['type'], 'sdk.response.ok');
+      expect(response['payload']['data']['placement'], 'console');
+      final console = harness.container.read(
+        consoleTabbedViewControllerProvider,
+      );
+      expect((console.tabs.last.value as TabDataValue).isPluginView, isTrue);
+    },
+  );
 
   test('a group index places the view in exactly that editor group', () async {
     final harness = await _harness();
@@ -467,9 +473,11 @@ void main() {
 
   test('a console view shows up in list and can be closed', () async {
     // list 需要 tab:manage，close 同样是 tab:manage。
-    final harness = await _harness(permissions: const {
-      'tab': ['create', 'manage'],
-    });
+    final harness = await _harness(
+      permissions: const {
+        'tab': ['create', 'manage'],
+      },
+    );
     addTearDown(harness.container.dispose);
 
     final opened = await _request(harness.manager, harness.transport, {
@@ -485,18 +493,15 @@ void main() {
       const {},
       type: SdkTabCommands.list,
     );
-    final entries =
-        (listed['payload']['data'] as List).cast<Map<String, dynamic>>();
+    final entries = (listed['payload']['data'] as List)
+        .cast<Map<String, dynamic>>();
     final consoleEntry = entries.where((e) => e['tabId'] == tabId).firstOrNull;
     expect(consoleEntry, isNotNull);
     expect(consoleEntry!['placement'], 'console');
 
-    final closed = await _request(
-      harness.manager,
-      harness.transport,
-      {'tab_id': tabId},
-      type: SdkTabCommands.close,
-    );
+    final closed = await _request(harness.manager, harness.transport, {
+      'tab_id': tabId,
+    }, type: SdkTabCommands.close);
     expect(closed['type'], 'sdk.response.ok');
     final remains = harness.container
         .read(consoleTabbedViewControllerProvider)
