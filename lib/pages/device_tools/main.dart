@@ -1,9 +1,12 @@
+import 'package:flserial/flserial.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/serial_port_filter.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/serial_port_filter_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
@@ -24,6 +27,37 @@ class Tools extends ConsumerStatefulWidget {
 
 class _ToolsState extends ConsumerState<Tools> {
   bool _showDeviceStatus = false;
+
+  /// Connects on an explicit user request and explains an open failure.
+  /// Automatic reconnection calls [SerialNotifier.connectPort] directly, so
+  /// its retries stay silent.
+  Future<void> _connect(String path) async {
+    try {
+      await ref.read(serialProvider.notifier).connectPort(path);
+    } on SerialOpenException catch (error) {
+      if (!mounted) return;
+      showIdeError(context, _openFailureMessage(error));
+    }
+  }
+
+  String _openFailureMessage(SerialOpenException error) {
+    final key = switch (error.cause?.reason) {
+      SerialOpenFailure.permissionDenied => I18nKey.devicesOpenPermissionDenied,
+      SerialOpenFailure.busy => I18nKey.devicesOpenBusy,
+      SerialOpenFailure.notFound => I18nKey.devicesOpenNotFound,
+      SerialOpenFailure.unsupportedDevice =>
+        I18nKey.devicesOpenUnsupportedDevice,
+      SerialOpenFailure.unknown || null => I18nKey.devicesOpenFailed,
+    };
+    final registry = ref.read(dataRegistryProvider);
+    final locale = ref.read(activeLocaleProvider);
+    return translateWithReplacementsFromRegistry(registry, locale, key, {
+      'port': error.path,
+      'detail':
+          error.cause?.detail ??
+          translateFromRegistry(registry, locale, I18nKey.devicesUnknown),
+    });
+  }
 
   late final TextEditingController _searchController = TextEditingController(
     text: ref.read(serialPortFilterProvider).query,
@@ -166,9 +200,7 @@ class _ToolsState extends ConsumerState<Tools> {
           SerialPortList(
             ports: result.visible,
             compact: compact,
-            onConnect: webReplActive
-                ? null
-                : (path) => ref.read(serialProvider.notifier).connectPort(path),
+            onConnect: webReplActive ? null : _connect,
           ),
         ],
       ],

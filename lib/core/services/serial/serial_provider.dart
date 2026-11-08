@@ -37,6 +37,27 @@ final _closeHandle = _kernel32
 final _getLastError = _kernel32
     ?.lookupFunction<Uint32 Function(), int Function()>('GetLastError');
 
+/// Creates the native transport for each open attempt. Tests override it to
+/// stand in for the OS serial port.
+final serialPortFactoryProvider = Provider<FlSerial Function()>(
+  (ref) => FlSerial.new,
+);
+
+/// Thrown by [SerialNotifier.connectPort] when the OS refuses to open [path].
+class SerialOpenException implements Exception {
+  const SerialOpenException(this.path, this.cause);
+
+  final String path;
+
+  /// Why the port could not be opened, or `null` when the platform gave no
+  /// reason.
+  final SerialOpenError? cause;
+
+  @override
+  String toString() =>
+      'Cannot open serial port $path: ${cause ?? 'no reason reported'}';
+}
+
 class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   FlSerial? _serial;
   final SerialPortCatalog _catalog = SerialPortCatalog();
@@ -155,7 +176,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     ref.read(deviceStatusProvider.notifier).clear();
 
     bindReplOnOutputCallback();
-    final serial = FlSerial();
+    final serial = ref.read(serialPortFactoryProvider)();
     _eventSub = serial.events.listen(_onEvent);
     final config = _serialConfig();
     final ok = await serial.open(path, config);
@@ -172,9 +193,11 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       sendCommand('\x03', chunked: false);
       if (_runConnectInitialization) ensureFilesystemMountedIfEnabled();
     } else {
+      final error = serial.lastOpenError;
       await _eventSub?.cancel();
       _eventSub = null;
       await serial.dispose();
+      throw SerialOpenException(path, error);
     }
   }
 
@@ -387,7 +410,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
 
-      final replacement = FlSerial();
+      final replacement = ref.read(serialPortFactoryProvider)();
       final replacementSub = replacement.events.listen(_onEvent);
       try {
         if (await replacement.open(portName, _serialConfig())) {
@@ -432,6 +455,11 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     await _eventSub?.cancel();
     _eventSub = null;
     _serial = null;
+    // No board remains open, so the app is disconnected until the reopen
+    // succeeds. Another active session (a second board) keeps its state.
+    if (sessions.activeSession == null) {
+      state = state.copyWith(clearSelectedPort: true, isConnected: false);
+    }
 
     // Update the baud rate in state.
     state = state.copyWith(baudRate: newBaud);
@@ -440,6 +468,9 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     _runConnectInitialization = initializeDevice;
     try {
       await connectPort(portName);
+    } on SerialOpenException catch (error) {
+      debugPrint('[serial] reconnect at $newBaud baud failed: $error');
+      return false;
     } finally {
       _runConnectInitialization = true;
     }
