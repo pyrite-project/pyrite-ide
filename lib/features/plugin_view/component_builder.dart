@@ -66,6 +66,8 @@ class ComponentBuilder {
 
   bool _hostAppBarActionsConsumed = false;
   bool _buildSucceeded = false;
+  int _buildAttempts = 0;
+  bool _sawBuildFailure = false;
 
   bool get hostAppBarActionsConsumed => _hostAppBarActionsConsumed;
 
@@ -76,13 +78,28 @@ class ComponentBuilder {
   /// state for components that merely weren't reached during a bad build.
   bool get buildSucceeded => _buildSucceeded;
 
+  /// Number of public [build] calls made through this builder.
+  ///
+  /// Renderers use this to tell whether the component layer was involved at
+  /// all; a placeholder or loading widget builds no components.
+  int get buildAttempts => _buildAttempts;
+
+  /// Whether any [build] call failed validation.
+  ///
+  /// An error boundary is returned rather than thrown, so a renderer that
+  /// merely forwards the widget can otherwise mistake a failed component build
+  /// for a successful one.
+  bool get sawBuildFailure => _sawBuildFailure;
+
   /// Validates [node] and builds it, returning an error boundary when the tree
   /// is malformed so a bad plugin can't crash the page.
   Widget build(BuildContext context, Map<String, dynamic> node) {
     _hostAppBarActionsConsumed = false;
     _buildSucceeded = false;
+    _buildAttempts++;
     final validation = registry.validate(node, limits: limits);
     if (!validation.isValid) {
+      _sawBuildFailure = true;
       return ComponentErrorBoundary(diagnostics: validation.diagnostics);
     }
     final result = _build(context, node);

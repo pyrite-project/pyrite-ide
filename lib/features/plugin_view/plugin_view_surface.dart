@@ -515,6 +515,10 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
     if (!node.keys.every(schemaKeys.contains)) return false;
     final type = node['type'];
     if (type is! String || type.isEmpty) return false;
+    // Renderer data nodes may also carry `type` and `props`. Only accept a
+    // bare component when the type is a component the host can actually
+    // build; otherwise a single renderer row would bypass the renderer.
+    if (!_components.isKnown(type)) return false;
     return node['props'] is Map ||
         node.containsKey('children') ||
         node.containsKey('events');

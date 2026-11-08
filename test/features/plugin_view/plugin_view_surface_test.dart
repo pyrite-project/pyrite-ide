@@ -592,6 +592,71 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a failed renderer component build does not reset state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _instance,
+          renderer: RendererTokens.form,
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> tree() => [
+      {
+        'id': 'root',
+        'component': {
+          'type': 'Column',
+          'props': {'id': 'root'},
+          'children': [
+            {
+              'type': 'ExpansionTile',
+              'props': {'id': 'details', 'title': 'Details'},
+              'children': [
+                {
+                  'type': 'Text',
+                  'props': {'value': 'hidden child'},
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    store.installSnapshot(instance: _instance, revision: 1, nodes: tree());
+    await tester.pump();
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(find.text('hidden child'), findsOneWidget);
+
+    // The form renderer forwards this node as a NumberField with a map value,
+    // so the shared component builder returns an error boundary instead of
+    // throwing. That failed build must not prune the ExpansionTile state.
+    store.installSnapshot(
+      instance: _instance,
+      revision: 2,
+      nodes: [
+        {
+          'id': 'bad',
+          'kind': 'number',
+          'value': {'not': 'a number'},
+        },
+      ],
+    );
+    await tester.pump();
+    expect(find.textContaining('expected number'), findsOneWidget);
+
+    store.installSnapshot(instance: _instance, revision: 3, nodes: tree());
+    await tester.pump();
+
+    expect(find.text('hidden child'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a renderer node with a type field is not a component tree', (
     tester,
   ) async {
@@ -614,6 +679,39 @@ void main() {
     await tester.pump();
 
     expect(find.text('Widget'), findsOneWidget);
+    expect(find.textContaining('unknown component'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a renderer node with type and props is not a component tree', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        container,
+        const PluginViewSurface(
+          instance: _instance,
+          renderer: RendererTokens.form,
+        ),
+      ),
+    );
+    store.installSnapshot(
+      instance: _instance,
+      revision: 1,
+      nodes: [
+        {
+          'id': 'f1',
+          'type': 'formRow',
+          'props': {'label': 'Name'},
+        },
+      ],
+    );
+    await tester.pump();
+
+    // `formRow` is a renderer field, not a component type. Treating it as a
+    // bare component would render an unknown-component error instead of the
+    // form field.
+    expect(find.byType(TextField), findsOneWidget);
     expect(find.textContaining('unknown component'), findsNothing);
     expect(tester.takeException(), isNull);
   });
