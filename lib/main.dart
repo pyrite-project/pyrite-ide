@@ -5,6 +5,7 @@ import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:git2dart/git2dart.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -14,6 +15,7 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
@@ -24,13 +26,18 @@ import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
 import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/periodic_task/main.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/features/window.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
+import 'package:pyrite_ide/core/sdk/environment_provider.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
 
 String? getPythonPath() {
@@ -42,6 +49,29 @@ String? getPythonPath() {
 }
 
 late final PersistenceManager persistenceManager;
+
+/// Port the previous session was talking to.
+///
+/// Kept here rather than as a provider: nothing renders it, and the only use is
+/// reconnecting once the serial layer is ready. Attempting that reconnect is
+/// opt-in through the saved auto-reconnect switch, so a user who does not want
+/// the IDE claiming a port on launch is not surprised by it.
+String _lastActivePortPath = '';
+
+/// Reopens the port the previous session used, once the app is running.
+///
+/// Deferred to a post-frame callback because the device-scoped caches it
+/// clears (board tree, status panel) are provider-owned and must not be mutated
+/// while the first frame is still being built.
+Future<void> _resumeLastSerialPort() async {
+  final path = _lastActivePortPath;
+  if (path.isEmpty) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (container.read(serialProvider).isConnected) return;
+    unawaited(container.read(serialProvider.notifier).connectPort(path));
+  });
+}
+
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
@@ -88,7 +118,10 @@ void _installIdeOutputLogger() {
       stackTrace: stack,
     );
     _appendIdeOutputLater('Unhandled exception: $error\n$stack');
-    return false;
+    // Returning true marks the error handled so a single uncaught async
+    // exception cannot terminate the whole IDE in release; the log and the
+    // output panel above keep it diagnosable.
+    return true;
   };
 }
 
@@ -114,6 +147,7 @@ void _applyData(PersistedData data) {
       data.welcomeCompleted;
   container.read(activeLocaleProvider.notifier).state = data.activeLocale;
   container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
+  container.read(windowPlacementProvider.notifier).state = data.windowPlacement;
   container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
   container.read(editorFontSize.notifier).state = data.editorFontSize;
   container.read(editorWordWrap.notifier).state = data.editorWordWrap;
@@ -164,14 +198,18 @@ void _applyData(PersistedData data) {
   container.read(tabletSelectedIndex.notifier).state = data.tabletSelectedIndex;
   container.read(functionPageShow.notifier).state = data.functionPageShow;
   container.read(consolePageShow.notifier).state = data.consolePageShow;
-  container.read(expansionPageShow.notifier).state = data.expansionPageShow;
+  container.read(consoleDockSideProvider.notifier).state =
+      PaneEdge.values.asNameMap()[data.consoleDockSide] ?? PaneEdge.bottom;
   container.read(enableSignalDetection.notifier).state =
       data.enableSignalDetection;
   container.read(ensureBoardFilesystemOnConnect.notifier).state =
       data.ensureBoardFilesystemOnConnect;
+  container.read(deviceRunChdirToScriptDir.notifier).state =
+      data.deviceRunChdirToScriptDir;
   container.read(serialDefaultBaudRate.notifier).state =
       data.serialDefaultBaudRate;
   container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
+  _lastActivePortPath = data.serialActivePortPath;
   container.read(replModeProvider.notifier).state =
       ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
   container.read(fileTransferModeProvider.notifier).state =
@@ -206,8 +244,16 @@ void _applyData(PersistedData data) {
   container
       .read(serialProvider.notifier)
       .setAutoReconnect(data.serialAutoReconnect);
+  // Reconnect last session's port only when the user asked for automatic
+  // reconnection; claiming a port uninvited would also fight any other tool
+  // the user has open on it.
+  if (data.serialAutoReconnect && _lastActivePortPath.isNotEmpty) {
+    unawaited(_resumeLastSerialPort());
+  }
   container.read(uploadConfirmStyleProvider.notifier).state =
       data.uploadConfirmStyle;
+  container.read(fileSortModeProvider.notifier).state =
+      FileSortMode.fromJsonName(data.fileSortMode);
   container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
   container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
   container.read(webReplHost.notifier).state = data.webReplHost;
@@ -273,6 +319,41 @@ void _startAutoSave() {
       container.listen<Object?>(provider, (_, _) => _triggerSave()),
     );
   }
+  _watchEditorArea();
+}
+
+/// Saves the session whenever what it records about the editor area changes.
+///
+/// Tabs join and leave groups through their own controllers -- the close
+/// button, a drag, the SDK -- so the layout state alone would miss most of it.
+/// [EditorLayoutNotifier.changes] reports every change in any group, and a
+/// save is only scheduled when the persisted shape actually differs, so a
+/// title refresh or re-selecting the selected tab writes nothing.
+void _watchEditorArea() {
+  var last = persistedEditorAreaKey(container);
+  container.read(editorLayoutProvider.notifier).changes.addListener(() {
+    final next = persistedEditorAreaKey(container);
+    if (next == last) return;
+    last = next;
+    _triggerSave();
+  });
+}
+
+/// Moves console surfaces out of the editor area when the window narrows to
+/// the mobile layout.
+///
+/// Grouping is a desktop and tablet feature: on mobile the terminal lives in
+/// its bottom popup, so a surface dragged into an editor group has to return
+/// to the panel for the popup to show it.
+void _gatherConsoleOnMobileLayout() {
+  final environment = container.read(environmentNotifierProvider);
+  var layoutMode = environment.snapshot.layoutMode;
+  environment.addListener(() {
+    final next = environment.snapshot.layoutMode;
+    if (next == layoutMode) return;
+    layoutMode = next;
+    if (next == LayoutMode.mobile) evacuateConsoleTabsToPanel(container);
+  });
 }
 
 /// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
@@ -324,6 +405,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   chineseToUnicodeConversion,
   enableSignalDetection,
   ensureBoardFilesystemOnConnect,
+  deviceRunChdirToScriptDir,
   serialDefaultBaudRate,
   serialAutoReconnect,
   terminalFontFamily,
@@ -337,6 +419,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   terminalCustomPalette,
   useMaterialContextMenu,
   uploadConfirmStyleProvider,
+  fileSortModeProvider,
   confirmShortcutProvider,
   cancelShortcutProvider,
   webReplHost,
@@ -346,6 +429,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   microPythonStubsAutoDetectLayers,
   microPythonStubsLayers,
   microPythonStubsExtraPaths,
+  windowPlacementProvider,
 ];
 
 Future<void> _startRuntimeAndPlugins() async {
@@ -443,7 +527,20 @@ void main() async {
   await RustLib.init();
   await PlatformSpecific.initialize();
 
-  if (data.tabs.isNotEmpty) {
+  // The tree is what carries more than one group. Without it the flat list is
+  // the only reliable source: restoring the groups alone would drop every
+  // group past the first, since the tree is what builds their controllers.
+  if (data.tabLayout != null && data.tabGroups.isNotEmpty) {
+    // A session saved with a split editor area: every group comes back, and the
+    // tree puts them where the user left them.
+    await container
+        .read(tabbedViewControllerProvider.notifier)
+        .restoreEditorGroups(
+          data.tabGroups,
+          data.tabLayout,
+          primaryIndex: data.tabPrimaryGroupIndex,
+        );
+  } else if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
         .restoreTabs(
@@ -452,6 +549,30 @@ void main() async {
           selectedTabPath: data.selectedTabPath,
         );
   }
+
+  // The board mirror only ever holds scratch copies of board files. Anything
+  // no restored tab points at was written by an earlier session, and deleting
+  // it here keeps the directory from growing with every download.
+  unawaited(
+    pruneBoardMirrorDirectory(
+      keepRelativePaths: {
+        for (final tab in data.tabs)
+          if (tab.boardFilePath != null &&
+              tab.boardFilePath!.isNotEmpty &&
+              tab.isBoardFile)
+            boardMirrorRelativePath(tab.boardFilePath!),
+      },
+    ).then(
+      (removed) {
+        if (removed > 0) {
+          GitDebugLog.log('pruned $removed stale board mirror entries');
+        }
+      },
+      onError: (Object error) {
+        GitDebugLog.log('board mirror prune failed', error: error);
+      },
+    ),
+  );
 
   appWindow.bind(container);
   appWindow.init();
@@ -465,6 +586,7 @@ void main() async {
   );
 
   _startAutoSave();
+  _gatherConsoleOnMobileLayout();
 
   // Let Flutter paint the first frame before native CPython initialization.
   // Startup plugins still wait for the runtime snapshot inside the helper.

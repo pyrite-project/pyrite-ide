@@ -34,4 +34,13 @@ abstract class LspServerAdapter {
     LspServerContext context,
     Map<String, String> baseEnvironment,
   ) => const {};
+
+  /// Whether stubs reach this server only through its process environment.
+  ///
+  /// A server never re-reads its environment, so stubs settings saved after
+  /// the launch cannot reach it: the workspace's files must be closed (or the
+  /// IDE restarted) to spawn the server again. Adapters that carry stubs in
+  /// the configuration payload instead hot-apply through
+  /// `workspace/didChangeConfiguration` and do not need a restart.
+  bool get deliversStubsViaEnvironment => false;
 }

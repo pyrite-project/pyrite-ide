@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -220,6 +221,11 @@ Widget buildThemedCodeForge(
         otherMatchStyle: TextStyle(
           backgroundColor: colors.foreground.withAlpha(45),
         ),
+      ),
+      // The editor paints its own selection, so it cannot inherit the theme's
+      // `textSelectionTheme`; it is handed the same app-wide tint explicitly.
+      selectionStyle: CodeSelectionStyle(
+        selectionColor: AppSelection.text(Theme.of(context).colorScheme),
       ),
       textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
       lineWrap: ref.watch(editorWordWrap),

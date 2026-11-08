@@ -5,7 +5,22 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 class TabsPersistedData {
+  /// The tabs of a session saved with a single group.
+  ///
+  /// Empty when the editor area was split: [groups] holds every tab then, so
+  /// no buffer is written twice.
   final List<PersistedTab> tabs;
+
+  /// One entry per group, in layout order; empty for a single group.
+  final List<PersistedEditorGroup> groups;
+
+  /// The layout tree [groups] are placed by, or null for a single group.
+  final PersistedEditorLayout? layout;
+
+  /// Which of [groups] is the primary group -- the one holding the welcome
+  /// page, where new tabs fall back to while no group has focus.
+  final int primaryGroupIndex;
+
   final int selectedTabIndex;
 
   /// File path of the tab that was selected at save time.
@@ -23,23 +38,37 @@ class TabsPersistedData {
     required this.tabs,
     required this.selectedTabIndex,
     this.selectedTabPath,
+    this.groups = const [],
+    this.layout,
+    this.primaryGroupIndex = 0,
   });
 
   Map<String, dynamic> toJson() => {
     'tabs': tabs.map((t) => t.toJson()).toList(),
     'selectedTabIndex': selectedTabIndex,
     'selectedTabPath': selectedTabPath,
+    if (groups.isNotEmpty) 'groups': groups.map((g) => g.toJson()).toList(),
+    if (layout != null) 'layout': layout!.toJson(),
+    if (layout != null) 'primaryGroupIndex': primaryGroupIndex,
   };
 
   factory TabsPersistedData.fromJson(Map<String, dynamic> json) =>
       TabsPersistedData(
-        tabs:
-            (json['tabs'] as List<dynamic>?)
-                ?.map((t) => PersistedTab.fromJson(t as Map<String, dynamic>))
-                .toList() ??
-            [],
+        tabs: PersistedTab.listFromJson(json['tabs']),
         selectedTabIndex: json['selectedTabIndex'] as int? ?? 0,
         selectedTabPath: json['selectedTabPath'] as String?,
+        groups:
+            (json['groups'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(PersistedEditorGroup.fromJson)
+                .toList() ??
+            const [],
+        layout: json['layout'] is Map<String, dynamic>
+            ? PersistedEditorLayout.fromJson(
+                json['layout'] as Map<String, dynamic>,
+              )
+            : null,
+        primaryGroupIndex: (json['primaryGroupIndex'] as num?)?.toInt() ?? 0,
       );
 }
 

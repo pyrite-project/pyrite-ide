@@ -1,27 +1,29 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart' show CodeForgeController;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/navigation_bar.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
-import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
+import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
-import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
@@ -32,6 +34,7 @@ import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
 import 'package:pyrite_ide/core/sdk/command_service.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/editor_document_host.dart';
@@ -42,325 +45,87 @@ import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/features/command_palette/command_palette.dart';
+import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
+import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
-import 'package:pyrite_ide/features/function_page/problems_view.dart';
-import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
+import 'package:pyrite_ide/features/terminal/desktop_terminal_surface.dart';
+import 'package:pyrite_ide/features/terminal/terminal_context_menu.dart';
+import 'package:pyrite_ide/features/terminal/terminal_link_handlers.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/editor/main.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_strip_theme.dart';
 import 'package:xterm/xterm.dart';
 
-final StateProvider<int> bottomPanelTabProvider = StateProvider<int>(
-  (ref) => 0,
-);
+/// Keeps the status bar's horizontal scroll position across rebuilds.
+///
+/// The bar rebuilds on every language-server/device/transfer change. Creating
+/// a fresh [ScrollController] in `build` reset the offset each time, so a user
+/// who scrolled to a status item lost their place whenever any other item
+/// changed.
+final AutoDisposeProvider<ScrollController> statusBarScrollControllerProvider =
+    Provider.autoDispose<ScrollController>((ref) {
+      final controller = ScrollController();
+      ref.onDispose(controller.dispose);
+      return controller;
+    });
 
 Widget consolePage() {
   return const ConsolePage();
 }
 
+/// The console panel.
+///
+/// It renders the same [TabbedView] as the editor and owns the same kind of
+/// controller, which is what lets a tab be dragged from here into an editor
+/// group and back: the shared drag already moves tabs across controllers.
+/// Each surface brings its own buttons and menu, which the strip shows.
 class ConsolePage extends ConsumerWidget {
   const ConsolePage({super.key});
 
+  /// Only the panel's own surfaces may be dropped on its strip. A document
+  /// would sit outside the editor layout, where persistence, the unsaved guard
+  /// and the open-file dedup cannot see it.
+  static bool _acceptsTab(DraggableData source, TabbedViewController _) =>
+      isConsoleTab(source.tabData);
+
+  /// Marks the console the pane the user is working in.
+  static void _markFocused(WidgetRef ref) {
+    ref.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.console;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isConnected = ref.watch(deviceConnectedProvider);
-    final webReplState = ref.watch(webReplProvider);
-    final webReplConnected = webReplState.state == WebReplState.connected;
-    final useWebRepl =
-        webReplConnected || webReplState.state == WebReplState.waitingPassword;
-    final selectedTab = ref.watch(bottomPanelTabProvider);
-    final problems = ref.watch(problemsProvider);
-    var problemCount = 0;
-    for (final file in problems) {
-      problemCount += file.errorCount + file.warningCount;
-    }
-    final actions = _buildConsoleActions(
-      ref,
-      selectedTab,
-      isConnected,
-      webReplConnected,
-      useWebRepl,
-    );
-
-    return Column(
-      children: [
-        _BottomPanelTabs(
-          selectedIndex: selectedTab,
-          actions: actions,
-          // The count rides on the translated label so a locale switch
-          // re-renders it together with the tab text.
-          problemsLabel: problemCount > 0
-              ? '${translateForWidget(ref, I18nKey.bottomPanelProblemsTab)} ($problemCount)'
-              : translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
-        ),
-        Expanded(
-          child: IndexedStack(
-            index: selectedTab,
-            children: const [
-              ReplView(),
-              OutputLogView(),
-              DesktopTerminalView(),
-              ProblemsView(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _buildConsoleActions(
-    WidgetRef ref,
-    int selectedTab,
-    bool isConnected,
-    bool webReplConnected,
-    bool useWebRepl,
-  ) {
-    switch (selectedTab) {
-      case 1:
-        return [
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
-            onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
-            icon: const Icon(Icons.cleaning_services_outlined),
-          ),
-        ];
-      case 2:
-        return const [];
-      case 3:
-        return [_buildProblemsCollapseAction(ref)];
-      default:
-        return [
-          if (!isConnected && !useWebRepl)
-            IconButton(
-              tooltip: translateForWidget(
-                ref,
-                I18nKey.bottomPanelConnectWebRepl,
-              ),
-              onPressed: () {
-                ref.read(webReplProvider.notifier).connect();
-              },
-              icon: const Icon(Icons.wifi),
-            ),
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
-            onPressed: () {
-              replController.clearSelection();
-              repl.clear();
-              replClearSink?.call();
-              final input = ref.read(replInputControllerProvider);
-              if (replClearSink == null) {
-                if (input.mode == ReplInteractionMode.prompt) {
-                  repl.write('>>> ');
-                } else if (input.mode == ReplInteractionMode.continuation) {
-                  repl.write('... ');
-                }
-              }
-            },
-            icon: const Icon(Icons.cleaning_services_outlined),
-          ),
-          IconButton(
-            tooltip: useWebRepl
-                ? translateForWidget(ref, I18nKey.editorToolbarInterruptDevice)
-                : translateForWidget(
-                    ref,
-                    isConnected
-                        ? I18nKey.editorToolbarInterruptDevice
-                        : I18nKey.editorToolbarInterruptNeedsDevice,
-                  ),
-            onPressed: (useWebRepl || isConnected)
-                ? () {
-                    if (useWebRepl) {
-                      ref.read(webReplProvider.notifier).sendCommand("\x03");
-                    } else {
-                      ref.read(serialProvider.notifier).sendCommand("\x03");
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.stop_circle_outlined),
-          ),
-          IconButton(
-            tooltip: useWebRepl
-                ? translateForWidget(ref, I18nKey.editorToolbarSoftReboot)
-                : translateForWidget(
-                    ref,
-                    isConnected
-                        ? I18nKey.editorToolbarSoftReboot
-                        : I18nKey.editorToolbarSoftRebootNeedsDevice,
-                  ),
-            onPressed: (useWebRepl || isConnected)
-                ? () {
-                    if (useWebRepl) {
-                      ref.read(webReplProvider.notifier).sendCommand("\x04");
-                    } else {
-                      ref.read(serialProvider.notifier).sendCommand("\x04");
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.restart_alt),
-          ),
-        ];
-    }
-  }
-
-  /// Collapse-all / expand-all toggle for the Problems panel, shown while
-  /// that tab is selected. "All" covers every file that currently has rows;
-  /// stale paths from closed files are ignored.
-  Widget _buildProblemsCollapseAction(WidgetRef ref) {
-    final problems = ref.watch(problemsProvider);
-    final collapsed = ref.watch(collapsedProblemFilesProvider);
-    final groupPaths = [
-      for (final file in problems)
-        if (file.diagnostics.isNotEmpty) file.path,
-    ];
-    final allCollapsed =
-        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
-    return IconButton(
-      tooltip: translateForWidget(
-        ref,
-        allCollapsed
-            ? I18nKey.problemsPanelExpandAll
-            : I18nKey.problemsPanelCollapseAll,
-      ),
-      onPressed: () {
-        ref.read(collapsedProblemFilesProvider.notifier).state = allCollapsed
-            ? <String>{}
-            : Set<String>.from(groupPaths);
+    // A click -- or keyboard focus arriving inside the panel -- marks the
+    // console the focused pane, so a plugin view opened without an explicit
+    // pane lands where the user is looking.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (hasFocus) {
+        if (hasFocus) _markFocused(ref);
       },
-      icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
-    );
-  }
-}
-
-class _BottomPanelTabs extends ConsumerWidget {
-  const _BottomPanelTabs({
-    required this.selectedIndex,
-    required this.actions,
-    this.problemsLabel,
-  });
-
-  final int selectedIndex;
-  final List<Widget> actions;
-
-  /// Pre-translated Problems tab label; carries the open-problem count when
-  /// there is one, so the tab reads like VS Code's badge without adding a
-  /// badge slot to [_BottomPanelTab].
-  final String? problemsLabel;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final statusBarHeight = ThemeDensityTokens.forStyle(
-      ref.watch(themeStyle),
-    ).statusBarHeight;
-    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return Container(
-      height: statusBarHeight,
-      decoration: BoxDecoration(color: scheme.surface),
-      child: Row(
-        children: [
-          _BottomPanelTab(
-            label: 'REPL',
-            icon: Icons.terminal,
-            index: 0,
-            selectedIndex: selectedIndex,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _markFocused(ref),
+        child: TabbedViewTheme(
+          data: buildTabStripTheme(context),
+          child: TabbedView(
+            controller: ref.watch(consoleTabbedViewControllerProvider),
+            canDrop: _acceptsTab,
           ),
-          _BottomPanelTab(
-            label: I18nKey.bottomPanelLogTab,
-            icon: Icons.article_outlined,
-            index: 1,
-            selectedIndex: selectedIndex,
-          ),
-          _BottomPanelTab(
-            label: I18nKey.bottomPanelTerminalTab,
-            icon: Icons.terminal_outlined,
-            index: 2,
-            selectedIndex: selectedIndex,
-          ),
-          if (problemsLabel != null)
-            _BottomPanelTab(
-              label: problemsLabel!,
-              icon: Icons.report_problem_outlined,
-              index: 3,
-              selectedIndex: selectedIndex,
-            ),
-          const Spacer(),
-          if (actions.isNotEmpty) ...[
-            SizedBox(
-              height: 18,
-              child: VerticalDivider(width: 1, color: scheme.outlineVariant),
-            ),
-            const SizedBox(width: 4),
-            for (final action in actions)
-              SizedBox.square(
-                dimension: compact ? 26 : 30,
-                child: IconButtonTheme(
-                  data: IconButtonThemeData(
-                    style: ButtonStyle(
-                      iconSize: WidgetStatePropertyAll(compact ? 15 : 17),
-                      padding: WidgetStatePropertyAll(EdgeInsets.zero),
-                      minimumSize: WidgetStatePropertyAll(
-                        Size.square(compact ? 26 : 30),
-                      ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                  child: action,
-                ),
-              ),
-            const SizedBox(width: 4),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _BottomPanelTab extends ConsumerWidget {
-  const _BottomPanelTab({
-    required this.label,
-    required this.icon,
-    required this.index,
-    required this.selectedIndex,
-  });
-
-  final Object label;
-  final IconData icon;
-  final int index;
-  final int selectedIndex;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selected = index == selectedIndex;
-    final scheme = Theme.of(context).colorScheme;
-    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return InkWell(
-      onTap: () => ref.read(bottomPanelTabProvider.notifier).state = index,
-      child: Container(
-        height: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: compact ? 14 : 16,
-              color: selected ? scheme.primary : scheme.onSurfaceVariant,
-            ),
-            SizedBox(width: compact ? 4 : 6),
-            UseText(
-              label,
-              style: TextStyle(
-                color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                fontSize: compact ? 12 : null,
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -400,12 +165,41 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
   late final shadcn.FlexibleResizablePaneController _primaryController;
   late final shadcn.FlexibleResizablePaneController _consoleController;
 
+  /// Whether the console held at least one tab on the previous notification.
+  ///
+  /// A console whose tabs have all been dragged out is not a group any more, so
+  /// the pane goes away -- and the panel comes back at its default ratio when a
+  /// tab is dragged back in.
+  bool _consoleWasEmpty = false;
+
+  /// The console controller, followed for its tabs: they change in place, so
+  /// the provider never reports a group emptying.
+  late final TabbedViewController _console;
+
   @override
   void initState() {
     super.initState();
     _primaryController = shadcn.FlexibleResizablePaneController(_primaryFlex);
     _consoleController = shadcn.FlexibleResizablePaneController(_consoleFlex);
+    _console = ref.read(consoleTabbedViewControllerProvider)
+      ..addListener(_onConsoleTabsChanged);
+    _consoleWasEmpty = _console.tabs.isEmpty;
     ref.listenManual<bool>(consolePageShow, (_, _) => _resetPaneSizes());
+    ref.listenManual<PaneEdge>(
+      consoleDockSideProvider,
+      (_, _) => _resetPaneSizes(),
+    );
+  }
+
+  void _onConsoleTabsChanged() {
+    if (!mounted) return;
+    final empty = _console.tabs.isEmpty;
+    if (empty == _consoleWasEmpty) return;
+    _consoleWasEmpty = empty;
+    // Reset before the rebuild that drops the pane: the panel keeps the ratio
+    // it resolved while both panes existed otherwise.
+    _resetPaneSizes();
+    setState(() {});
   }
 
   @override
@@ -427,6 +221,7 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   void dispose() {
+    _console.removeListener(_onConsoleTabsChanged);
     _primaryController.dispose();
     _consoleController.dispose();
     super.dispose();
@@ -434,32 +229,60 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   Widget build(BuildContext context) {
-    final showConsole = widget.allowConsole && ref.watch(consolePageShow);
-    return shadcn.ResizablePanel.vertical(
+    // The console is a group like any other, so it only occupies a pane while
+    // it still holds tabs: drag them all out and the group — and its pane —
+    // goes away.
+    final showConsole =
+        widget.allowConsole && ref.watch(consolePageShow) && !_consoleWasEmpty;
+    final dockSide = ref.watch(consoleDockSideProvider);
+    final splitsVertically = dockSide.axis == Axis.vertical;
+
+    final primaryPane = shadcn.ResizablePane.controlled(
+      key: ConsoleWorkspace.primaryPaneKey,
+      controller: _primaryController,
+      minSize: _primaryMinSize,
+      collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
+      child: widget.primary,
+    );
+    final consolePane = shadcn.ResizablePane.controlled(
+      key: ConsoleWorkspace.consolePaneKey,
+      controller: _consoleController,
+      minSize: 160,
+      child:
+          widget.console ??
+          EditorSplitDropRegion(
+            // The panel is a group too, so its edges accept a tab like any
+            // other group's: the new group lands in the editor area.
+            controller: _console,
+            edgeTarget: ref.read(tabbedViewControllerProvider),
+            // Only the panel's own surfaces come back here. A document dropped
+            // into this group would sit outside the layout tree, where
+            // persistence, the unsaved guard and the open-file dedup cannot
+            // see it at all.
+            accept: (tab) => tab.value is ConsoleTabValue,
+            child: consolePage(),
+          ),
+    );
+
+    return shadcn.ResizablePanel(
+      direction: dockSide.axis,
       optionalDivider: false,
       draggerBuilder: (context) {
         return Semantics(
           label: translateForWidget(ref, I18nKey.bottomPanelResize),
-          child: const shadcn.HorizontalResizableDragger(
-            key: ConsoleWorkspace.draggerKey,
-          ),
+          child: splitsVertically
+              ? const shadcn.HorizontalResizableDragger(
+                  key: ConsoleWorkspace.draggerKey,
+                )
+              : const shadcn.VerticalResizableDragger(
+                  key: ConsoleWorkspace.draggerKey,
+                ),
         );
       },
       children: [
-        shadcn.ResizablePane.controlled(
-          key: ConsoleWorkspace.primaryPaneKey,
-          controller: _primaryController,
-          minSize: _primaryMinSize,
-          collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
-          child: widget.primary,
-        ),
-        if (showConsole)
-          shadcn.ResizablePane.controlled(
-            key: ConsoleWorkspace.consolePaneKey,
-            controller: _consoleController,
-            minSize: 160,
-            child: widget.console ?? consolePage(),
-          ),
+        if (dockSide.isLeading && showConsole) consolePane,
+        primaryPane,
+        if (!dockSide.isLeading && showConsole) consolePane,
       ],
     );
   }
@@ -561,29 +384,6 @@ class FunctionPaneToggle extends ConsumerWidget {
   }
 }
 
-class ExpansionPaneToggle extends ConsumerWidget {
-  const ExpansionPaneToggle({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final visible = ref.watch(expansionPageShow);
-    return IconButton(
-      tooltip: translateForWidget(
-        ref,
-        visible
-            ? I18nKey.bottomPanelHideExpansionPanel
-            : I18nKey.bottomPanelShowExpansionPanel,
-      ),
-      onPressed: () {
-        ref.read(expansionPageShow.notifier).state = !visible;
-      },
-      icon: Icon(
-        visible ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_left,
-      ),
-    );
-  }
-}
-
 class RailTrailingActions extends StatelessWidget {
   const RailTrailingActions({super.key});
 
@@ -596,11 +396,7 @@ class RailTrailingActions extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              FunctionPaneToggle(),
-              ExpansionPaneToggle(),
-              ConsoleToggle(),
-            ],
+            children: [FunctionPaneToggle(), ConsoleToggle()],
           ),
         ),
       ),
@@ -733,20 +529,15 @@ Future<void> _showNavigationContextMenu(
   List<ResolvedMenuItem> items,
   Offset globalPosition,
 ) async {
-  final selected = await showMenu<String>(
-    context: context,
-    position: RelativeRect.fromLTRB(
-      globalPosition.dx,
-      globalPosition.dy,
-      globalPosition.dx,
-      globalPosition.dy,
-    ),
-    items: [
+  final selected = await showPyriteMenu<String>(
+    context,
+    globalPosition: globalPosition,
+    entries: [
       for (final item in items)
-        PopupMenuItem<String>(
+        PyriteMenuEntry(
           value: item.commandId,
+          label: item.title,
           enabled: item.enabled,
-          child: Text(item.title),
         ),
     ],
   );
@@ -882,7 +673,7 @@ class MobileView extends ConsumerWidget {
     final pluginItems = _pluginNavigationItems(ref);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 7);
       if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
         selectedIndexValue = 0;
         ref.read(mobileSelectedIndex.notifier).state = 0;
@@ -901,7 +692,12 @@ class MobileView extends ConsumerWidget {
         drawer: mobileNavigationDrawer(context, ref),
         body: Column(
           children: [
-            Expanded(child: child),
+            // Wrapped like the desktop and tablet workspaces are: the editor
+            // area lays its groups out with `shadcn.ResizablePanel`, whose
+            // default divider is a shadcn `VerticalDivider` that asserts when
+            // no shadcn theme is in scope. A restored split reaches this branch
+            // on a narrow window, where the layout is no longer a single group.
+            Expanded(child: buildShadcnLayer(context, child)),
             EditorToolsBar(showNavigationDrawerButton: true),
           ],
         ),
@@ -933,7 +729,7 @@ class MobileView extends ConsumerWidget {
       ...drawerItems,
       ...pluginNavigationDrawerDestinations(ref),
     ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 7);
     return Builder(
       builder: (drawerContext) {
         return NavigationDrawer(
@@ -990,7 +786,7 @@ class TabletView extends ConsumerWidget {
     final pluginItems = _pluginNavigationItems(ref);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 7);
       if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
         selectedIndexValue = 0;
         ref.read(tabletSelectedIndex.notifier).state = 0;
@@ -1044,7 +840,7 @@ class TabletView extends ConsumerWidget {
       ])
         _tooltippedDestination(context, ref, destination),
     ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 7);
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
@@ -1095,10 +891,10 @@ class DesktopView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pluginItems = _pluginNavigationItems(ref);
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     // 确保组件重绘后导航栏选择的值与实际显示内容同步
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 5);
+      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
       // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
       // e.g. "/settings/about" => "/settings"
       if (routeIndex == -1 || routeIndex >= navigationRoutes.length) {
@@ -1139,7 +935,7 @@ class DesktopView extends ConsumerWidget {
       ])
         _tooltippedDestination(context, ref, destination),
     ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
+    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
@@ -1188,16 +984,19 @@ class DesktopView extends ConsumerWidget {
     final List<shadcn.ResizablePane> children = [];
     final isEditorRoute = state.matchedLocation.startsWith('/editor');
     final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
-    final showExpansionPanel = ref.watch(expansionPageShow);
     final isGitRoute = state.matchedLocation.startsWith('/git');
+    // Search and source control both render a dense list of file paths, so
+    // they get a wider left pane than the file tree.
+    final isWideRoute =
+        isGitRoute || state.matchedLocation.startsWith('/search');
 
     // The desktop workspace already owns the central editor pane. Mounting the
     // /editor route child here would render the same tab controller twice.
     if (showFunctionPanel) {
       children.add(
         shadcn.ResizablePane.flex(
-          initialFlex: isGitRoute ? 3 : 2,
-          minSize: isGitRoute ? 340 : 220,
+          initialFlex: isWideRoute ? 3 : 2,
+          minSize: isWideRoute ? 340 : 220,
           child: child,
         ),
       );
@@ -1214,15 +1013,6 @@ class DesktopView extends ConsumerWidget {
         ),
       ),
     );
-    if (showExpansionPanel) {
-      children.add(
-        shadcn.ResizablePane.flex(
-          initialFlex: 2,
-          minSize: 200,
-          child: ExpansionPage(),
-        ),
-      );
-    }
     return children;
   }
 
@@ -1285,8 +1075,49 @@ class OutputLogView extends ConsumerWidget {
       theme: buildTerminalTheme(context, ref),
       textStyle: buildTerminalStyle(ref),
       key: ValueKey('output_${surface.toARGB32()}'),
+      onSecondaryTapUp: (details, cell) =>
+          _showOutputLogContextMenu(context, ref, details.globalPosition),
     );
   }
+}
+
+/// The log's right-click menu drops paste and search: the log is output-only,
+/// with nothing to paste into and no search bar to open.
+const Set<TerminalContextAction> _outputLogMenuActions = {
+  TerminalContextAction.copy,
+  TerminalContextAction.selectAll,
+  TerminalContextAction.clear,
+};
+
+bool get _outputLogHasSelection {
+  final selection = ideOutputController.selection;
+  if (selection == null || selection.isCollapsed) return false;
+  return ideOutputTerminal.buffer.getText(selection).isNotEmpty;
+}
+
+Future<void> _showOutputLogContextMenu(
+  BuildContext context,
+  WidgetRef ref,
+  Offset globalPosition,
+) async {
+  final action = await showTerminalContextMenu(
+    context,
+    globalPosition: globalPosition,
+    hasSelection: _outputLogHasSelection,
+    actions: _outputLogMenuActions,
+  );
+  if (!context.mounted || action == null) return;
+  // Clearing goes through the notifier so the entry list behind the log's own
+  // clear button is emptied along with the terminal buffer.
+  if (action == TerminalContextAction.clear) {
+    ref.read(ideOutputLogProvider.notifier).clear();
+    return;
+  }
+  await applyTerminalContextAction(
+    action,
+    terminal: ideOutputTerminal,
+    controller: ideOutputController,
+  );
 }
 
 class DesktopTerminalView extends ConsumerStatefulWidget {
@@ -1374,20 +1205,33 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
                             programBackground,
                           )
                         : terminalTheme;
-                    return TerminalView(
-                      configureTerminalColorQueries(
-                        session.terminal,
-                        terminalTheme,
-                        backgroundColor: session.backgroundColor,
-                      ),
+                    // Rebind the OSC 10/11 color queries to the current theme
+                    // before the surface renders: the closure captures the
+                    // theme by value, and a theme switch must be answered with
+                    // the new palette rather than the one from startup.
+                    configureTerminalColorQueries(
+                      session.terminal,
+                      terminalTheme,
+                      backgroundColor: session.backgroundColor,
+                    );
+                    return DesktopTerminalSurface(
+                      // Keying on the session id still rebuilds for a new
+                      // session; the surface keeps a GlobalKey on its
+                      // TerminalView so a theme contribution updates the
+                      // renderer in place instead of recreating it.
+                      key: ValueKey('terminal_${session.id}'),
+                      terminal: session.terminal,
                       controller: session.controller,
                       theme: effectiveTheme,
                       textStyle: buildTerminalStyle(ref),
-                      hardwareKeyboardOnly: true,
-                      // Keep the renderer alive when a theme contribution is
-                      // installed or selected. TerminalView updates its theme
-                      // in place; replacing it would discard focus/scroll UI.
-                      key: ValueKey('terminal_${session.id}'),
+                      // The link actions need the editor and the message
+                      // system, which the surface deliberately does not import;
+                      // they are injected here where the workspace providers
+                      // are already in scope.
+                      onUrlClick: (link) =>
+                          openTerminalUrlLink(context, ref, link.url!),
+                      onFileReferenceClick: (link) =>
+                          revealTerminalFileLink(context, ref, link),
                     );
                   },
                 ),
@@ -1517,6 +1361,10 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
   final scheme = Theme.of(context).colorScheme;
   final appearance = ref.watch(terminalAppearance);
   final minimumContrastRatio = ref.watch(terminalMinimumContrast) ? 4.5 : 1.0;
+  // One selection tint for every surface in the app: the terminal is painted
+  // by xterm, so it cannot inherit the theme's `textSelectionTheme` and has to
+  // be handed the same color explicitly.
+  final selection = AppSelection.text(scheme);
   late final TerminalTheme baseTheme;
   if (appearance == TerminalAppearance.custom) {
     final palette = ref.watch(terminalCustomPalette);
@@ -1526,6 +1374,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
       palette: palette.length == 16
           ? palette.map(Color.new).toList()
           : kDefaultTerminalCustomPalette.map(Color.new).toList(),
+      selection: selection,
       minimumContrastRatio: minimumContrastRatio,
     );
   } else if (appearance == TerminalAppearance.light ||
@@ -1539,6 +1388,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
           ? scheme.surface
           : const Color(0xFFFFFFFF),
       palette: _lightTerminalPalette,
+      selection: selection,
       minimumContrastRatio: minimumContrastRatio,
     );
   } else {
@@ -1551,6 +1401,7 @@ TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
           ? scheme.surface
           : defaultTheme.background,
       palette: _paletteFromTheme(defaultTheme),
+      selection: selection,
       minimumContrastRatio: minimumContrastRatio,
     );
   }
@@ -1577,6 +1428,9 @@ TerminalTheme _applyPluginTerminalTheme(
     foreground: pluginTheme.terminalForeground ?? base.foreground,
     background: pluginTheme.terminalBackground ?? base.background,
     palette: pluginTheme.terminalAnsi ?? _paletteFromTheme(base),
+    // A plugin theme may repaint the palette, never the selection tint: the
+    // app-wide selection color has to stay recognisable across surfaces.
+    selection: base.selection,
     minimumContrastRatio: base.minimumContrastRatio,
   );
 }
@@ -1623,11 +1477,12 @@ TerminalTheme _terminalThemeFromPalette({
   required Color foreground,
   required Color background,
   required List<Color> palette,
+  required Color selection,
   required double minimumContrastRatio,
 }) {
   return TerminalTheme(
     cursor: foreground.withValues(alpha: 0.8),
-    selection: foreground.withValues(alpha: 0.3),
+    selection: selection,
     foreground: foreground,
     background: background,
     black: palette[0],
@@ -1783,16 +1638,109 @@ class FunctionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Widget body;
     if (ResponsiveBreakpoints.of(context).isDesktop) {
       nowViewSelectedIndex = desktopSelectedIndex;
-      return buildTitleBar(DesktopView(state: state, child: child));
+      body = buildTitleBar(DesktopView(state: state, child: child));
     } else if (ResponsiveBreakpoints.of(context).isTablet) {
       nowViewSelectedIndex = tabletSelectedIndex;
-      return buildTitleBar(TabletView(state: state, child: child));
+      body = buildTitleBar(TabletView(state: state, child: child));
     } else {
       nowViewSelectedIndex = mobileSelectedIndex;
-      return buildTitleBar(MobileView(state: state, child: child));
+      body = buildTitleBar(MobileView(state: state, child: child));
     }
+    return _WorkspaceShortcuts(child: body);
+  }
+}
+
+/// Workspace-level keyboard entry points.
+///
+/// These live above the route so they work from the file tree, the editor, the
+/// search page and every plugin surface. `CallbackShortcuts` still lets a
+/// focused text field or terminal consume a key it handles first, so typing
+/// `Ctrl+P` into a terminal remains the terminal's choice.
+class _WorkspaceShortcuts extends ConsumerWidget {
+  const _WorkspaceShortcuts({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void openPalette(PaletteLaunchMode mode) {
+      unawaited(
+        showCommandPalette(context, mode: mode, hooks: editorPaletteHooks()),
+      );
+    }
+
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        // Commands: Cmd/Ctrl+Shift+P.
+        const SingleActivator(
+          LogicalKeyboardKey.keyP,
+          meta: true,
+          shift: true,
+        ): () =>
+            openPalette(PaletteLaunchMode.commands),
+        const SingleActivator(
+          LogicalKeyboardKey.keyP,
+          control: true,
+          shift: true,
+        ): () =>
+            openPalette(PaletteLaunchMode.commands),
+        // Quick open: Cmd/Ctrl+P.
+        const SingleActivator(LogicalKeyboardKey.keyP, meta: true): () =>
+            openPalette(PaletteLaunchMode.files),
+        const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
+            openPalette(PaletteLaunchMode.files),
+        // Reopen the last closed tab.
+        const SingleActivator(
+          LogicalKeyboardKey.keyT,
+          meta: true,
+          shift: true,
+        ): () =>
+            unawaited(reopenClosedEditorTab(context, ref)),
+        const SingleActivator(
+          LogicalKeyboardKey.keyT,
+          control: true,
+          shift: true,
+        ): () =>
+            unawaited(reopenClosedEditorTab(context, ref)),
+        // Split the editor group right / down.
+        const SingleActivator(LogicalKeyboardKey.backslash, meta: true): () =>
+            splitActiveEditor(ref, PaneEdge.right),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          control: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.right),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          meta: true,
+          shift: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.bottom),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          control: true,
+          shift: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.bottom),
+        // Close the active editor group.
+        const SingleActivator(
+          LogicalKeyboardKey.keyW,
+          meta: true,
+          alt: true,
+        ): () =>
+            unawaited(closeActiveEditorGroup(context, ref)),
+        const SingleActivator(
+          LogicalKeyboardKey.keyW,
+          control: true,
+          alt: true,
+        ): () =>
+            unawaited(closeActiveEditorGroup(context, ref)),
+      },
+      child: child,
+    );
   }
 }
 
@@ -1807,7 +1755,7 @@ class EditorToolsBar extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final registryItems = ref.watch(statusBarRegistryProvider);
     final runningOps = ref.watch(runningOperationsProvider);
-    final scrollController = ScrollController();
+    final scrollController = ref.watch(statusBarScrollControllerProvider);
 
     return Container(
       width: double.infinity,
@@ -1840,6 +1788,20 @@ class EditorToolsBar extends ConsumerWidget {
                 const MobileNavigationDrawerButton(),
                 const SizedBox(width: 4),
               ],
+              // The palette has to be reachable without a keyboard: touch
+              // devices have no Cmd/Ctrl+P, and a terminal that consumes the
+              // shortcut would otherwise leave no way in.
+              StatusBarButton(
+                label: I18nKey.paletteOpen,
+                icon: Icons.keyboard_command_key,
+                compact: ref.watch(themeStyle) == ThemeStyle.compact,
+                tooltip:
+                    '${translateForWidget(ref, I18nKey.paletteOpen)} '
+                    '(${commandPaletteShortcutLabel()})',
+                onPressed: () =>
+                    showCommandPalette(context, hooks: editorPaletteHooks()),
+              ),
+              const SizedBox(width: 4),
               buildLspState(context, ref),
               const SizedBox(width: 4),
               buildFileState(context, ref),
@@ -1876,8 +1838,10 @@ class EditorToolsBar extends ConsumerWidget {
 
   Widget buildFileState(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
-    if (value is! TabDataValue || value.type != "file") {
+    // The focused group's tab, so the status bar describes the editor the
+    // toolbar and the language server readout describe too.
+    final value = ref.watch(activeEditorTabProvider).value;
+    if (value == null || value.type != "file") {
       return StatusBarButton(
         label: I18nKey.statusWelcomePage,
         icon: Icons.home_outlined,
@@ -2088,8 +2052,8 @@ class EditorToolsBar extends ConsumerWidget {
   /// `initState` and build. Subscribing to the controller itself, or to its
   /// `diagnosticsNotifier`, delivers callbacks during the build phase.
   Widget buildEditorState(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
-    if (value is! TabDataValue || value.type != "file") {
+    final value = ref.watch(activeEditorTabProvider).value;
+    if (value == null || value.type != "file") {
       return const SizedBox.shrink();
     }
     final controller = value.editorController;

@@ -44,8 +44,16 @@ class SettingsPersistedData {
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
+  final bool deviceRunChdirToScriptDir;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
+
+  /// Port the IDE was talking to when it last closed.
+  ///
+  /// Persisted so a user with several boards does not have to pick the same
+  /// port again on every launch. Empty means "no previous device", which is
+  /// the state a fresh install starts in.
+  final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
@@ -57,6 +65,9 @@ class SettingsPersistedData {
   final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
+
+  /// Ordering of both file trees: `name` or `type`.
+  final String fileSortMode;
   final String confirmShortcut;
   final String cancelShortcut;
   final String webReplHost;
@@ -109,8 +120,10 @@ class SettingsPersistedData {
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,
+    this.deviceRunChdirToScriptDir = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
+    this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
@@ -122,6 +135,7 @@ class SettingsPersistedData {
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
     this.useMaterialContextMenu = false,
     this.uploadConfirmStyle = 'toolbar',
+    this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
     this.webReplHost = '',
@@ -175,8 +189,10 @@ class SettingsPersistedData {
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
     'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
+    'deviceRunChdirToScriptDir': deviceRunChdirToScriptDir,
     'serialDefaultBaudRate': serialDefaultBaudRate,
     'serialAutoReconnect': serialAutoReconnect,
+    'serialActivePortPath': serialActivePortPath,
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
     'terminalLineHeight': terminalLineHeight,
@@ -188,6 +204,7 @@ class SettingsPersistedData {
     'terminalCustomPalette': terminalCustomPalette,
     'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
+    'fileSortMode': fileSortMode,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
     'webReplHost': webReplHost,
@@ -253,8 +270,11 @@ class SettingsPersistedData {
     enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,
     ensureBoardFilesystemOnConnect:
         json['ensureBoardFilesystemOnConnect'] as bool? ?? false,
+    deviceRunChdirToScriptDir:
+        json['deviceRunChdirToScriptDir'] as bool? ?? false,
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
+    serialActivePortPath: json['serialActivePortPath'] as String? ?? '',
     terminalFontFamily:
         json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
@@ -276,6 +296,7 @@ class SettingsPersistedData {
         kDefaultTerminalCustomPalette,
     useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
+    fileSortMode: json['fileSortMode'] as String? ?? 'name',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
     cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',
     webReplHost: json['webReplHost'] as String? ?? '',

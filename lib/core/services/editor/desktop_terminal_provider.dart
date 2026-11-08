@@ -91,6 +91,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     configureTerminal?.call(terminal, backgroundColor);
     final controller = TerminalController();
     final shell = _defaultShell();
+    final startDirectory = _resolveStartDirectory(defaultDir);
 
     try {
       final session = _startSessionProcess(
@@ -102,7 +103,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
-        defaultDir: defaultDir?.path,
+        defaultDir: startDirectory,
         backgroundColor: backgroundColor,
       );
       state = state.copyWith(
@@ -165,6 +166,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         controller: controller,
         pty: pty,
         shell: shell,
+        startDirectory: defaultDir ?? Directory.current.path,
         code: code,
       ),
     );
@@ -187,6 +189,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     required TerminalController controller,
     required Pty pty,
     required _ShellCommand shell,
+    required String startDirectory,
     required int code,
   }) async {
     final current = state.sessions.where((item) => item.id == id).firstOrNull;
@@ -212,6 +215,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
         terminal: terminal,
         controller: controller,
         shell: shell,
+        defaultDir: startDirectory,
         backgroundColor: current.backgroundColor,
       );
       final sessions = [
@@ -268,6 +272,19 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       session.backgroundColor.dispose();
     }
     state = const DesktopTerminalState();
+  }
+
+  /// Picks the working directory for a new session: the workspace root while
+  /// it still exists, otherwise the process directory. A project that was
+  /// moved must not turn every new terminal into a launch failure.
+  String _resolveStartDirectory(Directory? workspace) {
+    final workspacePath = workspace?.path.trim();
+    if (workspacePath != null &&
+        workspacePath.isNotEmpty &&
+        Directory(workspacePath).existsSync()) {
+      return workspacePath;
+    }
+    return Directory.current.path;
   }
 
   _ShellCommand _defaultShell() {

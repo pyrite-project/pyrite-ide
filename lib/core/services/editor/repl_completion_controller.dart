@@ -136,7 +136,22 @@ class ReplCompletionController extends ChangeNotifier {
     _isLoading = true;
     _isOpen = false;
     notifyListeners();
-    final result = await _provider(context);
+    final List<ReplCompletionItem> result;
+    try {
+      result = await _provider(context);
+    } catch (error) {
+      // A provider that throws — a language server that just died, a runtime
+      // query that timed out — must not leave the popup spinning on a request
+      // that will never produce items, nor escape as an unhandled async error.
+      if (requestId != _requestId) return;
+      _items = const [];
+      _selectedIndex = 0;
+      _isLoading = false;
+      _isOpen = false;
+      notifyListeners();
+      debugPrint('[repl-completion] provider failed: $error');
+      return;
+    }
     if (requestId != _requestId) return;
     _items = result;
     _selectedIndex = 0;

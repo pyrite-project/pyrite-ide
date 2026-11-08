@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/sdk/editor_key_capture.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
@@ -49,13 +50,26 @@ abstract class SdkEditorCommands {
   static const String setGhostText = 'sdk.editor.set_ghost_text';
   static const String clearGhostText = 'sdk.editor.clear_ghost_text';
   static const String scrollToLine = 'sdk.editor.scroll_to_line';
+
+  // Key capture
+  static const String captureKeys = 'sdk.editor.capture_keys';
+  static const String releaseKeys = 'sdk.editor.release_keys';
 }
 
 class SdkEditor {
   final Ref ref;
   SdkEditor(this.ref);
 
+  /// Session that most recently bound this API, or null before any plugin
+  /// connected. Key capture and release both address it.
+  PluginRunManager? _runManager;
+
   void bind(PluginRunManager runManager) {
+    // Key capture is scoped to the plugin session, and the registry needs the
+    // manager itself (not an id parsed back out of an envelope) to release the
+    // keys when the plugin stops. bind runs once per session start, so holding
+    // the reference here is what keeps capture and release symmetric.
+    _runManager = runManager;
     // Text Content
     runManager.registerHandler(SdkEditorCommands.getText, _handleGetText);
     runManager.registerHandler(SdkEditorCommands.setText, _handleSetText);
@@ -132,6 +146,16 @@ class SdkEditor {
     runManager.registerHandler(
       SdkEditorCommands.scrollToLine,
       _handleScrollToLine,
+    );
+
+    // Key capture
+    runManager.registerHandler(
+      SdkEditorCommands.captureKeys,
+      _handleCaptureKeys,
+    );
+    runManager.registerHandler(
+      SdkEditorCommands.releaseKeys,
+      _handleReleaseKeys,
     );
   }
 
@@ -605,6 +629,51 @@ class SdkEditor {
     final line = payload['line'] as int? ?? 0;
     controller.scrollToLine(line);
     _respondOk(envelope, respond);
+  }
+
+  // ── Key capture ──
+
+  void _handleCaptureKeys(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final manager = _runManager;
+    if (manager == null) {
+      _respondError(envelope, respond, '尚未绑定插件会话');
+      return;
+    }
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final keys = _keyList(payload['keys']);
+    if (keys.isEmpty) {
+      _respondError(envelope, respond, 'keys 不能为空');
+      return;
+    }
+    ref.read(editorKeyCaptureProvider).capture(manager, keys);
+    _respondOk(envelope, respond, data: {'keys': keys});
+  }
+
+  void _handleReleaseKeys(
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) {
+    final manager = _runManager;
+    if (manager == null) {
+      _respondError(envelope, respond, '尚未绑定插件会话');
+      return;
+    }
+    final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
+    final raw = payload['keys'];
+    final keys = raw == null ? null : _keyList(raw);
+    ref.read(editorKeyCaptureProvider).release(manager, keys);
+    _respondOk(envelope, respond);
+  }
+
+  static List<String> _keyList(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .map((item) => normalizeEditorKeyName(item.toString()))
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
   }
 }
 

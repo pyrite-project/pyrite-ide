@@ -11,6 +11,9 @@ import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_service.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_ui.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_manager.dart';
@@ -294,6 +297,7 @@ class ProjectFiles extends ConsumerWidget {
 
           final paths = await _externalFilePaths(event.session);
           if (paths.isEmpty) return;
+          if (!context.mounted) return;
           await _importExternalPaths(
             context,
             ref,
@@ -355,12 +359,16 @@ class ProjectFiles extends ConsumerWidget {
               context,
               ref,
               boardFolderPath: targetFolderPath,
+              // A drop is already a deliberate gesture aimed at a folder; the
+              // toolbar button is the path that needs a confirmation.
+              confirm: false,
             );
             return;
           }
 
           final paths = await _externalFilePaths(event.session);
           if (paths.isEmpty) return;
+          if (!context.mounted) return;
           await _uploadLocalPaths(
             context,
             ref,
@@ -546,6 +554,7 @@ class ProjectFiles extends ConsumerWidget {
     if (!context.mounted) return;
     if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
+      if (!context.mounted) return;
       await ref
           .read(fileProvider.notifier)
           .moveLocalNodes(context, nodes, targetFolder);
@@ -592,6 +601,7 @@ class ProjectFiles extends ConsumerWidget {
     if (!context.mounted) return;
     if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
     try {
+      if (!context.mounted) return;
       await ref
           .read(boardProvider)
           .moveBoardNodes(context, nodes, targetFolder);
@@ -664,11 +674,18 @@ class ProjectFiles extends ConsumerWidget {
     );
   }
 
+  /// Whether moving [node] into [targetFolder] would put a folder inside
+  /// itself or inside one of its own descendants.
+  ///
+  /// The move loops already refuse this, but only once the batch is running:
+  /// the drop is accepted, the progress panel opens and the row is skipped with
+  /// a snackbar. Answering the question here keeps the gesture from being
+  /// offered at all.
   bool _isLocalSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
-    return path.equals(
-      path.normalize(path.absolute(node.id)),
-      path.normalize(path.absolute(targetFolder)),
-    );
+    final source = path.normalize(path.absolute(node.id));
+    final target = path.normalize(path.absolute(targetFolder));
+    if (path.equals(source, target)) return true;
+    return node.data is FolderItem && path.isWithin(source, target);
   }
 
   bool _isBoardNodeAlreadyInFolder(
@@ -682,12 +699,16 @@ class ProjectFiles extends ConsumerWidget {
     return parent == target;
   }
 
+  /// The board-side counterpart of [_isLocalSelfMove]: a folder cannot be
+  /// moved into itself or into a path below it, which on the board would copy
+  /// the folder into its own subtree.
   bool _isBoardSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
     final self = path.posix.normalize(node.id);
     final target = path.posix.normalize(
       targetFolder.isEmpty ? '/' : targetFolder,
     );
-    return self == target;
+    if (self == target) return true;
+    return node.data is FolderItem && path.posix.isWithin(self, target);
   }
 
   Future<void> _downloadSelectedBoardItems(
@@ -737,7 +758,20 @@ class ProjectFiles extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     String? boardFolderPath,
+    bool confirm = true,
   }) async {
+    final selectedCount = ref
+        .read(fileProvider.notifier)
+        .getSelectedNodes()
+        .length;
+    if (confirm && selectedCount > 0) {
+      final folder =
+          boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+      if (!await _confirmUpload(context, ref, selectedCount, folder ?? '/')) {
+        return;
+      }
+      if (!context.mounted) return;
+    }
     try {
       await ref
           .read(fileProvider.notifier)
@@ -761,6 +795,45 @@ class ProjectFiles extends ConsumerWidget {
         ).replaceAll('{error}', error.toString()),
       );
     }
+  }
+
+  /// Asks before a batch upload, whether or not a name clash exists.
+  ///
+  /// The conflict dialog only appears for files already on the board, so an
+  /// upload into an empty folder used to start without any prompt at all --
+  /// one stray click on the toolbar was enough. The count and the destination
+  /// are the two things worth confirming.
+  Future<bool> _confirmUpload(
+    BuildContext context,
+    WidgetRef ref,
+    int count,
+    String boardFolder,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.upload_outlined),
+        title: const UseText(I18nKey.fileConfirmUploadTitle),
+        content: Text(
+          tr(ref, I18nKey.fileConfirmUploadMessage, {
+            'count': count.toString(),
+            'folder': boardFolder,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => ctx.pop(false),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => ctx.pop(true),
+            child: const UseText(I18nKey.fileConfirmUploadAction),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Future<void> _importExternalPaths(
@@ -1033,6 +1106,7 @@ class ProjectFiles extends ConsumerWidget {
                     })
                   : node.data.name,
             )) {
+              if (!context.mounted) return;
               await ref
                   .read(fileProvider.notifier)
                   .deleteSelectedLocalItems(context);
@@ -1208,6 +1282,7 @@ class ProjectFiles extends ConsumerWidget {
                   : node.data.name,
             )) {
               try {
+                if (!context.mounted) return;
                 await ref.read(boardProvider).deleteSelectedBoardItems(context);
               } on DeviceNotReadyException catch (_) {
                 if (!context.mounted) return;
@@ -1345,6 +1420,7 @@ class ProjectFiles extends ConsumerWidget {
                                 I18nKey.fileSelectedItemsName,
                               ).replaceAll('{count}', selectedCount.toString()),
                             )) {
+                              if (!context.mounted) return;
                               await ref
                                   .read(fileProvider.notifier)
                                   .deleteSelectedLocalItems(context);
@@ -1439,6 +1515,16 @@ class ProjectFiles extends ConsumerWidget {
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),
                   IconButton(
+                    tooltip: translateInContext(
+                      context,
+                      I18nKey.fileSyncToDeviceTooltip,
+                    ),
+                    onPressed: isConnected
+                        ? () => _openBoardSyncPreview(context, ref)
+                        : null,
+                    icon: const Icon(Icons.sync_alt),
+                  ),
+                  IconButton(
                     tooltip: translateForWidget(
                       ref,
                       I18nKey.fileActionRefreshLocal,
@@ -1509,6 +1595,7 @@ class ProjectFiles extends ConsumerWidget {
                               ).replaceAll('{count}', selectedCount.toString()),
                             )) {
                               try {
+                                if (!context.mounted) return;
                                 await ref
                                     .read(boardProvider)
                                     .deleteSelectedBoardItems(context);
@@ -1804,9 +1891,190 @@ class ProjectFiles extends ConsumerWidget {
     );
   }
 
+  /// Builds the local<->board plan, shows the preview, then executes it.
+  ///
+  /// The device is only touched twice: once to scan the board tree for the
+  /// plan and once per executed file. Cancelling the preview never starts a
+  /// transfer, and cancelling the execution stops between whole files so the
+  /// REPL is left at a normal prompt.
+  Future<void> _openBoardSyncPreview(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final localWorkspace = ref.read(fileProvider);
+    if (localWorkspace == null) {
+      showIdeError(
+        context,
+        translateForWidget(ref, I18nKey.fileMessageOpenLocalProject),
+      );
+      return;
+    }
+
+    final boardOps = ref.read(boardProvider).ops;
+    final boardRoot = ref.read(boardProvider).getFocusFolderNode()?.id ?? '/';
+    // The plan walks the board synchronously with the progress UI; reading the
+    // locale through the container keeps the note text out of widget rebuilds.
+    String translateSync(
+      I18nKey key, [
+      Map<String, String> replacements = const {},
+    ]) => translateInContextWithReplacements(context, key, replacements);
+
+    BoardSyncPlan plan;
+    try {
+      plan = await buildWorkspaceSyncPlan(
+        ops: boardOps,
+        localRoot: localWorkspace.path,
+        boardRoot: boardRoot,
+        translate: translateSync,
+      );
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(
+          ref,
+          I18nKey.fileOperationRefreshBoardFile,
+        ),
+      );
+      if (sendCtrlC) sendCommandToActiveDevice(ref.read, "\x03");
+      return;
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileMessageSyncPlanFailed,
+          {'error': '$error'},
+        ),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    if (!plan.hasWork) {
+      showEditorSnackBar(
+        context,
+        translateInContext(
+          context,
+          plan.isEmpty
+              ? I18nKey.fileSyncNothingLocal
+              : I18nKey.fileSyncNothingBoth,
+        ),
+      );
+      return;
+    }
+
+    final result = await showBoardSyncPreviewDialog(
+      context,
+      plan: plan,
+      localRoot: localWorkspace.path,
+    );
+    if (result == null || result.selectedPaths.isEmpty || !context.mounted) {
+      return;
+    }
+
+    // Conflict rows carry the side the user picked in the preview; resolve
+    // them before the direction filter so a resolved conflict lands in the
+    // half of the plan that will actually run.
+    final filtered = _restrictPlanToDirection(
+      _applyConflictOverrides(plan, result.overrides),
+      result.direction,
+    );
+    final progress = ref.read(fileTransferProgressProvider.notifier);
+    final executor = BoardSyncExecutor(
+      ops: boardOps,
+      progress: progress,
+      translate: translateSync,
+    );
+    // No token is passed in: the executor creates it right after `start()`, so
+    // the progress bar's cancel button cancels exactly the token being polled.
+    final outcome = await executor.execute(
+      plan: filtered,
+      localRoot: localWorkspace.path,
+      selectedPaths: result.selectedPaths,
+    );
+
+    if (!context.mounted) return;
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+    if (outcome.error != null) {
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileMessageSyncFailed,
+          {'error': '${outcome.error}'},
+        ),
+      );
+    } else if (outcome.hasFailures) {
+      final first = outcome.failed.first;
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileSyncFirstFailure,
+          {
+            'summary': outcome.summary,
+            'path': first.entry.relativePath,
+            'error': '${first.error}',
+          },
+        ),
+      );
+    } else {
+      showEditorSnackBar(context, outcome.summary);
+    }
+  }
+
+  /// Applies the conflict decisions made in the preview dialog.
+  ///
+  /// A conflict row has no direction of its own, so without this the executor
+  /// would skip it even though the user picked a side.
+  BoardSyncPlan _applyConflictOverrides(
+    BoardSyncPlan plan,
+    Map<String, BoardSyncAction> overrides,
+  ) {
+    if (overrides.isEmpty) return plan;
+    return BoardSyncPlan(
+      entries: [
+        for (final entry in plan.entries)
+          _withOverride(entry, overrides[entry.relativePath]),
+      ],
+      localRoot: plan.localRoot,
+      boardRoot: plan.boardRoot,
+    );
+  }
+
+  BoardSyncEntry _withOverride(BoardSyncEntry entry, BoardSyncAction? action) =>
+      action == null ? entry : entry.copyWith(action: action);
+
+  /// Drops entries that point in the opposite direction of the user's choice.
+  ///
+  /// `none` keeps both directions. This is the "本地→设备 only" switch the
+  /// preview offers without needing a second plan.
+  BoardSyncPlan _restrictPlanToDirection(
+    BoardSyncPlan plan,
+    BoardSyncDirection direction,
+  ) {
+    if (direction == BoardSyncDirection.none) return plan;
+    return BoardSyncPlan(
+      entries: [
+        for (final entry in plan.entries)
+          if (entry.direction == BoardSyncDirection.none ||
+              entry.direction == direction)
+            entry,
+      ],
+      localRoot: plan.localRoot,
+      boardRoot: plan.boardRoot,
+    );
+  }
+
   Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
     if (ref.watch(deviceConnectedProvider) &&
-        ref.watch(boardFileItemsProvider).isNotEmpty) {
+        (ref.watch(boardFileItemsProvider).isNotEmpty ||
+            // A successful refresh proved the listing is empty, so show the
+            // empty list instead of the refresh prompt.
+            ref.watch(boardFileListLoadedProvider))) {
       final deviceLabel = ref.watch(activeDeviceLabelProvider);
       final selectionMode = ref.watch(boardFileSelectionModeProvider);
       final compact = ref.watch(themeStyle) == ThemeStyle.compact;

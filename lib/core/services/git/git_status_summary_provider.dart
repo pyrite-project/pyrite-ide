@@ -5,10 +5,18 @@ import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 final gitStatusSummaryProvider = Provider<GitStatusSummary?>((ref) {
   final workspacePath = ref.watch(localWorkspaceProvider)?.path;
-  return GitStatusSummary.inspect(workspacePath);
+  return GitStatusSummary.inspect(
+    workspacePath,
+    // inspect() walks a real repository synchronously; only the label needs
+    // the active locale, so translation is injected instead of threading a
+    // Ref through the walk.
+    fallbackBranchLabel: translate(ref, I18nKey.gitStatusSummaryFallback),
+  );
 });
 
 class GitStatusSummary {
@@ -17,7 +25,12 @@ class GitStatusSummary {
   final String rootPath;
   final String branchLabel;
 
-  static GitStatusSummary? inspect(String? workspacePath) {
+  static GitStatusSummary? inspect(
+    String? workspacePath, {
+    String? fallbackBranchLabel,
+  }) {
+    final label =
+        fallbackBranchLabel ?? I18nKey.gitStatusSummaryFallback.fallback;
     try {
       GitDebugLog.log(
         'GitStatusSummary.inspect start workspace=$workspacePath',
@@ -39,7 +52,7 @@ class GitStatusSummary {
         );
         final summary = GitStatusSummary(
           rootPath: _rootPath(repo, gitDir),
-          branchLabel: _branchLabel(repo),
+          branchLabel: _branchLabel(repo, label),
         );
         GitDebugLog.log(
           'GitStatusSummary.inspect end root=${summary.rootPath} '
@@ -67,9 +80,9 @@ class GitStatusSummary {
     return p.normalize(workdir);
   }
 
-  static String _branchLabel(Repository repo) {
+  static String _branchLabel(Repository repo, String fallbackBranchLabel) {
     try {
-      if (repo.isEmpty) return 'Git 仓库';
+      if (repo.isEmpty) return fallbackBranchLabel;
       final head = repo.head;
       try {
         if (head.isBranch) return head.shorthand;
@@ -78,7 +91,7 @@ class GitStatusSummary {
         head.free();
       }
     } catch (_) {
-      return 'Git 仓库';
+      return fallbackBranchLabel;
     }
   }
 }

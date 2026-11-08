@@ -17,6 +17,7 @@ import 'package:pyrite_ide/features/plugin_view/plugin_split_view.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_video_player.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 
 /// Signature for dispatching a component event back to the plugin.
 ///
@@ -286,10 +287,8 @@ class ComponentBuilder {
           child: children.isEmpty ? null : _build(context, children.first),
         );
       case 'PageView':
-        return PageView(
-          controller: PageController(
-            initialPage: (props['initialPage'] as num?)?.toInt() ?? 0,
-          ),
+        return _PluginPageView(
+          initialPage: (props['initialPage'] as num?)?.toInt() ?? 0,
           scrollDirection: props['scrollDirection'] == 'vertical'
               ? Axis.vertical
               : Axis.horizontal,
@@ -903,8 +902,7 @@ class ComponentBuilder {
           ],
         );
       case 'RangeSlider':
-        final min = (props['min'] as num?)?.toDouble() ?? 0;
-        final max = (props['max'] as num?)?.toDouble() ?? 100;
+        final (:min, :max) = _sliderRange(props);
         final start = ((props['start'] as num?)?.toDouble() ?? min).clamp(
           min,
           max,
@@ -1430,9 +1428,6 @@ class ComponentBuilder {
           return true;
         }
         if (method == 'show' && mountedContext != null) {
-          final overlay =
-              Overlay.of(mountedContext).context.findRenderObject()
-                  as RenderBox;
           final box = mountedContext.findRenderObject() as RenderBox?;
           final origin = arguments['x'] is num && arguments['y'] is num
               ? Offset(
@@ -1440,23 +1435,38 @@ class ComponentBuilder {
                   (arguments['y'] as num).toDouble(),
                 )
               : box?.localToGlobal(Offset.zero) ?? Offset.zero;
+          // Dividers group the rows that follow them, so they are folded into
+          // the next entry instead of being rendered as their own row.
+          final entries = <PyriteMenuEntry<String>>[];
+          var dividerPending = false;
+          for (final item in _entryList(props['items'])) {
+            if (item['type'] == 'divider') {
+              dividerPending = entries.isNotEmpty;
+              continue;
+            }
+            final itemId = item['id']?.toString();
+            entries.add(
+              PyriteMenuEntry(
+                value: itemId ?? '',
+                label: item['label']?.toString() ?? '',
+                // A row without an id has nothing to report, so it stays
+                // visible but unpickable, exactly like a disabled row.
+                enabled: item['enabled'] != false && itemId != null,
+                dividerBefore: dividerPending,
+              ),
+            );
+            dividerPending = false;
+          }
+          if (entries.isEmpty) {
+            popup.isOpen = false;
+            return true;
+          }
           popup.isOpen = true;
           unawaited(
-            showMenu<String>(
-              context: mountedContext,
-              position: RelativeRect.fromRect(
-                Rect.fromLTWH(origin.dx, origin.dy, 1, 1),
-                Offset.zero & overlay.size,
-              ),
-              items: [
-                for (final item in _entryList(props['items']))
-                  if (item['type'] != 'divider')
-                    PopupMenuItem<String>(
-                      value: item['id']?.toString(),
-                      enabled: item['enabled'] != false,
-                      child: Text(item['label']?.toString() ?? ''),
-                    ),
-              ],
+            showPyriteMenu<String>(
+              mountedContext,
+              globalPosition: origin,
+              entries: entries,
             ).then((selected) {
               popup.isOpen = false;
               if (selected != null) {
@@ -2043,10 +2053,26 @@ class ComponentBuilder {
     );
   }
 
+  /// Normalizes a plugin-supplied slider range.
+  ///
+  /// The props come from the plugin, so `min` and `max` can arrive swapped,
+  /// equal or not a number. `num.clamp` throws when its bounds are inverted and
+  /// [Slider] asserts on `min <= max`, so one malformed prop used to take the
+  /// whole view down; sorting the pair and widening an empty range keeps the
+  /// control usable instead.
+  ({double min, double max}) _sliderRange(Map<String, dynamic> props) {
+    final first = (props['min'] as num?)?.toDouble() ?? 0;
+    final second = (props['max'] as num?)?.toDouble() ?? 100;
+    if (first.isNaN || second.isNaN) return (min: 0, max: 100);
+    final low = first <= second ? first : second;
+    final high = first <= second ? second : first;
+    if (low == high) return (min: low, max: low + 1);
+    return (min: low, max: high);
+  }
+
   Widget _buildSlider(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
-    final min = (props['min'] as num?)?.toDouble() ?? 0;
-    final max = (props['max'] as num?)?.toDouble() ?? 100;
+    final (:min, :max) = _sliderRange(props);
     final raw = hostState.displayValue(id, props['value']);
     final value = ((raw as num?)?.toDouble() ?? min).clamp(min, max);
     final style = _styleMap(props['style']);
@@ -2536,4 +2562,60 @@ class ComponentBuilder {
           ),
         ),
       );
+}
+
+/// A plugin-authored `PageView`.
+///
+/// The scroll controller has to outlive a rebuild. Building one inline handed
+/// every rebuild a fresh [PageController] at `initialPage`, which both reset the
+/// visible page whenever the plugin re-rendered and leaked the previous
+/// controller; owning it in a [State] keeps the page where the user left it and
+/// disposes it with the widget.
+class _PluginPageView extends StatefulWidget {
+  const _PluginPageView({
+    required this.initialPage,
+    required this.scrollDirection,
+    required this.onPageChanged,
+    required this.children,
+  });
+
+  final int initialPage;
+  final Axis scrollDirection;
+  final ValueChanged<int>? onPageChanged;
+  final List<Widget> children;
+
+  @override
+  State<_PluginPageView> createState() => _PluginPageViewState();
+}
+
+class _PluginPageViewState extends State<_PluginPageView> {
+  late final PageController _controller = PageController(
+    initialPage: widget.initialPage,
+  );
+
+  @override
+  void didUpdateWidget(covariant _PluginPageView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A changed `initialPage` is a new instruction from the plugin, not a
+    // rebuild: honor it without throwing away the controller.
+    if (widget.initialPage != oldWidget.initialPage &&
+        _controller.hasClients &&
+        _controller.page?.round() != widget.initialPage) {
+      _controller.jumpToPage(widget.initialPage);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PageView(
+    controller: _controller,
+    scrollDirection: widget.scrollDirection,
+    onPageChanged: widget.onPageChanged,
+    children: widget.children,
+  );
 }

@@ -35,11 +35,59 @@ List<SingleActivator> toggleCommentActivators() => [
   const SingleActivator(LogicalKeyboardKey.slash, meta: true),
 ];
 
+/// Activators for the find options, VS Code style: Alt+C / Alt+W / Alt+R.
+///
+/// Apple platforms add Cmd because Option+letter types a character there
+/// (Option+C is "ç"), which is also VS Code's macOS binding.
+List<SingleActivator> _findOptionActivators(LogicalKeyboardKey key) => [
+  if (usesCommandShortcut)
+    SingleActivator(key, meta: true, alt: true)
+  else
+    SingleActivator(key, alt: true),
+];
+
+List<SingleActivator> findCaseSensitiveActivators() =>
+    _findOptionActivators(LogicalKeyboardKey.keyC);
+
+List<SingleActivator> findWholeWordActivators() =>
+    _findOptionActivators(LogicalKeyboardKey.keyW);
+
+List<SingleActivator> findRegexActivators() =>
+    _findOptionActivators(LogicalKeyboardKey.keyR);
+
+String _findOptionShortcutLabel(String key) =>
+    usesCommandShortcut ? 'Cmd+Alt+$key' : 'Alt+$key';
+
+String findCaseSensitiveShortcutLabel() => _findOptionShortcutLabel('C');
+
+String findWholeWordShortcutLabel() => _findOptionShortcutLabel('W');
+
+String findRegexShortcutLabel() => _findOptionShortcutLabel('R');
+
 String findShortcutLabel() => usesCommandShortcut ? 'Cmd+F' : 'Ctrl+F';
 
 String replaceShortcutLabel() => usesCommandShortcut ? 'Cmd+Alt+H' : 'Ctrl+H';
 
 String toggleCommentShortcutLabel() => usesCommandShortcut ? 'Cmd+/' : 'Ctrl+/';
+
+/// Labels for the workspace-level shortcuts the command palette and menus
+/// advertise. The bindings themselves live in `FunctionPage`; keeping the
+/// spelling here means a menu and its tooltip cannot drift apart.
+String commandPaletteShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+P' : 'Ctrl+Shift+P';
+
+String quickOpenShortcutLabel() => usesCommandShortcut ? 'Cmd+P' : 'Ctrl+P';
+
+String reopenClosedTabShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+T' : 'Ctrl+Shift+T';
+
+String splitEditorShortcutLabel() => usesCommandShortcut ? 'Cmd+\\' : 'Ctrl+\\';
+
+String splitEditorDownShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Shift+\\' : 'Ctrl+Shift+\\';
+
+String closeEditorGroupShortcutLabel() =>
+    usesCommandShortcut ? 'Cmd+Alt+W' : 'Ctrl+Alt+W';
 
 /// Labels for the editor shortcuts that are registered inline in
 /// `EditCore.build` rather than through [CodeForgeKeyboardShortcuts].

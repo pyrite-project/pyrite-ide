@@ -65,77 +65,81 @@ void main() {
     },
   );
 
-  test('requests before the initialize handshake are rejected locally',
-      () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    final received = <String>[];
-    server.transform(WebSocketTransformer()).listen((socket) {
-      socket.listen((message) {
-        final request = jsonDecode(message as String) as Map<String, dynamic>;
-        received.add(request['method'] as String);
+  test(
+    'requests before the initialize handshake are rejected locally',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final received = <String>[];
+      server.transform(WebSocketTransformer()).listen((socket) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          received.add(request['method'] as String);
+        });
       });
-    });
 
-    final config = LspSocketConfig(
-      workspacePath: Directory.current.path,
-      languageId: 'test',
-      serverUrl: 'ws://${server.address.address}:${server.port}',
-    );
-    addTearDown(config.dispose);
-    await config.connect();
+      final config = LspSocketConfig(
+        workspacePath: Directory.current.path,
+        languageId: 'test',
+        serverUrl: 'ws://${server.address.address}:${server.port}',
+      );
+      addTearDown(config.dispose);
+      await config.connect();
 
-    // A request racing the startup must stay a local error: servers such as
-    // zuban exit on any request that arrives before `initialized`.
-    await expectLater(
-      config.getDocumentColor('/tmp/lsp_early_request_test.py'),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          contains('textDocument/documentColor'),
+      // A request racing the startup must stay a local error: servers such as
+      // zuban exit on any request that arrives before `initialized`.
+      await expectLater(
+        config.getDocumentColor('/tmp/lsp_early_request_test.py'),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('textDocument/documentColor'),
+          ),
         ),
-      ),
-    );
-    expect(received, isEmpty);
-  });
+      );
+      expect(received, isEmpty);
+    },
+  );
 
-  test('initialize is answered once and never resent on an error response',
-      () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    var initializeCount = 0;
-    server.transform(WebSocketTransformer()).listen((socket) {
-      socket.listen((message) {
-        final request = jsonDecode(message as String) as Map<String, dynamic>;
-        if (request['method'] != 'initialize') return;
-        initializeCount++;
-        socket.add(
-          jsonEncode({
-            'jsonrpc': '2.0',
-            'id': request['id'],
-            'error': {'code': -32000, 'message': 'temporary'},
-          }),
-        );
+  test(
+    'initialize is answered once and never resent on an error response',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      var initializeCount = 0;
+      server.transform(WebSocketTransformer()).listen((socket) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          if (request['method'] != 'initialize') return;
+          initializeCount++;
+          socket.add(
+            jsonEncode({
+              'jsonrpc': '2.0',
+              'id': request['id'],
+              'error': {'code': -32000, 'message': 'temporary'},
+            }),
+          );
+        });
       });
-    });
 
-    final config = LspSocketConfig(
-      workspacePath: Directory.current.path,
-      languageId: 'test',
-      serverUrl: 'ws://${server.address.address}:${server.port}',
-    );
-    addTearDown(config.dispose);
-    await config.connect();
+      final config = LspSocketConfig(
+        workspacePath: Directory.current.path,
+        languageId: 'test',
+        serverUrl: 'ws://${server.address.address}:${server.port}',
+      );
+      addTearDown(config.dispose);
+      await config.connect();
 
-    final response = await config.sendRequest(
-      method: 'initialize',
-      params: {},
-    );
+      final response = await config.sendRequest(
+        method: 'initialize',
+        params: {},
+      );
 
-    // Resending `initialize` is a protocol violation that strict servers
-    // (zuban) answer by exiting, so the error response is returned as-is.
-    expect(initializeCount, 1);
-    expect(response['error'], isNotNull);
-  });
+      // Resending `initialize` is a protocol violation that strict servers
+      // (zuban) answer by exiting, so the error response is returned as-is.
+      expect(initializeCount, 1);
+      expect(response['error'], isNotNull);
+    },
+  );
 }

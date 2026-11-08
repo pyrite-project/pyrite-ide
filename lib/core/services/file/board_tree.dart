@@ -9,8 +9,10 @@ import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -19,18 +21,36 @@ import 'package:super_tree/super_tree.dart';
 
 final boardFileListLoadingProvider = StateProvider<bool>((ref) => false);
 
+/// Whether the root listing has been fetched successfully for the current
+/// connection. An empty listing only means "the board has no files" once this
+/// is true; otherwise it just means nothing was loaded yet.
+final boardFileListLoadedProvider = StateProvider<bool>((ref) => false);
+
 class BoardFileItemsNotifier
     extends StateNotifier<List<TreeNode<FileSystemItem>>> {
   final Ref ref;
 
-  BoardFileItemsNotifier(this.ref) : super(const []);
+  BoardFileItemsNotifier(this.ref) : super(const []) {
+    // Re-read the board only when there is something to re-read: a sort change
+    // while disconnected would otherwise wait on a port that is not there.
+    ref.listen(fileSortModeProvider, (_, _) {
+      if (ref.read(boardFileListLoadedProvider) &&
+          ref.read(deviceConnectedProvider)) {
+        buildRootFileListItems();
+      }
+    });
+  }
 
   Future<List<TreeNode<FileSystemItem>>> buildRootFileListItems() async {
     ref.read(boardFileListLoadingProvider.notifier).state = true;
     try {
       final entries = await ref.read(boardProvider).ops.getFileList();
-      final items = await buildBoardFileListItems(entries);
+      final items = await buildBoardFileListItems(
+        entries,
+        sortMode: ref.read(fileSortModeProvider),
+      );
       state = items;
+      ref.read(boardFileListLoadedProvider.notifier).state = true;
       await ref.read(boardFileTreeViewControllerProvider).replaceRoots(items);
       return items;
     } on DeviceNotReadyException catch (error) {
@@ -49,6 +69,7 @@ class BoardFileItemsNotifier
 
   void clear() {
     state = const [];
+    ref.read(boardFileListLoadedProvider.notifier).state = false;
     unawaited(
       ref.read(boardFileTreeViewControllerProvider).replaceRoots(state),
     );
@@ -117,6 +138,7 @@ boardFileTreeViewControllerProvider = Provider(
       if (node.canLoadChildren == true) {
         return await buildBoardFileListItems(
           await ref.read(boardProvider).ops.getFileList(path: node.id),
+          sortMode: ref.read(fileSortModeProvider),
         );
       } else {
         return [];
