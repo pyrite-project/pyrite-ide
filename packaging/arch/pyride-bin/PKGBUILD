@@ -29,12 +29,14 @@ source=(
   "pyride.png::https://raw.githubusercontent.com/pyrite-project/pyrite-ide/v${pkgver}/android/app/src/main/res/mipmap-xxxhdpi/launcher_icon.png"
   "LICENSE::https://raw.githubusercontent.com/pyrite-project/pyrite-ide/v${pkgver}/LICENSE"
   'pyride.desktop'
+  'pyride-mime.xml'
 )
 sha256sums=(
   'dc518824062e7e39405d22a5885cd5f0909eaa78e7c8c808f1c88f2ee897708e'
   '24b0e25cebec583be1b329f4427d783f912a3362ccad0704f625298db351daba'
   '8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef'
-  'e58f1be19125edaf1d9bd002cc3a9ad414bfbd23d3a0c620367a83273936d915'
+  '1a2c6eee65081a57d2027aa7c1954b5977c48a40ed46ade24411b34c945aa4ea'
+  'd99b1dfca70ac807b5e10a7a85d2a748e82f9d4516a45d8cac6491cca633d71f'
 )
 
 package() {
@@ -57,6 +59,8 @@ package() {
 
   install -Dm644 pyride.desktop \
     "${pkgdir}/usr/share/applications/com.can1425.pyride.desktop"
+  install -Dm644 pyride-mime.xml \
+    "${pkgdir}/usr/share/mime/packages/com.can1425.pyride.xml"
   install -Dm644 pyride.png \
     "${pkgdir}/usr/share/icons/hicolor/192x192/apps/pyride.png"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"

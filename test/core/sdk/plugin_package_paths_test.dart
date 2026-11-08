@@ -50,4 +50,58 @@ void main() {
       path.join(root.path, 'plugin_updates', 'new', 'example'),
     );
   });
+
+  group('scoped plugin ids', () {
+    test('are stored under a single directory name and map back', () {
+      expect(pluginDirectoryFor('@my-org/hello'), '@my-org+hello');
+      expect(pluginIdFromDirectoryName('@my-org+hello'), '@my-org/hello');
+      expect(pluginDirectoryFor('hello.plugin'), 'hello.plugin');
+      expect(pluginIdFromDirectoryName('hello.plugin'), 'hello.plugin');
+    });
+
+    test('keep installed, replacement and marker paths distinct and flat', () {
+      final root = Directory(path.join(path.separator, 'support'));
+      const id = '@my-org/hello';
+
+      expect(
+        installedPluginDirectory(root, id).path,
+        path.join(root.path, 'plugin', '@my-org+hello'),
+      );
+      expect(
+        newPluginDirectory(root, id).path,
+        path.join(root.path, 'plugin_updates', 'new', '@my-org+hello'),
+      );
+      expect(
+        pendingPluginDeletionMarker(root, id).path,
+        path.join(
+          root.path,
+          'plugin_updates',
+          'pending_deletions',
+          '@my-org+hello.json',
+        ),
+      );
+    });
+
+    test('reject shapes that could escape or collide', () {
+      for (final id in [
+        '@scope',
+        '@/name',
+        '@scope/',
+        '@scope/a/b',
+        '@scope/../escape',
+        '@sc+ope/name',
+        '@scope/na+me',
+        'scope/name',
+        '',
+      ]) {
+        expect(isSafePluginId(id), isFalse, reason: id);
+        expect(() => pluginDirectoryFor(id), throwsFormatException);
+      }
+    });
+
+    test('a bare name can never claim a scoped directory', () {
+      expect(isSafePluginId('@my-org+hello'), isFalse);
+      expect(pluginIdFromDirectoryName('not-written-by-us/../x'), isNull);
+    });
+  });
 }

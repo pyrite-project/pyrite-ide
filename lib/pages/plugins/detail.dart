@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/plugin_advisory_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_config_store.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
@@ -16,6 +17,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/pages/plugins/moderation_banner.dart';
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -72,6 +74,9 @@ class PluginDetailPage extends ConsumerWidget {
     final isRunning = ref.watch(pluginRunManagerProvider)[plugin] != null;
     final activation = ref.watch(activationManagerProvider)[pluginId];
     final manifest = plugin.manifest;
+    final advisory = ref.watch(
+      pluginAdvisoryProvider.select((state) => state.flaggedFor(pluginId)),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -94,6 +99,10 @@ class PluginDetailPage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _PluginHeader(plugin: plugin, isRunning: isRunning),
+                if (advisory != null) ...[
+                  const SizedBox(height: 12),
+                  PluginModerationBanner(moderation: advisory.moderation),
+                ],
                 if (manifest == null) ...[
                   const SizedBox(height: 12),
                   const _InvalidManifestBanner(),

@@ -204,7 +204,11 @@ Stubs 层的关键是 `metadata`：**IDE 的「自动探测层级」按板卡芯
 
 ## 9. 打包与兼容性
 
-- 目前只支持从本地 `.pyrix` 文件安装，没有在线市场。
+- 安装方式有两种：从本地 `.pyrix` 或 `.zip` 文件安装（也可以直接双击 `.pyrix` 文件），或在插件发布站点上点击「Open in Pyrite IDE」，通过 `pyride://plugin/install?id=…&version=…&origin=…` 链接打开安装页。两种方式都会先打开一个确认标签页，显示来源、权限和站点给出的警告，确认后才会安装。
+- 通过站点安装时，IDE 会用站点公布的 SHA-256 校验下载的包，不一致就拒绝安装；被撤回的版本不能安装，高危和严重级别的安全公告需要额外确认。
+- 发布到站点时，`id` 使用 npm 包名的格式：普通名称（`my-plugin`、`com.example.hello`）或带作用域的名称（`@my-org/my-plugin`）。只能使用小写字母、数字、`.`、`-`、`_`，并且要以字母或数字开头和结尾；`version` 必须是语义化版本（如 `1.2.0`，不带 `+` 构建元数据），包根目录要有 `plugin.toml` 和 `__main__.py`。
+- 带作用域的 `id` 里有 `@` 和 `/`，不能直接作为命令、视图等贡献点 ID 的前缀。贡献点 ID 的命名空间是把 `@scope/name` 写成 `scope.name`：例如 `@my-org/hello` 的命令要写成 `my-org.hello.greet`。普通 `id` 的命名空间仍然是 `id` 本身。
+- 从站点安装的插件，IDE 会记住来源，并每隔几小时向该站点查询已安装版本是否被弃用、收到安全公告或被撤回。有变化时会在插件页的名称旁显示提示，并在详情页显示站点给出的说明；IDE 不会自动卸载或更新任何插件。
 - Manifest 必须声明 `manifest_version`、`id`、`version`、`type`；`id` 在同一 IDE 里唯一。
 - 宿主升级可能改变 SDK 表面。插件应当：
   - 在 `initialize` 里比对 `protocolVersion` 与 `sdkVersion`；

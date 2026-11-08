@@ -24,6 +24,7 @@ import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
+import 'package:pyrite_ide/pages/plugins/advisory_badge.dart';
 import 'package:pyrite_ide/pages/plugins/detail.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
@@ -85,7 +86,12 @@ class Plugins extends ConsumerWidget {
                           height: compact ? 28 : 36,
                           fallback: const Icon(Icons.extension_outlined),
                         ),
-                  title: Text(plugin.name),
+                  title: Row(
+                    children: [
+                      Flexible(child: Text(plugin.name)),
+                      PluginAdvisoryBadge(pluginId: plugin.id),
+                    ],
+                  ),
                   subtitle: Text(
                     [
                       if (plugin.author.isNotEmpty) plugin.author,
@@ -216,7 +222,7 @@ class Plugins extends ConsumerWidget {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pyrix'],
+        allowedExtensions: ['pyrix', 'zip'],
       );
       if (result == null || result.files.isEmpty) return;
 

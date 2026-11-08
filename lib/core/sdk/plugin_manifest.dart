@@ -76,6 +76,13 @@ abstract final class PluginManifestErrorCode {
   static const invalidActivationEvent = 'manifest_invalid_activation_event';
 }
 
+/// The prefix every contribution id (command, view, container) of a plugin must
+/// carry. Contribution ids are dotted names, so a scoped `@scope/name` plugin
+/// uses `scope.name`, and a bare id is its own namespace.
+String contributionNamespaceOf(String pluginId) => pluginId.startsWith('@')
+    ? pluginId.substring(1).replaceFirst('/', '.')
+    : pluginId;
+
 class PluginManifestException extends FormatException {
   const PluginManifestException(this.code, String message) : super(message);
 
@@ -535,8 +542,11 @@ class PluginManifestValidator {
     'array',
   };
 
+  /// A bare name or an npm-style `@scope/name`. Both parts start and end with
+  /// a letter or digit, which keeps them valid directory names on every system.
   static final _pluginIdPattern = RegExp(
-    r'^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$',
+    r'^(?:@[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/)?'
+    r'[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$',
   );
   static final _contributionIdPattern = RegExp(
     r'^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$',
@@ -621,14 +631,14 @@ class PluginManifestValidator {
 
     final ids = <String, String>{};
     void registerId(String id, String kind, {bool allowPluginId = false}) {
+      final namespace = contributionNamespaceOf(manifest.id);
       final validPrefix =
-          id.startsWith('${manifest.id}.') ||
-          (allowPluginId && id == manifest.id);
+          id.startsWith('$namespace.') || (allowPluginId && id == namespace);
       if (!validPrefix ||
           (id != manifest.id && !_contributionIdPattern.hasMatch(id))) {
         throw PluginManifestException(
           PluginManifestErrorCode.invalidContributionId,
-          '$kind ID must use the ${manifest.id} namespace: $id',
+          '$kind ID must use the $namespace namespace: $id',
         );
       }
       final normalized = id.toLowerCase();
