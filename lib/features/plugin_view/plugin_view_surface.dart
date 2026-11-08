@@ -326,14 +326,17 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
       hostAppBarActions: manifestTitleActions,
       pluginRootPath: _manager?.assetsPath,
     );
-    _hostState.beginBuild();
-
     // A view model whose single node is a component tree renders as that tree;
     // otherwise the renderer interprets the nodes (rows, tree nodes, entries).
     final componentTree = _componentTreeOf(model);
     if (componentTree != null) {
+      _hostState.beginBuild();
       final result = builder.build(context, componentTree);
-      _hostState.endBuild();
+      // Prune state only when the tree actually built. A validation failure
+      // returns an error boundary without visiting any component; pruning
+      // here would throw away the last good tree's keys, controllers, and
+      // overrides, so the next valid snapshot would lose all input state.
+      if (builder.buildSucceeded) _hostState.endBuild();
       return builder.hostAppBarActionsConsumed || manifestTitleActions.isEmpty
           ? result
           : _withHostAppBar(
@@ -344,6 +347,14 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
             );
     }
 
+    // Renderer path. Only the transient empty model installed by
+    // sdk.view.open (ViewState.loading) must skip pruning: the components
+    // from the previous model still own state. An intentional empty snapshot
+    // becomes ViewState.empty and must prune, otherwise a later tree that
+    // reuses the same component ids inherits stale controllers, keys, and
+    // prop overrides from the removed tree.
+    final prunable = model.state != ViewState.loading;
+    if (prunable) _hostState.beginBuild();
     final result = _registry.build(
       context,
       widget.renderer,
@@ -356,7 +367,7 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
         props: widget.viewProps,
       ),
     );
-    _hostState.endBuild();
+    if (prunable && _registry.buildSucceeded) _hostState.endBuild();
     return _withHostAppBar(
       context,
       title: _viewTitle(model),
@@ -481,17 +492,36 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
 
   /// Detects the "whole view is one component tree" shape.
   ///
-  /// A plugin composing free-form UI sends a single node carrying a `component`
-  /// map; renderer-driven views (tree, table, log) send plain data nodes.
+  /// The wire shape is a single wrapper node `{"id": ..., "component": {...}}`.
+  /// Bare component nodes are still accepted for older SDK versions, but only
+  /// when they have the strict schema shape (`type`/`props`/`children`/
+  /// `events`). A renderer data node that merely carries a `type` field must
+  /// not be mistaken for a component tree.
   Map<String, dynamic>? _componentTreeOf(ViewModel model) {
     if (model.nodes.length != 1) return null;
     final node = model.nodes.first;
-    if (node['type'] is String) return node;
     final component = node['component'];
     if (component is Map) {
       return component.map((k, v) => MapEntry(k.toString(), v));
     }
+    if (_isBareComponentNode(node)) return node;
     return null;
+  }
+
+  bool _isBareComponentNode(Map<String, dynamic> node) {
+    // `id` is allowed because the patch engine stamps the address at the top
+    // level; component identity itself still lives in `props.id`.
+    const schemaKeys = {'id', 'type', 'props', 'children', 'events'};
+    if (!node.keys.every(schemaKeys.contains)) return false;
+    final type = node['type'];
+    if (type is! String || type.isEmpty) return false;
+    // Renderer data nodes may also carry `type` and `props`. Only accept a
+    // bare component when the type is a component the host can actually
+    // build; otherwise a single renderer row would bypass the renderer.
+    if (!_components.isKnown(type)) return false;
+    return node['props'] is Map ||
+        node.containsKey('children') ||
+        node.containsKey('events');
   }
 
   Widget _notice(

@@ -139,6 +139,124 @@ void main() {
     });
   });
 
+  group('component node addressing', () {
+    late ViewModelStore store;
+    late ViewInstanceId instance;
+
+    Map<String, dynamic> componentTree(String label) => {
+      'type': 'Column',
+      'props': {'id': 'root', 'gap': 4},
+      'children': [
+        {
+          'type': 'Text',
+          'props': {'value': label},
+        },
+      ],
+    };
+
+    setUp(() {
+      store = ViewModelStore();
+      instance = _instance();
+      store.installSnapshot(
+        instance: instance,
+        revision: 1,
+        nodes: [componentTree('one')],
+      );
+    });
+
+    test('a patch can address a bare component by props.id', () {
+      final result = store.applyPatch(
+        instance: instance,
+        baseRevision: 1,
+        nextRevision: 2,
+        ops: [
+          PatchOp(
+            kind: PatchOpKind.update,
+            id: 'root',
+            data: componentTree('two'),
+          ),
+        ],
+      );
+
+      expect(result.isOk, isTrue);
+      final node = store.model(instance)!.nodes.single;
+      expect(node['props']['gap'], 4);
+      expect(node['children'].single['props']['value'], 'two');
+    });
+
+    test('a partial props update keeps id and children', () {
+      final result = store.applyPatch(
+        instance: instance,
+        baseRevision: 1,
+        nextRevision: 2,
+        ops: const [
+          PatchOp(
+            kind: PatchOpKind.update,
+            id: 'root',
+            data: {
+              'props': {'gap': 8},
+            },
+          ),
+        ],
+      );
+
+      expect(result.isOk, isTrue);
+      final node = store.model(instance)!.nodes.single;
+      expect(node['props']['id'], 'root');
+      expect(node['props']['gap'], 8);
+      expect(node['children'], hasLength(1));
+    });
+
+    test('a wrapped component is addressable by inner and wrapper id', () {
+      final wrapped = _instance(instanceId: 'wrapped');
+      store.installSnapshot(
+        instance: wrapped,
+        revision: 1,
+        nodes: [
+          {
+            'id': 'panel',
+            'component': {
+              'type': 'Column',
+              'props': {'id': 'root'},
+              'children': <Map<String, dynamic>>[],
+            },
+          },
+        ],
+      );
+
+      final result = store.applyPatch(
+        instance: wrapped,
+        baseRevision: 1,
+        nextRevision: 2,
+        ops: [
+          PatchOp(
+            kind: PatchOpKind.update,
+            id: 'root',
+            data: {
+              'component': {
+                'type': 'Column',
+                'props': {'id': 'root'},
+                'children': [
+                  {
+                    'type': 'Text',
+                    'props': {'value': 'two'},
+                  },
+                ],
+              },
+            },
+          ),
+        ],
+      );
+
+      expect(result.isOk, isTrue);
+      final node = store.model(wrapped)!.nodes.single;
+      // Addressing by the inner id must not rename the wrapper.
+      expect(node['id'], 'panel');
+      expect(node['component']['props']['id'], 'root');
+      expect(node['component']['children'], hasLength(1));
+    });
+  });
+
   group('resync + close + isolation', () {
     test('a fresh snapshot resets revision and content', () {
       final store = ViewModelStore();
