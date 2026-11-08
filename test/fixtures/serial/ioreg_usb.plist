@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Trimmed `ioreg -a -l -r -c IOUSBHostDevice` shape: one modern CDC-ACM
+     device, one legacy device with an IOUSBInterface name, and a USB device
+     without a serial client. -->
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOUSBHostDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>USB JTAG/serial debug unit</string>
+		<key>idVendor</key>
+		<integer>12346</integer>
+		<key>idProduct</key>
+		<integer>4097</integer>
+		<key>USB Serial Number</key>
+		<string>F4:12:FA:00:00:01</string>
+		<key>USB Vendor Name</key>
+		<string>Espressif</string>
+		<key>locationID</key>
+		<integer>337641472</integer>
+		<key>sessionID</key>
+		<integer>18446744073709551615</integer>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOObjectClass</key>
+				<string>IOUSBHostInterface</string>
+				<key>IORegistryEntryName</key>
+				<string>CDC Data</string>
+				<key>IORegistryEntryChildren</key>
+				<array>
+					<dict>
+						<key>IOObjectClass</key>
+						<string>AppleUSBACMData</string>
+						<key>IORegistryEntryChildren</key>
+						<array>
+							<dict>
+								<key>IOObjectClass</key>
+								<string>IOSerialBSDClient</string>
+								<key>IOCalloutDevice</key>
+								<string>/dev/cu.usbmodem1101</string>
+								<key>IODialinDevice</key>
+								<string>/dev/tty.usbmodem1101</string>
+							</dict>
+						</array>
+					</dict>
+				</array>
+			</dict>
+		</array>
+	</dict>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOUSBDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>FT232R USB UART</string>
+		<key>idVendor</key>
+		<integer>1027</integer>
+		<key>idProduct</key>
+		<integer>24577</integer>
+		<key>USB Serial Number</key>
+		<string>A50285BI</string>
+		<key>USB Vendor Name</key>
+		<string>FTDI</string>
+		<key>locationID</key>
+		<integer>338821120</integer>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOObjectClass</key>
+				<string>IOUSBInterface</string>
+				<key>USB Interface Name</key>
+				<string>FT232R Interface</string>
+				<key>locationID</key>
+				<integer>338821120</integer>
+				<key>IORegistryEntryChildren</key>
+				<array>
+					<dict>
+						<key>IOObjectClass</key>
+						<string>IOSerialBSDClient</string>
+						<key>IOCalloutDevice</key>
+						<string>/dev/cu.usbserial-A50285BI</string>
+					</dict>
+				</array>
+			</dict>
+		</array>
+	</dict>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOUSBHostDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>USB Keyboard</string>
+		<key>idVendor</key>
+		<integer>1452</integer>
+		<key>Built-In</key>
+		<true/>
+	</dict>
+</array>
+</plist>

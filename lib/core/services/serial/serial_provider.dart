@@ -10,6 +10,7 @@ import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/serial/port_catalog/serial_port_catalog.dart';
 import 'package:pyrite_ide/core/services/serial/serial_session_registry.dart';
 
 final DynamicLibrary? _kernel32 = Platform.isWindows
@@ -38,6 +39,7 @@ final _getLastError = _kernel32
 
 class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   FlSerial? _serial;
+  final SerialPortCatalog _catalog = SerialPortCatalog();
   StreamSubscription<SerialEvent>? _eventSub;
   bool _runConnectInitialization = true;
 
@@ -81,7 +83,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   @override
   Future<void> performUpdate() async {
     try {
-      final ports = await FlSerial.availablePorts();
+      final ports = await _catalog.scan();
       final isOpen = _serial != null;
       final portName = state.selectedPortName;
 
@@ -98,7 +100,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       }
 
       state = state.copyWith(
-        portInfos: ports,
+        ports: ports,
         isConnected: isOpen && portName != null,
       );
     } catch (_) {
@@ -132,8 +134,8 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   @override
   Future<void> refresh() async {
     try {
-      final ports = await FlSerial.availablePorts();
-      state = state.copyWith(portInfos: ports);
+      final ports = await _catalog.scan(refreshMetadata: true);
+      state = state.copyWith(ports: ports);
     } catch (_) {}
   }
 
@@ -215,9 +217,9 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       _serial = null;
       state = state.copyWith(clearSelectedPort: true, isConnected: false);
     }
-    FlSerial.availablePorts().then((ports) {
+    _catalog.scan().then((ports) {
       if (!state.isConnected) {
-        state = state.copyWith(portInfos: ports);
+        state = state.copyWith(ports: ports);
       }
     });
     if (state.autoReconnect && portName != null) {

@@ -32,6 +32,8 @@ import 'package:pyrite_ide/core/services/serial/device_run_directory.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart'
     show activeEditorTabProvider;
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
+import 'package:pyrite_ide/shared/search_field.dart';
+import 'package:pyrite_ide/core/models/search_options.dart' show SearchOption;
 import 'package:pyrite_ide/shared/pyrite_floating_toolbar.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
@@ -231,6 +233,19 @@ class _EditCoreState extends ConsumerState<EditCore> {
         activator: () {
           _openFind(replace: true);
         },
+      // Find options also toggle from the code area while the find bar is
+      // open, as in VS Code.
+      for (final (option, activators) in [
+        (SearchOption.caseSensitive, findCaseSensitiveActivators()),
+        (SearchOption.wholeWord, findWholeWordActivators()),
+        (SearchOption.regex, findRegexActivators()),
+      ])
+        for (final activator in activators)
+          activator: () {
+            if (_findController.isActive) {
+              _toggleFindOption(_findController, option);
+            }
+          },
       for (final activator in toggleCommentActivators())
         activator: () {
           _toggleLineComment();
@@ -1152,101 +1167,24 @@ class _GoToLineDialogState extends ConsumerState<_GoToLineDialog> {
   }
 }
 
-/// One option button (Aa / ab / .*) in the find bar.
-///
-/// The hover fill, the active fill and the border are all painted by the same
-/// [BoxDecoration] on the same square, so no state can draw a rectangle offset
-/// from the others. The gaps between neighbouring buttons and around the
-/// cluster come from padding around that square rather than a margin on it;
-/// horizontally each side carries half the inset, since adjacent paddings add
-/// up.
-class _FindBarToggle extends StatefulWidget {
-  const _FindBarToggle({
-    required this.label,
-    required this.tooltip,
-    required this.active,
-    required this.foreground,
-    required this.onPressed,
-  });
-
-  final String label;
-  final String tooltip;
-  final bool active;
-  final Color foreground;
-  final VoidCallback onPressed;
-
-  @override
-  State<_FindBarToggle> createState() => _FindBarToggleState();
+bool _findOptionIsOn(FindController controller, SearchOption option) {
+  return switch (option) {
+    SearchOption.caseSensitive => controller.caseSensitive,
+    SearchOption.wholeWord => controller.matchWholeWord,
+    SearchOption.regex => controller.isRegex,
+  };
 }
 
-class _FindBarToggleState extends State<_FindBarToggle> {
-  static const double _size = _EditorFindBar._toggleSize;
-
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    // `container: true` prevents adjacent toolbar buttons from merging this
-    // tooltip's semantics anchor into one shared node. See
-    // flutter/flutter#182444.
-    return Tooltip(
-      message: widget.tooltip,
-      child: Semantics(
-        container: true,
-        child: Padding(
-          // Vertically the full inset — it is the square's only clearance from
-          // the row edges. Horizontally half of it: the neighbouring toggle's
-          // half adds up to one full inset between the squares.
-          padding: const EdgeInsets.symmetric(
-            horizontal: _EditorFindBar._toggleInset / 2,
-            vertical: _EditorFindBar._toggleInset,
-          ),
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            onEnter: (_) => setState(() => _hovered = true),
-            onExit: (_) => setState(() => _hovered = false),
-            child: GestureDetector(
-              onTap: widget.onPressed,
-              child: Container(
-                width: _size,
-                height: _size,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  // Same radius as the inputs, so the bar reads as one shape
-                  // language instead of two.
-                  borderRadius: context.innerCorners,
-                  color: widget.active
-                      ? widget.foreground.withAlpha(36)
-                      : _hovered
-                      ? widget.foreground.withAlpha(20)
-                      : Colors.transparent,
-                  // Hover reuses the border slot so it can never paint a
-                  // second, offset rectangle next to the active one.
-                  border: Border.all(
-                    color: widget.active
-                        ? widget.foreground.withAlpha(130)
-                        : _hovered
-                        ? widget.foreground.withAlpha(90)
-                        : Colors.transparent,
-                  ),
-                ),
-                child: Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: widget.foreground.withAlpha(
-                      widget.active ? 255 : 150,
-                    ),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+/// Flips one find option, from its toggle button or its Alt+C / Alt+W /
+/// Alt+R shortcut.
+void _toggleFindOption(FindController controller, SearchOption option) {
+  switch (option) {
+    case SearchOption.caseSensitive:
+      controller.toggleCaseSensitive();
+    case SearchOption.wholeWord:
+      controller.toggleMatchWholeWord();
+    case SearchOption.regex:
+      controller.toggleRegex();
   }
 }
 
@@ -1266,15 +1204,8 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   static const double _rowHeight = 32;
   static const double _buttonSize = 28;
 
-  /// Side of the painted square of an option toggle (`Aa` / `ab` / `.*`).
-  static const double _toggleSize = 24;
-
-  /// Clear space between a toggle's painted square and the input's top and
-  /// bottom edges. Neighbouring toggles each carry half of it so their squares
-  /// end up this far apart — the same room they keep from the edges — and the
-  /// row closes with a half inset so the last square keeps the full distance
-  /// from the input's right edge. Same value the left search panel's toggles
-  /// use, so both bars space their toggles identically.
+  /// Clear space between the option toggles' cluster and the input's right
+  /// edge; the shared toggle widget already separates neighbouring squares.
   static const double _toggleInset = 3;
 
   /// Horizontal inset between the find bar surface and its children.
@@ -1333,6 +1264,11 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
       skipTraversal: true,
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final option = searchOptionForKeyEvent(event);
+        if (option != null) {
+          _toggleFindOption(controller, option);
+          return KeyEventResult.handled;
+        }
         // F3 cycles matches while the find bar has keyboard focus.
         if (event.logicalKey == LogicalKeyboardKey.f3) {
           HardwareKeyboard.instance.isShiftPressed
@@ -1411,24 +1347,8 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
                             // The toggles sit inside the input's border, the
                             // way the left search panel lays its bar out.
                             trailing: [
-                              _toggle(
-                                label: 'Aa',
-                                tooltip: tr(I18nKey.editorFindCaseSensitive),
-                                active: controller.caseSensitive,
-                                onPressed: controller.toggleCaseSensitive,
-                              ),
-                              _toggle(
-                                label: 'ab',
-                                tooltip: tr(I18nKey.editorFindWholeWord),
-                                active: controller.matchWholeWord,
-                                onPressed: controller.toggleMatchWholeWord,
-                              ),
-                              _toggle(
-                                label: '.*',
-                                tooltip: tr(I18nKey.editorFindRegex),
-                                active: controller.isRegex,
-                                onPressed: controller.toggleRegex,
-                              ),
+                              for (final option in SearchOption.values)
+                                _toggle(option, tr),
                               // The trailing half of the last toggle's side
                               // inset, so the cluster ends the same distance
                               // from the input's right edge that the squares
@@ -1611,18 +1531,15 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
   }
 
   /// Small square toggle (Aa / ab / .*) styled like VSCode option buttons.
-  Widget _toggle({
-    required String label,
-    required String tooltip,
-    required bool active,
-    required VoidCallback onPressed,
-  }) {
-    return _FindBarToggle(
-      label: label,
-      tooltip: tooltip,
-      active: active,
+  Widget _toggle(SearchOption option, String Function(I18nKey) tr) {
+    return SearchOptionToggle(
+      option: option,
+      tooltip: searchOptionTooltip(tr, option),
+      active: _findOptionIsOn(controller, option),
       foreground: foreground,
-      onPressed: onPressed,
+      size: _buttonSize - 2,
+      cornerInset: _inset,
+      onPressed: () => _toggleFindOption(controller, option),
     );
   }
 
