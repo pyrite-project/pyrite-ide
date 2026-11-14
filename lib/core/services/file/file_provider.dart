@@ -1035,6 +1035,14 @@ class FileNotifier extends StateNotifier<Directory?> {
         } else {
           await File(sourcePath).rename(targetPath);
         }
+        // The bytes moved, so every tab under the old path -- a file's own tab
+        // or the tabs of a folder's descendants -- now names a path that no
+        // longer exists. Rebase them before the next node so a partial batch
+        // still leaves the completed moves consistent, and a save cannot
+        // recreate the old location.
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .renameLocalOpenPath(sourcePath, targetPath);
         moved++;
       }
 

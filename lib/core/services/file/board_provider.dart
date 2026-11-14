@@ -208,6 +208,12 @@ class BoardNotifier {
               bytesTotal: 0,
             );
         await ops.move(sourcePath, targetPath);
+        // A board tab holds both the remote path and the local mirror it was
+        // read from; both identities have to follow the move, or the next
+        // save writes the old remote path and the mirror is orphaned.
+        await ref
+            .read(tabbedViewControllerProvider.notifier)
+            .renameBoardOpenPath(sourcePath, targetPath);
         moved++;
       }
 

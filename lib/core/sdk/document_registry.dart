@@ -48,7 +48,7 @@ class DocumentRegistry {
 
   /// Registers [handle] if new and returns its document. Re-registering an
   /// existing handle returns the same document (id is minted once), updating
-  /// the language when it becomes known.
+  /// the path and language when they change.
   RegisteredDocument register({
     required Object handle,
     required String filePath,
@@ -56,18 +56,23 @@ class DocumentRegistry {
   }) {
     final existing = _byHandle[handle];
     if (existing != null) {
-      if (languageId != null && languageId != existing.languageId) {
-        final updated = RegisteredDocument(
-          documentId: existing.documentId,
-          handle: handle,
-          filePath: filePath,
-          languageId: languageId,
-        );
-        _byHandle[handle] = updated;
-        _byId[updated.documentId] = updated;
-        return updated;
-      }
-      return existing;
+      final pathChanged = existing.filePath != filePath;
+      final languageChanged =
+          languageId != null && languageId != existing.languageId;
+      if (!pathChanged && !languageChanged) return existing;
+      final updated = RegisteredDocument(
+        documentId: existing.documentId,
+        handle: handle,
+        filePath: filePath,
+        // A move or rename keeps the same open document but changes what its
+        // path -- and possibly its language -- resolves to. The snapshot's
+        // language wins when the path changed, including null: renaming a
+        // .py tab to .txt must drop the stale 'python'.
+        languageId: languageId,
+      );
+      _byHandle[handle] = updated;
+      _byId[updated.documentId] = updated;
+      return updated;
     }
     final document = RegisteredDocument(
       documentId: _idFactory(),
