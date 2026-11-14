@@ -248,9 +248,16 @@ class GitRepositoryService {
           );
           return;
         }
-        Checkout.head(
+        // 用户点“放弃改动”只应丢掉工作区里未暂存的编辑，已暂存内容必须
+        // 保留。Checkout.head 会连 index 一起重置到 HEAD，因此这里以 index
+        // 为源回填工作区，并禁止 checkout 写回 index。
+        Checkout.index(
           repo: repo,
-          strategy: const {GitCheckout.force, GitCheckout.recreateMissing},
+          strategy: const {
+            GitCheckout.force,
+            GitCheckout.recreateMissing,
+            GitCheckout.dontUpdateIndex,
+          },
           paths: [_gitPath(entry.path)],
         );
       });
