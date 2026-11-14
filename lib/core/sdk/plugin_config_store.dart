@@ -122,10 +122,15 @@ class PluginConfigStore {
       rethrow;
     }
     if (!_jsonEquals(previous, value)) {
+      // A password is announced, never echoed. The owner can still read it back
+      // through get(); keeping it out of the event payload also keeps it out of
+      // the bus replay cache and any log that mirrors events.
+      final sensitive = contribution.type == 'password';
       _emit(ConfigurationTopics.changed, {
         'pluginId': pluginId,
         'id': id,
-        'value': value,
+        if (!sensitive) 'value': value,
+        if (sensitive) 'redacted': true,
       });
     }
     return value;

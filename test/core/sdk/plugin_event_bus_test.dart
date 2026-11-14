@@ -343,4 +343,97 @@ void main() {
       ]);
     });
   });
+
+  group('owner-scoped topics', () {
+    test('only the plugin named in the payload receives the event', () {
+      final collector = _Collector();
+      final bus = PluginEventBus(deliver: collector.deliver);
+      bus.subscribe(
+        subscriptionId: 'sub-owner',
+        pluginId: 'owner',
+        sessionId: 's',
+        generation: 1,
+        topicName: 'configuration.changed',
+        pluginPermissions: const {},
+      );
+      bus.subscribe(
+        subscriptionId: 'sub-other',
+        pluginId: 'other',
+        sessionId: 's',
+        generation: 1,
+        topicName: 'configuration.changed',
+        pluginPermissions: const {},
+      );
+      bus.emit('configuration.changed', {
+        'pluginId': 'owner',
+        'id': 'owner.theme',
+        'value': 'dark',
+      });
+      expect(collector.payloadsFor('configuration.changed'), [
+        {'pluginId': 'owner', 'id': 'owner.theme', 'value': 'dark'},
+      ]);
+      expect(collector.log.single.pluginId, 'owner');
+    });
+
+    test('a payload without an owner is dropped instead of broadcast', () {
+      final collector = _Collector();
+      final bus = PluginEventBus(deliver: collector.deliver);
+      for (final pluginId in ['a', 'b']) {
+        bus.subscribe(
+          subscriptionId: 'sub-$pluginId',
+          pluginId: pluginId,
+          sessionId: 's',
+          generation: 1,
+          topicName: 'configuration.changed',
+          pluginPermissions: const {},
+        );
+      }
+      bus.emit('configuration.changed', {'id': 'owner.theme', 'value': 'dark'});
+      bus.emit('configuration.changed', {'pluginId': '', 'value': 'dark'});
+      expect(collector.log, isEmpty);
+    });
+
+    test('replay is kept per owner and never crosses plugins', () {
+      final collector = _Collector();
+      final bus = PluginEventBus(deliver: collector.deliver);
+      bus.emit('configuration.changed', {
+        'pluginId': 'a',
+        'id': 'a.theme',
+        'value': 'dark',
+      });
+      bus.emit('configuration.changed', {
+        'pluginId': 'b',
+        'id': 'b.theme',
+        'value': 'light',
+      });
+      bus.subscribe(
+        subscriptionId: 'sub-a',
+        pluginId: 'a',
+        sessionId: 's',
+        generation: 1,
+        topicName: 'configuration.changed',
+        pluginPermissions: const {},
+      );
+      expect(collector.payloadsFor('configuration.changed'), [
+        {'pluginId': 'a', 'id': 'a.theme', 'value': 'dark'},
+      ]);
+
+      final outside = _Collector();
+      final otherBus = PluginEventBus(deliver: outside.deliver);
+      otherBus.emit('configuration.changed', {
+        'pluginId': 'a',
+        'id': 'a.theme',
+        'value': 'dark',
+      });
+      otherBus.subscribe(
+        subscriptionId: 'sub-b',
+        pluginId: 'b',
+        sessionId: 's',
+        generation: 1,
+        topicName: 'configuration.changed',
+        pluginPermissions: const {},
+      );
+      expect(outside.log, isEmpty);
+    });
+  });
 }
