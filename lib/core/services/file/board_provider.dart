@@ -522,13 +522,18 @@ class BoardNotifier {
         .selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
+      // Snapshot before the await: a board write can take long enough for the
+      // user to type, and those keystrokes are not part of what was saved.
+      final text = value.editorController!.text;
       if (value.isBoardFile == true && value.boardFilePath != null) {
-        await ops.writeFile(value.boardFilePath!, value.editorController!.text);
+        await ops.writeFile(value.boardFilePath!, text);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       } else {
-        await value.file!.writeAsString(value.editorController!.text);
+        await value.file!.writeAsString(text);
       }
-      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
+      ref
+          .read(tabbedViewControllerProvider.notifier)
+          .afterFileSave(nowTab!, text);
     }
   }
 

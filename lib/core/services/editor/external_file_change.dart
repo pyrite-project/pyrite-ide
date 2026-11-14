@@ -60,9 +60,10 @@ enum ExternalChangeAction {
   /// can replace the buffer outright.
   reload,
 
-  /// The file changed while the tab holds unsaved edits. Reloading would throw
-  /// the user's work away and keeping the buffer silently discards the other
-  /// program's work, so this needs a decision.
+  /// The file changed in a way the editor cannot absorb on its own: either the
+  /// tab holds unsaved edits, or the new bytes cannot be decoded into the
+  /// buffer. Reloading would throw the user's work away, and keeping the buffer
+  /// would silently discard the other program's work, so this needs a decision.
   prompt,
 }
 
@@ -79,9 +80,11 @@ ExternalChangeAction planExternalChange({
   required bool tabIsDirty,
 }) {
   if (!exists) return ExternalChangeAction.deleted;
-  // No text to compare against — the file is binary, or unreadable in its own
-  // encoding. The stamp moved, which is all we can honestly report.
-  if (diskText == null) return ExternalChangeAction.touchOnly;
+  // The bytes moved, but they cannot be decoded -- a binary file, or text in
+  // an encoding the editor cannot represent. That is not a touch: writing the
+  // buffer back would replace content the user was never shown, so the
+  // divergence has to be resolved like any other.
+  if (diskText == null) return ExternalChangeAction.prompt;
 
   // A tab with no recorded baseline is an empty buffer, not a wildcard: a file
   // that is also empty has genuinely not diverged from it.

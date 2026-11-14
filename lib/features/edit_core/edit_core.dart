@@ -1711,9 +1711,11 @@ Future<void> saveFile(
     }
   }
 
-  await ref.read(fileProvider.notifier).saveCurrentFile();
+  final saved = await ref.read(fileProvider.notifier).saveCurrentFile();
 
-  if (!quiet) {
+  // A refused save wrote nothing; telling the user it succeeded would hide
+  // the conflict they still have to resolve.
+  if (!quiet && saved) {
     ref
         .read(ideMessageProvider.notifier)
         .success(translateForWidget(ref, I18nKey.statusSavedCurrentFile));

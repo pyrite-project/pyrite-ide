@@ -69,7 +69,11 @@ Future<bool> confirmCloseUnsavedTab(BuildContext context, TabData tab) async {
   switch (choice) {
     case _UnsavedTabChoice.save:
       // Save the tab being closed, not whichever tab is currently selected.
-      await container.read(fileProvider.notifier).saveTab(tab);
+      // A refused save -- the user cancelled the prompt about an overwrite,
+      // or the buffer cannot be written back -- must keep the tab open;
+      // closing it would drop the edits the user just asked to keep.
+      final saved = await container.read(fileProvider.notifier).saveTab(tab);
+      if (!saved) return false;
       container
           .read(ideMessageProvider.notifier)
           .success(tr(I18nKey.tabSavedCurrentFile));

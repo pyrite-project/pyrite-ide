@@ -252,12 +252,13 @@ class UseWindow with WindowListener {
     switch (choice) {
       case _ExitChoice.saveAll:
         final notifier = container.read(fileProvider.notifier);
+        var savedAll = true;
         for (final tab in unsaved) {
           // One unreadable file must not strand the rest of the saves, and it
           // must not keep the window open either -- the buffer is already
           // persisted for the next session.
           try {
-            await notifier.saveTab(tab);
+            if (!await notifier.saveTab(tab)) savedAll = false;
           } catch (error) {
             // The window still closes, so this line is the only trace that a
             // file was left unwritten.
@@ -269,6 +270,10 @@ class UseWindow with WindowListener {
             );
           }
         }
+        // A refused save (the user cancelled an external-overwrite prompt, or
+        // the buffer cannot be written back) leaves the tab dirty; closing
+        // now would drop the edits the user asked to keep.
+        if (!savedAll) return false;
         container
             .read(ideMessageProvider.notifier)
             .success(tr(I18nKey.tabSavedCurrentFile));
