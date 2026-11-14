@@ -145,6 +145,60 @@ Future<String?> _safeRead(File file) async {
 String _normalizeContent(String content) =>
     content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
+/// Line-ending normalized text plus the normalized positions where a `\r`
+/// from a `\r\n` pair was dropped.
+typedef _NormalizedForReplace = ({String text, List<int> droppedCrAt});
+
+/// Normalizes [content] exactly like [_normalizeContent] while recording where
+/// the dropped `\r` characters were.
+///
+/// Replacement matches against this normalized text because that is what
+/// [matchFiles] searched, so the match set and order are identical to the
+/// result rows. [droppedCrAt] translates a normalized offset back to the
+/// on-disk content, which keeps untouched line endings intact on write.
+_NormalizedForReplace _normalizeForReplace(String content) {
+  if (!content.contains('\r')) {
+    return (text: content, droppedCrAt: const <int>[]);
+  }
+  final buffer = StringBuffer();
+  final droppedCrAt = <int>[];
+  var index = 0;
+  while (index < content.length) {
+    final code = content.codeUnitAt(index);
+    if (code == 0x0D &&
+        index + 1 < content.length &&
+        content.codeUnitAt(index + 1) == 0x0A) {
+      // `\r\n` becomes a single `\n`; the newline takes the `\r`'s place, so
+      // the dropped character's normalized position is the buffer's current
+      // length.
+      droppedCrAt.add(buffer.length);
+      index += 2;
+      buffer.write('\n');
+      continue;
+    }
+    buffer.write(code == 0x0D ? '\n' : content[index]);
+    index++;
+  }
+  return (text: buffer.toString(), droppedCrAt: droppedCrAt);
+}
+
+/// Translates [normalizedOffset] in [_normalizeForReplace]'s text back to
+/// [content]'s offsets. [droppedCrAt] is sorted ascending.
+int _rawOffset(int normalizedOffset, List<int> droppedCrAt) {
+  // Every dropped `\r` before the offset shifts the raw position by one.
+  var low = 0;
+  var high = droppedCrAt.length;
+  while (low < high) {
+    final mid = (low + high) >> 1;
+    if (droppedCrAt[mid] < normalizedOffset) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return normalizedOffset + low;
+}
+
 /// Walks [root] once and reads every searchable file's text content.
 ///
 /// This is the slow, disk-bound half of a search. It skips the `.git`
@@ -250,40 +304,60 @@ int _lineIndexFor(List<int> lineStarts, int offset) {
   return low;
 }
 
+/// Line-start offsets of [content], used to group matches by line.
+List<int> _lineStarts(String content) {
+  final starts = <int>[0];
+  for (var i = 0; i < content.length; i++) {
+    if (content.codeUnitAt(i) == 0x0A) starts.add(i + 1);
+  }
+  return starts;
+}
+
+/// Exclusive end of line [line]'s text, i.e. the offset of its newline (or
+/// the end of [content] for the last line).
+int _lineEndFor(String content, List<int> lineStarts, int line) =>
+    line + 1 < lineStarts.length ? lineStarts[line + 1] - 1 : content.length;
+
+/// Whether [match] produces a highlight in the results list.
+///
+/// Zero-length matches and matches that begin on a line terminator clamp to
+/// an empty range in [SearchMatch], so [matchFiles] omits them. Replacement
+/// uses the same predicate: an ordinal then names exactly one displayed row,
+/// and text nobody saw is never edited.
+bool _isDisplayedMatch(
+  String content,
+  List<int> lineStarts,
+  RegExpMatch match,
+) {
+  if (match.start == match.end) return false;
+  final line = _lineIndexFor(lineStarts, match.start);
+  return match.start < _lineEndFor(content, lineStarts, line);
+}
+
 List<SearchMatch> _collectLineMatches(String content, RegExp regex) {
   // Only paid by files that match, unlike the previous whole-file
   // `split('\n')` which ran for every candidate.
-  final lineStarts = <int>[0];
-  for (var i = 0; i < content.length; i++) {
-    if (content.codeUnitAt(i) == 0x0A) lineStarts.add(i + 1);
-  }
+  final lineStarts = _lineStarts(content);
 
   String lineText(int line) {
     final start = lineStarts[line];
-    final end = line + 1 < lineStarts.length
-        ? lineStarts[line + 1] - 1
-        : content.length;
-    return content.substring(start, end);
+    return content.substring(start, _lineEndFor(content, lineStarts, line));
   }
 
   final byLine = <int, List<(int start, int end)>>{};
   for (final match in regex.allMatches(content)) {
-    if (match.start == match.end) continue;
+    if (!_isDisplayedMatch(content, lineStarts, match)) continue;
     final line = _lineIndexFor(lineStarts, match.start);
     final lineStart = lineStarts[line];
     // Measured arithmetically rather than via `lineText(line).length`: the
     // substring would be allocated once per match just to be discarded, and
     // the length is exactly the span between the two offsets.
-    final lineEnd = line + 1 < lineStarts.length
-        ? lineStarts[line + 1] - 1
-        : content.length;
-    final length = lineEnd - lineStart;
+    final length = _lineEndFor(content, lineStarts, line) - lineStart;
     final start = match.start - lineStart;
     var end = match.end - lineStart;
     // A match may span lines (e.g. [\s\S]); display clamps it to its first
     // line so the highlight stays inside [lineText].
     if (end > length) end = length;
-    if (end <= start) continue;
     (byLine[line] ??= []).add((start, end));
   }
 
@@ -340,12 +414,42 @@ Future<List<FileSearchResult>> searchInDirectory(
   return results;
 }
 
-/// Replaces every occurrence of the pattern in the files that currently hold
-/// matches ([results]), writing each changed file back to disk.
+/// A match exactly as the results list displays it, paired with the span it
+/// covers in the raw on-disk content.
+typedef _DisplayedMatch = ({RegExpMatch match, int start, int end});
+
+/// The matches [matchFiles] would list for [content], with each span mapped
+/// back to [content]'s offsets.
 ///
-/// Returns the total number of replacements made. Files are re-read from disk
-/// so line endings are preserved. In regex mode `$1` style group references
-/// are honored. Skips files that cannot be read.
+/// Matching runs on the line-ending normalized text so the set and order are
+/// identical to the ones that produced the result rows. Matches the result
+/// list omits (zero-length and line-terminator matches) are omitted here too,
+/// which keeps a result ordinal pointing at the row the user clicked even
+/// when CRLF normalization changes the raw text.
+List<_DisplayedMatch> _displayedMatches(String content, RegExp regex) {
+  final normalized = _normalizeForReplace(content);
+  final lineStarts = _lineStarts(normalized.text);
+  final matches = <_DisplayedMatch>[];
+  for (final match in regex.allMatches(normalized.text)) {
+    if (!_isDisplayedMatch(normalized.text, lineStarts, match)) continue;
+    matches.add((
+      match: match,
+      start: _rawOffset(match.start, normalized.droppedCrAt),
+      end: _rawOffset(match.end, normalized.droppedCrAt),
+    ));
+  }
+  return matches;
+}
+
+/// Replaces every match the results list shows in the files that currently
+/// hold matches ([results]), writing each changed file back to disk.
+///
+/// Returns the total number of replacements made. Matching reuses the same
+/// normalized text and displayed-match set as the results list, so empty
+/// matches are never inserted and CRLF-only match differences never change
+/// what gets replaced. Spans are mapped back to the raw file, so untouched
+/// line endings are preserved. In regex mode `$1` style group references are
+/// honored. Skips files that cannot be read.
 Future<int> replaceAllInResults(
   List<FileSearchResult> results,
   SearchOptions options, {
@@ -368,21 +472,18 @@ Future<int> replaceAllInResults(
       continue;
     }
 
-    var occurrences = 0;
-    for (final match in regex.allMatches(content)) {
-      if (match.start != match.end) occurrences++;
-    }
-    if (occurrences == 0) {
+    final matches = _displayedMatches(content, regex);
+    if (matches.isEmpty) {
       done++;
       onProgress?.call(done, results.length);
       continue;
     }
 
-    final newContent = _replaceContent(content, regex, options);
+    final newContent = _replaceContent(content, matches, options);
     if (newContent != content) {
       try {
         await file.writeAsString(newContent);
-        totalReplacements += occurrences;
+        totalReplacements += matches.length;
       } catch (_) {
         // Leave the file untouched if writing fails (permissions, etc.).
       }
@@ -394,13 +495,14 @@ Future<int> replaceAllInResults(
   return totalReplacements;
 }
 
-/// Replaces the [occurrenceIndex]-th (0-based, file-internal) match of the
-/// pattern in [filePath], writing the file back to disk. The file is matched
-/// against its raw on-disk content, so line endings are preserved.
+/// Replaces the [occurrenceIndex]-th (0-based, file-internal) match the
+/// results list would show for [filePath], writing the file back to disk.
 ///
-/// Returns `true` when a replacement was written. The ordinal (not an offset)
-/// locates the match because cached content is line-ending normalized and its
-/// offsets therefore differ from the raw file.
+/// Returns `true` when a replacement was written. The ordinal is resolved
+/// against the same displayed-match set and normalized text the results list
+/// used, so it names the row the user clicked; the chosen span is then mapped
+/// back to the raw file, preserving untouched line endings and keeping CRLF
+/// `\r` characters from shifting the ordinal.
 Future<bool> replaceOneOccurrence(
   String filePath,
   SearchOptions options,
@@ -412,19 +514,11 @@ Future<bool> replaceOneOccurrence(
   if (content == null) return false;
 
   final regex = options.toRegExp(multiLine: true);
-  var index = 0;
-  RegExpMatch? target;
-  for (final match in regex.allMatches(content)) {
-    if (match.start == match.end) continue;
-    if (index == occurrenceIndex) {
-      target = match;
-      break;
-    }
-    index++;
-  }
-  if (target == null) return false;
+  final matches = _displayedMatches(content, regex);
+  if (occurrenceIndex < 0 || occurrenceIndex >= matches.length) return false;
+  final target = matches[occurrenceIndex];
 
-  final replacement = _expandReplacement(target, options);
+  final replacement = _expandReplacement(target.match, options);
   final newContent =
       content.substring(0, target.start) +
       replacement +
@@ -461,17 +555,25 @@ String _expandReplacement(Match match, SearchOptions options) {
   });
 }
 
-/// Replaces every match of [regex] in [content] with [options.replaceText].
+/// Applies [options.replaceText] to [matches] in [content], leaving every
+/// other character untouched.
 ///
-/// Both modes go through [regex] rather than `String.replaceAll(pattern, …)`:
-/// the pattern the user saw in the results list was produced by
-/// [SearchOptions.toRegExp], which folds in case-insensitivity and the
-/// whole-word `\b` wrapping. Replacing with the raw literal would edit
-/// substrings that were never shown as matches — `cat` would also rewrite
-/// `concat` — and would silently miss case-differing hits.
-String _replaceContent(String content, RegExp regex, SearchOptions options) {
-  return content.replaceAllMapped(
-    regex,
-    (match) => _expandReplacement(match, options),
-  );
+/// [matches] already carries spans in the raw [content] (see
+/// [_displayedMatches]), so the regex is never run over the raw text a second
+/// time: doing that would also hit zero-length positions and CRLF `\r`
+/// characters the results list never displayed.
+String _replaceContent(
+  String content,
+  List<_DisplayedMatch> matches,
+  SearchOptions options,
+) {
+  final buffer = StringBuffer();
+  var cursor = 0;
+  for (final target in matches) {
+    buffer.write(content.substring(cursor, target.start));
+    buffer.write(_expandReplacement(target.match, options));
+    cursor = target.end;
+  }
+  buffer.write(content.substring(cursor));
+  return buffer.toString();
 }
