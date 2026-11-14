@@ -324,6 +324,52 @@ void main() {
     expect(find.text('MicroPython builtin'), findsNothing);
   });
 
+  testWidgets('accepting right after typing replaces the whole token', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.enterText(find.byType(EditableText), 'pri');
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('repl-completion-popup')), findsOneWidget);
+
+    // The popup still lists items for "pri" while the next character is
+    // typed; accepting it must not leave that character behind.
+    await tester.enterText(find.byType(EditableText), 'prin');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(container.read(replInputControllerProvider).text.text, 'print');
+  });
+
+  testWidgets('moving the caret dismisses the completion popup', (
+    tester,
+  ) async {
+    await _pumpSurface(tester);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    await tester.enterText(find.byType(EditableText), 'pri');
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('repl-completion-popup')), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('repl-completion-popup')), findsNothing);
+  });
+
   testWidgets('completion navigation takes precedence over REPL history', (
     tester,
   ) async {
