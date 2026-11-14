@@ -191,6 +191,19 @@ void main() {
     },
   );
 
+  test(
+    'children rejects an injected object id without running a script',
+    () async {
+      service.createSession('device');
+      handler = (_) => '$_marker{"items": [], "total": 0, "start": 0}';
+      const forged =
+          "runtime-device:generation-1:obj-0')));import os;print(1)#";
+      final backend = build();
+      expect(await backend.children(forged), isNull);
+      expect(scripts, isEmpty);
+    },
+  );
+
   test('objectInfo returns type, repr and minted attribute references', () async {
     service.createSession('device');
     final token = service.reference('device', '7')!.encode();
@@ -215,6 +228,19 @@ void main() {
       ReferenceStatus.valid,
     );
   });
+
+  test(
+    'objectInfo rejects an injected object id without running a script',
+    () async {
+      service.createSession('device');
+      handler = (_) => '$_marker{"type": "int", "repr": "0", "attributes": []}';
+      const forged =
+          "runtime-device:generation-1:obj-0')));import os;print(1)#";
+      final backend = build();
+      expect(await backend.objectInfo(forged), isNull);
+      expect(scripts, isEmpty);
+    },
+  );
 
   test('a backend restart makes previously minted references stale', () async {
     service.createSession('device');

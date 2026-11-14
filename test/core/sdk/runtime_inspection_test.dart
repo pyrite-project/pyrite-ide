@@ -24,6 +24,39 @@ void main() {
       expect(RuntimeReference.tryParse('nonsense'), isNull);
       expect(RuntimeReference.tryParse('runtime-s:generation-x:obj-1'), isNull);
     });
+
+    test('accepts the decimal sequence ids minted on the device', () {
+      for (final id in ['0', '7', '42', '12345678901234567890']) {
+        final parsed = RuntimeReference.tryParse(
+          'runtime-s1:generation-4:obj-$id',
+        );
+        expect(parsed?.objectId, id, reason: id);
+      }
+    });
+
+    test('rejects object ids outside the device sequence format', () {
+      const forged = "runtime-s1:generation-4:obj-0')));import os;print(1)#";
+      expect(RuntimeReference.tryParse(forged), isNull);
+
+      for (final id in [
+        '',
+        'x',
+        '1 2',
+        '1\n2',
+        '-1',
+        '+1',
+        '1e3',
+        '0x10',
+        '007',
+        '123456789012345678901',
+      ]) {
+        expect(
+          RuntimeReference.tryParse('runtime-s1:generation-4:obj-$id'),
+          isNull,
+          reason: id,
+        );
+      }
+    });
   });
 
   group('RuntimeLimits', () {
@@ -88,6 +121,17 @@ void main() {
         service.validate('runtime-ghost:generation-1:obj-1'),
         ReferenceStatus.stale,
       );
+    });
+
+    test('a live session does not make an injected object id valid', () {
+      service.createSession('s1');
+      expect(
+        service.validate(
+          "runtime-s1:generation-1:obj-0')));import os;print(1)#",
+        ),
+        ReferenceStatus.malformed,
+      );
+      expect(service.reference('s1', "0')));import os;print(1)#"), isNull);
     });
 
     test('program state transitions emit matching lifecycle events', () {
