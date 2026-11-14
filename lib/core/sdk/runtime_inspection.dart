@@ -45,6 +45,11 @@ class RuntimeLimits {
 /// Encoded as `runtime-<session>:generation-<generation>:obj-<id>` so a stale
 /// reference (from a previous generation, e.g. after a backend restart) is
 /// detectable without a lookup table.
+///
+/// `<id>` is the device registry key minted by the inspection helper as
+/// `str(seq)` for a non-negative counter, so it is a plain decimal sequence
+/// number. [tryParse] only accepts that shape; the id is interpolated into
+/// device source, so anything else is rejected before a script is built.
 class RuntimeReference {
   const RuntimeReference({
     required this.sessionId,
@@ -52,9 +57,18 @@ class RuntimeReference {
     required this.objectId,
   });
 
+  /// Matches the ids the device actually mints: canonical decimal (no sign, no
+  /// leading zeros) from the sequence counter, capped well above any reachable
+  /// counter value.
+  static final RegExp _objectIdPattern = RegExp(r'^(?:0|[1-9][0-9]{0,19})$');
+
   final String sessionId;
   final int generation;
   final String objectId;
+
+  /// Whether [objectId] is a device-minted sequence id.
+  static bool isValidObjectId(String objectId) =>
+      _objectIdPattern.hasMatch(objectId);
 
   String encode() => 'runtime-$sessionId:generation-$generation:obj-$objectId';
 
@@ -63,10 +77,12 @@ class RuntimeReference {
       r'^runtime-(.+):generation-(\d+):obj-(.+)$',
     ).firstMatch(token);
     if (match == null) return null;
+    final objectId = match.group(3)!;
+    if (!isValidObjectId(objectId)) return null;
     return RuntimeReference(
       sessionId: match.group(1)!,
       generation: int.parse(match.group(2)!),
-      objectId: match.group(3)!,
+      objectId: objectId,
     );
   }
 
@@ -199,9 +215,14 @@ class RuntimeInspectionService {
   }
 
   /// Mints a reference for [objectId] in the current generation of [sessionId].
+  ///
+  /// Returns null when the session is unknown or [objectId] is not a
+  /// device-minted sequence id, so a malformed token can never be produced.
   RuntimeReference? reference(String sessionId, String objectId) {
     final session = _sessions[sessionId];
-    if (session == null) return null;
+    if (session == null || !RuntimeReference.isValidObjectId(objectId)) {
+      return null;
+    }
     return RuntimeReference(
       sessionId: sessionId,
       generation: session.generation,
