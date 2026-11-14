@@ -95,6 +95,26 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     _direction = BoardSyncDirection.none;
   }
 
+  /// Whether [entry] moves in [direction] once the user's conflict decision is
+  /// applied.
+  ///
+  /// The direction filter must use the effective action: a conflict resolved to
+  /// "keep local" is an upload even though the stored entry still says
+  /// `conflict`. An unresolved conflict has no side yet, so it only appears in
+  /// the both-directions view where the side buttons live.
+  bool _matchesDirection(BoardSyncEntry entry, BoardSyncDirection direction) {
+    final action = _effectiveAction(entry);
+    return switch (direction) {
+      BoardSyncDirection.localToBoard =>
+        action == BoardSyncAction.uploadNew ||
+            action == BoardSyncAction.uploadChanged,
+      BoardSyncDirection.boardToLocal =>
+        action == BoardSyncAction.downloadNew ||
+            action == BoardSyncAction.downloadChanged,
+      BoardSyncDirection.none => true,
+    };
+  }
+
   /// Rows worth showing: files that will move, plus conflicts.
   ///
   /// Identical files are left out. The dialog answers "what will happen"; a row
@@ -102,25 +122,12 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   /// way every remaining file goes.
   List<BoardSyncEntry> get _visibleEntries {
     final changed = widget.plan.entries.where((entry) => entry.isChanged);
-    return switch (_direction) {
-      BoardSyncDirection.localToBoard =>
-        changed
-            .where(
-              (entry) =>
-                  entry.action == BoardSyncAction.uploadNew ||
-                  entry.action == BoardSyncAction.uploadChanged,
-            )
-            .toList(growable: false),
-      BoardSyncDirection.boardToLocal =>
-        changed
-            .where(
-              (entry) =>
-                  entry.action == BoardSyncAction.downloadNew ||
-                  entry.action == BoardSyncAction.downloadChanged,
-            )
-            .toList(growable: false),
-      BoardSyncDirection.none => changed.toList(growable: false),
-    };
+    if (_direction == BoardSyncDirection.none) {
+      return changed.toList(growable: false);
+    }
+    return changed
+        .where((entry) => _matchesDirection(entry, _direction))
+        .toList(growable: false);
   }
 
   /// Rows listed one by one, in path order.
@@ -143,17 +150,13 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
 
   int get _uploadTotal => _regularChanged
       .where(
-        (entry) =>
-            entry.action == BoardSyncAction.uploadNew ||
-            entry.action == BoardSyncAction.uploadChanged,
+        (entry) => _matchesDirection(entry, BoardSyncDirection.localToBoard),
       )
       .length;
 
   int get _downloadTotal => _regularChanged
       .where(
-        (entry) =>
-            entry.action == BoardSyncAction.downloadNew ||
-            entry.action == BoardSyncAction.downloadChanged,
+        (entry) => _matchesDirection(entry, BoardSyncDirection.boardToLocal),
       )
       .length;
 
@@ -186,14 +189,19 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
   /// counting rows the user can no longer see, since those are also the only
   /// paths handed back to the executor.
   int get _selectedCount => _visibleEntries
-      .where((entry) => _selected.contains(entry.relativePath))
+      .where(
+        (entry) => entry.selectable && _selected.contains(entry.relativePath),
+      )
       .length;
 
   int get _selectedBytes => _visibleEntries
-      .where((entry) => _selected.contains(entry.relativePath))
+      .where(
+        (entry) => entry.selectable && _selected.contains(entry.relativePath),
+      )
       .fold(0, (sum, entry) => sum + _bytesFor(entry));
 
   void _setSelected(BoardSyncEntry entry, bool selected) {
+    if (!entry.selectable) return;
     setState(() {
       if (selected) {
         _selected.add(entry.relativePath);
@@ -219,7 +227,9 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
 
   void _toggleAll(List<BoardSyncEntry> selectable, bool? current) {
     setState(() {
-      final paths = selectable.map((entry) => entry.relativePath);
+      final paths = selectable
+          .where((entry) => entry.selectable)
+          .map((entry) => entry.relativePath);
       if (current == true) {
         _selected.removeAll(paths);
       } else {
@@ -228,10 +238,17 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     });
   }
 
+  /// Builds the result from the rows currently matching the direction filter.
+  ///
+  /// The filter works on the effective action, so a conflict the user already
+  /// resolved stays selected when the direction chip narrows the view. Rows
+  /// left unselectable (truncated scan) are never handed to the executor.
   BoardSyncPreviewResult _buildResult() {
     final selected = {
       for (final entry in _visibleEntries)
-        if (entry.isChanged && _selected.contains(entry.relativePath))
+        if (entry.isChanged &&
+            entry.selectable &&
+            _selected.contains(entry.relativePath))
           entry.relativePath,
     };
     return BoardSyncPreviewResult(
@@ -289,6 +306,10 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildRootsRow(scheme),
+            if (widget.plan.truncated) ...[
+              const SizedBox(height: 8),
+              _buildTruncatedNotice(context, scheme),
+            ],
             const SizedBox(height: 12),
             _buildControlRow(context),
             const SizedBox(height: 4),
@@ -391,6 +412,34 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     );
   }
 
+  /// Explains why some rows cannot be transferred.
+  ///
+  /// A truncated local scan cannot prove that a board-only path is absent, so
+  /// those rows stay visible but blocked. Saying so up front is what turns the
+  /// old silent overwrite into an informed decision.
+  Widget _buildTruncatedNotice(BuildContext context, ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 16, color: scheme.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              translateInContext(context, I18nKey.devicesSyncTruncatedNotice),
+              style: TextStyle(fontSize: 11, color: scheme.onErrorContainer),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Keeps the last two segments of a path: enough to recognise the project,
   /// short enough to never wrap.
   String _shortRoot(String path) {
@@ -414,8 +463,9 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     final uploads = _uploadTotal;
     final downloads = _downloadTotal;
     // Ignored rows stay out of "select all": they are opt-in by definition.
+    // Truncation-blocked rows are not selectable at all.
     final selectable = _regularEntries
-        .where((entry) => !_needsDecision(entry))
+        .where((entry) => entry.selectable && !_needsDecision(entry))
         .toList(growable: false);
     final checked = selectable
         .where((entry) => _selected.contains(entry.relativePath))
@@ -579,7 +629,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
     List<BoardSyncEntry> ignored,
   ) {
     final selectable = ignored
-        .where((entry) => !_needsDecision(entry))
+        .where((entry) => entry.selectable && !_needsDecision(entry))
         .toList(growable: false);
     final checked = selectable
         .where((entry) => _selected.contains(entry.relativePath))
@@ -661,7 +711,9 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
       message: detail,
       waitDuration: const Duration(milliseconds: 700),
       child: InkWell(
-        onTap: isConflict ? null : () => _setSelected(entry, !checked),
+        onTap: entry.selectable && !isConflict
+            ? () => _setSelected(entry, !checked)
+            : null,
         child: SizedBox(
           height: 44,
           child: Row(
@@ -677,6 +729,8 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
                           size: 16,
                           color: resolvedAction == null ? scheme.error : color,
                         )
+                      : !entry.selectable
+                      ? Icon(Icons.block_rounded, size: 16, color: scheme.error)
                       : Checkbox(
                           value: checked,
                           visualDensity: VisualDensity.compact,

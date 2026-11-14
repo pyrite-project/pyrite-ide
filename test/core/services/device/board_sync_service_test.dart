@@ -68,6 +68,23 @@ void main() {
 
       expect(snapshot.files.keys, ['main.py']);
     });
+
+    test(
+      'marks the snapshot truncated when the file limit is reached',
+      () async {
+        await writeFile('a.py', 'a');
+        await writeFile('b.py', 'b');
+        await writeFile('c.py', 'c');
+
+        final limited = await scanLocalWorkspace(tempDir.path, maxFiles: 2);
+        expect(limited.truncated, isTrue);
+        expect(limited.files.length, 2);
+
+        final complete = await scanLocalWorkspace(tempDir.path, maxFiles: 10);
+        expect(complete.truncated, isFalse);
+        expect(complete.files.length, 3);
+      },
+    );
   });
 
   group('scanLocalWorkspace + buildSyncPlan end to end', () {
@@ -114,5 +131,58 @@ void main() {
       expect(plan.hasWork, isFalse);
       expect(plan.unchangedCount, 1);
     });
+
+    test(
+      'a truncated scan cannot tell board-only files from unscanned ones',
+      () async {
+        // Both files exist locally, but the scan only sees one of them. The
+        // unscanned path must not be planned as a default download: the board
+        // copy would overwrite local edits that the scan never compared.
+        await writeFile('a.py', 'local a');
+        await writeFile('b.py', 'local b');
+
+        final local = await scanLocalWorkspace(tempDir.path, maxFiles: 1);
+        expect(local.truncated, isTrue);
+
+        Future<SyncFileInfo> boardInfo(String relative) async {
+          final stat = await File(path.join(tempDir.path, relative)).stat();
+          return SyncFileInfo(
+            relativePath: relative,
+            size: stat.size,
+            modified: stat.modified,
+          );
+        }
+
+        final plan = buildSyncPlan(
+          local: local,
+          board: SyncTreeSnapshot(
+            files: {
+              'a.py': await boardInfo('a.py'),
+              'b.py': await boardInfo('b.py'),
+            },
+            directories: const {},
+            root: '/',
+          ),
+        );
+
+        expect(plan.truncated, isTrue);
+        final unscanned = plan.entries.where(
+          (entry) => !local.files.containsKey(entry.relativePath),
+        );
+        expect(unscanned, isNotEmpty);
+        for (final entry in unscanned) {
+          expect(entry.action, BoardSyncAction.downloadNew);
+          expect(entry.selectable, isFalse);
+        }
+        expect(
+          plan.defaultSelection.map((entry) => entry.relativePath),
+          everyElement(isIn(local.files.keys)),
+        );
+        expect(
+          plan.actionable.map((entry) => entry.relativePath),
+          everyElement(isIn(local.files.keys)),
+        );
+      },
+    );
   });
 }

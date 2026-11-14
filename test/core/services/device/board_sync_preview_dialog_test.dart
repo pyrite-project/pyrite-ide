@@ -210,6 +210,172 @@ void main() {
     expect(captured!.overrides['clash.py'], BoardSyncAction.uploadChanged);
   });
 
+  BoardSyncPlan buildConflictPlan() {
+    final now = DateTime.now();
+    return BoardSyncPlan(
+      entries: [
+        BoardSyncEntry(
+          relativePath: 'clash.py',
+          action: BoardSyncAction.conflict,
+          direction: BoardSyncDirection.none,
+          local: SyncFileInfo(
+            relativePath: 'clash.py',
+            size: 12,
+            modified: now,
+          ),
+          board: SyncFileInfo(
+            relativePath: 'clash.py',
+            size: 14,
+            modified: now,
+          ),
+        ),
+        BoardSyncEntry(
+          relativePath: 'new.py',
+          action: BoardSyncAction.uploadNew,
+          direction: BoardSyncDirection.localToBoard,
+          local: SyncFileInfo(relativePath: 'new.py', size: 10, modified: now),
+        ),
+        BoardSyncEntry(
+          relativePath: 'old.py',
+          action: BoardSyncAction.downloadNew,
+          direction: BoardSyncDirection.boardToLocal,
+          board: SyncFileInfo(relativePath: 'old.py', size: 20, modified: now),
+        ),
+      ],
+      localRoot: '/workspace',
+    );
+  }
+
+  Future<BoardSyncPreviewResult?> runConflictPlan(
+    WidgetTester tester,
+    Future<void> Function() interact,
+  ) async {
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: buildConflictPlan(),
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await interact();
+    await tester.tap(find.widgetWithText(FilledButton, '同步'));
+    await tester.pumpAndSettle();
+    return captured;
+  }
+
+  testWidgets('a resolved local-side conflict survives the upload filter', (
+    tester,
+  ) async {
+    final captured = await runConflictPlan(tester, () async {
+      await tester.tap(find.text('保留本地'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('上传'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('clash.py'), findsOneWidget);
+      expect(find.text('old.py'), findsNothing);
+    });
+
+    expect(captured, isNotNull);
+    expect(captured!.direction, BoardSyncDirection.localToBoard);
+    expect(captured.selectedPaths, {'clash.py', 'new.py'});
+    expect(captured.overrides['clash.py'], BoardSyncAction.uploadChanged);
+  });
+
+  testWidgets('a resolved board-side conflict survives the download filter', (
+    tester,
+  ) async {
+    final captured = await runConflictPlan(tester, () async {
+      await tester.tap(find.text('保留设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('下载'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('clash.py'), findsOneWidget);
+      expect(find.text('new.py'), findsNothing);
+    });
+
+    expect(captured, isNotNull);
+    expect(captured!.direction, BoardSyncDirection.boardToLocal);
+    expect(captured.selectedPaths, {'clash.py', 'old.py'});
+    expect(captured.overrides['clash.py'], BoardSyncAction.downloadChanged);
+  });
+
+  testWidgets('a truncated plan warns and leaves unsafe downloads unticked', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final plan = BoardSyncPlan(
+      truncated: true,
+      entries: [
+        BoardSyncEntry(
+          relativePath: 'new.py',
+          action: BoardSyncAction.uploadNew,
+          direction: BoardSyncDirection.localToBoard,
+          local: SyncFileInfo(relativePath: 'new.py', size: 10, modified: now),
+        ),
+        BoardSyncEntry(
+          relativePath: 'stale.py',
+          action: BoardSyncAction.downloadNew,
+          direction: BoardSyncDirection.boardToLocal,
+          board: SyncFileInfo(
+            relativePath: 'stale.py',
+            size: 20,
+            modified: now,
+          ),
+          selectable: false,
+          note: '本地扫描已截断',
+        ),
+      ],
+      localRoot: '/workspace',
+    );
+
+    BoardSyncPreviewResult? captured;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                captured = await showBoardSyncPreviewDialog(
+                  context,
+                  plan: plan,
+                  localRoot: '/workspace',
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('扫描上限'), findsOneWidget);
+    expect(find.text('stale.py'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, '同步'));
+    await tester.pumpAndSettle();
+
+    expect(captured!.selectedPaths, {'new.py'});
+    expect(captured!.overrides, isEmpty);
+  });
+
   // -------------------------------------------------------------------------
   // .pyrsyncignore
   // -------------------------------------------------------------------------
