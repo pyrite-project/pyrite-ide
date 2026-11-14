@@ -769,6 +769,52 @@ void main() {
       tempDir.deleteSync(recursive: true);
     }
   });
+
+  test(
+    'GitRepositoryService discards unstaged edits without resetting the index',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'pyrite_git_discard_staged_test_',
+      );
+
+      try {
+        final service = GitRepositoryService();
+        await _initTestRepository(service, tempDir.path);
+        final trackedFile = File(p.join(tempDir.path, 'notes.txt'));
+        trackedFile.writeAsStringSync('base\n');
+        await _commitPaths(service, tempDir.path, ['notes.txt'], 'Base');
+
+        // 先暂存一次修改，再在暂存内容之上叠加未暂存修改，得到 MM 状态。
+        trackedFile.writeAsStringSync('staged\n');
+        await service.stage(tempDir.path, ['notes.txt']);
+        trackedFile.writeAsStringSync('unstaged\n');
+
+        final snapshot = await service.loadSnapshot(tempDir.path);
+        final entry = snapshot!.statusEntries.singleWhere(
+          (entry) => entry.path == 'notes.txt',
+        );
+        expect(entry.isStaged, isTrue);
+        expect(entry.isUnstaged, isTrue);
+
+        await service.discardChanges(tempDir.path, entry);
+
+        // 工作区应回到 index 中的已暂存版本，而不是 HEAD。
+        expect(trackedFile.readAsStringSync(), 'staged\n');
+        expect(_indexContent(tempDir.path, 'notes.txt'), 'staged\n');
+
+        final after = (await service.loadSnapshot(tempDir.path))!;
+        final remaining = after.statusEntries.singleWhere(
+          (entry) => entry.path == 'notes.txt',
+        );
+        expect(remaining.isStaged, isTrue);
+        expect(remaining.isUnstaged, isFalse);
+        expect(after.stagedPatch, contains('+staged'));
+        expect(after.stagedPatch, isNot(contains('+unstaged')));
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
 }
 
 Future<void> _initTestRepository(
@@ -807,6 +853,27 @@ void _configureIdentity(String rootPath) {
       config['core.autocrlf'] = false;
     } finally {
       config.free();
+    }
+  } finally {
+    repo.free();
+  }
+}
+
+/// 读取暂存区中某个路径的文本内容，用于断言 index 未被重置。
+String _indexContent(String rootPath, String relativePath) {
+  final repo = Repository.open(rootPath);
+  try {
+    final index = repo.index;
+    try {
+      final entry = index[relativePath];
+      final blob = Blob.lookup(repo: repo, oid: entry.oid);
+      try {
+        return blob.content;
+      } finally {
+        blob.free();
+      }
+    } finally {
+      index.free();
     }
   } finally {
     repo.free();
