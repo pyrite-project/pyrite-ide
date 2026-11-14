@@ -1088,7 +1088,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
             filePaths: [pending.localPath],
           );
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-      _releaseDiffPreview(ref);
 
       ref
           .read(ideMessageProvider.notifier)
@@ -1108,6 +1107,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
             ).replaceAll('{error}', error.toString()),
           );
     } finally {
+      // The preview is only a presentation of a transfer that is about to
+      // happen. Whatever the outcome, there is no diff left to show, and a
+      // failed write in particular must not leave the tab stuck in the
+      // read-only view with decorations for a change that never landed.
+      _releaseDiffPreview(ref);
       ref.read(pendingDownloadProviderMap[widget.file.path]!.notifier).state =
           null;
       if (context.mounted) context.go('/file');
