@@ -363,6 +363,61 @@ void main() {
     });
   });
 
+  group('buildSyncPlan: truncated local scan', () {
+    test('never defaults board-only rows to a download', () {
+      final plan = buildSyncPlan(
+        local: const SyncTreeSnapshot(
+          files: <String, SyncFileInfo>{},
+          directories: <String>{},
+          root: '/root',
+          truncated: true,
+        ),
+        board: _snapshot({'boot.py': _board('boot.py', 7, _at(2000))}),
+      );
+
+      expect(plan.truncated, isTrue);
+      final row = plan.entries.single;
+      expect(row.action, BoardSyncAction.downloadNew);
+      expect(row.selectable, isFalse);
+      expect(row.note, isNotNull);
+      expect(plan.actionable, isEmpty);
+      expect(plan.defaultSelection, isEmpty);
+      // The plan still reports work so the preview opens and explains the
+      // truncation instead of the page claiming both sides already match.
+      expect(plan.hasWork, isTrue);
+    });
+
+    test('keeps rows whose local copy was scanned uploadable', () {
+      final plan = buildSyncPlan(
+        local: SyncTreeSnapshot(
+          files: {'main.py': _local('main.py', 10, _at(2000))},
+          directories: const {},
+          root: '/root',
+          truncated: true,
+        ),
+        board: _snapshot(const {}),
+      );
+
+      expect(plan.truncated, isTrue);
+      expect(plan.defaultSelection.map((entry) => entry.relativePath), [
+        'main.py',
+      ]);
+    });
+
+    test('a complete scan still offers board-only rows', () {
+      final plan = buildSyncPlan(
+        local: _snapshot(const {}),
+        board: _snapshot({'boot.py': _board('boot.py', 7, _at(2000))}),
+      );
+
+      expect(plan.truncated, isFalse);
+      expect(plan.entries.single.selectable, isTrue);
+      expect(plan.defaultSelection.map((entry) => entry.relativePath), [
+        'boot.py',
+      ]);
+    });
+  });
+
   group('normalizeSyncRelativePath', () {
     test('normalizes separators and leading markers', () {
       expect(normalizeSyncRelativePath('lib\\a.py'), 'lib/a.py');

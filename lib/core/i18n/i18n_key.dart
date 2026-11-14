@@ -1950,6 +1950,14 @@ enum I18nKey {
     'devices.sync.note.board_newer',
     '{reason}；板端更新时间较新',
   ),
+  devicesSyncNoteLocalScanTruncated(
+    'devices.sync.note.local_scan_truncated',
+    '本地扫描已截断，无法确认本地是否已存在，已跳过下载',
+  ),
+  devicesSyncTruncatedNotice(
+    'devices.sync.truncated.notice',
+    '本地工作区文件超过扫描上限，本次比较不完整；无法确认的设备文件不会被下载，以免覆盖本地文件。',
+  ),
   devicesSyncRunning('devices.sync.run.running', '正在同步本地工作区与设备…'),
   devicesSyncDone('devices.sync.run.done', '同步完成'),
   devicesSyncCancelled('devices.sync.run.cancelled', '同步已取消'),

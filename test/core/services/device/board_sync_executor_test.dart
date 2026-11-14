@@ -191,6 +191,39 @@ void main() {
   BoardSyncPlan planOf(List<BoardSyncEntry> entries) =>
       BoardSyncPlan(entries: entries, localRoot: tempDir.path);
 
+  test(
+    'a truncated plan never downloads an unscanned board-only path',
+    () async {
+      final local = await writeLocal('notes.py', 'local edits');
+      final backend = _FakeBoardBackend()
+        ..files['notes.py'] = Uint8List.fromList('board copy'.codeUnits);
+      final container = ProviderContainer(
+        overrides: [boardFileBackendProvider.overrideWithValue(backend)],
+      );
+      addTearDown(container.dispose);
+
+      final executor = BoardSyncExecutor(
+        ops: container.read(_testOpsProvider),
+        progress: container.read(fileTransferProgressProvider.notifier),
+      );
+
+      // The plan is hand-built with a selectable row, so only the executor's own
+      // truncation guard can keep it from overwriting the local file.
+      final result = await executor.execute(
+        plan: BoardSyncPlan(
+          entries: [downloadEntry('notes.py', 'board copy'.length)],
+          localRoot: tempDir.path,
+          truncated: true,
+        ),
+        localRoot: tempDir.path,
+        selectedPaths: {'notes.py'},
+      );
+
+      expect(result.downloaded, 0);
+      expect(await local.readAsString(), 'local edits');
+    },
+  );
+
   test('uploads only the selected entries through writeFileBytes', () async {
     await writeLocal('main.py', 'print(1)');
     await writeLocal('skip.py', 'skip');
