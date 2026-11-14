@@ -262,6 +262,11 @@ class DeviceSession {
     Duration timeout = const Duration(seconds: 20),
     required ReplMode mode,
   }) async {
+    // Nothing to run: an empty line sent to the raw REPL makes the device
+    // print OK and leave the session (PYEXEC_FORCED_EXIT) instead of framing
+    // output with EOT. Skipping the round trip returns the same empty result
+    // without depending on that device behaviour.
+    if (code.trim().isEmpty) return '';
     switch (mode) {
       case ReplMode.paste:
         if (!_pasteReady) {
@@ -746,6 +751,15 @@ class DeviceSession {
     required void Function(Uint8List data) onStdout,
     required void Function(Uint8List data) onStderr,
   }) async {
+    // An empty line followed by EOT is the raw REPL exit sequence: the device
+    // acknowledges with OK and reboots out of the session, so the stdout and
+    // stderr EOT frames this method waits for are never sent. There is
+    // nothing to execute, so report the start and finish immediately.
+    if (code.trim().isEmpty) {
+      onStarted();
+      return;
+    }
+
     final bytes = utf8.encode(code);
     _write(bytes);
     _write(_eot);
@@ -755,8 +769,11 @@ class DeviceSession {
     if (ack.length != 2 || ack[0] != 0x4f || ack[1] != 0x4b) {
       throw const DeviceSessionException('Raw REPL did not acknowledge code.');
     }
-    await queue.readUntilStreaming(_eot, onData: onStdout);
-    await queue.readUntilStreaming(_eot, onData: onStderr);
+    // The startup timeout also bounds each streamed frame: a device that
+    // stops emitting output must surface as an error instead of holding the
+    // REPL transaction (and its mutex) forever.
+    await queue.readUntilStreaming(_eot, timeout: timeout, onData: onStdout);
+    await queue.readUntilStreaming(_eot, timeout: timeout, onData: onStderr);
     await queue.readUntil(_prompt, timeout);
   }
 
@@ -1513,6 +1530,14 @@ Future<void> runPythonOnDeviceStreaming(
   required void Function(Uint8List data) onStdout,
   required void Function(Uint8List data) onStderr,
 }) {
+  // Empty source is never sent to the raw REPL: an empty line plus EOT makes
+  // the device print OK and leave the session without the stdout/stderr EOT
+  // frames, so the streaming wait would never finish. There is nothing to
+  // execute, so complete the run without opening a transaction.
+  if (python.trim().isEmpty) {
+    onStarted();
+    return Future<void>.value();
+  }
   return _runTransaction(
     ref.read,
     (session, mode) async {
