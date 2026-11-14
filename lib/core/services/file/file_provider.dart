@@ -104,6 +104,10 @@ class FileNotifier extends StateNotifier<Directory?> {
   Future<void> saveTab(TabData? tab) async {
     final value = tab?.value;
     if (value is TabDataValue && value.type == "file") {
+      // Read-only tabs hold a display-only buffer -- oversized content, binary
+      // bytes, or a decode the editor cannot re-encode. Writing it back would
+      // replace the file with something it never contained.
+      if (value.editorController?.readOnly == true) return;
       if (value.isBoardFile == true && value.boardFilePath != null) {
         await ref
             .read(boardProvider)

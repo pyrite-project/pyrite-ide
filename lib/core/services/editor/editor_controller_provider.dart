@@ -107,19 +107,27 @@ class EditorControllerMapNotifier
     var openedReadOnly = openReadOnly;
     var tooLarge = false;
     if (initialText == null) {
+      final List<int> bytes;
       try {
-        tooLarge = await file.length() > maxEditableFileLength;
-        openedReadOnly = openedReadOnly || tooLarge;
-        text = await file.readAsString();
+        bytes = await file.readAsBytes();
       } on FileSystemException {
         return null;
+      }
+      tooLarge = bytes.length > maxEditableFileLength;
+      openedReadOnly = openedReadOnly || tooLarge;
+      try {
+        text = utf8.decode(bytes);
       } on FormatException {
         // Binary or non-UTF-8 content reaching the headless path (session
         // restore has no context for dialogs): keep the buffer usable with a
         // malformed-tolerant decode and block editing so garbage is never
         // written back over the file.
+        //
+        // The bytes are decoded here rather than through `readAsString`,
+        // which reports a decoding failure as a FileSystemException and so
+        // cannot be told apart from an unreadable file.
         openedReadOnly = true;
-        text = utf8.decode(await file.readAsBytes(), allowMalformed: true);
+        text = utf8.decode(bytes, allowMalformed: true);
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
@@ -144,10 +152,23 @@ class EditorControllerMapNotifier
     // happens here, before `text` replaces it with the intended content; this
     // mirrors the preview pane in lsp_location_dialog, which pre-sets
     // `openedFile` for the same reason.
-    controller.openedFile = file.path;
-    controller.text = text;
+    try {
+      controller.openedFile = file.path;
+      controller.text = text;
+    } catch (_) {
+      // The controller never reaches the tab map, so the language-server seat
+      // acquired above has no owner left to release it. Dropping it here keeps
+      // a failed open from pinning the workspace's server for the rest of the
+      // session.
+      controller.dispose();
+      _lspConfigPool.release(lspConfig);
+      rethrow;
+    }
+    // A path the setter could not read strictly falls back to a read-only
+    // tolerant decode; the buffer decoded by the caller and its read-only
+    // decision take precedence.
+    controller.readOnly = openedReadOnly;
     if (openedReadOnly) {
-      controller.readOnly = true;
       // Only the size case gets a notice here: a binary file opened through
       // the interactive flow already saw its own dialog, and the headless
       // restore path surfaces its state through the read-only editor itself.
