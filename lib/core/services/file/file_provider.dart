@@ -58,6 +58,14 @@ class FileNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   FileNotifier(this.ref) : super(null);
 
+  /// Reads a local file's text for the transfer paths.
+  ///
+  /// Indirection rather than a direct [local.getFileContent] call so a widget
+  /// test can drive an upload without waiting on real file I/O, which the
+  /// fake-async zone widget tests run in cannot complete on its own.
+  @visibleForTesting
+  Future<String> Function(String path) localTextReader = local.getFileContent;
+
   void setDirectory(Directory dir) {
     state = dir;
   }
@@ -141,6 +149,24 @@ class FileNotifier extends StateNotifier<Directory?> {
     await writeTabText(value, text);
     ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!, text);
     return true;
+  }
+
+  /// Saves the tab behind [filePath] and reports whether a transfer may go on.
+  ///
+  /// A transfer dialog compares one specific document with the device, but the
+  /// focused tab can be a different one -- Ctrl+U acts on the file tree, not on
+  /// the editor. Resolving the tab by path keeps the bytes a transfer moves in
+  /// step with what the dialog showed, and the save path supplies the file's
+  /// own encoding, byte order mark and external-change confirmation.
+  ///
+  /// Returns true when the file is not open or the save completed, and false
+  /// when it was refused, so callers abort instead of moving stale bytes.
+  Future<bool> saveTabForPath(String filePath) async {
+    final tab = ref
+        .read(tabbedViewControllerProvider.notifier)
+        .findFileTab(filePath);
+    if (tab == null) return true;
+    return saveTab(tab);
   }
 
   /// Writes [text] to the local file behind [value], in the encoding the file
@@ -1198,7 +1224,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     late final String content;
     late final String originContent;
     try {
-      content = await local.getFileContent(sourcePath);
+      content = await localTextReader(sourcePath);
       originContent = await ref
           .read(boardProvider)
           .ops
@@ -1293,7 +1319,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
       String content;
       try {
-        content = await local.getFileContent(sourcePath);
+        content = await localTextReader(sourcePath);
       } on FileSystemException {
         await _uploadLocalFileBytes(sourcePath, targetPath);
         if (context.mounted) {
@@ -1513,7 +1539,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
       String content;
       try {
-        content = await local.getFileContent(sourcePath);
+        content = await localTextReader(sourcePath);
       } on FileSystemException {
         if (!context.mounted) return;
         await _uploadSelectedLocalItem(context, selectedTab: selectedTab);
@@ -1533,7 +1559,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         if (!context.mounted) return;
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             icon: const Icon(Icons.file_upload_outlined),
             title: const UseText(I18nKey.dialogLocalContentMismatchTitle),
             content: Text(
@@ -1544,14 +1570,25 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
             actions: [
               TextButton(
-                onPressed: () => context.pop(false),
+                onPressed: () => Navigator.pop(dialogContext, false),
                 child: const UseText(I18nKey.dialogCancelUpload),
               ),
               TextButton(
-                onPressed: () {
-                  saveCurrentFile();
-                  _uploadSelectedLocalItem(context, selectedTab: selectedTab);
-                  context.pop();
+                onPressed: () async {
+                  Navigator.pop(dialogContext, false);
+                  // The dialog compared [sourcePath]'s buffer, so that is the
+                  // tab that has to be saved. Waiting for the write is what
+                  // makes the upload below read the new bytes.
+                  if (!await ref
+                      .read(fileProvider.notifier)
+                      .saveTabForPath(sourcePath)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await _uploadSelectedLocalItem(
+                    context,
+                    selectedTab: selectedTab,
+                  );
                 },
                 child: const UseText(I18nKey.dialogEditorContent),
               ),
@@ -1560,15 +1597,20 @@ class FileNotifier extends StateNotifier<Directory?> {
                   backgroundColor: Theme.of(context).colorScheme.error,
                   foregroundColor: Theme.of(context).colorScheme.onError,
                 ),
-                onPressed: () {
-                  ref
-                          .read(editorControllerMapProvider)[selected?.id ??
-                              selectedTab?.value.filePath]
-                          ?.text =
+                onPressed: () async {
+                  ref.read(editorControllerMapProvider)[sourcePath]?.text =
                       content;
-                  saveCurrentFile();
-                  _uploadSelectedLocalItem(context, selectedTab: selectedTab);
-                  context.pop();
+                  Navigator.pop(dialogContext, false);
+                  if (!await ref
+                      .read(fileProvider.notifier)
+                      .saveTabForPath(sourcePath)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await _uploadSelectedLocalItem(
+                    context,
+                    selectedTab: selectedTab,
+                  );
                 },
                 child: const UseText(I18nKey.dialogActualContent),
               ),
