@@ -1402,7 +1402,16 @@ class _GitPageState extends ConsumerState<GitPage> {
   }) async {
     await showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
+        // onSubmit may push its own dialog (the remote URL/rename flows ask
+        // for confirmation). Popping before it finishes would pop that new
+        // dialog instead of this one, so wait for the callback first.
+        Future<void> submit(String value) async {
+          await onSubmit(value);
+          if (!dialogContext.mounted) return;
+          Navigator.of(dialogContext).pop();
+        }
+
         return DialogFormFields(
           initialValues: [initialValue],
           selectAll: selectAll,
@@ -1412,21 +1421,15 @@ class _GitPageState extends ConsumerState<GitPage> {
               controller: c[0],
               autofocus: true,
               decoration: InputDecoration(label: UseText(label)),
-              onSubmitted: (value) {
-                onSubmit(value);
-                Navigator.of(context).pop();
-              },
+              onSubmitted: submit,
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(dialogContext).pop(),
                 child: const UseText(I18nKey.commonCancel),
               ),
               FilledButton(
-                onPressed: () {
-                  onSubmit(c[0].text);
-                  Navigator.of(context).pop();
-                },
+                onPressed: () => submit(c[0].text),
                 child: const UseText(I18nKey.commonConfirm),
               ),
             ],
