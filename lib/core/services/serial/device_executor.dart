@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
@@ -182,7 +183,7 @@ class DeviceSession {
   /// Enters the selected REPL mode after CTRL-C has been sent.
   Future<void> enterRepl(ReplMode mode, {Duration? timeout}) async {
     final t = timeout ?? const Duration(seconds: 5);
-    debugPrint('[repl] enterRepl mode=$mode timeout=${t.inSeconds}s');
+    AppLog.d('repl', 'enter mode=$mode timeout=${t.inSeconds}s');
 
     if (mode == ReplMode.paste) {
       await _enterPasteMode(t);
@@ -199,8 +200,9 @@ class DeviceSession {
   /// Exits the current REPL mode and resets to normal state.
   Future<void> exitRepl(ReplMode mode, {Duration? timeout}) async {
     final t = timeout ?? const Duration(seconds: 2);
-    debugPrint(
-      '[repl] exitRepl mode=$mode timeout=${t.inSeconds}s queueCancelled=${queue.isCancelled}',
+    AppLog.d(
+      'repl',
+      'exit mode=$mode timeout=${t.inSeconds}s cancelled=${queue.isCancelled}',
     );
     switch (mode) {
       case ReplMode.paste:
@@ -209,7 +211,7 @@ class DeviceSession {
         try {
           await queue.readUntil(_prompt3, t);
         } catch (error) {
-          debugPrint('[repl] waiting for the paste prompt failed: $error');
+          AppLog.d('repl', 'waiting for the paste prompt failed: $error');
         }
         break;
       case ReplMode.rawRepl:
@@ -219,7 +221,6 @@ class DeviceSession {
         queue.clear();
         break;
     }
-    debugPrint('[repl] exitRepl done');
   }
 
   /// Performs a MicroPython soft reset from the friendly prompt: CTRL-D on an
@@ -229,7 +230,7 @@ class DeviceSession {
   /// answers with the "MPY: soft reboot" banner and a fresh friendly prompt.
   Future<void> softReset({Duration? timeout}) async {
     final t = timeout ?? const Duration(seconds: 5);
-    debugPrint('[repl] softReset');
+    AppLog.d('repl', 'soft reset');
     queue.clear();
     _write([0x02]); // CTRL-B: make sure we are at the friendly prompt.
     _write([0x04]); // CTRL-D on an empty line: soft reset.
@@ -237,10 +238,9 @@ class DeviceSession {
       await queue.readUntil(utf8.encode('MPY: soft reboot'), t);
     } on TimeoutException {
       // Some builds reset quietly; the prompt below still confirms the reset.
-      debugPrint('[repl] soft reboot banner missing; waiting for prompt only');
+      AppLog.d('repl', 'soft reboot banner missing; waiting for prompt only');
     }
     await queue.readUntil(_prompt3, t);
-    debugPrint('[repl] softReset done');
   }
 
   // -- Public: execute ------------------------------------------------------
@@ -337,31 +337,37 @@ class DeviceSession {
     int ackEvery = 8,
     void Function(int sent, int total)? onProgress,
   }) async {
-    debugPrint(
-      '[raw-input] START raw-repl upload, code=${code.length}B data=${data.length}B '
-      'chunk=$chunkSize ackEvery=$ackEvery line=$_stdinLineChars '
-      'timeout=${completionTimeout.inSeconds}s',
+    // One start line, ten progress lines and one summary replace what used to
+    // be a line (or two) per chunk: on a slow port with a sparse ACK that was
+    // hundreds of lines per megabyte, each of them pushed into the output
+    // panel, for no information a summary does not carry.
+    final cycle = Stopwatch()..start();
+    AppLog.d(
+      'transfer',
+      'upload start code=${code.length}B data=${AppLog.humanBytes(data.length)} '
+          'chunk=$chunkSize ackEvery=$ackEvery '
+          'timeout=${completionTimeout.inSeconds}s',
     );
 
     // Phase 1: Send code + CTRL-D to execute the device script.
     final codeBytes = utf8.encode(code);
     _write(codeBytes);
     _write(_eot); // CTRL-D: execute the code
-    debugPrint('[raw-input] code sent, waiting for readyMarker...');
 
     // Phase 2: Wait for device to signal READY.
     final readyData = await queue.readUntil(readyMarker, startupTimeout);
     _logDevText(utf8.decode(readyData, allowMalformed: true));
-    debugPrint('[raw-input] readyMarker received');
-    debugPrint('[raw-input] sending data...');
+    AppLog.d('transfer', 'device ready, streaming payload');
 
     // Phase 3: Send data with sparse ACK flow control.
     var sent = 0;
     var ackCount = 0;
     while (sent < data.length) {
       if (queue.isCancelled) {
-        debugPrint(
-          '[raw-input] CANCELLED during data send at $sent/${data.length}',
+        AppLog.w(
+          'transfer',
+          'upload cancelled at $sent/${data.length} after '
+              '${cycle.elapsedMilliseconds}ms',
         );
         throw const SerialCancelledException();
       }
@@ -377,9 +383,6 @@ class DeviceSession {
       sent = end;
       ackCount++;
       if (ackEvery > 0 && ackCount % ackEvery == 0) {
-        debugPrint(
-          '[raw-input] waiting ACK #$ackCount at $sent/${data.length}',
-        );
         final ack = await _readUntilPattern(
           0x2B,
           completionTimeout,
@@ -399,9 +402,9 @@ class DeviceSession {
             'Device ACK timeout during data transfer',
           );
         }
-        debugPrint('[raw-input] ACK received');
       }
       onProgress?.call(sent, data.length);
+      AppLog.progress('transfer', 'upload', sent, data.length);
     }
     final doneData = await queue.readUntil(doneMarker, completionTimeout);
     final doneText = utf8.decode(doneData, allowMalformed: true);
@@ -414,6 +417,13 @@ class DeviceSession {
     if (stderr.isNotEmpty) {
       throw DeviceSessionException(utf8.decode(stderr, allowMalformed: true));
     }
+    AppLog.i(
+      'transfer',
+      'upload done ${AppLog.humanBytes(data.length)} in '
+          '${cycle.elapsedMilliseconds}ms '
+          '(${AppLog.throughput(data.length, cycle.elapsedMilliseconds)}), '
+          'acks=$ackCount',
+    );
   }
 
   /// Executes [code] in the current raw REPL session and reads exactly
@@ -448,61 +458,53 @@ class DeviceSession {
     return output.takeBytes();
   }
 
-  /// Logs any `[DEV-LOG]` lines found in [text] via `debugPrint`.
+  /// Logs any `[DEV-LOG]` lines found in [text].
+  ///
+  /// Called with only the newly received bytes, never with the whole buffer:
+  /// re-scanning an accumulated multi-megabyte download once per chunk was
+  /// quadratic work whose only product was a handful of device lines.
   static void _logDevText(String text) {
     for (final line in text.split('\n')) {
       final trimmed = line.trimRight();
       if (trimmed.startsWith('[DEV-LOG]')) {
-        debugPrint('[device] $trimmed');
+        AppLog.d('device', trimmed);
       }
     }
   }
 
-  /// Reads from the queue until [pattern] is found.
-  ///
-  /// If [pattern] is an `int`, matches a single byte.
-  /// If [pattern] is a `String`, accumulates text and matches via `contains`.
+  /// Reads single bytes until [pattern] arrives.
   ///
   /// Returns `true` if found, `false` on timeout. Cancellation is propagated
   /// as [SerialCancelledException] so callers never retry an interrupted job.
-  /// [onError] is called with accumulated text for `String` patterns and with
-  /// each completed line for `int` patterns (for error detection before the
-  /// target is found; throwing from it aborts the wait). DEV-LOG lines are
-  /// logged automatically.
+  /// Bytes that are not the target are collected into lines: each completed
+  /// line is handed to [onError] (throwing from it aborts the wait) so a
+  /// device-side write failure surfaces immediately instead of burning the
+  /// whole timeout on a missing ACK. DEV-LOG lines are logged as they arrive.
+  ///
+  /// A `String` pattern is deliberately not supported: matching it required
+  /// converting and re-scanning the whole accumulated buffer on every byte,
+  /// which is quadratic in the transfer size. The only caller waits for the
+  /// ACK byte.
   Future<bool> _readUntilPattern(
-    Object pattern,
+    int pattern,
     Duration timeout, {
-    void Function(String text)? onError,
+    void Function(String line)? onError,
   }) async {
     final sw = Stopwatch()..start();
     final buf = StringBuffer();
-    var lastErrorCheck = 0;
     while (sw.elapsed < timeout) {
       if (queue.isCancelled) throw const SerialCancelledException();
       if (queue.hasData) {
         final byte = await queue.readBytes(1, const Duration(milliseconds: 50));
-        if (pattern is int) {
-          if (byte[0] == pattern) return true;
-          // Log DEV-LOG lines from non-target bytes.
-          final ch = String.fromCharCodes(byte);
-          if (ch == '\n') {
-            final line = buf.toString();
-            _logDevText(line);
-            buf.clear();
-            if (onError != null) onError(line);
-          } else if (ch != '\r') {
-            buf.write(ch);
-          }
-        } else {
-          buf.write(String.fromCharCodes(byte));
-          final text = buf.toString();
-          if (text.contains(pattern as String)) return true;
-          // Periodically check for errors and DEV-LOG lines.
-          if (text.length - lastErrorCheck >= 8) {
-            lastErrorCheck = text.length;
-            if (onError != null) onError(text);
-            _logDevText(text);
-          }
+        if (byte[0] == pattern) return true;
+        final ch = String.fromCharCodes(byte);
+        if (ch == '\n') {
+          final line = buf.toString();
+          buf.clear();
+          _logDevText(line);
+          onError?.call(line);
+        } else if (ch != '\r') {
+          buf.write(ch);
         }
       } else {
         await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -522,7 +524,7 @@ class DeviceSession {
     } on SerialCancelledException {
       rethrow;
     } catch (error) {
-      debugPrint('[repl] waiting for the normal prompt failed: $error');
+      AppLog.d('repl', 'waiting for the normal prompt failed: $error');
     }
     if (queue.indexOf(_pastePrompt) < 0) {
       queue.clear();
@@ -1087,7 +1089,7 @@ Future<bool> _recoverInterruptedDevice(
     try {
       await queue.readUntil(marker, const Duration(seconds: 2));
       await queue.readUntil(friendlyPrompt, const Duration(seconds: 2));
-      debugPrint('[txn] device recovery confirmed on attempt ${attempt + 1}');
+      AppLog.i('txn', 'device recovery confirmed on attempt ${attempt + 1}');
       return true;
     } on SerialCancelledException {
       return false;
@@ -1095,7 +1097,7 @@ Future<bool> _recoverInterruptedDevice(
       // Retry with another interrupt burst.
     }
   }
-  debugPrint('[txn] device recovery could not confirm friendly REPL');
+  AppLog.w('txn', 'device recovery could not confirm friendly REPL');
   return false;
 }
 
@@ -1160,11 +1162,11 @@ Future<T> _runTransaction<T>(
 
     void requestHardwareReset() {
       if (termination != TransactionTermination.none) {
-        debugPrint('[txn] duplicate hardware reset ignored');
+        AppLog.d('txn', 'duplicate hardware reset ignored');
         return;
       }
       termination = TransactionTermination.hardwareReset;
-      debugPrint('[txn] hardware reset requested; cancelling queue');
+      AppLog.i('txn', 'hardware reset requested; cancelling queue');
       queue.cancel();
     }
 
@@ -1183,19 +1185,16 @@ Future<T> _runTransaction<T>(
             HardwareResetStrategy.disabled,
         onInterrupt: () {
           if (termination != TransactionTermination.none) {
-            debugPrint('[txn] duplicate interrupt ignored during recovery');
+            AppLog.d('txn', 'duplicate interrupt ignored during recovery');
             return;
           }
           termination = TransactionTermination.interrupt;
-          debugPrint(
-            '[txn] onInterrupt fired, sending 5x CTRL-C + cancelling queue',
-          );
+          AppLog.i('txn', 'interrupt requested: CTRL-C burst + queue cancel');
           // 1. Send multiple CTRL-C to the device to stop execution.
           writeBytes([0x03, 0x03, 0x03, 0x03, 0x03]);
           // 2. Cancel the IDE-side queue so pending reads unblock and the
           //    finally block runs, releasing the mutex and all state.
           queue.cancel();
-          debugPrint('[txn] queue cancelled, isCancelled=${queue.isCancelled}');
         },
         onForceReset: () {
           requestHardwareReset();
@@ -1209,13 +1208,18 @@ Future<T> _runTransaction<T>(
     // elapsed value is the whole cycle (handshake + action + exit), which is
     // what a user sees as the cadence in the log.
     final cycle = Stopwatch()..start();
+    // One START/END pair per transaction replaces the seven stage lines this
+    // path used to print (entering REPL, entered, running, exiting, done...).
+    // The stages are visible in the elapsed value; only the outcome and the
+    // caller are what a reader needs.
+    var outcome = 'ok';
     try {
-      debugPrint(
-        '[txn] START mode=$mode op=$runningOperationId '
-        'from=${_describeTransactionCaller()}',
+      AppLog.d(
+        'txn',
+        'START mode=$mode op=$runningOperationId '
+            'from=${_describeTransactionCaller()}',
       );
       try {
-        debugPrint('[txn] entering REPL...');
         session = await _initSessionAndEnterRepl(
           queue,
           writeBytes,
@@ -1225,13 +1229,12 @@ Future<T> _runTransaction<T>(
           settleDelay: settleDelay,
           softReset: softReset,
         );
-        debugPrint('[txn] REPL entered OK');
       } catch (e) {
-        debugPrint('[txn] enterRepl failed: $e');
+        AppLog.w('txn', 'enterRepl failed: $e');
         if ((interruptCount < 12 ||
                 settleDelay < const Duration(milliseconds: 150)) &&
             !queue.isCancelled) {
-          debugPrint('[txn] retrying REPL with conservative handshake');
+          AppLog.w('txn', 'retrying REPL with conservative handshake');
           queue.clear();
           session = await _initSessionAndEnterRepl(
             queue,
@@ -1239,30 +1242,34 @@ Future<T> _runTransaction<T>(
             mode,
             softReset: softReset,
           );
-          debugPrint('[txn] REPL entered after conservative retry');
         } else {
           rethrow;
         }
       }
-      debugPrint('[txn] running action...');
       return await action(session, mode);
+    } catch (e) {
+      outcome = switch (e) {
+        SerialCancelledException() => 'cancelled',
+        _ => 'error',
+      };
+      rethrow;
     } finally {
-      debugPrint(
-        '[txn] FINALLY: queue.isCancelled=${queue.isCancelled} '
-        'elapsed=${cycle.elapsedMilliseconds}ms',
+      AppLog.d(
+        'txn',
+        'END mode=$mode op=$runningOperationId result=$outcome '
+            'elapsed=${cycle.elapsedMilliseconds}ms '
+            'cancelled=${queue.isCancelled}',
       );
       read(hardwareResetControllerProvider).unregister(requestHardwareReset);
       cleanup?.call();
       try {
         if (termination == TransactionTermination.none && session != null) {
-          debugPrint('[txn] exitRepl...');
           await session.exitRepl(mode);
-          debugPrint('[txn] exitRepl done');
         } else if (termination != TransactionTermination.none) {
-          debugPrint('[txn] interrupted; skipping normal REPL exit');
+          AppLog.d('txn', 'interrupted; skipping normal REPL exit');
         }
       } catch (e) {
-        debugPrint('[txn] exitRepl error: $e');
+        AppLog.w('txn', 'exitRepl error: $e');
       }
       queue.cancel();
       queue.clear();
@@ -1278,8 +1285,9 @@ Future<T> _runTransaction<T>(
               writeBytes,
             );
             if (!recovered && read(serialProvider).isConnected) {
-              debugPrint(
-                '[txn] soft recovery failed; reopening the serial connection',
+              AppLog.w(
+                'txn',
+                'soft recovery failed; reopening the serial connection',
               );
               final serial = read(serialProvider.notifier);
               final baudRate = read(serialProvider).baudRate;
@@ -1297,12 +1305,13 @@ Future<T> _runTransaction<T>(
               }
             }
             if (!recovered && read(serialProvider).isConnected) {
-              debugPrint(
-                '[txn] device remains unresponsive; disconnecting the port',
+              AppLog.w(
+                'txn',
+                'device remains unresponsive; disconnecting the port',
               );
               await read(serialProvider.notifier).disconnectPort();
             }
-            debugPrint('[txn] interrupt recovery result=$recovered');
+            AppLog.i('txn', 'interrupt recovery result=$recovered');
           } finally {
             recoveryQueue.cancel();
             read(serialDataCallbacksProvider.notifier).remove(recoveryCallback);
@@ -1312,7 +1321,7 @@ Future<T> _runTransaction<T>(
           final reset = await read(
             serialProvider.notifier,
           ).hardwareReset(strategy);
-          debugPrint('[txn] hardware reset result=$reset');
+          AppLog.i('txn', 'hardware reset result=$reset');
         } else {
           // Leave successful transactions at the friendly prompt.
           writeBytes([0x03, 0x03]);
@@ -1322,7 +1331,6 @@ Future<T> _runTransaction<T>(
       } finally {
         read(runningOperationsProvider.notifier).stop(runningOperationId);
         read(serialReplIoPausedProvider.notifier).state = false;
-        debugPrint('[txn] FINALLY done');
       }
     }
   });
@@ -1612,8 +1620,10 @@ Future<Uint8List> runPythonReadDeviceFile(
           "  if not c:break\n"
           "  _out.write(c)\n";
 
-      debugPrint(
-        '[raw-input] readDeviceFile path=$remotePath size=$expectedSize',
+      final cycle = Stopwatch()..start();
+      AppLog.d(
+        'transfer',
+        'download start path=$remotePath size=${AppLog.humanBytes(expectedSize)}',
       );
 
       final raw = await session.readRawFile(
@@ -1622,7 +1632,12 @@ Future<Uint8List> runPythonReadDeviceFile(
         timeout: timeout,
         onProgress: onProgress,
       );
-      debugPrint('[raw-input] readDeviceFile done: ${raw.length} bytes');
+      AppLog.i(
+        'transfer',
+        'download done ${AppLog.humanBytes(raw.length)} in '
+            '${cycle.elapsedMilliseconds}ms '
+            '(${AppLog.throughput(raw.length, cycle.elapsedMilliseconds)})',
+      );
       return raw;
     },
     forceMode: ReplMode.rawRepl,

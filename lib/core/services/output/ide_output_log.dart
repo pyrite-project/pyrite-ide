@@ -32,6 +32,15 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
   final I18nTranslate _tr;
 
   static const int maxEntries = 1000;
+
+  /// Upper bound on one entry's text.
+  ///
+  /// Every write copies the entry list and repaints the terminal, so a single
+  /// oversized message (the device echoing a pasted script, a traceback that
+  /// quotes a whole file) costs the panel far more than it is worth. The head
+  /// is what a reader needs; the tail is dropped with a marker.
+  static const int maxMessageChars = 8000;
+
   static DebugPrintCallback? debugMirror;
   static bool _mirroring = false;
 
@@ -48,7 +57,7 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
     final entry = IdeOutputEntry(
       time: DateTime.now(),
       source: source,
-      message: message,
+      message: _cap(message),
       pluginId: pluginId,
       sessionId: sessionId,
     );
@@ -84,6 +93,13 @@ class IdeOutputLogNotifier extends StateNotifier<List<IdeOutputEntry>> {
       return;
     }
     mutation();
+  }
+
+  static String _cap(String message) {
+    if (message.length <= maxMessageChars) return message;
+    final dropped = message.length - maxMessageChars;
+    return '${message.substring(0, maxMessageChars)}'
+        '\n… ($dropped characters truncated)';
   }
 
   String _formatEntry(IdeOutputEntry entry) {

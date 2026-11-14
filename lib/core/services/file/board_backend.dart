@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/file/file_sort.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
@@ -212,13 +213,13 @@ _emit_ok(gc.mem_free())
       final value = _extractValue(raw);
       if (value is int) {
         _cachedFreeHeap = value;
-        debugPrint('[board-backend] device free heap: ${value}B');
+        AppLog.d('transfer', 'device free heap: ${value}B');
       } else if (value is num) {
         _cachedFreeHeap = value.toInt();
-        debugPrint('[board-backend] device free heap: ${value.toInt()}B');
+        AppLog.d('transfer', 'device free heap: ${value.toInt()}B');
       }
     } catch (e) {
-      debugPrint('[board-backend] heap probe failed: $e');
+      AppLog.d('transfer', 'heap probe failed: $e');
     }
   }
 
@@ -240,11 +241,11 @@ _emit_ok(gc.mem_free())
         return await action();
       } catch (e) {
         if (e is SerialCancelledException) {
-          debugPrint('[board-backend] user cancelled, not retrying');
+          AppLog.w('transfer', 'user cancelled, not retrying');
           rethrow;
         }
         if (attempt == maxRetries || e is BoardFileProtocolException) rethrow;
-        debugPrint('[board-backend] attempt ${attempt + 1} failed: $e');
+        AppLog.w('transfer', 'attempt ${attempt + 1} failed: $e');
         _cachedFreeHeap = null;
         await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
       }
@@ -429,7 +430,11 @@ __pyrite_read_fp.close()
 del __pyrite_read_fp
 del __pyrite_read_path
 ''');
-        } catch (_) {}
+        } catch (error) {
+          // The read already has its bytes; a failed handle cleanup only
+          // matters when the board starts refusing the next open.
+          AppLog.d('board', 'closing board file handle failed', error: error);
+        }
       }
     });
     return result;
@@ -458,9 +463,14 @@ del __pyrite_read_path
     final preferredMode = ref.read(fileTransferModeProvider);
     final transferMode = resolveFileTransferMode(mode, preferredMode);
     await _probeFreeHeap();
-    debugPrint(
-      '[board-backend] writeFileBytes path=$path size=${bytes.length}B mode=$mode '
-      'transferMode=$transferMode chunkSize=$_safeWriteChunkSize freeHeap=$_cachedFreeHeap',
+    // Per-file detail: one INFO line per completed write (below, in the
+    // executor) is the record a reader wants; this is the context that only
+    // matters while debugging a slow or retried write.
+    AppLog.d(
+      'transfer',
+      'write $path ${AppLog.humanBytes(bytes.length)} mode=$mode '
+          'transferMode=$transferMode chunk=$_safeWriteChunkSize '
+          'freeHeap=$_cachedFreeHeap',
     );
 
     if (transferMode == FileTransferMode.chunked) {
@@ -476,9 +486,10 @@ del __pyrite_read_path
     final timeoutSeconds = 60 + (payload.length / 20000).ceil();
     final baudRate = ref.read(serialProvider).baudRate;
     final ackEvery = baudRate <= 57600 ? 1 : _rawWriteAckEvery;
-    debugPrint(
-      '[board-backend] rawUpload path: ackEvery=$ackEvery baud=$baudRate '
-      'timeout=${timeoutSeconds}s temp=$tempPath',
+    AppLog.d(
+      'transfer',
+      'rawUpload ackEvery=$ackEvery baud=$baudRate '
+          'timeout=${timeoutSeconds}s temp=$tempPath',
     );
 
     await _withRetry(
@@ -548,7 +559,14 @@ except OSError:
 _emit_ok(True)
 '''),
           );
-        } catch (_) {}
+        } catch (error) {
+          // A temp file left behind shows up later as "flash is full".
+          AppLog.w(
+            'board',
+            'removing the partial upload failed path=$tempPath',
+            error: error,
+          );
+        }
       }
     }
   }
@@ -657,7 +675,13 @@ try:
 except Exception:
   pass
 ''');
-            } catch (_) {}
+            } catch (error) {
+              AppLog.w(
+                'board',
+                'cleanup after a failed chunked write failed path=$targetPath',
+                error: error,
+              );
+            }
           }
         }
       }),
@@ -707,7 +731,6 @@ try:
       os.remove(tmp)
     except OSError:
       pass
-    _log('opening ' + tmp)
     f = open(tmp, 'wb')
   except Exception as exc:
     _log('ERROR open: ' + str(exc))
@@ -976,10 +999,7 @@ _emit_ok(checksums)
       if (output.contains('MemoryError') ||
           output.contains('memory allocation failed')) {
         _cachedFreeHeap = 0;
-        debugPrint(
-          '[board-backend] MemoryError detected, '
-          'invalidating heap cache',
-        );
+        AppLog.w('transfer', 'MemoryError detected; invalidating heap cache');
       }
       throw BoardFileProtocolException(
         'Missing board file result marker. Output: ${output.length <= 240 ? output : '${output.substring(0, 240)}...'}',
@@ -996,9 +1016,9 @@ _emit_ok(checksums)
       if (error.contains('MemoryError') ||
           error.contains('memory allocation failed')) {
         _cachedFreeHeap = 0;
-        debugPrint(
-          '[board-backend] MemoryError in error response, '
-          'invalidating heap cache',
+        AppLog.w(
+          'transfer',
+          'MemoryError in error response; invalidating heap cache',
         );
       }
       throw BoardFileBackendException(error);
@@ -1207,7 +1227,7 @@ Future<DeviceFreeSpace> queryFreeSpaceBytes(
       return DeviceFreeSpace(freeBytes: value, reported: true);
     }
   } catch (error) {
-    debugPrint('[board-backend] statvfs probe failed: $error');
+    AppLog.d('transfer', 'statvfs probe failed: $error');
   }
   return DeviceFreeSpace.unknown;
 }
@@ -1355,7 +1375,14 @@ class BoardFileOps {
     try {
       await getFileList(path: folderPath);
       return true;
-    } catch (_) {
+    } catch (error) {
+      // "Missing" and "the board did not answer" are different problems, but
+      // this call can only report a bool — so the distinction goes to the log.
+      AppLog.d(
+        'board',
+        'folder probe failed, reporting absent path=$folderPath',
+        error: error,
+      );
       return false;
     }
   }
@@ -1364,7 +1391,12 @@ class BoardFileOps {
     try {
       await ref.read(boardFileBackendProvider).pathExists(targetPath);
       return true;
-    } catch (_) {
+    } catch (error) {
+      AppLog.d(
+        'board',
+        'path probe failed, reporting absent path=$targetPath',
+        error: error,
+      );
       return false;
     }
   }
@@ -1374,7 +1406,14 @@ class BoardFileOps {
     if (!exists) return;
     try {
       await deleteFolder(targetPath);
-    } catch (_) {
+    } catch (folderError) {
+      // Folder delete first, file delete second: if the fallback also fails
+      // the caller sees that error, but the first one explains why.
+      AppLog.d(
+        'board',
+        'folder delete failed, retrying as a file path=$targetPath',
+        error: folderError,
+      );
       await deleteFile(targetPath);
     }
   }
@@ -1395,7 +1434,7 @@ class BoardFileOps {
     try {
       return await ref.read(boardFileBackendProvider).hashFiles(all);
     } catch (error) {
-      debugPrint('[board-backend] hash probe failed: $error');
+      AppLog.d('transfer', 'hash probe failed: $error');
       return const {};
     }
   }
@@ -1416,7 +1455,7 @@ class BoardFileOps {
       final free = await freeSpaceBytes();
       return checkSpaceBudget(free, requiredBytes, translate: translateBudget);
     } catch (error) {
-      debugPrint('[board-backend] upload pre-flight skipped: $error');
+      AppLog.w('transfer', 'upload pre-flight skipped: $error');
       return checkSpaceBudget(null, requiredBytes, translate: translateBudget);
     }
   }
@@ -1443,12 +1482,26 @@ class BoardFileOps {
           if (ignore != null && ignore.isIgnored(entity.path)) continue;
           try {
             total += await entity.length();
-          } catch (_) {}
+          } catch (error) {
+            // Skipping the size understates the transfer: the free-space
+            // preflight then passes when it should not.
+            AppLog.d(
+              'board',
+              'size of ${entity.path} unavailable, left out of the total',
+              error: error,
+            );
+          }
         }
       } else if (type == io.FileSystemEntityType.file) {
         try {
           total += await io.File(localPath).length();
-        } catch (_) {}
+        } catch (error) {
+          AppLog.d(
+            'board',
+            'size of $localPath unavailable, left out of the total',
+            error: error,
+          );
+        }
       }
     }
     return total;
@@ -1524,7 +1577,13 @@ class BoardTransfer {
         }
         try {
           totalBytes += await file.length();
-        } catch (_) {}
+        } catch (error) {
+          AppLog.d(
+            'board',
+            'size of ${file.path} unavailable, left out of the upload total',
+            error: error,
+          );
+        }
       }
       final budget = await _ops.preflightUploadSpace(totalBytes);
       if (budget.status == SpaceBudgetStatus.insufficient) {
@@ -1536,18 +1595,23 @@ class BoardTransfer {
     await _ensureBoardFolder(remotePath, createdDirs);
 
     for (final entity in entities) {
+      if (entity is! io.Directory) continue;
       final relativePath = path
           .relative(entity.path, from: localPath)
           .replaceAll('\\', '/');
-      final remoteEntityPath = _boardPath.join(remotePath, relativePath);
-
-      if (entity is io.Directory) {
-        debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
-        await _ensureBoardFolder(remoteEntityPath, createdDirs);
-      }
+      await _ensureBoardFolder(
+        _boardPath.join(remotePath, relativePath),
+        createdDirs,
+      );
     }
 
+    // Per-file progress lines were removed here: a project with a few hundred
+    // files produced a few hundred output-panel entries per sync, each one
+    // repainting the panel, and none of them said anything the summary at the
+    // end does not. Failures still log individually through the transfer ops.
+    final cycle = Stopwatch()..start();
     var skipped = 0;
+    var uploadedBytes = 0;
     for (var i = 0; i < files.length; i++) {
       throwIfTransferCancelled(cancel);
       final entity = files[i];
@@ -1557,26 +1621,32 @@ class BoardTransfer {
       final remoteEntityPath = _boardPath.join(remotePath, relativePath);
       final parentDir = _boardPath.dirname(remoteEntityPath);
       if (!createdDirs.contains(parentDir)) {
-        debugPrint('[BoardWS] Creating parent dir: $parentDir');
         await _ensureBoardFolder(parentDir, createdDirs);
       }
       if (alreadyUploaded.contains(
         _boardTargetPath(remotePath, relativePath),
       )) {
         skipped++;
-        debugPrint('[BoardWS] Skipping identical file: $remoteEntityPath');
         continue;
       }
-      debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
+      final bytes = await entity.readAsBytes();
+      uploadedBytes += bytes.length;
       await _ops.writeFileBytesWithProgress(
         remoteEntityPath,
-        await entity.readAsBytes(),
+        bytes,
         currentFile: entity.path,
         index: i + 1,
         totalFiles: files.length,
       );
-      debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
     }
+    AppLog.i(
+      'transfer',
+      'folder upload $localPath -> $remotePath '
+          'dirs=${createdDirs.length} files=${files.length} '
+          'uploaded=${files.length - skipped} skipped=$skipped '
+          'bytes=${AppLog.humanBytes(uploadedBytes)} '
+          'elapsed=${cycle.elapsedMilliseconds}ms',
+    );
     return skipped;
   }
 
@@ -1599,16 +1669,23 @@ class BoardTransfer {
     }
     final result = <io.FileSystemEntity>[];
     final pending = <io.Directory>[root];
+    var ignored = 0;
     while (pending.isNotEmpty) {
       final current = pending.removeLast();
       await for (final entity in current.list(followLinks: false)) {
         if (ignore.isIgnored(entity.path)) {
-          debugPrint('[BoardWS] Ignoring ${entity.path}');
+          // Counting only: a build/ or node_modules/ tree used to print one
+          // line per ignored entry, which is the largest log burst this code
+          // produced and carries no information the count does not.
+          ignored++;
           continue;
         }
         result.add(entity);
         if (entity is io.Directory) pending.add(entity);
       }
+    }
+    if (ignored > 0) {
+      AppLog.d('transfer', 'ignored $ignored entries while scanning upload');
     }
     return result;
   }
@@ -1634,8 +1711,15 @@ class BoardTransfer {
           boardSizes[entry.path] = entry.size!;
         }
       }
-    } catch (_) {
-      // The destination may not exist yet; nothing can be compared.
+    } catch (error) {
+      // The destination may not exist yet -- normal on a first upload. But a
+      // listing that fails for any other reason also lands here, and then
+      // every file is re-sent instead of being skipped, so keep the reason.
+      AppLog.d(
+        'transfer',
+        'cannot list $remotePath, nothing to compare against',
+        error: error,
+      );
       return const {};
     }
     if (boardSizes.isEmpty) return const {};
@@ -1684,7 +1768,7 @@ class BoardTransfer {
         await _ops.createFolder(current);
       } catch (error) {
         if (!await _ops.boardFolderExists(current)) {
-          debugPrint('[BoardWS] Failed to create dir: $current: $error');
+          AppLog.w('transfer', 'could not create dir $current: $error');
           rethrow;
         }
       }
@@ -1745,6 +1829,8 @@ class BoardTransfer {
     }
 
     var skipped = 0;
+    var downloadedBytes = 0;
+    final cycle = Stopwatch()..start();
     for (var i = 0; i < files.length; i++) {
       throwIfTransferCancelled(cancel);
       final item = files[i];
@@ -1754,21 +1840,27 @@ class BoardTransfer {
       final localItemPath = path.join(localPath, relativePath);
       if (alreadyDownloaded.contains(localItemPath)) {
         skipped++;
-        debugPrint('[BoardWS] Skipping identical file: ${item.path}');
         continue;
       }
-      debugPrint('[BoardWS] Downloading: ${item.path}');
       final bytes = await _ops.getFileBytesWithProgress(
         item.path,
         currentFile: item.path,
         index: i + 1,
         totalFiles: files.length,
       );
+      downloadedBytes += bytes.length;
       final file = io.File(localItemPath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(bytes);
-      debugPrint('[BoardWS] Downloaded: $localItemPath');
     }
+    AppLog.i(
+      'transfer',
+      'folder download $remotePath -> $localPath '
+          'dirs=${folders.length} files=${files.length} '
+          'downloaded=${files.length - skipped} skipped=$skipped '
+          'bytes=${AppLog.humanBytes(downloadedBytes)} '
+          'elapsed=${cycle.elapsedMilliseconds}ms',
+    );
     return skipped;
   }
 
@@ -1913,7 +2005,7 @@ Future<int> pruneBoardMirrorDirectory({
     } on io.FileSystemException catch (error) {
       // A file the editor still holds open can refuse deletion on Windows;
       // leaving one entry behind is better than failing the whole cleanup.
-      debugPrint('pruneBoardMirrorDirectory: could not delete $entity: $error');
+      AppLog.w('transfer', 'prune could not delete $entity: $error');
     }
   }
   return removed;
@@ -1978,9 +2070,9 @@ Future<void> ensureBoardFilesystemMountedOnce(Ref ref) async {
       timeout: const Duration(seconds: 5),
     );
     if (output.contains('FS_NOT_READY')) {
-      debugPrint('Board filesystem is not ready after mount attempt.');
+      AppLog.w('transfer', 'board filesystem is not ready after mount attempt');
     }
   } catch (error) {
-    debugPrint('Board filesystem mount check failed: $error');
+    AppLog.d('transfer', 'board filesystem mount check failed: $error');
   }
 }

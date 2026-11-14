@@ -13,6 +13,7 @@ import 'package:pyrite_ide/core/sdk/plugin_perf_budget.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/protocol.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 // ---------------------------------------------------------------------------
 // SDK message type constants (Python <-> Dart)
@@ -129,11 +130,10 @@ Map<String, dynamic> makeEnvelope({
 // Command handler type
 // ---------------------------------------------------------------------------
 
-typedef CommandHandler =
-    void Function(
-      Map<String, dynamic> envelope,
-      void Function(Map<String, dynamic>) respond,
-    );
+typedef CommandHandler = void Function(
+  Map<String, dynamic> envelope,
+  void Function(Map<String, dynamic>) respond,
+);
 
 // ---------------------------------------------------------------------------
 // PluginRunManager
@@ -238,7 +238,14 @@ class PluginRunManager {
           : (isPublic || Permissions.check(pluginPermissions, required!))
           ? PermissionDecision.allowed
           : PermissionDecision.denied;
-      if (type != SdkCommands.outputAppend) {
+      // Audit the capability a plugin exercised, not every frame it renders.
+      // A public command (`view.patch`, `view.snapshot`, `output.append`)
+      // grants nothing, and a plugin repainting its view would otherwise
+      // append a record per frame and rewrite the whole audit file every
+      // second. Denials and unknown commands are still recorded: those are
+      // exactly what an audit exists to show.
+      if ((!isPublic && required != null) ||
+          decision != PermissionDecision.allowed) {
         permissionLog?.add(
           PermissionLogEntry(
             pluginId: pluginId,
@@ -325,9 +332,7 @@ class PluginRunManager {
         resolvedPath = assetsPath;
     }
 
-    onOutput?.call(
-      '[$pluginId] path request scope=$scope resolved=$resolvedPath',
-    );
+    _emit('path request scope=$scope resolved=$resolvedPath');
 
     respond(
       makeEnvelope(
@@ -376,7 +381,7 @@ class PluginRunManager {
       if (!transportAlreadyStarted) await transport.start();
       _transportState = PluginTransportState.ready;
       _handshake = Completer<void>();
-      onOutput?.call('[$pluginId] transport ready');
+      _emit('transport ready');
       sendJson(
         makeEnvelope(
           type: IdeCommands.initialize,
@@ -424,10 +429,7 @@ class PluginRunManager {
     metrics?.recordReceived(bytes.length);
     if (bytes.length > PluginPerfBudget.maxMessageBytes) {
       metrics?.recordDrop();
-      onOutput?.call(
-        '[$pluginId/$sessionId] dropped oversized message '
-        '(${bytes.length} bytes)',
-      );
+      _emit('dropped oversized message (${bytes.length} bytes)');
       return;
     }
 
@@ -439,7 +441,7 @@ class PluginRunManager {
       StackTrace stackTrace,
     ) {
       metrics?.recordError('$error', traceback: '$stackTrace');
-      onOutput?.call('[$pluginId/$sessionId] invalid plugin message: $error');
+      _emit('invalid plugin message: $error');
     });
   }
 
@@ -506,10 +508,7 @@ class PluginRunManager {
     String? messageText,
   }) {
     final requestId = message.requestId;
-    onOutput?.call(
-      '[$pluginId/$sessionId] dropped ${message.type} because the $queue queue '
-      'is full',
-    );
+    _emit('dropped ${message.type} because the $queue queue is full');
     if (requestId == null ||
         requestId.isEmpty ||
         _transportState != PluginTransportState.ready) {
@@ -582,15 +581,12 @@ class PluginRunManager {
 
   void _dispatchTransportMessage(_InboundPluginMessage message) {
     final envelope = message.envelope;
-    final encodedMessage = jsonEncode(envelope);
     try {
       PluginProtocol.validateIncoming(envelope);
       if (envelope['sessionId'] != sessionId ||
           envelope['generation'] != generation ||
           (pluginId.isNotEmpty && envelope['pluginId'] != pluginId)) {
-        onOutput?.call(
-          '[$pluginId/$sessionId] ignored stale or mismatched envelope',
-        );
+        _emit('ignored stale or mismatched envelope');
         return;
       }
       final incomingSequence = envelope['sequence'] as int;
@@ -604,7 +600,7 @@ class PluginRunManager {
       envelope['reply_to'] = envelope['replyTo'];
       envelope['version'] = '${envelope['protocolVersion']}.0';
     } on PluginProtocolException catch (error) {
-      onOutput?.call('[$pluginId/$sessionId] protocol error: $error');
+      _emit('protocol error: $error');
       metrics?.recordError('$error');
       if (!(_handshake?.isCompleted ?? true)) {
         _handshake!.completeError(error);
@@ -624,7 +620,7 @@ class PluginRunManager {
       final error = PluginProtocolException(
         'Business message before sdk.ready: $type',
       );
-      onOutput?.call('[$pluginId/$sessionId] protocol error: $error');
+      _emit('protocol error: $error');
       if (!(_handshake?.isCompleted ?? true)) {
         _handshake!.completeError(error);
       }
@@ -636,14 +632,14 @@ class PluginRunManager {
         payload['message']?.toString() ?? 'plugin error',
         traceback: payload['traceback']?.toString(),
       );
-      onOutput?.call(
-        '[$pluginId/$sessionId] reported error: '
-        '${payload['message']}\n${payload['traceback'] ?? ''}',
+      _emit(
+        'reported error: ${payload['message']}\n'
+        '${payload['traceback'] ?? ''}',
       );
       return;
     }
     if (type != SdkCommands.outputAppend) {
-      onOutput?.call('[$pluginId/$sessionId] <- $encodedMessage');
+      _traceFrame('<-', envelope, message.encodedBytes);
     }
     if (type == IdeCommands.responseError ||
         type == SdkCommands.responseError) {
@@ -654,7 +650,7 @@ class PluginRunManager {
         traceback: details,
       );
       if (details != null && details.isNotEmpty && details != 'null') {
-        onOutput?.call('[$pluginId/$sessionId] error details:\n$details');
+        _emit('error details:\n$details');
       }
     }
 
@@ -709,9 +705,7 @@ class PluginRunManager {
     // Check if this is a reply to a pending request
     final replyTo = _replyTo(envelope);
     if (replyTo != null && _cancelledRequests.remove(replyTo)) {
-      onOutput?.call(
-        '[$pluginId/$sessionId] ignored reply for cancelled request $replyTo',
-      );
+      _emit('ignored reply for cancelled request $replyTo');
       return;
     }
     if (replyTo != null && _pendingReplies.containsKey(replyTo)) {
@@ -719,9 +713,7 @@ class PluginRunManager {
       return;
     }
     if (replyTo != null) {
-      onOutput?.call(
-        '[$pluginId/$sessionId] ignored unknown or duplicate replyTo=$replyTo',
-      );
+      _emit('ignored unknown or duplicate replyTo=$replyTo');
       return;
     }
 
@@ -750,7 +742,7 @@ class PluginRunManager {
   }
 
   void _handleTransportError(Object error, [StackTrace? stackTrace]) {
-    onOutput?.call('[$pluginId] transport error: $error');
+    _emit('transport error: $error');
     if (!(_handshake?.isCompleted ?? true)) {
       _handshake!.completeError(error, stackTrace);
     }
@@ -763,19 +755,19 @@ class PluginRunManager {
         if (_transportState != PluginTransportState.ready) {
           _transportState = PluginTransportState.connecting;
         }
-        onOutput?.call('[$pluginId] transport connecting');
+        _emit('transport connecting');
         return;
       case PluginTransportState.ready:
         _transportState = PluginTransportState.ready;
-        onOutput?.call('[$pluginId] transport connected');
+        _emit('transport connected');
         return;
       case PluginTransportState.closing:
         _transportState = PluginTransportState.closing;
-        onOutput?.call('[$pluginId] transport closing');
+        _emit('transport closing');
         return;
       case PluginTransportState.closed:
         _transportState = PluginTransportState.closed;
-        onOutput?.call('[$pluginId] transport closed');
+        _emit('transport closed');
         if (!(_handshake?.isCompleted ?? true)) {
           _handshake!.completeError(
             const PluginProtocolException(
@@ -787,7 +779,7 @@ class PluginRunManager {
         return;
       case PluginTransportState.failed:
         _transportState = PluginTransportState.failed;
-        onOutput?.call('[$pluginId] transport failed');
+        _emit('transport failed');
         return;
     }
   }
@@ -818,17 +810,17 @@ class PluginRunManager {
       jsonDecode(message) as Map<String, dynamic>,
     );
     final outgoingMessage = jsonEncode(outgoing);
-    if (!_isRoutineAck(outgoingMessage)) {
-      onOutput?.call('[$pluginId/$sessionId] -> $outgoingMessage');
-    }
     final bytes = utf8.encode(outgoingMessage);
+    if (!_isRoutineAck(outgoing)) {
+      _traceFrame('->', outgoing, bytes.length);
+    }
     metrics?.recordSent(bytes.length);
-    unawaited(_sendTransportMessage(outgoingMessage));
+    unawaited(_sendTransportMessage(bytes));
   }
 
-  Future<void> _sendTransportMessage(String message) async {
+  Future<void> _sendTransportMessage(Uint8List bytes) async {
     try {
-      await transport.send(Uint8List.fromList(utf8.encode(message)));
+      await transport.send(bytes);
     } catch (error, stackTrace) {
       _handleTransportError(error, stackTrace);
     }
@@ -859,16 +851,92 @@ class PluginRunManager {
     return candidate.isEmpty ? _newId() : candidate;
   }
 
-  bool _isRoutineAck(String message) {
-    try {
-      final envelope = jsonDecode(message) as Map<String, dynamic>;
-      return envelope['type'] == SdkCommands.responseOk &&
-          envelope['payload'] is Map &&
-          (envelope['payload'] as Map)['data'] == null;
-    } catch (_) {
-      return false;
-    }
+  /// A bare `sdk.response.ok` carries nothing worth a log line: the plugin
+  /// already handled the call that produced it.
+  bool _isRoutineAck(Map<String, dynamic> envelope) {
+    if (envelope['type'] != SdkCommands.responseOk) return false;
+    final payload = envelope['payload'];
+    return payload is Map && payload['data'] == null;
   }
+
+  /// Single exit for everything this session says to the output panel.
+  ///
+  /// The panel already renders `[pluginId/sessionId]` from the metadata it is
+  /// handed, so messages no longer repeat it — the doubled
+  /// `[catppuccin-theme/5ac4…] [catppuccin-theme/5ac4…]` prefix was the first
+  /// thing that made a plugin's output hard to scan. [tag] is only for a
+  /// label the panel cannot know: which stream a plugin write came from.
+  void _emit(String message, {String? tag}) {
+    onOutput?.call(tag == null ? message : '[$tag] $message');
+  }
+
+  /// Frames that describe a repaint rather than a decision. One line each is
+  /// already too much for a plugin that patches its view every frame, so they
+  /// share a slow window while everything else is logged every time.
+  static const Set<String> _frameTypes = {
+    SdkCommands.viewPatch,
+    SdkCommands.viewSnapshot,
+    IdeCommands.viewAck,
+    IdeCommands.viewNack,
+  };
+
+  /// Frames every session exchanges in the same order with the same shape.
+  ///
+  /// Logging them told a reader nothing: five theme plugins starting produced
+  /// thirty identical handshake lines around the one line that mattered.
+  /// Failures are still visible — they arrive as `response.error`, a protocol
+  /// error, or the `ready` / `stopped` lines this class emits itself.
+  static const Set<String> _handshakeTypes = {
+    IdeCommands.initialize,
+    IdeCommands.initialized,
+    IdeCommands.lifecycleHook,
+    IdeCommands.responseOk,
+    IdeCommands.healthPing,
+    SdkCommands.initialize,
+    SdkCommands.ready,
+    SdkCommands.healthPong,
+  };
+
+  /// Records one message as a single line: direction, type, size, and the id
+  /// that ties a reply to its request.
+  ///
+  /// The envelope is deliberately not printed. A `sdk.view.patch` may legally
+  /// carry two megabytes of JSON, and echoing whole frames made the output
+  /// panel unreadable: the plugin's own `print` output was pushed out by
+  /// escaped JSON within a few hundred messages. `PYRITE_SDK_TRACE=true`
+  /// restores the full frame, still clipped, for protocol-level debugging.
+  void _traceFrame(String arrow, Map<String, dynamic> envelope, int bytes) {
+    if (!AppLog.debugEnabled) return;
+    final type = envelope['type']?.toString() ?? '';
+    if (type.isEmpty) return;
+    // An explicit trace wants the handshake too: that is exactly the part a
+    // protocol-level investigation needs to see.
+    if (!AppLog.tracePayloads) {
+      if (_handshakeTypes.contains(type)) return;
+      if (_frameTypes.contains(type) &&
+          !AppLog.atMostEvery('sdk-frame:$pluginId:$type', _frameWindow)) {
+        return;
+      }
+    }
+    final requestId = (envelope['requestId'] ?? '').toString();
+    final replyTo = (envelope['replyTo'] ?? '').toString();
+    final buffer = StringBuffer()
+      ..write('$arrow $type ${AppLog.humanBytes(bytes)}');
+    if (requestId.isNotEmpty) buffer.write(' req=${_shortId(requestId)}');
+    if (replyTo.isNotEmpty) buffer.write(' reply=${_shortId(replyTo)}');
+    if (AppLog.tracePayloads) {
+      buffer
+        ..write('\n')
+        ..write(AppLog.clipTrace(jsonEncode(envelope)));
+    }
+    _emit(buffer.toString());
+  }
+
+  static const Duration _frameWindow = Duration(seconds: 1);
+
+  /// Full request ids are 32 hex chars; the first eight identify the pair and
+  /// keep the line scannable.
+  String _shortId(String id) => id.length <= 8 ? id : id.substring(0, 8);
 
   void _handleOutputAppend(
     Map<String, dynamic> envelope,
@@ -888,12 +956,15 @@ class PluginRunManager {
             );
       if (limited.length != text.length) {
         metrics?.recordDrop();
-        onOutput?.call(
-          '[$sourcePluginId][$stream] log batch truncated at '
-          '${PluginPerfBudget.maxLogBatchBytes} bytes',
+        _emit(
+          'log batch truncated at ${PluginPerfBudget.maxLogBatchBytes} bytes',
+          tag: stream,
         );
       }
-      onOutput?.call('[$sourcePluginId][$stream] $limited');
+      _emit(
+        limited,
+        tag: sourcePluginId == pluginId ? stream : '$sourcePluginId/$stream',
+      );
     }
   }
 
@@ -1079,7 +1150,7 @@ class PluginRunManager {
   Future<void> stop() async {
     _stopped = true;
     metrics?.markStopping();
-    onOutput?.call('[$pluginId] stopped');
+    _emit('stopped');
     _failAllPendingReplies('PluginRunManager stopped');
     await transport.close();
     await _messageSubscription.cancel();

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 
@@ -24,10 +25,24 @@ class DeviceStatusNotifier extends StateNotifier<AsyncValue<DeviceStatus?>> {
     if (_busy) return;
     _busy = true;
     state = const AsyncValue.loading();
+    final cycle = Stopwatch()..start();
     try {
       final result = await _queryDeviceStatus();
       state = AsyncValue.data(result);
+      AppLog.d(
+        'device',
+        'status refresh ok in ${cycle.elapsedMilliseconds}ms '
+            'ram=${result.ramUsed}/${result.ramTotal} '
+            'flash=${result.flashUsed}/${result.flashTotal}',
+      );
     } catch (e, st) {
+      // The panel renders this as an error, but a UI that is not on screen
+      // (or a user reporting "the panel is empty") leaves no other trace.
+      AppLog.w(
+        'device',
+        'status refresh failed after ${cycle.elapsedMilliseconds}ms',
+        error: e,
+      );
       state = AsyncValue.error(e, st);
     } finally {
       _busy = false;
