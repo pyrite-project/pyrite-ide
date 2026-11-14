@@ -839,6 +839,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     return null;
   }
 
+  /// The open document tab backed by [filePath], in any group.
+  ///
+  /// Transfers compare one specific document with the device, and the tab
+  /// holding it is not necessarily the one the user has focused.
+  TabData? findFileTab(String filePath) =>
+      _findOpenTab((value) => value.filePath == filePath);
+
   /// Shows [tab] in whichever group holds it, and focuses that group.
   ///
   /// Returns false when no editor group holds [tab]. The group has to take
