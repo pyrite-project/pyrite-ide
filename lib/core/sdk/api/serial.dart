@@ -256,13 +256,20 @@ class SdkSerial {
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) async {
+    final payload = _payload(envelope);
+    final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 1000;
+    final maxBytes = (payload['max_bytes'] as num?)?.toInt();
+    // Zero is meaningful (read nothing); a negative count has no meaning and
+    // would surface as a RangeError from `sublist` only after the read timed
+    // out, leaving the caller without an answer.
+    if (maxBytes != null && maxBytes < 0) {
+      respondError(envelope, respond, 'max_bytes must not be negative');
+      return;
+    }
     if (!_isConnected) {
       respondError(envelope, respond, '设备未连接');
       return;
     }
-    final payload = _payload(envelope);
-    final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 1000;
-    final maxBytes = (payload['max_bytes'] as num?)?.toInt();
     final buffer = <int>[];
     final completer = Completer<void>();
 

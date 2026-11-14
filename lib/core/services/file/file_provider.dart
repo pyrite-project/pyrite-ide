@@ -58,6 +58,14 @@ class FileNotifier extends StateNotifier<Directory?> {
   final Ref ref;
   FileNotifier(this.ref) : super(null);
 
+  /// Reads a local file's text for the transfer paths.
+  ///
+  /// Indirection rather than a direct [local.getFileContent] call so a widget
+  /// test can drive an upload without waiting on real file I/O, which the
+  /// fake-async zone widget tests run in cannot complete on its own.
+  @visibleForTesting
+  Future<String> Function(String path) localTextReader = local.getFileContent;
+
   void setDirectory(Directory dir) {
     state = dir;
   }
@@ -88,62 +96,104 @@ class FileNotifier extends StateNotifier<Directory?> {
     return datas;
   }
 
-  Future<void> saveCurrentFile() async {
+  Future<bool> saveCurrentFile() async {
     // Follows the focused group so a split editor saves the tab the user is
     // looking at rather than whichever group happens to be the primary one.
     final TabData? nowTab = ref
         .read(activeEditorControllerProvider)
         .selectedTab;
-    await saveTab(nowTab);
+    return saveTab(nowTab);
   }
 
   /// Persists the given tab's editor content to its backing store.
   ///
   /// Unlike [saveCurrentFile] this does not depend on which tab is currently
   /// selected, so closing a background dirty tab can save exactly that tab.
-  Future<void> saveTab(TabData? tab) async {
+  ///
+  /// Returns true when the content reached the backing store (or there was
+  /// nothing to persist), and false when the save was abandoned: the tab is
+  /// read-only, or the user cancelled the prompt about an external overwrite.
+  /// Callers that close the tab or report success must honour it.
+  Future<bool> saveTab(TabData? tab) async {
     final value = tab?.value;
-    if (value is TabDataValue && value.type == "file") {
-      if (value.isBoardFile == true && value.boardFilePath != null) {
-        await ref
-            .read(boardProvider)
-            .ops
-            .writeFile(value.boardFilePath!, value.editorController!.text);
-        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
-      } else {
-        // Writing here would silently discard whatever another program put in
-        // the file while it was open. Ask first, and honour a cancel by not
-        // writing at all.
-        final context = appContext;
-        if (context != null &&
-            context.mounted &&
-            !await ref
-                .read(tabbedViewControllerProvider.notifier)
-                .confirmSaveOverwritesExternalChange(context, tab!)) {
-          return;
-        }
-        final file = value.file!;
-        final text = value.editorController!.text;
-        // Write the encoding the file was opened with. Dart's default UTF-8
-        // writer would transcode a GBK buffer and drop a UTF-16 byte order
-        // mark, turning a save into silent data corruption.
-        if (value.encoding == null && !value.byteOrderMark) {
-          // Flush like the encoded branch below: whether a save survives a
-          // crash must not depend on which character set the file happens to
-          // use.
-          await file.writeAsString(text, flush: true);
-        } else {
-          await file.writeAsBytes(
-            encodeFileText(
-              text,
-              encoding: value.encoding,
-              byteOrderMark: value.byteOrderMark,
-            ),
-            flush: true,
-          );
-        }
-      }
-      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!);
+    if (value is! TabDataValue || value.type != "file") return true;
+    // Read-only tabs hold a display-only buffer -- oversized content, binary
+    // bytes, or a decode the editor cannot re-encode. Writing it back would
+    // replace the file with something it never contained.
+    if (value.editorController?.readOnly == true) return false;
+    final controller = value.editorController!;
+    if (value.isBoardFile == true && value.boardFilePath != null) {
+      // Serial writes can take seconds, so the text has to be snapshotted
+      // before handing it to the port: anything typed while the transfer runs
+      // is not part of what was written.
+      final text = controller.text;
+      await ref.read(boardProvider).ops.writeFile(value.boardFilePath!, text);
+      ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!, text);
+      return true;
+    }
+    // Writing here would silently discard whatever another program put in the
+    // file while it was open. Ask first, and honour a cancel by not writing at
+    // all -- including not claiming the save succeeded.
+    final context = appContext;
+    if (context != null &&
+        context.mounted &&
+        !await ref
+            .read(tabbedViewControllerProvider.notifier)
+            .confirmSaveOverwritesExternalChange(context, tab!)) {
+      return false;
+    }
+    // The reconcile may have replaced the buffer (the user picked "reload");
+    // whatever it holds now is what this save persists.
+    final text = controller.text;
+    await writeTabText(value, text);
+    ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!, text);
+    return true;
+  }
+
+  /// Saves the tab behind [filePath] and reports whether a transfer may go on.
+  ///
+  /// A transfer dialog compares one specific document with the device, but the
+  /// focused tab can be a different one -- Ctrl+U acts on the file tree, not on
+  /// the editor. Resolving the tab by path keeps the bytes a transfer moves in
+  /// step with what the dialog showed, and the save path supplies the file's
+  /// own encoding, byte order mark and external-change confirmation.
+  ///
+  /// Returns true when the file is not open or the save completed, and false
+  /// when it was refused, so callers abort instead of moving stale bytes.
+  Future<bool> saveTabForPath(String filePath) async {
+    final tab = ref
+        .read(tabbedViewControllerProvider.notifier)
+        .findFileTab(filePath);
+    if (tab == null) return true;
+    return saveTab(tab);
+  }
+
+  /// Writes [text] to the local file behind [value], in the encoding the file
+  /// was opened with.
+  ///
+  /// Separate from [saveTab] so a test can pause the write and check what a
+  /// keystroke during an in-flight save does to the tab's saved state.
+  @visibleForTesting
+  Future<void> writeTabText(TabDataValue value, String text) async {
+    final file = value.file!;
+    // Write the encoding the file was opened with. Dart's default UTF-8
+    // writer would transcode a GBK buffer and drop a UTF-16 byte order
+    // mark, turning a save into silent data corruption.
+    if (value.encoding == null && !value.byteOrderMark) {
+      // Flush like the encoded branch below: whether a save survives a
+      // crash must not depend on which character set the file happens to
+      // use.
+      await file.writeAsString(text, flush: true);
+    } else {
+      await file.writeAsBytes(
+        encodeFileText(
+          text,
+          encoding: value.encoding,
+          byteOrderMark: value.byteOrderMark,
+        ),
+        flush: true,
+      );
     }
   }
 
@@ -153,8 +203,11 @@ class FileNotifier extends StateNotifier<Directory?> {
         .selectedTab;
     final value = nowTab?.value;
     if (value is TabDataValue && value.type == "file") {
+      // The text handed to the dialog is the text that gets written; keep the
+      // same value as the saved baseline rather than re-reading the buffer.
+      final text = value.editorController!.text;
       final savedPath = await utils.sysSaveAs(
-        value.editorController!.text,
+        text,
         encoding: value.encoding,
         byteOrderMark: value.byteOrderMark,
       );
@@ -163,7 +216,9 @@ class FileNotifier extends StateNotifier<Directory?> {
       // editing. "Save as" to a new path leaves the original file untouched,
       // so marking it clean here would drop the user's edits on close.
       if (canonicalLocalPath(savedPath) == value.filePath) {
-        ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .afterFileSave(nowTab!, text);
       } else {
         ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
         ref
@@ -980,6 +1035,14 @@ class FileNotifier extends StateNotifier<Directory?> {
         } else {
           await File(sourcePath).rename(targetPath);
         }
+        // The bytes moved, so every tab under the old path -- a file's own tab
+        // or the tabs of a folder's descendants -- now names a path that no
+        // longer exists. Rebase them before the next node so a partial batch
+        // still leaves the completed moves consistent, and a save cannot
+        // recreate the old location.
+        ref
+            .read(tabbedViewControllerProvider.notifier)
+            .renameLocalOpenPath(sourcePath, targetPath);
         moved++;
       }
 
@@ -1169,7 +1232,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     late final String content;
     late final String originContent;
     try {
-      content = await local.getFileContent(sourcePath);
+      content = await localTextReader(sourcePath);
       originContent = await ref
           .read(boardProvider)
           .ops
@@ -1264,7 +1327,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
       String content;
       try {
-        content = await local.getFileContent(sourcePath);
+        content = await localTextReader(sourcePath);
       } on FileSystemException {
         await _uploadLocalFileBytes(sourcePath, targetPath);
         if (context.mounted) {
@@ -1484,7 +1547,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       final String sourcePath = selected?.id ?? selectedTab!.value.filePath;
       String content;
       try {
-        content = await local.getFileContent(sourcePath);
+        content = await localTextReader(sourcePath);
       } on FileSystemException {
         if (!context.mounted) return;
         await _uploadSelectedLocalItem(context, selectedTab: selectedTab);
@@ -1504,7 +1567,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         if (!context.mounted) return;
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             icon: const Icon(Icons.file_upload_outlined),
             title: const UseText(I18nKey.dialogLocalContentMismatchTitle),
             content: Text(
@@ -1515,14 +1578,25 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
             actions: [
               TextButton(
-                onPressed: () => context.pop(false),
+                onPressed: () => Navigator.pop(dialogContext, false),
                 child: const UseText(I18nKey.dialogCancelUpload),
               ),
               TextButton(
-                onPressed: () {
-                  saveCurrentFile();
-                  _uploadSelectedLocalItem(context, selectedTab: selectedTab);
-                  context.pop();
+                onPressed: () async {
+                  Navigator.pop(dialogContext, false);
+                  // The dialog compared [sourcePath]'s buffer, so that is the
+                  // tab that has to be saved. Waiting for the write is what
+                  // makes the upload below read the new bytes.
+                  if (!await ref
+                      .read(fileProvider.notifier)
+                      .saveTabForPath(sourcePath)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await _uploadSelectedLocalItem(
+                    context,
+                    selectedTab: selectedTab,
+                  );
                 },
                 child: const UseText(I18nKey.dialogEditorContent),
               ),
@@ -1531,15 +1605,20 @@ class FileNotifier extends StateNotifier<Directory?> {
                   backgroundColor: Theme.of(context).colorScheme.error,
                   foregroundColor: Theme.of(context).colorScheme.onError,
                 ),
-                onPressed: () {
-                  ref
-                          .read(editorControllerMapProvider)[selected?.id ??
-                              selectedTab?.value.filePath]
-                          ?.text =
+                onPressed: () async {
+                  ref.read(editorControllerMapProvider)[sourcePath]?.text =
                       content;
-                  saveCurrentFile();
-                  _uploadSelectedLocalItem(context, selectedTab: selectedTab);
-                  context.pop();
+                  Navigator.pop(dialogContext, false);
+                  if (!await ref
+                      .read(fileProvider.notifier)
+                      .saveTabForPath(sourcePath)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await _uploadSelectedLocalItem(
+                    context,
+                    selectedTab: selectedTab,
+                  );
                 },
                 child: const UseText(I18nKey.dialogActualContent),
               ),

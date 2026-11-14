@@ -47,6 +47,77 @@ void main() {
     });
   });
 
+  group('duplicate ids', () {
+    test('reset rejects duplicate ids instead of indexing them twice', () {
+      final index = TreeIndex();
+      expect(
+        () => index.reset([_node('a'), _node('a'), _node('b')]),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message.toString(),
+            'message',
+            allOf(contains('a'), contains('unique')),
+          ),
+        ),
+      );
+      // A rejected snapshot must not leave a half-built index behind.
+      expect(index.visibleNodeIds, isEmpty);
+      expect(index.nodeCount, 0);
+      expect(index.childrenOf(null), isEmpty);
+    });
+
+    test('duplicates under different parents are rejected too', () {
+      final index = TreeIndex();
+      expect(
+        () => index.reset([
+          _node('a', parentId: 'p'),
+          _node('a', parentId: 'q'),
+        ]),
+        throwsArgumentError,
+      );
+      expect(index.visibleNodeIds, isEmpty);
+    });
+
+    test('remove leaves no ghost row after a rejected snapshot', () {
+      final index = TreeIndex()..reset(_sample(), expanded: {'a'});
+      final before = List<String>.from(index.visibleNodeIds);
+
+      expect(
+        () => index.reset([_node('a'), _node('a'), _node('b')]),
+        throwsArgumentError,
+      );
+
+      // The previous tree is still intact and addressable.
+      expect(index.visibleNodeIds, before);
+      index.remove('a');
+      expect(index.visibleNodeIds, ['b']);
+      expect(index.visibleIndexOf('a'), isNull);
+      expect(index.node('a'), isNull);
+      expect(index.childrenOf(null), ['b']);
+    });
+
+    test('expand and collapse keep row offsets aligned after a rejection', () {
+      final index = TreeIndex()..reset(_sample());
+      expect(
+        () => index.reset([_node('x'), _node('x')]),
+        throwsArgumentError,
+      );
+
+      index.expand('a');
+      index.expand('a1');
+      expect(index.visibleNodeIds, ['a', 'a1', 'a1x', 'a2', 'b']);
+      for (var i = 0; i < index.visibleNodeIds.length; i++) {
+        expect(index.visibleIndexOf(index.visibleNodeIds[i]), i);
+      }
+
+      index.collapse('a');
+      expect(index.visibleNodeIds, ['a', 'b']);
+      for (var i = 0; i < index.visibleNodeIds.length; i++) {
+        expect(index.visibleIndexOf(index.visibleNodeIds[i]), i);
+      }
+    });
+  });
+
   group('expand and collapse splice only the affected span', () {
     test('expand inserts the visible descendants after the row', () {
       final index = TreeIndex()..reset(_sample());

@@ -44,6 +44,41 @@ void main() {
     expect(registry.byId('id')!.languageId, 'python');
   });
 
+  test('re-registering after a rename updates the path and keeps the id', () {
+    final registry = DocumentRegistry(idFactory: () => 'id');
+    final handle = Object();
+    final first = registry.register(
+      handle: handle,
+      filePath: '/proj/a.py',
+      languageId: 'python',
+    );
+
+    final moved = registry.register(
+      handle: handle,
+      filePath: '/proj/lib/a.py',
+      languageId: 'python',
+    );
+
+    expect(moved.documentId, first.documentId);
+    expect(moved.filePath, '/proj/lib/a.py');
+    expect(registry.byId('id')!.filePath, '/proj/lib/a.py');
+  });
+
+  test('a rename that changes the language clears the stale language', () {
+    final registry = DocumentRegistry(idFactory: () => 'id');
+    final handle = Object();
+    registry.register(
+      handle: handle,
+      filePath: '/proj/a.py',
+      languageId: 'python',
+    );
+
+    final renamed = registry.register(handle: handle, filePath: '/proj/a.txt');
+
+    expect(renamed.filePath, '/proj/a.txt');
+    expect(renamed.languageId, isNull);
+  });
+
   test('byId resolves and clears on unregister', () {
     final registry = DocumentRegistry(idFactory: () => 'id');
     final handle = Object();

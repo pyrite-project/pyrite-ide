@@ -15,6 +15,7 @@ class PluginVirtualList extends StatefulWidget {
     required this.items,
     required this.itemCount,
     this.itemExtent = 22,
+    this.dataRevision,
     this.selectedId,
     this.emptyLabel,
     this.onSelect,
@@ -27,6 +28,9 @@ class PluginVirtualList extends StatefulWidget {
   final Map<int, Map<String, dynamic>> items;
   final int itemCount;
   final double itemExtent;
+
+  /// Revision of the plugin data this list was built from.
+  final int? dataRevision;
   final String? selectedId;
   final String? emptyLabel;
 
@@ -137,6 +141,12 @@ class PluginVirtualListState extends State<PluginVirtualList> {
   @override
   void didUpdateWidget(PluginVirtualList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.dataRevision != oldWidget.dataRevision) {
+      // A new plugin snapshot may have replaced the loaded window. Ranges
+      // requested against the previous one are not guaranteed to arrive, so
+      // rows still missing now must be asked for again.
+      _tracker.reset();
+    }
     if (widget.selectedId != oldWidget.selectedId) {
       _selectedId = widget.selectedId;
     }

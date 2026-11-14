@@ -295,7 +295,9 @@ class SdkBoard {
     final filePath = payload['path']?.toString();
 
     if (filePath != null) {
-      final correspondingFilePath = getLocalFile(filePath);
+      final correspondingFilePath = await ref
+          .read(boardProvider)
+          .correspondingFilePath(filePath);
       respondOk(envelope, respond, data: correspondingFilePath);
     } else {
       respondOk(envelope, respond, data: null);

@@ -154,10 +154,41 @@ class ReplInputController extends ChangeNotifier {
     );
   }
 
+  /// Applies [item] to the buffer, but only while the buffer still matches the
+  /// token the item was requested for.
+  ///
+  /// The item's range belongs to the text as it was when completion was
+  /// requested. The popup survives further typing and caret movement, so by
+  /// the time the item is accepted that range may no longer cover the token at
+  /// the caret. Splicing at the stale offsets would leave everything typed
+  /// since the request in place — "pri", then "n", then "print" becomes
+  /// "printn" — and a caret moved elsewhere would have its surroundings
+  /// overwritten. The token under the caret therefore replaces the carried
+  /// range, but only while it still starts where the request did, covers at
+  /// least the requested token, and is still a prefix of the chosen item.
+  /// Otherwise the request no longer describes what is being typed, and the
+  /// completion is dropped rather than guessed.
   void applyCompletion(ReplCompletionItem item) {
-    final start = item.replaceStart.clamp(0, text.text.length);
-    final end = item.replaceEnd.clamp(start, text.text.length);
-    final nextText = text.text.replaceRange(start, end, item.insertText);
+    final source = text.text;
+    final selection = text.selection;
+    final cursor = selection.extentOffset < 0
+        ? source.length
+        : selection.extentOffset.clamp(0, source.length);
+    final requestedStart = item.replaceStart.clamp(0, source.length);
+    final requestedEnd = item.replaceEnd.clamp(requestedStart, source.length);
+    final current = ReplCompletionContext.fromText(source, cursor);
+    if (current.replaceStart != requestedStart ||
+        current.replaceEnd - current.replaceStart <
+            requestedEnd - requestedStart ||
+        !item.label.startsWith(current.token)) {
+      return;
+    }
+    final start = current.replaceStart;
+    final nextText = source.replaceRange(
+      start,
+      current.replaceEnd,
+      item.insertText,
+    );
     // A snippet carries the argument the user is meant to type over; the
     // selection is what makes it a template rather than finished code. Anything
     // else leaves the caret after the inserted text.

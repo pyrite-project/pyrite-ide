@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -320,9 +319,11 @@ class PythonRuntimeHost {
           await session.tempDirectory.delete(recursive: true);
         }
       } catch (error) {
-        debugPrint(
+        AppLog.w(
+          'plugin',
           '[runtime] restart cleanup of '
-          '${session.pluginId} temp dir failed: $error',
+              '${session.pluginId} temp dir failed',
+          error: error,
         );
       }
     }
@@ -579,7 +580,7 @@ class PythonRuntimeHost {
         AppLog.w(
           'plugin',
           'dispose hook failed plugin=${session.pluginId} '
-          'session=${session.sessionId}',
+              'session=${session.sessionId}',
           error: error,
         );
         AppLog.d('plugin', 'dispose stack', error: stackTrace);
@@ -611,7 +612,7 @@ class PythonRuntimeHost {
       AppLog.w(
         'plugin',
         'graceful stop failed, closing transport plugin=${session.pluginId} '
-        'session=${session.sessionId}',
+            'session=${session.sessionId}',
         error: error,
       );
       AppLog.d('plugin', 'stop stack', error: stackTrace);
@@ -623,9 +624,10 @@ class PythonRuntimeHost {
       try {
         await session._onStopped();
       } catch (error) {
-        debugPrint(
-          '[runtime] onStopped callback for '
-          '${session.pluginId} failed: $error',
+        AppLog.w(
+          'plugin',
+          '[runtime] onStopped callback for ${session.pluginId} failed',
+          error: error,
         );
       }
     }
@@ -635,9 +637,10 @@ class PythonRuntimeHost {
           await session.tempDirectory.delete(recursive: true);
         }
       } catch (error) {
-        debugPrint(
-          '[runtime] temp dir cleanup for '
-          '${session.pluginId} failed: $error',
+        AppLog.w(
+          'plugin',
+          '[runtime] temp dir cleanup for ${session.pluginId} failed',
+          error: error,
         );
       }
       session._state = finalState;

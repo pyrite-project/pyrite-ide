@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
@@ -10,23 +9,16 @@ import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/app/app.dart';
 import 'package:pyrite_ide/core/flutter/error_log_dedupe.dart';
 import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/models/pane_edge.dart';
-import 'package:pyrite_ide/core/models/settings.dart';
-import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
 import 'package:pyrite_ide/core/sdk/environment_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
@@ -34,11 +26,7 @@ import 'package:pyrite_ide/core/services/periodic_task/periodic_task.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
-import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
-import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/core/services/window_placement.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
@@ -166,152 +154,14 @@ void _installIdeOutputLogger() {
 }
 
 void _applyData(PersistedData data) {
-  switch (data.themeMode) {
-    case 'light':
-      container.read(themeMode.notifier).state = ThemeMode.light;
-    case 'dark':
-      container.read(themeMode.notifier).state = ThemeMode.dark;
-    default:
-      container.read(themeMode.notifier).state = ThemeMode.system;
-  }
-
-  if (data.themeColorValue != null) {
-    container.read(themeColor.notifier).state = Color(data.themeColorValue!);
-  }
-  container.read(themeStyle.notifier).state = ThemeStyle.fromValue(
-    data.themeStyle,
-  );
-  container.read(editorThemeKey.notifier).state = data.editorThemeKey;
-  container.read(activePluginThemeId.notifier).state = data.activePluginThemeId;
-  container.read(welcomeCompletedProvider.notifier).state =
-      data.welcomeCompleted;
-  container.read(activeLocaleProvider.notifier).state = data.activeLocale;
-  container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
-  container.read(windowPlacementProvider.notifier).state = data.windowPlacement;
-  container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
-  container.read(editorFontSize.notifier).state = data.editorFontSize;
-  container.read(editorWordWrap.notifier).state = data.editorWordWrap;
-  container.read(editorLineNumber.notifier).state = data.editorLineNumber;
-  container.read(editorCodeFolding.notifier).state = data.editorCodeFolding;
-  container.read(editorGuideLines.notifier).state = data.editorGuideLines;
-  container.read(editorLocalSuggestions.notifier).state =
-      data.editorLocalSuggestions;
-  container.read(editorKeyboardSuggestions.notifier).state =
-      data.editorKeyboardSuggestions;
-  container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
-  container.read(editorTabSize.notifier).state = data.editorTabSize;
-  container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
-  container.read(editorSmoothCursor.notifier).state = data.editorSmoothCursor;
-  container.read(editorFormatOnSave.notifier).state = data.editorFormatOnSave;
-  container.read(useLsp.notifier).state = data.useLsp;
-  container.read(lspType.notifier).state =
-      LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
-  container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
-  container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
-  container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
-  container.read(lspVirtualEnvironment.notifier).state =
-      data.lspVirtualEnvironment;
-  container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
-      BasedPyrightTypeCheckingMode.fromJsonName(
-        data.lspBasedPyrightTypeCheckingMode,
-      ) ??
-      BasedPyrightTypeCheckingMode.standard;
-  container.read(disableWarning.notifier).state = data.disableWarning;
-  container.read(disableError.notifier).state = data.disableError;
-  container.read(lspSemanticHighlighting.notifier).state =
-      data.lspSemanticHighlighting;
-  container.read(lspCodeCompletion.notifier).state = data.lspCodeCompletion;
-  container.read(lspHoverInfo.notifier).state = data.lspHoverInfo;
-  container.read(lspCodeAction.notifier).state = data.lspCodeAction;
-  container.read(lspSignatureHelp.notifier).state = data.lspSignatureHelp;
-  container.read(lspDocumentColor.notifier).state = data.lspDocumentColor;
-  container.read(lspDocumentHighlight.notifier).state =
-      data.lspDocumentHighlight;
-  container.read(lspCodeFolding.notifier).state = data.lspCodeFolding;
-  container.read(lspShowInlayHints.notifier).state = data.lspShowInlayHints;
-  container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
-  container.read(lspRename.notifier).state = data.lspRename;
-  container.read(lspAlwaysStart.notifier).state = data.lspAlwaysStart;
-  container.read(desktopSelectedIndex.notifier).state =
-      data.desktopSelectedIndex;
-  container.read(mobileSelectedIndex.notifier).state = data.mobileSelectedIndex;
-  container.read(tabletSelectedIndex.notifier).state = data.tabletSelectedIndex;
-  container.read(functionPageShow.notifier).state = data.functionPageShow;
-  container.read(consolePageShow.notifier).state = data.consolePageShow;
-  container.read(consoleDockSideProvider.notifier).state =
-      PaneEdge.values.asNameMap()[data.consoleDockSide] ?? PaneEdge.bottom;
-  container.read(enableSignalDetection.notifier).state =
-      data.enableSignalDetection;
-  container.read(ensureBoardFilesystemOnConnect.notifier).state =
-      data.ensureBoardFilesystemOnConnect;
-  container.read(deviceRunChdirToScriptDir.notifier).state =
-      data.deviceRunChdirToScriptDir;
-  container.read(serialDefaultBaudRate.notifier).state =
-      data.serialDefaultBaudRate;
-  container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
+  persistenceManager.applyTo(container, data);
   _lastActivePortPath = data.serialActivePortPath;
-  container.read(replModeProvider.notifier).state =
-      ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
-  container.read(fileTransferModeProvider.notifier).state =
-      FileTransferMode.values.asNameMap()[data.fileTransferMode] ??
-      FileTransferMode.chunked;
-  container.read(hardwareResetStrategyProvider.notifier).state =
-      HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
-      HardwareResetStrategy.disabled;
-  container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
-  container.read(terminalFontSize.notifier).state = data.terminalFontSize;
-  container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
-  container.read(terminalLigatures.notifier).state = data.terminalLigatures;
-  container.read(terminalAppearance.notifier).state =
-      TerminalAppearance.values.asNameMap()[data.terminalAppearance] ??
-      TerminalAppearance.dark;
-  container.read(terminalMinimumContrast.notifier).state =
-      data.terminalMinimumContrast;
-  container.read(terminalCustomForeground.notifier).state =
-      data.terminalCustomForeground;
-  container.read(terminalCustomBackground.notifier).state =
-      data.terminalCustomBackground;
-  container
-      .read(terminalCustomPalette.notifier)
-      .state = data.terminalCustomPalette.length == 16
-      ? data.terminalCustomPalette
-      : kDefaultTerminalCustomPalette;
-  container.read(useMaterialContextMenu.notifier).state =
-      data.useMaterialContextMenu;
-  container
-      .read(serialProvider.notifier)
-      .setBaudRate(data.serialDefaultBaudRate);
-  container
-      .read(serialProvider.notifier)
-      .setAutoReconnect(data.serialAutoReconnect);
   // Reconnect last session's port only when the user asked for automatic
   // reconnection; claiming a port uninvited would also fight any other tool
   // the user has open on it.
   if (data.serialAutoReconnect && _lastActivePortPath.isNotEmpty) {
     unawaited(_resumeLastSerialPort());
   }
-  container.read(uploadConfirmStyleProvider.notifier).state =
-      data.uploadConfirmStyle;
-  container.read(fileSortModeProvider.notifier).state =
-      FileSortMode.fromJsonName(data.fileSortMode);
-  container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
-  container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
-  container.read(webReplHost.notifier).state = data.webReplHost;
-  container.read(webReplPort.notifier).state = data.webReplPort;
-  container.read(webReplPassword.notifier).state = data.webReplPassword;
-  container.read(microPythonStubsEnabled.notifier).state =
-      data.microPythonStubsEnabled;
-  container.read(microPythonStubsAutoDetectLayers.notifier).state =
-      data.microPythonStubsAutoDetectLayers;
-  container.read(microPythonStubsLayers.notifier).state =
-      data.microPythonStubsLayers;
-  container.read(microPythonStubsExtraPaths.notifier).state =
-      data.microPythonStubsExtraPaths;
-  container.read(dataContributionsProvider.notifier).state =
-      data.dataContributions;
-  container
-      .read(dataRegistryProvider)
-      .restoreContributions(data.dataContributions);
 }
 
 // Starts dirty so the first periodic tick persists the freshly restored
@@ -353,7 +203,7 @@ void _startAutoSave() {
   container
       .read(pluginManagerProvider.notifier)
       .setOnChanged(_triggerPluginSave);
-  for (final provider in _persistedSettingsProviders) {
+  for (final provider in persistedSettingProviders) {
     _settingsSubscriptions.add(
       container.listen<Object?>(provider, (_, _) => _triggerSave()),
     );
@@ -397,79 +247,6 @@ void _gatherConsoleOnMobileLayout() {
 
 /// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
 final List<ProviderSubscription<Object?>> _settingsSubscriptions = [];
-
-/// The settings providers whose values reach `settings.json`.
-///
-/// Dirtying a tab was the only thing that used to mark the persisted state
-/// stale, so a value changed on a settings page was written out only if some
-/// file happened to be edited in the same session. Subscribing to the settings
-/// themselves makes a setting change enough on its own. Keep this list in step
-/// with the providers read by `PersistenceManager.saveFromContainer`.
-final List<StateProvider<Object?>> _persistedSettingsProviders = [
-  editorTextFontProvider,
-  editorFontSize,
-  editorWordWrap,
-  editorLineNumber,
-  editorCodeFolding,
-  editorGuideLines,
-  editorLocalSuggestions,
-  editorKeyboardSuggestions,
-  editorUseSpaceAsTab,
-  editorTabSize,
-  editorGutterDivider,
-  editorSmoothCursor,
-  editorMinimap,
-  editorFormatOnSave,
-  useLsp,
-  lspType,
-  lspWebSocketPath,
-  lspStdioExecutable,
-  lspStdioArgs,
-  lspVirtualEnvironment,
-  lspBasedPyrightTypeCheckingMode,
-  disableWarning,
-  disableError,
-  lspSemanticHighlighting,
-  lspCodeCompletion,
-  lspHoverInfo,
-  lspCodeAction,
-  lspSignatureHelp,
-  lspDocumentColor,
-  lspDocumentHighlight,
-  lspCodeFolding,
-  lspShowInlayHints,
-  lspGoToDefinition,
-  lspRename,
-  lspAlwaysStart,
-  chineseToUnicodeConversion,
-  enableSignalDetection,
-  ensureBoardFilesystemOnConnect,
-  deviceRunChdirToScriptDir,
-  serialDefaultBaudRate,
-  serialAutoReconnect,
-  terminalFontFamily,
-  terminalFontSize,
-  terminalLineHeight,
-  terminalLigatures,
-  terminalAppearance,
-  terminalMinimumContrast,
-  terminalCustomForeground,
-  terminalCustomBackground,
-  terminalCustomPalette,
-  useMaterialContextMenu,
-  uploadConfirmStyleProvider,
-  fileSortModeProvider,
-  confirmShortcutProvider,
-  cancelShortcutProvider,
-  webReplHost,
-  webReplPort,
-  webReplPassword,
-  microPythonStubsEnabled,
-  microPythonStubsAutoDetectLayers,
-  microPythonStubsLayers,
-  microPythonStubsExtraPaths,
-  windowPlacementProvider,
-];
 
 Future<void> _startRuntimeAndPlugins() async {
   final runtimeHost = container.read(pythonRuntimeHostProvider);

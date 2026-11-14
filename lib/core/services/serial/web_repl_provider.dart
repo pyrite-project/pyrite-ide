@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
@@ -40,6 +41,15 @@ Uri buildWebReplUri(String host, int defaultPort) {
   );
 }
 
+/// Creates the WebSocket wrapper for one WebREPL connection attempt.
+typedef WebReplSocketConnector = Future<WebReplSocket> Function(Uri uri);
+
+/// Connection factory used by [WebReplNotifier]. Tests replace it with a fake
+/// socket so a handshake can be held open.
+final webReplSocketConnectorProvider = Provider<WebReplSocketConnector>(
+  (ref) => WebReplSocket.connect,
+);
+
 class WebReplInfo {
   final WebReplState state;
   final String? errorMessage;
@@ -64,6 +74,15 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   String _password = '';
   bool _serialDisconnectInProgress = false;
 
+  /// Serializes connection attempts. It is set before the first await so a
+  /// second tap cannot start a competing handshake while the first is pending.
+  bool _connectInFlight = false;
+
+  /// Identifies the current connection attempt. [disconnect] and [dispose]
+  /// bump it so a handshake they superseded closes its own socket instead of
+  /// touching the active connection.
+  int _generation = 0;
+
   WebReplNotifier(this.ref) : super(const WebReplInfo()) {
     _serialSubscription = ref.listen<SerialProviderState>(serialProvider, (
       _,
@@ -76,6 +95,9 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   }
 
   bool get isConnected => state.state == WebReplState.connected;
+
+  @visibleForTesting
+  WebReplSocket? get activeChannel => _channel;
 
   bool get isActive =>
       state.state == WebReplState.waitingPassword || isConnected;
@@ -95,69 +117,101 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   }
 
   Future<void> connect() async {
-    if (_channel != null) await disconnect();
+    // Concurrent attempts are rejected rather than queued: the UI still shows
+    // the connect action until the state becomes waitingPassword, so a double
+    // tap must not open a second socket whose frames would be rendered twice.
+    if (_connectInFlight) return;
+    _connectInFlight = true;
+    final generation = ++_generation;
 
-    final host = ref.read(webReplHost);
-    final port = ref.read(webReplPort);
-    _password = ref.read(webReplPassword);
-
-    if (host.isEmpty) {
-      state = WebReplInfo(
-        state: WebReplState.error,
-        errorMessage: translate(ref, I18nKey.webReplEmptyHost),
-      );
-      return;
-    }
-
+    WebReplSocket? pending;
     try {
-      await _disableSerialTransport();
-      final uri = buildWebReplUri(host, port);
-      state = state.copyWith(state: WebReplState.waitingPassword);
-      final channel = await WebReplSocket.connect(uri);
-      if (state.state == WebReplState.disconnected) {
-        await channel.close();
-        return;
+      if (_channel != null) {
+        state = const WebReplInfo(state: WebReplState.disconnected);
+        _cleanup();
       }
-      _channel = channel;
-      if (!identical(_channel, channel) ||
-          state.state == WebReplState.disconnected) {
+
+      final host = ref.read(webReplHost);
+      final port = ref.read(webReplPort);
+      _password = ref.read(webReplPassword);
+
+      if (host.isEmpty) {
+        state = WebReplInfo(
+          state: WebReplState.error,
+          errorMessage: translate(ref, I18nKey.webReplEmptyHost),
+        );
         return;
       }
 
-      _subscription = channel.stream.listen(
-        _handleMessage,
-        onError: (error) {
-          state = WebReplInfo(
-            state: WebReplState.error,
-            errorMessage: translateWithReplacements(
-              ref,
-              I18nKey.webReplConnectFailed,
-              {'error': '$error'},
-            ),
-          );
-          _cleanup();
-        },
-        onDone: () {
-          if (state.state != WebReplState.disconnected) {
+      try {
+        await _disableSerialTransport();
+        if (generation != _generation) return;
+        final uri = buildWebReplUri(host, port);
+        state = state.copyWith(state: WebReplState.waitingPassword);
+        final channel = await ref.read(webReplSocketConnectorProvider)(uri);
+        pending = channel;
+        if (generation != _generation ||
+            state.state == WebReplState.disconnected) {
+          return;
+        }
+        _channel = channel;
+        pending = null;
+
+        _subscription = channel.stream.listen(
+          (data) {
+            if (!identical(_channel, channel)) return;
+            _handleMessage(data);
+          },
+          onError: (Object error) {
+            if (!identical(_channel, channel)) return;
             state = WebReplInfo(
               state: WebReplState.error,
-              errorMessage: translate(ref, I18nKey.webReplDisconnected),
+              errorMessage: translateWithReplacements(
+                ref,
+                I18nKey.webReplConnectFailed,
+                {'error': '$error'},
+              ),
             );
-          }
-          _cleanup();
-        },
-      );
-    } catch (e) {
-      if (state.state == WebReplState.disconnected) return;
-      state = WebReplInfo(
-        state: WebReplState.error,
-        errorMessage: translateWithReplacements(
-          ref,
-          I18nKey.webReplConnectFailed,
-          {'error': '$e'},
-        ),
-      );
-      _cleanup();
+            _cleanup();
+          },
+          onDone: () {
+            if (!identical(_channel, channel)) return;
+            if (state.state != WebReplState.disconnected) {
+              state = WebReplInfo(
+                state: WebReplState.error,
+                errorMessage: translate(ref, I18nKey.webReplDisconnected),
+              );
+            }
+            _cleanup();
+          },
+        );
+      } catch (e) {
+        if (generation != _generation) return;
+        state = WebReplInfo(
+          state: WebReplState.error,
+          errorMessage: translateWithReplacements(
+            ref,
+            I18nKey.webReplConnectFailed,
+            {'error': '$e'},
+          ),
+        );
+        _cleanup();
+      }
+    } finally {
+      // A socket that was created but never adopted may not complete its close
+      // future (an unlistened stream never delivers the done event), so close
+      // it without blocking this attempt from releasing the in-flight flag.
+      final unused = pending;
+      if (unused != null) unawaited(_closeQuietly(unused));
+      if (generation == _generation) _connectInFlight = false;
+    }
+  }
+
+  Future<void> _closeQuietly(WebReplSocket socket) async {
+    try {
+      await socket.close();
+    } catch (error) {
+      AppLog.w('serial', 'closing an unused WebREPL socket failed: $error');
     }
   }
 
@@ -414,6 +468,10 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
   }
 
   Future<void> disconnect() async {
+    // Abandon a handshake that is still pending; it closes its own socket when
+    // the connector finishes, and a fresh attempt may start immediately.
+    _generation++;
+    _connectInFlight = false;
     state = const WebReplInfo(state: WebReplState.disconnected);
     _cleanup();
   }
@@ -431,6 +489,8 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
 
   @override
   void dispose() {
+    _generation++;
+    _connectInFlight = false;
     _serialSubscription?.close();
     _serialSubscription = null;
     _cleanup();

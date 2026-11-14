@@ -24,8 +24,17 @@ class SerialSession {
   final String id;
 
   final String portPath;
-  final FlSerial serial;
-  final StreamSubscription<SerialEvent> events;
+
+  /// The handle this session currently owns.
+  ///
+  /// A hardware reset may invalidate the native handle while the port comes
+  /// back under the same name; [SerialSessionRegistry.replaceTransport] swaps
+  /// this field together with [events] so the session keeps its identity.
+  FlSerial serial;
+
+  /// Events from [serial], routed by the layer that opened it.
+  StreamSubscription<SerialEvent> events;
+
   final int baudRate;
 
   /// When the handle opened, used to order the session list deterministically.
@@ -36,14 +45,27 @@ class SerialSession {
 
   Future<void> dispose() async {
     await events.cancel();
-    try {
-      await serial.close();
-    } catch (_) {
-      // A handle whose port already vanished throws here; the session is gone
-      // either way, and failing to close must not block closing the next one.
-    }
-    await serial.dispose();
+    await _closeAndDispose(serial);
   }
+}
+
+/// The subscription and handle installed by
+/// [SerialSessionRegistry.replaceTransport].
+class SerialTransport {
+  const SerialTransport({required this.serial, required this.events});
+
+  final FlSerial serial;
+  final StreamSubscription<SerialEvent> events;
+}
+
+Future<void> _closeAndDispose(FlSerial serial) async {
+  try {
+    await serial.close();
+  } catch (_) {
+    // A handle whose port already vanished throws here; the session is gone
+    // either way, and failing to close must not block closing the next one.
+  }
+  await serial.dispose();
 }
 
 /// Every serial port the IDE currently holds open.
@@ -128,14 +150,59 @@ class SerialSessionRegistry extends ChangeNotifier {
     final wasActive = session.isActive;
     session.isActive = false;
     await session.dispose();
-    if (wasActive) {
-      final remaining = sessions;
-      if (remaining.isNotEmpty) {
-        remaining.first.isActive = true;
-      }
-    }
+    if (wasActive) _promoteOldest();
     notifyListeners();
     return session;
+  }
+
+  /// Reopens [id]'s transport without losing the session.
+  ///
+  /// A hardware reset can invalidate a native handle while the port comes back
+  /// under the same name. The OS refuses to reopen it until the old handle is
+  /// closed, so the registry owns the whole sequence: it cancels the previous
+  /// subscription, releases the old handle, and installs [open]'s replacement
+  /// only when the session is still registered. That keeps the registry from
+  /// ever pointing at a disposed handle.
+  ///
+  /// When [open] returns null the session is removed and, if it was active,
+  /// the oldest remaining session is promoted. Returns whether a fresh
+  /// transport was installed.
+  Future<bool> replaceTransport(
+    String id,
+    Future<SerialTransport?> Function() open,
+  ) async {
+    final session = _sessions[id];
+    if (session == null) return false;
+
+    await session.events.cancel();
+    await _closeAndDispose(session.serial);
+
+    final replacement = await open();
+    if (replacement == null) {
+      final wasActive = session.isActive;
+      _sessions.remove(id);
+      session.isActive = false;
+      if (wasActive) _promoteOldest();
+      notifyListeners();
+      return false;
+    }
+    if (!identical(_sessions[id], session)) {
+      // An event emitted while reopening dropped the session; release the
+      // replacement instead of attaching it to a session nobody owns.
+      await replacement.events.cancel();
+      await _closeAndDispose(replacement.serial);
+      return false;
+    }
+    session.serial = replacement.serial;
+    session.events = replacement.events;
+    notifyListeners();
+    return true;
+  }
+
+  /// Makes the oldest remaining session active.
+  void _promoteOldest() {
+    final remaining = sessions;
+    if (remaining.isNotEmpty) remaining.first.isActive = true;
   }
 
   Future<void> closeAll() async {

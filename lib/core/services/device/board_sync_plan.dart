@@ -59,12 +59,14 @@ class SyncTreeSnapshot {
     required this.files,
     required this.directories,
     this.root,
+    this.truncated = false,
   });
 
   const SyncTreeSnapshot.empty()
     : files = const <String, SyncFileInfo>{},
       directories = const <String>{},
-      root = null;
+      root = null,
+      truncated = false;
 
   final Map<String, SyncFileInfo> files;
 
@@ -72,6 +74,13 @@ class SyncTreeSnapshot {
   final Set<String> directories;
 
   final String? root;
+
+  /// Whether the scan stopped at its file limit.
+  ///
+  /// When true, [files] is a prefix of the tree rather than the complete set:
+  /// a path missing from it may still exist on disk. Plans must not treat such
+  /// a path as "absent locally".
+  final bool truncated;
 
   bool get isEmpty => files.isEmpty && directories.isEmpty;
 }
@@ -130,10 +139,16 @@ class BoardSyncEntry {
   }
 
   /// Returns a copy with a different [action] (used when the user overrides a
-  /// conflict in the preview) or a different [ignoredByDefault] flag (used when
-  /// `.pyrsyncignore` is applied to a freshly built entry). The direction is
-  /// recomputed from the action.
-  BoardSyncEntry copyWith({BoardSyncAction? action, bool? ignoredByDefault}) {
+  /// conflict in the preview), a different [ignoredByDefault] flag (used when
+  /// `.pyrsyncignore` is applied to a freshly built entry), or an explicit
+  /// [selectable]/[note] pair (used when a truncated local scan cannot vouch
+  /// for a board-only path). The direction is recomputed from the action.
+  BoardSyncEntry copyWith({
+    BoardSyncAction? action,
+    bool? ignoredByDefault,
+    bool? selectable,
+    String? note,
+  }) {
     final nextAction = action ?? this.action;
     return BoardSyncEntry(
       relativePath: relativePath,
@@ -141,9 +156,9 @@ class BoardSyncEntry {
       direction: _directionFor(nextAction),
       local: local,
       board: board,
-      selectable: nextAction != BoardSyncAction.unchanged,
+      selectable: selectable ?? (nextAction != BoardSyncAction.unchanged),
       ignoredByDefault: ignoredByDefault ?? this.ignoredByDefault,
-      note: nextAction == this.action ? note : null,
+      note: note ?? (nextAction == this.action ? this.note : null),
     );
   }
 }
@@ -172,16 +187,30 @@ class BoardSyncPlan {
     required this.entries,
     this.localRoot,
     this.boardRoot = '/',
+    this.truncated = false,
   });
 
   final List<BoardSyncEntry> entries;
   final String? localRoot;
   final String boardRoot;
 
+  /// Whether the local scan behind this plan hit its file limit.
+  ///
+  /// A truncated plan is incomplete by definition, so the preview warns about
+  /// it and the executor refuses downloads of board-only rows.
+  final bool truncated;
+
   /// Entries that would move data with the default selection.
+  ///
+  /// Rows the plan marked unselectable are excluded: a truncated scan marks
+  /// board-only rows this way because the local side may simply not have been
+  /// scanned.
   List<BoardSyncEntry> get actionable => entries
       .where(
-        (entry) => entry.isChanged && entry.action != BoardSyncAction.conflict,
+        (entry) =>
+            entry.isChanged &&
+            entry.selectable &&
+            entry.action != BoardSyncAction.conflict,
       )
       .toList(growable: false);
 
@@ -510,6 +539,7 @@ BoardSyncPlan buildSyncPlan({
   final allPaths = <String>{...local.files.keys, ...board.files.keys}.toList()
     ..sort();
 
+  final tr = translate ?? fallbackTranslate;
   final entries = <BoardSyncEntry>[];
   for (final relativePath in allPaths) {
     var entry = buildSyncEntry(
@@ -520,6 +550,17 @@ BoardSyncPlan buildSyncPlan({
       baseline: baselines[relativePath],
       translate: translate,
     );
+    // A truncated local scan only proves that a path was not *scanned*, not
+    // that it is absent. Presenting it as a new download would let the board
+    // copy overwrite a local file the scan never saw.
+    if (local.truncated &&
+        local.files[relativePath] == null &&
+        board.files[relativePath] != null) {
+      entry = entry.copyWith(
+        selectable: false,
+        note: tr(I18nKey.devicesSyncNoteLocalScanTruncated),
+      );
+    }
     if (ignore.shouldIgnore(relativePath)) {
       entry = entry.copyWith(ignoredByDefault: true);
     }
@@ -538,6 +579,7 @@ BoardSyncPlan buildSyncPlan({
     entries: entries,
     localRoot: local.root,
     boardRoot: board.root ?? '/',
+    truncated: local.truncated,
   );
 }
 

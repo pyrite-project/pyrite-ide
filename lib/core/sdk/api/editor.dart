@@ -62,16 +62,14 @@ class SdkEditor {
   final Ref ref;
   SdkEditor(this.ref);
 
-  /// Session that most recently bound this API, or null before any plugin
-  /// connected. Key capture and release both address it.
-  PluginRunManager? _runManager;
-
   void bind(PluginRunManager runManager) {
-    // Key capture is scoped to the plugin session, and the registry needs the
-    // manager itself (not an id parsed back out of an envelope) to release the
-    // keys when the plugin stops. bind runs once per session start, so holding
-    // the reference here is what keeps capture and release symmetric.
-    _runManager = runManager;
+    // This API object is a singleton shared by every plugin session, while key
+    // capture is session-scoped. The handlers below close over the manager
+    // they are registered on, so capture and release always address the
+    // session that sent the request; a single "last bound" field would hand
+    // plugin A's capture to the plugin that most recently started. The host
+    // does not consume `interceptKeyEvent` yet, so these entries are only
+    // released on stop rather than feeding a live key path.
     // Text Content
     runManager.registerHandler(SdkEditorCommands.getText, _handleGetText);
     runManager.registerHandler(SdkEditorCommands.setText, _handleSetText);
@@ -153,11 +151,11 @@ class SdkEditor {
     // Key capture
     runManager.registerHandler(
       SdkEditorCommands.captureKeys,
-      _handleCaptureKeys,
+      (envelope, respond) => _handleCaptureKeys(runManager, envelope, respond),
     );
     runManager.registerHandler(
       SdkEditorCommands.releaseKeys,
-      _handleReleaseKeys,
+      (envelope, respond) => _handleReleaseKeys(runManager, envelope, respond),
     );
   }
 
@@ -606,14 +604,10 @@ class SdkEditor {
   // ── Key capture ──
 
   void _handleCaptureKeys(
+    PluginRunManager manager,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final manager = _runManager;
-    if (manager == null) {
-      respondError(envelope, respond, '尚未绑定插件会话');
-      return;
-    }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final keys = _keyList(payload['keys']);
     if (keys.isEmpty) {
@@ -625,14 +619,10 @@ class SdkEditor {
   }
 
   void _handleReleaseKeys(
+    PluginRunManager manager,
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    final manager = _runManager;
-    if (manager == null) {
-      respondError(envelope, respond, '尚未绑定插件会话');
-      return;
-    }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final raw = payload['keys'];
     final keys = raw == null ? null : _keyList(raw);

@@ -7,11 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
@@ -33,6 +31,18 @@ class BoardNotifier {
     ops = BoardFileOps(ref);
     transfer = BoardTransfer(ref, ops);
   }
+
+  /// Resolves the local mirror file for a board path in the download paths.
+  ///
+  /// Indirection rather than a direct [getLocalFile] call so a widget test can
+  /// drive a download without waiting on real file I/O, which the fake-async
+  /// zone widget tests run in cannot complete on its own.
+  @visibleForTesting
+  Future<File> Function(String boardPath) mirrorFileReader = getLocalFile;
+
+  /// Local mirror path the editor keeps for a board file.
+  Future<String> correspondingFilePath(String boardPath) async =>
+      (await mirrorFileReader(boardPath)).path;
 
   TreeNode<FileSystemItem>? getFocusFileNode() {
     return getFocusFileNodeFromProvider(
@@ -202,6 +212,12 @@ class BoardNotifier {
               bytesTotal: 0,
             );
         await ops.move(sourcePath, targetPath);
+        // A board tab holds both the remote path and the local mirror it was
+        // read from; both identities have to follow the move, or the next
+        // save writes the old remote path and the mirror is orphaned.
+        await ref
+            .read(tabbedViewControllerProvider.notifier)
+            .renameBoardOpenPath(sourcePath, targetPath);
         moved++;
       }
 
@@ -480,7 +496,7 @@ class BoardNotifier {
     controller?.readOnly = true;
     revealFirstDifference(controller, diff);
 
-    final correspondingFilePath = (await getLocalFile(boardPath)).path;
+    final correspondingFilePath = (await mirrorFileReader(boardPath)).path;
     final provider = pendingDownloadProviderMap.putIfAbsent(
       correspondingFilePath,
       () => StateProvider<PendingDownload?>((ref) => null),
@@ -504,7 +520,7 @@ class BoardNotifier {
     final node = ref.read(boardFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
     showDeviceRequestPending(context, ref);
-    final file = await getLocalFile(node.id);
+    final file = await mirrorFileReader(node.id);
     final content = await ops.getFileContent(id);
     await file.writeAsString(content);
     if (context.mounted) {
@@ -513,23 +529,6 @@ class BoardNotifier {
           .openFile(context, file: file, isBoardFile: true, boardFilePath: id);
     }
     return file;
-  }
-
-  Future<void> saveFile() async {
-    // The tab the editor is acting on, in whichever group has focus.
-    final TabData? nowTab = ref
-        .read(activeEditorControllerProvider)
-        .selectedTab;
-    final value = nowTab?.value;
-    if (value is TabDataValue && value.type == "file") {
-      if (value.isBoardFile == true && value.boardFilePath != null) {
-        await ops.writeFile(value.boardFilePath!, value.editorController!.text);
-        ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
-      } else {
-        await value.file!.writeAsString(value.editorController!.text);
-      }
-      ref.read(tabbedViewControllerProvider.notifier).afterFileSave(nowTab!);
-    }
   }
 
   Future<void> downloadSelectedBoardItem(
@@ -558,7 +557,7 @@ class BoardNotifier {
     if (selected?.data is FileItem || selectedTab != null) {
       final boardPath = selected?.id ?? selectedTab?.value.filePath;
       final content = await ops.getFileContent(boardPath);
-      final correspondingFilePath = (await getLocalFile(boardPath)).path;
+      final correspondingFilePath = (await mirrorFileReader(boardPath)).path;
 
       if ((ref.read(editorControllerMapProvider)[correspondingFilePath]?.text !=
               null) &&
@@ -569,7 +568,7 @@ class BoardNotifier {
         if (!context.mounted) return;
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             icon: const Icon(Icons.file_download_outlined),
             title: const UseText(I18nKey.dialogBoardContentMismatchTitle),
             content: Text(
@@ -580,19 +579,27 @@ class BoardNotifier {
             ),
             actions: [
               TextButton(
-                onPressed: () => context.pop(false),
+                onPressed: () => Navigator.pop(dialogContext, false),
                 child: const UseText(I18nKey.dialogCancelUpload),
               ),
               TextButton(
-                onPressed: () {
-                  saveFile();
-                  _doDownloadBoardItem(
+                onPressed: () async {
+                  Navigator.pop(dialogContext, false);
+                  // The dialog compared the document at
+                  // [correspondingFilePath], so that is the tab to save. The
+                  // download below may only start once its bytes are on disk.
+                  if (!await ref
+                      .read(fileProvider.notifier)
+                      .saveTabForPath(correspondingFilePath)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await _doDownloadBoardItem(
                     context,
                     selected,
                     selectedTab,
                     localWorkspace,
                   );
-                  context.pop();
                 },
                 child: const UseText(I18nKey.dialogEditorContent),
               ),
@@ -601,21 +608,26 @@ class BoardNotifier {
                   backgroundColor: Theme.of(context).colorScheme.error,
                   foregroundColor: Theme.of(context).colorScheme.onError,
                 ),
-                onPressed: () {
+                onPressed: () async {
                   ref
                           .read(
                             editorControllerMapProvider,
                           )[correspondingFilePath]
                           ?.text =
                       content;
-                  saveFile();
-                  _doDownloadBoardItem(
+                  Navigator.pop(dialogContext, false);
+                  if (!await ref
+                      .read(fileProvider.notifier)
+                      .saveTabForPath(correspondingFilePath)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await _doDownloadBoardItem(
                     context,
                     selected,
                     selectedTab,
                     localWorkspace,
                   );
-                  context.pop();
                 },
                 child: const UseText(I18nKey.dialogActualContent),
               ),

@@ -27,9 +27,15 @@ class ProblemsView extends ConsumerWidget {
       context,
     ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant);
 
-    // Errors first, then warnings; within one file, document order.
-    final files = problems.toList()..sort((a, b) => a.path.compareTo(b.path));
-    if (files.every((file) => file.diagnostics.isEmpty)) {
+    // Errors first, then warnings; within one file, document order. The panel
+    // only ever draws the severities [_isListedDiagnostic] admits, so a file
+    // whose diagnostics are all info or hints contributes no rows -- and must
+    // not keep the empty state away either. One predicate decides both.
+    final files = [
+      for (final file in problems)
+        if (file.diagnostics.any(_isListedDiagnostic)) file,
+    ]..sort((a, b) => a.path.compareTo(b.path));
+    if (files.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -49,9 +55,8 @@ class ProblemsView extends ConsumerWidget {
     for (final file in files) {
       final relevant = [
         for (final diagnostic in file.diagnostics)
-          if (diagnostic.severity == 1 || diagnostic.severity == 2) diagnostic,
+          if (_isListedDiagnostic(diagnostic)) diagnostic,
       ];
-      if (relevant.isEmpty) continue;
       final displayPath = file.path.replaceAll('\\', '/');
       final name = path.basename(displayPath);
       final directory = path.dirname(displayPath);
@@ -116,6 +121,14 @@ class ProblemsView extends ConsumerWidget {
     return (start['line'] as num?)?.toInt() ?? 0;
   }
 }
+
+/// Whether the panel shows [diagnostic].
+///
+/// Rows share the status bar's severity filter: errors and warnings, with the
+/// remaining severities left to the editor's own squiggles. The empty state
+/// reads the same predicate, so "no rows" and "empty panel" can never disagree.
+bool _isListedDiagnostic(LspErrors diagnostic) =>
+    diagnostic.severity == 1 || diagnostic.severity == 2;
 
 class _ProblemFileHeader extends StatelessWidget {
   const _ProblemFileHeader({
