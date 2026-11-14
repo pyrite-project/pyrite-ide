@@ -15,6 +15,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/features/plugin_view/component_builder.dart';
 import 'package:pyrite_ide/features/plugin_view/component_error_boundary.dart';
 import 'package:pyrite_ide/features/plugin_view/component_host_state.dart';
@@ -204,7 +205,11 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
           .read(commandServiceProvider)
           .execute(commandId, context: context);
     } on CommandException catch (error) {
-      debugPrint('Plugin command failed (${error.code}): ${error.message}');
+      AppLog.w(
+        'plugin',
+        'Plugin command failed (${error.code}): ${error.message}',
+        error: error,
+      );
     }
   }
 
