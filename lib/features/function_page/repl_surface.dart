@@ -22,7 +22,7 @@ import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart'
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart'
-    show getLocalFile;
+    show BoardFileOps, getLocalFile;
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
@@ -66,6 +66,17 @@ final replTranscriptControllerProvider = Provider<ReplTranscriptController>((
 /// Default scrollbar thickness, mirroring the private constant the framework's
 /// scrollbar uses when the theme does not set one.
 const double _fallbackScrollbarThickness = 8;
+
+/// The device path a traceback's [file] names.
+///
+/// MicroPython prints the path the interpreter ran the file from, which can be
+/// absolute (`/lib/x.py`, since `/lib` is on the default `sys.path` of boards
+/// such as the ESP32) or bare (`main.py`). Device paths are always rooted and
+/// use a single leading separator, so every spelling has to be mapped onto
+/// that one form before the device and the local mirror are asked about it.
+@visibleForTesting
+String boardPathForTracebackFile(String file) =>
+    BoardFileOps.normalizePath(file);
 
 class ReplSurface extends ConsumerStatefulWidget {
   const ReplSurface({
@@ -576,7 +587,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   /// file had no local path to resolve to and the click did nothing.
   Future<bool> _openBoardTracebackFrame(String file, int line) async {
     if (!_deviceAttached) return false;
-    final boardPath = '/${file.replaceAll('\\', '/').replaceFirst('^/', '')}';
+    final boardPath = boardPathForTracebackFile(file);
     final ops = ref.read(boardProvider).ops;
     try {
       if (!await ops.boardPathExistsAny(boardPath)) return false;

@@ -1264,11 +1264,21 @@ class BoardFileOps {
 
   BoardFileOps(this.ref);
 
-  String normalizeBoardPath(String filePath) {
-    final normalized = boardPath.normalize(filePath.replaceAll('\\', '/'));
-    if (normalized == '.' || normalized.isEmpty) return '/';
-    return normalized.startsWith('/') ? normalized : '/$normalized';
+  /// Canonical spelling of a path on the device.
+  ///
+  /// The device filesystem is POSIX whatever host the IDE runs on, and every
+  /// board path is rooted. Callers do not always spell one that way: a
+  /// traceback can print `//lib/x.py` or a bare `main.py`, and an archive entry
+  /// can carry `./` or `..` segments. Collapsing all of them onto the same
+  /// rooted form is what lets device probes, file-tree paths and the local
+  /// mirror agree on which file they mean.
+  static String normalizePath(String filePath) {
+    final slashed = filePath.replaceAll('\\', '/');
+    final rooted = slashed.startsWith('/') ? slashed : '/$slashed';
+    return boardPath.normalize(rooted);
   }
+
+  String normalizeBoardPath(String filePath) => normalizePath(filePath);
 
   bool isBoardPathInside(String childPath, String parentPath) {
     final child = normalizeBoardPath(childPath);
@@ -1942,7 +1952,7 @@ Future<io.File> getLocalFile(String boardFilePath) async {
     (await getApplicationSupportDirectory()).path,
     "temporary_board_files",
   );
-  final relativePath = boardFilePath.split("/").skip(1).join("/");
+  final relativePath = boardMirrorRelativePath(boardFilePath);
   final file = io.File(path.join(supportDir, relativePath));
   await file.create(recursive: true, exclusive: false);
   return file;
@@ -1952,8 +1962,14 @@ Future<io.File> getLocalFile(String boardFilePath) async {
 const String boardMirrorDirectoryName = 'temporary_board_files';
 
 /// Path of a board file inside the local mirror, relative to the mirror root.
+///
+/// The board path is normalised first so that a caller holding a doubled-slash
+/// or unrooted spelling still maps onto the same mirror file the file tree
+/// writes. The result never has a leading separator: `path.join` treats an
+/// absolute part as a new root, which would put the mirror outside the support
+/// directory.
 String boardMirrorRelativePath(String boardFilePath) =>
-    boardFilePath.split("/").skip(1).join("/");
+    BoardFileOps.normalizePath(boardFilePath).split("/").skip(1).join("/");
 
 /// Removes mirrored board files that no persisted tab refers to.
 ///
