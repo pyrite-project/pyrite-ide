@@ -95,7 +95,14 @@ class TreeIndex {
   }
 
   /// Replaces the whole tree from a snapshot. This is the only full rebuild.
+  ///
+  /// Throws an [ArgumentError] naming every duplicated id. Ids key both
+  /// [nodeById] and the visible row index, so indexing one twice would add a
+  /// row no id can address; [remove], [expand] and [collapse] would then leave
+  /// ghost rows or splice the wrong span. Validation runs before any state is
+  /// cleared, so a rejected snapshot leaves the previous tree intact.
   void reset(List<TreeNodeModel> nodes, {Set<String>? expanded}) {
+    _rejectDuplicateIds(nodes);
     nodeById.clear();
     childrenByParent.clear();
     expandedNodeIds.clear();
@@ -105,6 +112,24 @@ class TreeIndex {
       (childrenByParent[node.parentId] ??= []).add(node.id);
     }
     _rebuildVisible();
+  }
+
+  static void _rejectDuplicateIds(List<TreeNodeModel> nodes) {
+    if (nodes.length < 2) return;
+    final seen = <String>{};
+    final duplicates = <String>{};
+    for (final node in nodes) {
+      if (!seen.add(node.id)) duplicates.add(node.id);
+    }
+    if (duplicates.isEmpty) return;
+    final ids = (duplicates.toList()..sort())
+        .map((id) => '"$id"')
+        .join(', ');
+    throw ArgumentError(
+      'TreeIndex.reset received duplicate node id'
+      '${duplicates.length == 1 ? '' : 's'}: $ids. '
+      'Node ids must be unique.',
+    );
   }
 
   void _rebuildVisible() {
