@@ -155,6 +155,10 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   Timer? _completionDebounce;
   Timer? _signatureDebounce;
   String _lastInputText = '';
+  String _observedInputText = '';
+  TextSelection _observedInputSelection = const TextSelection.collapsed(
+    offset: -1,
+  );
   final Map<String, List<String>> _runtimeCompletionCache = {};
   Rect? _caretRectInTarget;
   bool _completionOpensAbove = false;
@@ -174,6 +178,9 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     _signature.addListener(_syncSignatureOverlay);
     _completion = ReplCompletionController(provider: _provideCompletionItems);
     _completion.addListener(_syncCompletionOverlay);
+    _observedInputText = _input.text.text;
+    _observedInputSelection = _input.text.selection;
+    _input.text.addListener(_handleInputValueChanged);
     _transcript.addListener(_handleTranscriptUpdated);
     _scrollController.addListener(_keepFocusScrollPosition);
     _inputSink = _sendInput;
@@ -210,6 +217,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       replRunFinishedSink = _previousRunFinishedSink;
     }
     _transcript.removeListener(_handleTranscriptUpdated);
+    _input.text.removeListener(_handleInputValueChanged);
     _scrollController.removeListener(_keepFocusScrollPosition);
     _focusScrollTimer?.cancel();
     _completion.removeListener(_syncCompletionOverlay);
@@ -1276,6 +1284,28 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     if (_input.mode == ReplInteractionMode.passthrough) return;
     _sendInput(value);
     _input.text.clear();
+  }
+
+  /// Dismisses the completion popup when the caret moves without the text
+  /// changing.
+  ///
+  /// Every item in the popup carries the token range it was requested for.
+  /// Arrow keys, Home/End, and clicks move the caret through
+  /// [EditableText.onChanged]'s blind spot — only `onChanged` sees edits, and
+  /// moving the caret edits nothing — so without this the popup would keep
+  /// offering items for a range that is no longer under the caret, and
+  /// accepting one would splice it into unrelated text. Dismissing also
+  /// invalidates a request still in flight, so a late result cannot reopen the
+  /// popup for the old caret position.
+  void _handleInputValueChanged() {
+    final value = _input.text.value;
+    final textChanged = value.text != _observedInputText;
+    final selectionChanged = value.selection != _observedInputSelection;
+    _observedInputText = value.text;
+    _observedInputSelection = value.selection;
+    if (textChanged || !selectionChanged) return;
+    if (!_completion.isOpen && !_completion.isLoading) return;
+    _completion.dismiss();
   }
 
   void _submitPassthroughInput() {
