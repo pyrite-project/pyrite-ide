@@ -65,6 +65,7 @@ class EventTopic {
     this.defaultDelivery = EventDelivery.every,
     this.replayLatest = false,
     this.defaultWindow,
+    this.ownerScoped = false,
   });
 
   final String name;
@@ -78,6 +79,16 @@ class EventTopic {
 
   /// Optional default window for debounce/throttle/batch topics.
   final Duration? defaultWindow;
+
+  /// When true, an event is visible only to the plugin named by its payload's
+  /// `pluginId`, and replay is retained per owning plugin.
+  ///
+  /// This is the audience boundary for topics whose payload belongs to one
+  /// plugin (for example its Manifest configuration): a subscription-level
+  /// permission cannot express "only the owner may read this". Emits without a
+  /// usable `pluginId` are dropped rather than broadcast, so a malformed
+  /// payload fails closed.
+  final bool ownerScoped;
 }
 
 /// Registry of the host topics plugins may subscribe to.
@@ -210,10 +221,13 @@ class EventTopicRegistry {
     ),
     EventTopic(name: 'serial.error', requiredPermission: 'serial:read'),
     // Plugin Manifest configuration (payload produced by PluginConfigStore).
+    // The values belong to one plugin, so both delivery and replay are scoped
+    // to that owner; other plugins receive nothing.
     EventTopic(
       name: 'configuration.changed',
       defaultDelivery: EventDelivery.latest,
       replayLatest: true,
+      ownerScoped: true,
     ),
   ];
 }
@@ -233,6 +247,16 @@ class DeliveredEvent {
   final String topic;
   final String subscriptionId;
   final List<Map<String, dynamic>> payloads;
+}
+
+/// One retained payload for [EventTopic.replayLatest].
+///
+/// The map key records the audience (none, or the owning plugin), so replay can
+/// be selected without trusting anything the subscriber supplies.
+class _RetainedEvent {
+  const _RetainedEvent(this.payload);
+
+  final Map<String, dynamic> payload;
 }
 
 /// A live subscription owned by one plugin session.
@@ -434,8 +458,11 @@ class PluginEventBus {
 
   final Map<String, _Subscription> _subscriptions = {};
 
-  /// Newest event per topic, for [EventTopic.replayLatest].
-  final Map<String, Map<String, dynamic>> _latest = {};
+  /// Newest event per (topic, audience), for [EventTopic.replayLatest].
+  ///
+  /// Owner-scoped topics keep one slot per owning plugin so one plugin's
+  /// change never replaces or exposes another's retained event.
+  final Map<String, _RetainedEvent> _latest = {};
 
   final List<void Function(String topic, Map<String, dynamic> payload)>
   _emitListeners = [];
@@ -511,9 +538,10 @@ class PluginEventBus {
     _subscriptions[key] = subscription;
 
     if (topic.replayLatest) {
-      final latest = _latest[topicName];
-      if (latest != null && subscription.matches(latest)) {
-        subscription.ingest(latest);
+      final latest =
+          _latest[_retainKey(topicName, topic.ownerScoped ? pluginId : null)];
+      if (latest != null && subscription.matches(latest.payload)) {
+        subscription.ingest(latest.payload);
       }
     }
     return SubscribeResult.ok(subscriptionId);
@@ -535,16 +563,28 @@ class PluginEventBus {
   /// Emits [payload] on [topicName] to every matching subscription.
   ///
   /// Events are retained for replay when the topic opts in, regardless of
-  /// whether any subscriber currently exists.
+  /// whether any subscriber currently exists. For [EventTopic.ownerScoped]
+  /// topics only the plugin named by `payload['pluginId']` receives the event;
+  /// a payload without a usable owner is dropped.
   void emit(String topicName, Map<String, dynamic> payload) {
     final topic = _topics.lookup(topicName);
     if (topic == null) return;
-    if (topic.replayLatest) _latest[topicName] = payload;
+    String? owner;
+    if (topic.ownerScoped) {
+      final pluginId = payload['pluginId'];
+      // Without an owner there is no audience that is safe to deliver to.
+      if (pluginId is! String || pluginId.isEmpty) return;
+      owner = pluginId;
+    }
+    if (topic.replayLatest) {
+      _latest[_retainKey(topicName, owner)] = _RetainedEvent(payload);
+    }
     for (final listener in _emitListeners.toList(growable: false)) {
       listener(topicName, payload);
     }
     for (final subscription in _subscriptions.values) {
       if (subscription.topic.name != topicName) continue;
+      if (owner != null && subscription.pluginId != owner) continue;
       if (!subscription.matches(payload)) continue;
       if (isDeliveryPaused?.call(subscription.pluginId) == true) {
         continue;
@@ -590,4 +630,9 @@ class PluginEventBus {
 
   String _key(String pluginId, String sessionId, String subscriptionId) =>
       '$pluginId $sessionId $subscriptionId';
+
+  /// Replay slot: unscoped topics share one slot per topic, owner-scoped ones
+  /// keep a slot per owning plugin.
+  String _retainKey(String topicName, String? owner) =>
+      owner == null ? '$topicName ' : '$topicName $owner';
 }
