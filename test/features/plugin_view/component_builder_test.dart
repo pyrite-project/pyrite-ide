@@ -795,6 +795,101 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
     });
 
+    testWidgets('a plugin snapshot can replace a value the user edited', (
+      tester,
+    ) async {
+      Widget field(String pluginValue) => _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'TextField',
+            'props': {'id': 'query', 'value': pluginValue},
+          }),
+        ),
+      );
+
+      await tester.pumpWidget(field('old'));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'user input');
+      await tester.pump(const Duration(milliseconds: 250));
+      harness.hostState.focusNode('query').unfocus();
+      await tester.pump();
+      expect(find.text('user input'), findsOneWidget);
+
+      // The plugin loads a different value into the same field.
+      await tester.pumpWidget(field('reset'));
+      await tester.pump();
+      expect(find.text('reset'), findsOneWidget);
+      expect(find.text('user input'), findsNothing);
+    });
+
+    testWidgets('an echo of the edit keeps the field intact, then hands over', (
+      tester,
+    ) async {
+      Widget field(String pluginValue) => _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'TextField',
+            'props': {'id': 'query', 'value': pluginValue},
+          }),
+        ),
+      );
+
+      await tester.pumpWidget(field('old'));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'user input');
+      await tester.pump(const Duration(milliseconds: 250));
+
+      // The plugin renders what the user typed: nothing moves and focus stays.
+      await tester.pumpWidget(field('user input'));
+      await tester.pump();
+      expect(find.text('user input'), findsOneWidget);
+      expect(harness.hostState.hasFocus('query'), isTrue);
+
+      // The edit was acknowledged, so the field follows the next snapshot.
+      harness.hostState.focusNode('query').unfocus();
+      await tester.pump();
+      await tester.pumpWidget(field('reset'));
+      await tester.pump();
+      expect(find.text('reset'), findsOneWidget);
+    });
+
+    testWidgets('a checkbox keeps the user toggle until the plugin reacts', (
+      tester,
+    ) async {
+      Widget box(bool pluginValue) => _wrap(
+        Builder(
+          builder: (context) => harness.builder.build(context, {
+            'type': 'Checkbox',
+            'props': {'id': 'flag', 'value': pluginValue},
+          }),
+        ),
+      );
+      Checkbox checkbox() => tester.widget<Checkbox>(find.byType(Checkbox));
+
+      await tester.pumpWidget(box(false));
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
+      expect(harness.events.single.payload['value'], isTrue);
+
+      // A snapshot that still carries the old value must not undo a toggle
+      // the plugin has not processed yet.
+      await tester.pumpWidget(box(false));
+      await tester.pump();
+      expect(checkbox().value, isTrue);
+
+      // The plugin applies the change, acknowledging the local value.
+      await tester.pumpWidget(box(true));
+      await tester.pump();
+      expect(checkbox().value, isTrue);
+
+      // A later snapshot can reset the control.
+      await tester.pumpWidget(box(false));
+      await tester.pump();
+      expect(checkbox().value, isFalse);
+    });
+
     testWidgets('focus survives a rebuild', (tester) async {
       Widget field(String label) => _wrap(
         Builder(
