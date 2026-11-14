@@ -171,7 +171,7 @@ void main() {
         );
 
         // Seed the saved baseline the way a save would.
-        notifier.afterFileSave(tab);
+        notifier.afterFileSave(tab, controller.text);
         controller.text = 'edited text';
         controller.selection = const TextSelection.collapsed(offset: 4);
         (tab.value as TabDataValue).isSaved = false;

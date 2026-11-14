@@ -912,8 +912,10 @@ class EditorToolsBar extends ConsumerWidget {
         saved ? I18nKey.statusSaveAgain : I18nKey.statusSaveCurrent,
       ),
       onPressed: () async {
-        await ref.read(fileProvider.notifier).saveCurrentFile();
-        if (!context.mounted) return;
+        final saved = await ref.read(fileProvider.notifier).saveCurrentFile();
+        // Nothing was written when the save is refused (the user cancelled an
+        // external-overwrite prompt); do not claim otherwise.
+        if (!context.mounted || !saved) return;
 
         showIdeSuccess(
           context,

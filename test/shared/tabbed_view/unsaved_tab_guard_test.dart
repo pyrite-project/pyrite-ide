@@ -4,19 +4,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 
 /// Records the tabs handed to [FileNotifier.saveTab] instead of touching disk.
 class _RecordingFileNotifier extends FileNotifier {
-  _RecordingFileNotifier(super.ref, this.savedTabPaths);
+  _RecordingFileNotifier(
+    super.ref,
+    this.savedTabPaths, {
+    this.saveResult = true,
+  });
 
   final List<String> savedTabPaths;
 
+  /// What [saveTab] reports. A false result models a save the user cancelled
+  /// at the external-change prompt, which wrote nothing.
+  final bool saveResult;
+
   @override
-  Future<void> saveTab(TabData? tab) async {
+  Future<bool> saveTab(TabData? tab) async {
     final value = tab?.value;
     if (value is TabDataValue) savedTabPaths.add(value.filePath);
+    return saveResult;
   }
 }
 
@@ -30,11 +40,13 @@ TabData _tab({required bool isSaved, String path = '/tmp/a.py'}) => TabData(
 Widget _harness({
   required List<String> savedTabPaths,
   required void Function(BuildContext context) onPressed,
+  bool saveResult = true,
 }) {
   return ProviderScope(
     overrides: [
       fileProvider.overrideWith(
-        (ref) => _RecordingFileNotifier(ref, savedTabPaths),
+        (ref) =>
+            _RecordingFileNotifier(ref, savedTabPaths, saveResult: saveResult),
       ),
     ],
     child: MaterialApp(
@@ -154,6 +166,39 @@ void main() {
       expect(await result, isTrue);
       // The tab being closed is saved, not whichever one happens to be active.
       expect(saved, ['/tmp/dirty.py']);
+    });
+
+    testWidgets('a save that wrote nothing keeps the tab open and quiet', (
+      tester,
+    ) async {
+      final saved = <String>[];
+      final tab = _tab(isSaved: false, path: '/tmp/conflict.py');
+      late Future<bool> result;
+      late ProviderContainer container;
+
+      await tester.pumpWidget(
+        _harness(
+          savedTabPaths: saved,
+          saveResult: false,
+          onPressed: (context) {
+            container = ProviderScope.containerOf(context);
+            result = confirmCloseUnsavedTab(context, tab);
+          },
+        ),
+      );
+
+      await tester.tap(find.text('close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(I18nKey.tabUnsavedDialogSave.fallback));
+      await tester.pumpAndSettle();
+
+      // The save was abandoned (e.g. the external-change prompt was
+      // cancelled), so closing would drop the buffer and claiming success
+      // would misreport what reached the disk.
+      expect(await result, isFalse);
+      expect(isTabUnsaved(tab), isTrue);
+      expect(saved, ['/tmp/conflict.py']);
+      expect(container.read(ideMessageProvider), isEmpty);
     });
   });
 }
