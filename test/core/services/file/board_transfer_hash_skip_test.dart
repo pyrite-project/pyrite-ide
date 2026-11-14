@@ -111,7 +111,7 @@ final _boardPath = path.Context(style: path.Style.posix);
 
 /// Test-only providers so [BoardFileOps] and [BoardTransfer] can be built from
 /// a real `Ref` instead of handing them a `ProviderContainer`.
-final _testOpsProvider = Provider<BoardFileOps>((ref) => BoardFileOps(ref));
+final _testOpsProvider = Provider<BoardFileOps>(BoardFileOps.new);
 final _testTransferProvider = Provider<BoardTransfer>(
   (ref) => BoardTransfer(ref, ref.read(_testOpsProvider)),
 );

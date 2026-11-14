@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flserial/flserial.dart';
+import 'package:flutter/foundation.dart';
 
 /// One open serial port.
 ///

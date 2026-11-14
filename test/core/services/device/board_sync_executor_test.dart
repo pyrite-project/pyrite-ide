@@ -134,7 +134,7 @@ final _boardPath = path.Context(style: path.Style.posix);
 
 /// Test-only provider so [BoardFileOps] can be built from a real `Ref`
 /// instead of handing it a `ProviderContainer`.
-final _testOpsProvider = Provider<BoardFileOps>((ref) => BoardFileOps(ref));
+final _testOpsProvider = Provider<BoardFileOps>(BoardFileOps.new);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

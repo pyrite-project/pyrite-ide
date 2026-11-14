@@ -60,7 +60,10 @@ void main() {
     });
 
     test('an empty action set yields an empty menu', () {
-      expect(terminalContextMenuItems(hasSelection: false, actions: {}), isEmpty);
+      expect(
+        terminalContextMenuItems(hasSelection: false, actions: {}),
+        isEmpty,
+      );
     });
   });
 }

@@ -1,15 +1,17 @@
 import 'dart:async';
 
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_outline.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
-import 'package:code_forge/code_forge.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/shared/pyrite_menu.dart';
+
+import '../../shared/md3_widgets.dart';
 
 /// Outline of the symbols in the file the editor is currently showing.
 ///
@@ -473,17 +475,19 @@ class _Header extends StatelessWidget {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            iconSize: 16,
-            tooltip: translateInContext(context, I18nKey.editorOutlineRefresh),
-            onPressed: busy ? null : onRefresh,
-            icon: busy
-                ? const SizedBox.square(
-                    dimension: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
+          TooltipAnchor(
+            message: translateInContext(context, I18nKey.editorOutlineRefresh),
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              onPressed: busy ? null : onRefresh,
+              icon: busy
+                  ? const SizedBox.square(
+                      dimension: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
           ),
         ],
       ),

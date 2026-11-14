@@ -1,8 +1,8 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -666,13 +666,15 @@ class LspSettings extends ConsumerWidget {
             decoration: InputDecoration(
               label: const UseText(I18nKey.settingsLspVirtualEnvironment),
               helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
-              suffixIcon: IconButton(
-                tooltip: translateInContext(context, I18nKey.lspPickVirtualEnv),
-                icon: const Icon(Icons.folder_open_outlined),
-                onPressed: () async {
-                  final directoryPath = await getDirectoryPath();
-                  if (directoryPath != null) c[0].text = directoryPath;
-                },
+              suffixIcon: TooltipAnchor(
+                message: translateInContext(context, I18nKey.lspPickVirtualEnv),
+                child: IconButton(
+                  icon: const Icon(Icons.folder_open_outlined),
+                  onPressed: () async {
+                    final directoryPath = await getDirectoryPath();
+                    if (directoryPath != null) c[0].text = directoryPath;
+                  },
+                ),
               ),
             ),
           ),
@@ -820,20 +822,26 @@ class _StubsLayerTile extends StatelessWidget {
       trailing: Wrap(
         spacing: 4,
         children: [
-          IconButton(
-            tooltip: translate(I18nKey.commonMoveUp),
-            onPressed: canMoveUp ? onMoveUp : null,
-            icon: const Icon(Icons.keyboard_arrow_up),
+          TooltipAnchor(
+            message: translate(I18nKey.commonMoveUp),
+            child: IconButton(
+              onPressed: canMoveUp ? onMoveUp : null,
+              icon: const Icon(Icons.keyboard_arrow_up),
+            ),
           ),
-          IconButton(
-            tooltip: translate(I18nKey.commonMoveDown),
-            onPressed: canMoveDown ? onMoveDown : null,
-            icon: const Icon(Icons.keyboard_arrow_down),
+          TooltipAnchor(
+            message: translate(I18nKey.commonMoveDown),
+            child: IconButton(
+              onPressed: canMoveDown ? onMoveDown : null,
+              icon: const Icon(Icons.keyboard_arrow_down),
+            ),
           ),
-          IconButton(
-            tooltip: translate(I18nKey.gitDelete),
-            onPressed: onDelete,
-            icon: const Icon(Icons.delete_outline),
+          TooltipAnchor(
+            message: translate(I18nKey.gitDelete),
+            child: IconButton(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline),
+            ),
           ),
         ],
       ),

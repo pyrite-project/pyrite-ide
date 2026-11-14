@@ -1,26 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
-import 'package:pyrite_ide/shared/studio_text.dart';
-import 'package:pyrite_ide/pages/editor/main.dart';
-import 'package:pyrite_ide/pages/file/main.dart';
-import 'package:pyrite_ide/pages/git/main.dart' deferred as git_page;
+import 'package:pyrite_ide/features/function_page.dart';
+import 'package:pyrite_ide/pages/device_tools/device_tools_page.dart';
+import 'package:pyrite_ide/pages/editor/editor_page.dart';
+import 'package:pyrite_ide/pages/file/file_page.dart';
+import 'package:pyrite_ide/pages/git/git_page.dart' deferred as git_page;
 import 'package:pyrite_ide/pages/plugins/detail.dart';
-import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/plugins/monitor.dart';
-import 'package:pyrite_ide/pages/search/main.dart';
+import 'package:pyrite_ide/pages/plugins/plugins_page.dart';
+import 'package:pyrite_ide/pages/search/search_page.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
-import 'package:pyrite_ide/pages/settings/main.dart';
-import 'package:pyrite_ide/pages/settings/terminal.dart';
-import 'package:pyrite_ide/features/function_page.dart';
-import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/pages/settings/settings_page.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/device_tools/main.dart';
+import 'package:pyrite_ide/pages/settings/terminal.dart';
 import 'package:pyrite_ide/pages/welcome/oobe.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 CustomTransitionPage topCustomTransitionPage({

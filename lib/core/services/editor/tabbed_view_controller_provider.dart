@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,34 +8,34 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/editor/closed_tab_history.dart';
-import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
-import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
-import 'package:pyrite_ide/core/services/editor/external_file_change.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart';
-import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
-import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
+import 'package:pyrite_ide/core/services/editor/closed_tab_history.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/exclusive_pass.dart';
+import 'package:pyrite_ide/core/services/editor/external_change_dialog.dart';
+import 'package:pyrite_ide/core/services/editor/external_file_change.dart';
+import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/editor/file_tab_title.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
-import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/features/edit_core/edit_core.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
-import 'package:responsive_framework/responsive_framework.dart';
-import 'package:tabbed_view/tabbed_view.dart';
-import 'package:pyrite_ide/features/edit_core/main.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/editor/welcome.dart';
+import 'package:responsive_framework/responsive_framework.dart';
+import 'package:tabbed_view/tabbed_view.dart';
 
 /// Owns the primary editor group and the lifecycle of every editor tab.
 ///
@@ -160,7 +161,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
     editorController.setUndoController(undoRedoCntroller);
 
-    TabDataValue value = TabDataValue(
+    final TabDataValue value = TabDataValue(
       type: "file",
       filePath: file.path,
       file: file,
@@ -1514,7 +1515,7 @@ List<FoldRangeSnapshot> _foldSnapshots(List<PersistedFoldRange> ranges) => [
 
 final StateNotifierProvider<TabbedViewControllerNotifier, TabbedViewController>
 tabbedViewControllerProvider = StateNotifierProvider(
-  (ref) => TabbedViewControllerNotifier(ref),
+  TabbedViewControllerNotifier.new,
 );
 
 /// The local file tabs the user closed, most recent first.

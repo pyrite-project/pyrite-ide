@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manifest.dart';
 import 'package:pyrite_ide/core/sdk/renderer_registry.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
+import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 
 const _instance = ViewInstanceId(

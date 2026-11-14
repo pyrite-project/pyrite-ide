@@ -1,11 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/workspace_pane.dart';
-import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 
@@ -28,36 +29,6 @@ class SdkTab {
     runManager.registerHandler(SdkTabCommands.close, _handleClose);
     runManager.registerHandler(SdkTabCommands.list, _handleList);
     runManager.registerHandler(SdkTabCommands.activate, _handleActivate);
-  }
-
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
   }
 
   // ── Handlers ──
@@ -85,7 +56,7 @@ class SdkTab {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final viewId = (payload['viewId'] ?? payload['view_id'])?.toString();
     if (viewId == null || viewId.isEmpty) {
-      _respondError(envelope, respond, '缺少 viewId');
+      respondError(envelope, respond, '缺少 viewId');
       return;
     }
 
@@ -99,7 +70,7 @@ class SdkTab {
         )
         .firstOrNull;
     if (contribution == null) {
-      _respondError(envelope, respond, '插件未贡献视图: $viewId');
+      respondError(envelope, respond, '插件未贡献视图: $viewId');
       return;
     }
 
@@ -112,7 +83,7 @@ class SdkTab {
     // target instead.
     final target = viewPaneFromPayload(payload['pane']);
     if (target == null) {
-      _respondError(envelope, respond, '未知窗格: ${payload['pane']}');
+      respondError(envelope, respond, '未知窗格: ${payload['pane']}');
       return;
     }
 
@@ -159,10 +130,10 @@ class SdkTab {
           title: title,
         );
         _respondInstance(envelope, respond, instance, placement: 'console');
-      case GroupPaneTarget(:var index):
+      case GroupPaneTarget(:final index):
         final groups = allEditorControllers(ref.container);
         if (index < 0 || index >= groups.length) {
-          _respondError(envelope, respond, '窗格不存在: $index');
+          respondError(envelope, respond, '窗格不存在: $index');
           return;
         }
         final instance = notifier.openPluginView(
@@ -183,7 +154,7 @@ class SdkTab {
     String placement = 'editor',
   }) {
     if (instance == null) {
-      _respondError(envelope, respond, '插件未运行，无法创建视图标签页');
+      respondError(envelope, respond, '插件未运行，无法创建视图标签页');
       return;
     }
     final data = instance.toJson();
@@ -193,7 +164,7 @@ class SdkTab {
       viewId: instance.viewId,
       instanceId: instance.instanceId,
     );
-    _respondOk(envelope, respond, data: data);
+    respondOk(envelope, respond, data: data);
   }
 
   void _handleClose(
@@ -204,23 +175,23 @@ class SdkTab {
     final tabId = payload['tab_id']?.toString();
 
     if (tabId == null || tabId.isEmpty) {
-      _respondError(envelope, respond, '需要 tab_id');
+      respondError(envelope, respond, '需要 tab_id');
       return;
     }
     final found = _findTab(tabId);
     if (found == null) {
-      _respondError(envelope, respond, '未找到标签页: $tabId');
+      respondError(envelope, respond, '未找到标签页: $tabId');
       return;
     }
     // A pinned tab -- the welcome page -- can be neither closed nor moved,
     // whatever asked for it.
     if (!found.tab.closable) {
-      _respondError(envelope, respond, '该标签页不允许关闭: $tabId');
+      respondError(envelope, respond, '该标签页不允许关闭: $tabId');
       return;
     }
     found.group.removeTab(found.group.tabs.indexOf(found.tab));
     ref.read(tabbedViewControllerProvider.notifier).afterTabClose(found.tab);
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   /// Lists every editor tab, group by group in layout order.
@@ -258,10 +229,8 @@ class SdkTab {
     }
     // Console-hosted plugin views are not documents, but the plugin opened
     // them through this API and has to be able to find and close them again.
-    for (final tab in ref
-        .container
-        .read(consoleTabbedViewControllerProvider)
-        .tabs) {
+    for (final tab
+        in ref.container.read(consoleTabbedViewControllerProvider).tabs) {
       final value = tab.value;
       if (value is! TabDataValue) continue;
       result.add({
@@ -279,7 +248,7 @@ class SdkTab {
           },
       });
     }
-    _respondOk(envelope, respond, data: result);
+    respondOk(envelope, respond, data: result);
   }
 
   void _handleActivate(
@@ -290,12 +259,12 @@ class SdkTab {
     final tabId = payload['tab_id']?.toString();
 
     if (tabId == null || tabId.isEmpty) {
-      _respondError(envelope, respond, '需要 tab_id');
+      respondError(envelope, respond, '需要 tab_id');
       return;
     }
     final found = _findTab(tabId);
     if (found == null) {
-      _respondError(envelope, respond, '未找到标签页: $tabId');
+      respondError(envelope, respond, '未找到标签页: $tabId');
       return;
     }
     // The group holding the tab takes focus as well, or the shared editing
@@ -303,7 +272,7 @@ class SdkTab {
     // console-hosted tab brings its panel to the front instead.
     final notifier = ref.read(tabbedViewControllerProvider.notifier);
     if (!notifier.focusTab(found.tab)) notifier.focusConsoleTab(found.tab);
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   /// The editor tab [tabId] names, and the group holding it.

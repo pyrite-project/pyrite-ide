@@ -6,32 +6,32 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_lsp_completion_source.dart';
 import 'package:pyrite_ide/core/services/editor/repl_traceback_frames.dart';
 import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart'
     show getLocalFile;
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
-import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
-import 'package:pyrite_ide/core/constants/selection.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/terminal/terminal_context_menu.dart';
 
 /// Input history is bucketed per device: the label of the attached board, or
@@ -127,6 +127,14 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
 
   /// Last primary press on the transcript, for double-click word selection.
   ({DateTime at, Offset position})? _lastTranscriptTap;
+
+  /// Whether the pointer rests on a traceback frame's link, which swaps the
+  /// transcript cursor from the caret to the click hand.
+  bool _hoveringTracebackFrame = false;
+
+  /// Traceback frame ranges memoised for pointer hit-testing, `null` when the
+  /// transcript has changed since the last scan.
+  List<TracebackFrameRange>? _transcriptFrameRangeCache;
   String _promptFilterPending = '';
   int _displayAnsiState = 0;
   bool _displayAtLineStart = true;
@@ -166,6 +174,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     _signature.addListener(_syncSignatureOverlay);
     _completion = ReplCompletionController(provider: _provideCompletionItems);
     _completion.addListener(_syncCompletionOverlay);
+    _transcript.addListener(_handleTranscriptUpdated);
     _scrollController.addListener(_keepFocusScrollPosition);
     _inputSink = _sendInput;
     _deviceOutputSink = _handleDeviceOutput;
@@ -200,6 +209,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     if (replRunFinishedSink == _runFinishedSink) {
       replRunFinishedSink = _previousRunFinishedSink;
     }
+    _transcript.removeListener(_handleTranscriptUpdated);
     _scrollController.removeListener(_keepFocusScrollPosition);
     _focusScrollTimer?.cancel();
     _completion.removeListener(_syncCompletionOverlay);
@@ -269,8 +279,18 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     final outputStyle = _outputStyle();
     final promptStyle = _promptStyle(context);
     final scheme = Theme.of(context).colorScheme;
+    // The frame's link styling invites the click; the cursor is what confirms
+    // it under the pointer, so it becomes the click hand exactly where a tap
+    // would jump. A `TextSpan.mouseCursor` cannot do this: a plain paragraph
+    // never resolves span cursors without a recognizer, which the span builder
+    // deliberately avoids.
     return MouseRegion(
-      cursor: SystemMouseCursors.text,
+      key: const ValueKey('repl-transcript-region'),
+      cursor: _hoveringTracebackFrame
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.text,
+      onHover: _handleTranscriptHover,
+      onExit: _handleTranscriptHoverExit,
       child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: _handleTranscriptPointerDown,
@@ -451,11 +471,60 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     if (renderObject is! RenderParagraph) return;
     final position = renderObject.getPositionForOffset(details.localPosition);
     final offset = position.offset;
-    for (final range in tracebackFrameRanges(_transcript.text)) {
+    for (final range in _transcriptFrameRanges()) {
       if (offset < range.start || offset > range.end) continue;
       _openTracebackFrame(range.frame);
       return;
     }
+  }
+
+  /// Drops the memoised traceback frame ranges so the next pointer event scans
+  /// the transcript it actually lands on.
+  void _handleTranscriptUpdated() {
+    _transcriptFrameRangeCache = null;
+  }
+
+  /// Traceback frame ranges for the current transcript, scanned at most once
+  /// per transcript change.
+  ///
+  /// Pointer events ask for these offsets far more often than the transcript
+  /// changes — every hover wiggle re-asks whether it rests on a frame, and each
+  /// ask would otherwise re-join the whole transcript just to answer — so the
+  /// scan is memoised and dropped when the transcript notifies. The cursor, the
+  /// tap and the span styling all read this one result.
+  List<TracebackFrameRange> _transcriptFrameRanges() {
+    return _transcriptFrameRangeCache ??= tracebackFrameRanges(
+      _transcript.text,
+    );
+  }
+
+  /// Swaps the transcript cursor to the click hand while it rests on a frame.
+  ///
+  /// Hover fires for every pointer wiggle, but only entering or leaving a frame
+  /// changes anything, so the rebuild happens at those boundaries only.
+  void _handleTranscriptHover(PointerHoverEvent event) {
+    _setHoveringTracebackFrame(_isOverTracebackFrame(event.position));
+  }
+
+  void _handleTranscriptHoverExit(PointerExitEvent event) {
+    _setHoveringTracebackFrame(false);
+  }
+
+  void _setHoveringTracebackFrame(bool hovering) {
+    if (_hoveringTracebackFrame == hovering) return;
+    setState(() {
+      _hoveringTracebackFrame = hovering;
+    });
+  }
+
+  /// Whether [globalPosition] rests on a traceback frame's link.
+  bool _isOverTracebackFrame(Offset globalPosition) {
+    final offset = _transcriptOffsetAt(globalPosition);
+    if (offset == null) return false;
+    for (final range in _transcriptFrameRanges()) {
+      if (offset >= range.start && offset <= range.end) return true;
+    }
+    return false;
   }
 
   /// Opens the editor at the frame the user tapped.
@@ -519,10 +588,9 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       // A fresh tab opens into the group the user is working in, and an
       // already-open one is focused wherever it lives, so the active group --
       // not the primary one -- is what holds the tab this jump went to.
-      final controller =
-          editorTabValueOf(
-            ref.read(activeEditorControllerProvider).selectedTab,
-          )?.editorController;
+      final controller = editorTabValueOf(
+        ref.read(activeEditorControllerProvider).selectedTab,
+      )?.editorController;
       if (controller == null) return true;
       // The device's copy can be shorter than the line the frame named, for
       // instance when the file was edited after the crash; both the offset
@@ -753,7 +821,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       ));
     }
 
-    for (final range in tracebackFrameRanges(text)) {
+    for (final range in _transcriptFrameRanges()) {
       matches.add((
         start: range.start,
         end: range.end,

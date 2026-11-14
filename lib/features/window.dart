@@ -1,38 +1,39 @@
 import 'dart:async';
 import 'dart:io';
+
+import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
+import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/sdk/activation_manager.dart';
-import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
-import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
-import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/window_placement.dart';
-import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
-import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
 import 'package:pyrite_ide/core/services/window_placement.dart';
 import 'package:pyrite_ide/features/command_palette/command_palette.dart';
 import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
 import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tabbed_view/tabbed_view.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 
 class UseWindow with WindowListener {
   ProviderContainer? _container;
@@ -242,7 +243,9 @@ class UseWindow with WindowListener {
           // persisted for the next session.
           try {
             await notifier.saveTab(tab);
-          } catch (_) {}
+          } catch (error) {
+            debugPrint('[lib/features/window.dart] ignored error: $error');
+          }
         }
         container
             .read(ideMessageProvider.notifier)
@@ -383,7 +386,9 @@ class UseWindow with WindowListener {
           ?.read(desktopTerminalProvider.notifier)
           .closeAll()
           .timeout(const Duration(seconds: 1));
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('[lib/features/window.dart] ignored error: $error');
+    }
   }
 
   Future<void> _stopPlugins() async {
@@ -394,7 +399,9 @@ class UseWindow with WindowListener {
           ?.read(activationManagerProvider.notifier)
           .deactivateAllForShutdown()
           .timeout(const Duration(seconds: 2));
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('[lib/features/window.dart] ignored error: $error');
+    }
   }
 }
 
@@ -702,7 +709,7 @@ class WindowActionBar extends ConsumerWidget {
         ),
         IconButton(
           icon: Icon(Icons.minimize, size: 18),
-          onPressed: () => windowManager.minimize(),
+          onPressed: windowManager.minimize,
         ),
         FutureBuilder<bool>(
           future: windowManager.isMaximized(),
@@ -727,7 +734,7 @@ class WindowActionBar extends ConsumerWidget {
             context,
           ).colorScheme.error.withValues(alpha: 0.3),
           icon: Icon(Icons.close, size: 20),
-          onPressed: () => windowManager.close(),
+          onPressed: windowManager.close,
         ),
       ],
     );

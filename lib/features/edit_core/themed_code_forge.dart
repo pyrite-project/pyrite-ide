@@ -9,9 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
 import 'package:pyrite_ide/core/constants/selection.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 import 'package:pyrite_ide/features/edit_core/editor_minimap.dart';
 

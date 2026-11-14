@@ -288,27 +288,30 @@ void main() {
       expect(await file.readAsString(), 'bar bar bar\n');
     });
 
-    test('keeps an unusable group reference literal instead of failing', () async {
-      final file = File(path.join(temp.path, 'a.txt'));
-      await file.writeAsString('color: red\n');
+    test(
+      'keeps an unusable group reference literal instead of failing',
+      () async {
+        final file = File(path.join(temp.path, 'a.txt'));
+        await file.writeAsString('color: red\n');
 
-      // The digit run overflows a 64-bit int, so parsing it must not throw;
-      // the reference does not name a group, so it stays as typed. The same
-      // rule covers an in-range-looking index past the match's group count.
-      const options = SearchOptions(
-        pattern: r'color: (\w+)',
-        isRegExp: true,
-        replaceText: r'$1 $99 $123456789012345678901234567890',
-      );
-      final results = await searchInDirectory(temp, options);
-      final replaced = await replaceAllInResults(results, options);
+        // The digit run overflows a 64-bit int, so parsing it must not throw;
+        // the reference does not name a group, so it stays as typed. The same
+        // rule covers an in-range-looking index past the match's group count.
+        const options = SearchOptions(
+          pattern: r'color: (\w+)',
+          isRegExp: true,
+          replaceText: r'$1 $99 $123456789012345678901234567890',
+        );
+        final results = await searchInDirectory(temp, options);
+        final replaced = await replaceAllInResults(results, options);
 
-      expect(replaced, 1);
-      expect(
-        await file.readAsString(),
-        'red \$99 \$123456789012345678901234567890\n',
-      );
-    });
+        expect(replaced, 1);
+        expect(
+          await file.readAsString(),
+          'red \$99 \$123456789012345678901234567890\n',
+        );
+      },
+    );
   });
 
   group('replaceOneOccurrence', () {

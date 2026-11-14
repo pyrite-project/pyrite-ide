@@ -8,24 +8,26 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
 import 'package:pyrite_ide/core/sdk/context_key_host.dart';
-import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
-import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
-import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/plugins/detail.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+
+import '../../shared/md3_widgets.dart';
 
 class Plugins extends ConsumerWidget {
   const Plugins({super.key});
@@ -44,15 +46,19 @@ class Plugins extends ConsumerWidget {
       appBar: AppBar(
         title: const UseText(I18nKey.pluginsTitle),
         actions: [
-          IconButton(
-            icon: Icon(Icons.add_box_outlined, size: tokens.headerIconSize),
-            tooltip: translateForWidget(ref, I18nKey.pluginsInstall),
-            onPressed: () => _installPlugin(context, ref),
+          TooltipAnchor(
+            message: translateForWidget(ref, I18nKey.pluginsInstall),
+            child: IconButton(
+              icon: Icon(Icons.add_box_outlined, size: tokens.headerIconSize),
+              onPressed: () => _installPlugin(context, ref),
+            ),
           ),
-          IconButton(
-            icon: Icon(Icons.monitor, size: tokens.headerIconSize),
-            tooltip: translateForWidget(ref, I18nKey.pluginsPermissionMonitor),
-            onPressed: () => context.push('/plugins/monitor'),
+          TooltipAnchor(
+            message: translateForWidget(ref, I18nKey.pluginsPermissionMonitor),
+            child: IconButton(
+              icon: Icon(Icons.monitor, size: tokens.headerIconSize),
+              onPressed: () => context.push('/plugins/monitor'),
+            ),
           ),
         ],
       ),

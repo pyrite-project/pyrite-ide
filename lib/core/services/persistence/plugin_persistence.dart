@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:toml/toml.dart';
 
@@ -106,9 +107,7 @@ class PluginPersistedData {
       permissions: parsePerms(json['permissions']),
       permissionGrantsInitialized: json['permissionGrantsInitialized'] == true,
       platforms:
-          (json['platforms'] as List<dynamic>?)
-              ?.whereType<String>()
-              .toList() ??
+          (json['platforms'] as List<dynamic>?)?.whereType<String>().toList() ??
           [],
       status: manifest == null
           ? PluginStatus.disabled.name

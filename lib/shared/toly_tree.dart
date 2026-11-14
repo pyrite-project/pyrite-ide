@@ -227,9 +227,7 @@ class _TolyTreeState<T> extends State<TolyTree<T>> {
   }
 
   void _onNodeChanged() {
-    setState(() {
-      _updateFlattenedNodes();
-    });
+    setState(_updateFlattenedNodes);
   }
 
   @override

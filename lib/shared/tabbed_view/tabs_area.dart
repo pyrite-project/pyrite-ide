@@ -6,18 +6,18 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_widget.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
+import 'package:tabbed_view/src/internal/size_holder.dart';
+import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
+import 'package:tabbed_view/src/internal/tabs_area/hidden_tabs.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_status.dart';
 import 'package:tabbed_view/src/tabbed_view_controller.dart';
 import 'package:tabbed_view/src/theme/tabbed_view_theme_data.dart';
 import 'package:tabbed_view/src/theme/tabs_area_theme_data.dart';
 import 'package:tabbed_view/src/theme/theme_widget.dart';
-import 'package:tabbed_view/src/internal/size_holder.dart';
-import 'package:pyrite_ide/shared/tabbed_view/tab_widget.dart';
-import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
-import 'package:tabbed_view/src/internal/tabs_area/hidden_tabs.dart';
-import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
 /// How far into the strip, from either end, a drag held still scrolls it.
 const double _autoScrollEdgeExtent = 56;
@@ -108,15 +108,15 @@ class _TabsAreaState extends State<TabsArea>
   }
 
   Widget _builder(BuildContext context, Widget? child) {
-    TabbedViewController controller = widget.provider.controller;
-    TabbedViewThemeData theme = TabbedViewTheme.of(context);
-    TabsAreaThemeData tabsAreaTheme = theme.tabsArea;
-    List<Widget> children = [];
+    final TabbedViewController controller = widget.provider.controller;
+    final TabbedViewThemeData theme = TabbedViewTheme.of(context);
+    final TabsAreaThemeData tabsAreaTheme = theme.tabsArea;
+    final List<Widget> children = [];
     for (int index = 0; index < controller.tabs.length; index++) {
-      TabStatus status = _getStatusFor(index);
-      SizeHolder sizeHolder = SizeHolder();
+      final TabStatus status = _getStatusFor(index);
+      final SizeHolder sizeHolder = SizeHolder();
       final Key tabIdentity = controller.tabs[index].uniqueKey;
-      Widget tab = KeyedSubtree(
+      final Widget tab = KeyedSubtree(
         key: tabIdentity,
         child: Builder(
           builder: (context) {
@@ -569,10 +569,10 @@ class _TabsAreaState extends State<TabsArea>
     final Radius radius = Radius.circular(theme.borderRadius);
     final TabBarPosition position = theme.position;
 
-    bool top = position != TabBarPosition.bottom;
-    bool bottom = position != TabBarPosition.top;
-    bool left = position != TabBarPosition.right;
-    bool right = position != TabBarPosition.left;
+    final bool top = position != TabBarPosition.bottom;
+    final bool bottom = position != TabBarPosition.top;
+    final bool left = position != TabBarPosition.right;
+    final bool right = position != TabBarPosition.left;
 
     return BorderRadius.only(
       topLeft: (left && top) ? radius : Radius.zero,
@@ -586,10 +586,10 @@ class _TabsAreaState extends State<TabsArea>
     final BorderSide borderSide = theme.border ?? BorderSide.none;
     final TabBarPosition position = theme.position;
 
-    bool top = position != TabBarPosition.bottom;
-    bool bottom = position != TabBarPosition.top;
-    bool left = position != TabBarPosition.right;
-    bool right = position != TabBarPosition.left;
+    final bool top = position != TabBarPosition.bottom;
+    final bool bottom = position != TabBarPosition.top;
+    final bool left = position != TabBarPosition.right;
+    final bool right = position != TabBarPosition.left;
 
     return Border(
       top: top ? borderSide : BorderSide.none,
@@ -601,7 +601,7 @@ class _TabsAreaState extends State<TabsArea>
 
   /// Gets the status of the tab for a given index.
   TabStatus _getStatusFor(int tabIndex) {
-    TabbedViewController controller = widget.provider.controller;
+    final TabbedViewController controller = widget.provider.controller;
     if (controller.tabs.isEmpty || tabIndex >= controller.tabs.length) {
       throw Exception('Invalid tab index: $tabIndex');
     }

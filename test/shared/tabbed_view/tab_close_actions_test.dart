@@ -3,16 +3,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
 import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
-import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 import 'package:tabbed_view/src/tabbed_view_controller.dart';
+import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
 
 TabData tab(String name) => TabData(text: name);
 

@@ -161,5 +161,5 @@ int _asByteCount(Object? value) {
 
 final deviceStatusProvider =
     StateNotifierProvider<DeviceStatusNotifier, AsyncValue<DeviceStatus?>>(
-      (ref) => DeviceStatusNotifier(ref),
+      DeviceStatusNotifier.new,
     );

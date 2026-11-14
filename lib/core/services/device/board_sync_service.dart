@@ -2,14 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
-import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Builds a [SyncTreeSnapshot] from a local directory tree.
 ///

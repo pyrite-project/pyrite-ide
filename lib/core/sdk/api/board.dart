@@ -1,17 +1,19 @@
 import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 
 abstract class SdkBoardCommands {
   static const String getDirList = 'sdk.board.get_dir_list';
@@ -78,36 +80,6 @@ class SdkBoard {
     );
   }
 
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
   bool _isConnected() {
     final serialState = ref.read(serialProvider);
     return serialState.isConnected == true;
@@ -118,7 +90,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final String? dirPath = envelope['data']?.toString();
@@ -132,14 +104,14 @@ class SdkBoard {
       }
     }
 
-    _respondOk(envelope, respond, data: entries);
+    respondOk(envelope, respond, data: entries);
   }
 
   void _handleGetRootDir(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    _respondOk(envelope, respond, data: "/");
+    respondOk(envelope, respond, data: "/");
   }
 
   void _handleGetFocusFileNode(
@@ -147,7 +119,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) {
     final node = ref.read(boardProvider).getFocusFileNode();
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: node != null ? {'path': node.id, 'name': node.data.name} : null,
@@ -159,7 +131,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) {
     final node = ref.read(boardProvider).getFocusFolderNode();
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: node != null ? {'path': node.id, 'name': node.data.name} : null,
@@ -171,13 +143,13 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final filePath = payload['path']?.toString();
     if (filePath == null) {
-      _respondOk(envelope, respond);
+      respondOk(envelope, respond);
       return;
     }
 
@@ -186,7 +158,7 @@ class SdkBoard {
       await ref.read(boardProvider).openFile(context, filePath);
     }
 
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleDownloadSelectedBoardItem(
@@ -194,14 +166,14 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final context = appContext;
     if (context != null && context.mounted) {
       await ref.read(boardProvider).downloadSelectedBoardItem(context);
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleRename(
@@ -209,7 +181,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -224,7 +196,7 @@ class SdkBoard {
           .renameBoardOpenPath(filePath, newPath);
       await ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleDeleteFile(
@@ -232,7 +204,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -241,7 +213,7 @@ class SdkBoard {
     if (filePath != null) {
       await ref.read(boardProvider).ops.deleteFile(filePath);
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleDeleteFolder(
@@ -249,7 +221,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -258,7 +230,7 @@ class SdkBoard {
     if (filePath != null) {
       await ref.read(boardProvider).ops.deleteFolder(filePath);
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleIsDirectory(
@@ -266,7 +238,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -278,13 +250,13 @@ class SdkBoard {
           .listDirectory(path: p.dirname(filePath));
       for (final entry in entries) {
         if (filePath == entry.path) {
-          _respondOk(envelope, respond, data: entry.isFolder);
+          respondOk(envelope, respond, data: entry.isFolder);
           return;
         }
       }
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -293,7 +265,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -305,13 +277,13 @@ class SdkBoard {
           .listDirectory(path: p.dirname(filePath));
       for (final entry in entries) {
         if (filePath == entry.path) {
-          _respondOk(envelope, respond, data: !entry.isFolder);
+          respondOk(envelope, respond, data: !entry.isFolder);
           return;
         }
       }
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -324,9 +296,9 @@ class SdkBoard {
 
     if (filePath != null) {
       final correspondingFilePath = getLocalFile(filePath);
-      _respondOk(envelope, respond, data: correspondingFilePath);
+      respondOk(envelope, respond, data: correspondingFilePath);
     } else {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
     }
   }
 
@@ -335,7 +307,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -346,12 +318,12 @@ class SdkBoard {
         final content = await ref
             .read(boardFileBackendProvider)
             .readTextFile(filePath);
-        _respondOk(envelope, respond, data: content);
+        respondOk(envelope, respond, data: content);
       } catch (e) {
-        _respondOk(envelope, respond, data: null);
+        respondOk(envelope, respond, data: null);
       }
     } else {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
     }
   }
 
@@ -360,7 +332,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -372,12 +344,12 @@ class SdkBoard {
         await ref
             .read(boardFileBackendProvider)
             .writeTextFile(filePath, content);
-        _respondOk(envelope, respond, data: true);
+        respondOk(envelope, respond, data: true);
       } catch (e) {
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -386,7 +358,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -399,16 +371,16 @@ class SdkBoard {
             .listDirectory(path: p.dirname(filePath));
         for (final entry in entries) {
           if (entry.path == filePath) {
-            _respondOk(envelope, respond, data: true);
+            respondOk(envelope, respond, data: true);
             return;
           }
         }
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       } catch (e) {
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -417,7 +389,7 @@ class SdkBoard {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected()) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -464,7 +436,7 @@ class SdkBoard {
                 {'path': localPath},
               ),
             );
-        _respondOk(envelope, respond, data: true);
+        respondOk(envelope, respond, data: true);
       } catch (e) {
         var errorMsg = e.toString();
         if (e is BoardFileBackendException &&
@@ -482,10 +454,10 @@ class SdkBoard {
                 {'error': errorMsg},
               ),
             );
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 }

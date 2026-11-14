@@ -12,13 +12,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_actions.dart';
 import 'package:pyrite_ide/features/terminal/terminal_link_parser.dart';
-import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// Opens [url] in the platform browser, falling back to the clipboard.
 Future<void> openTerminalUrlLink(

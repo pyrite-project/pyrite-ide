@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
-import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_ui.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

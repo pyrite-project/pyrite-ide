@@ -1,15 +1,18 @@
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
-import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 
 abstract class SdkFileCommands {
@@ -88,21 +91,6 @@ class SdkFile {
     );
   }
 
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
   void _handleGetDirList(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
@@ -117,17 +105,19 @@ class SdkFile {
             entries.add(entity.path);
           }
         }
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('[lib/core/sdk/api/file.dart] ignored error: $error');
+      }
     }
 
-    _respondOk(envelope, respond, data: entries);
+    respondOk(envelope, respond, data: entries);
   }
 
   void _handleGetRootDir(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
   ) {
-    _respondOk(envelope, respond, data: ref.read(fileProvider)?.path);
+    respondOk(envelope, respond, data: ref.read(fileProvider)?.path);
   }
 
   void _handleSaveCurrentFile(
@@ -135,7 +125,7 @@ class SdkFile {
     void Function(Map<String, dynamic>) respond,
   ) {
     ref.read(fileProvider.notifier).saveCurrentFile();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleSaveCurrentFileAs(
@@ -143,7 +133,7 @@ class SdkFile {
     void Function(Map<String, dynamic>) respond,
   ) {
     ref.read(fileProvider.notifier).saveCurrentFileAs();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleCreateFile(
@@ -154,14 +144,14 @@ class SdkFile {
     final filePath = payload['path']?.toString();
 
     if (filePath == null) {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
       return;
     }
 
     final createdPath = await ref
         .read(fileProvider.notifier)
         .createFile(filePath);
-    _respondOk(envelope, respond, data: {'path': createdPath});
+    respondOk(envelope, respond, data: {'path': createdPath});
   }
 
   Future<void> _handleCreateFolder(
@@ -172,14 +162,14 @@ class SdkFile {
     final folderPath = payload['path']?.toString();
 
     if (folderPath == null) {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
       return;
     }
 
     final createdPath = await ref
         .read(fileProvider.notifier)
         .createFolder(folderPath);
-    _respondOk(envelope, respond, data: {'path': createdPath});
+    respondOk(envelope, respond, data: {'path': createdPath});
   }
 
   void _handleGetFocusFileNode(
@@ -187,7 +177,7 @@ class SdkFile {
     void Function(Map<String, dynamic>) respond,
   ) {
     final node = ref.read(fileProvider.notifier).getFocusFileNode();
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: node != null ? {'path': node.id, 'name': node.data.name} : null,
@@ -199,7 +189,7 @@ class SdkFile {
     void Function(Map<String, dynamic>) respond,
   ) {
     final node = ref.read(fileProvider.notifier).getFocusFolderNode();
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: node != null ? {'path': node.id, 'name': node.data.name} : null,
@@ -213,7 +203,7 @@ class SdkFile {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final filePath = payload['path']?.toString();
     if (filePath == null) {
-      _respondOk(envelope, respond);
+      respondOk(envelope, respond);
       return;
     }
 
@@ -230,7 +220,7 @@ class SdkFile {
             .openFile(context, file: file);
       }
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleUploadSelectedLocalFileItem(
@@ -243,7 +233,7 @@ class SdkFile {
           .read(fileProvider.notifier)
           .uploadSelectedLocalFileItem(context);
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleRename(
@@ -264,7 +254,7 @@ class SdkFile {
           .renameLocalOpenPath(filePath, newPath);
       await ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleDelete(
@@ -282,7 +272,7 @@ class SdkFile {
         await local.deleteFile(filePath);
       }
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleOpenFolder(
@@ -299,7 +289,7 @@ class SdkFile {
         ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       }
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleIsDirectory(
@@ -311,9 +301,9 @@ class SdkFile {
 
     if (filePath != null) {
       final isDir = FileSystemEntity.isDirectorySync(filePath);
-      _respondOk(envelope, respond, data: isDir);
+      respondOk(envelope, respond, data: isDir);
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -326,9 +316,9 @@ class SdkFile {
 
     if (filePath != null) {
       final isFile = FileSystemEntity.isFileSync(filePath);
-      _respondOk(envelope, respond, data: isFile);
+      respondOk(envelope, respond, data: isFile);
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -342,12 +332,12 @@ class SdkFile {
     if (filePath != null) {
       try {
         final content = await File(filePath).readAsString();
-        _respondOk(envelope, respond, data: content);
+        respondOk(envelope, respond, data: content);
       } catch (e) {
-        _respondOk(envelope, respond, data: null);
+        respondOk(envelope, respond, data: null);
       }
     } else {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
     }
   }
 
@@ -362,12 +352,12 @@ class SdkFile {
     if (filePath != null && content != null) {
       try {
         await File(filePath).writeAsString(content);
-        _respondOk(envelope, respond, data: true);
+        respondOk(envelope, respond, data: true);
       } catch (e) {
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -382,12 +372,12 @@ class SdkFile {
     if (src != null && dst != null) {
       try {
         await File(src).copy(dst);
-        _respondOk(envelope, respond, data: true);
+        respondOk(envelope, respond, data: true);
       } catch (e) {
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -402,12 +392,12 @@ class SdkFile {
     if (src != null && dst != null) {
       try {
         await File(src).rename(dst);
-        _respondOk(envelope, respond, data: true);
+        respondOk(envelope, respond, data: true);
       } catch (e) {
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -420,9 +410,9 @@ class SdkFile {
 
     if (filePath != null) {
       final exists = File(filePath).existsSync();
-      _respondOk(envelope, respond, data: exists);
+      respondOk(envelope, respond, data: exists);
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -470,7 +460,7 @@ class SdkFile {
             {'path': boardPath},
           ),
         );
-        _respondOk(envelope, respond, data: true);
+        respondOk(envelope, respond, data: true);
       } catch (e) {
         ref
             .read(fileTransferProgressProvider.notifier)
@@ -479,10 +469,10 @@ class SdkFile {
                 'error': e.toString(),
               }),
             );
-        _respondOk(envelope, respond, data: false);
+        respondOk(envelope, respond, data: false);
       }
     } else {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
     }
   }
 
@@ -495,7 +485,7 @@ class SdkFile {
     final isFolder = payload['is_folder'] == true;
 
     if (name == null) {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
       return;
     }
 
@@ -506,9 +496,9 @@ class SdkFile {
       } else {
         uniqueName = await local.getUniqueFilePath(name);
       }
-      _respondOk(envelope, respond, data: uniqueName);
+      respondOk(envelope, respond, data: uniqueName);
     } catch (e) {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
     }
   }
 }

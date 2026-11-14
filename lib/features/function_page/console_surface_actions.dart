@@ -12,6 +12,8 @@ import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
 import 'package:pyrite_ide/features/function_page/repl_surface.dart';
 
+import '../../shared/md3_widgets.dart';
+
 /// A console surface's buttons, sized for the trailing edge of a tab strip.
 ///
 /// The buttons belong to the surface rather than to the console panel: the
@@ -74,32 +76,36 @@ class ReplSurfaceActions extends ConsumerWidget {
     return ConsoleSurfaceActions(
       actions: [
         if (!isConnected && !useWebRepl)
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelConnectWebRepl),
-            onPressed: () {
-              ref.read(webReplProvider.notifier).connect();
-            },
-            icon: const Icon(Icons.wifi),
+          TooltipAnchor(
+            message: translateForWidget(ref, I18nKey.bottomPanelConnectWebRepl),
+            child: IconButton(
+              onPressed: () {
+                ref.read(webReplProvider.notifier).connect();
+              },
+              icon: const Icon(Icons.wifi),
+            ),
           ),
-        IconButton(
-          tooltip: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
-          onPressed: () {
-            replController.clearSelection();
-            repl.clear();
-            replClearSink?.call();
-            final input = ref.read(replInputControllerProvider);
-            if (replClearSink == null) {
-              if (input.mode == ReplInteractionMode.prompt) {
-                repl.write('>>> ');
-              } else if (input.mode == ReplInteractionMode.continuation) {
-                repl.write('... ');
+        TooltipAnchor(
+          message: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
+          child: IconButton(
+            onPressed: () {
+              replController.clearSelection();
+              repl.clear();
+              replClearSink?.call();
+              final input = ref.read(replInputControllerProvider);
+              if (replClearSink == null) {
+                if (input.mode == ReplInteractionMode.prompt) {
+                  repl.write('>>> ');
+                } else if (input.mode == ReplInteractionMode.continuation) {
+                  repl.write('... ');
+                }
               }
-            }
-          },
-          icon: const Icon(Icons.cleaning_services_outlined),
+            },
+            icon: const Icon(Icons.cleaning_services_outlined),
+          ),
         ),
-        IconButton(
-          tooltip: useWebRepl
+        TooltipAnchor(
+          message: useWebRepl
               ? translateForWidget(ref, I18nKey.editorToolbarInterruptDevice)
               : translateForWidget(
                   ref,
@@ -107,19 +113,21 @@ class ReplSurfaceActions extends ConsumerWidget {
                       ? I18nKey.editorToolbarInterruptDevice
                       : I18nKey.editorToolbarInterruptNeedsDevice,
                 ),
-          onPressed: (useWebRepl || isConnected)
-              ? () {
-                  if (useWebRepl) {
-                    ref.read(webReplProvider.notifier).sendCommand("\x03");
-                  } else {
-                    ref.read(serialProvider.notifier).sendCommand("\x03");
+          child: IconButton(
+            onPressed: (useWebRepl || isConnected)
+                ? () {
+                    if (useWebRepl) {
+                      ref.read(webReplProvider.notifier).sendCommand("\x03");
+                    } else {
+                      ref.read(serialProvider.notifier).sendCommand("\x03");
+                    }
                   }
-                }
-              : null,
-          icon: const Icon(Icons.stop_circle_outlined),
+                : null,
+            icon: const Icon(Icons.stop_circle_outlined),
+          ),
         ),
-        IconButton(
-          tooltip: useWebRepl
+        TooltipAnchor(
+          message: useWebRepl
               ? translateForWidget(ref, I18nKey.editorToolbarSoftReboot)
               : translateForWidget(
                   ref,
@@ -127,16 +135,18 @@ class ReplSurfaceActions extends ConsumerWidget {
                       ? I18nKey.editorToolbarSoftReboot
                       : I18nKey.editorToolbarSoftRebootNeedsDevice,
                 ),
-          onPressed: (useWebRepl || isConnected)
-              ? () {
-                  if (useWebRepl) {
-                    ref.read(webReplProvider.notifier).sendCommand("\x04");
-                  } else {
-                    ref.read(serialProvider.notifier).sendCommand("\x04");
+          child: IconButton(
+            onPressed: (useWebRepl || isConnected)
+                ? () {
+                    if (useWebRepl) {
+                      ref.read(webReplProvider.notifier).sendCommand("\x04");
+                    } else {
+                      ref.read(serialProvider.notifier).sendCommand("\x04");
+                    }
                   }
-                }
-              : null,
-          icon: const Icon(Icons.restart_alt),
+                : null,
+            icon: const Icon(Icons.restart_alt),
+          ),
         ),
       ],
     );
@@ -151,10 +161,12 @@ class LogSurfaceActions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return ConsoleSurfaceActions(
       actions: [
-        IconButton(
-          tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
-          onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
-          icon: const Icon(Icons.cleaning_services_outlined),
+        TooltipAnchor(
+          message: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
+          child: IconButton(
+            onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
+            icon: const Icon(Icons.cleaning_services_outlined),
+          ),
         ),
       ],
     );
@@ -179,18 +191,20 @@ class ProblemsSurfaceActions extends ConsumerWidget {
         groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
     return ConsoleSurfaceActions(
       actions: [
-        IconButton(
-          tooltip: translateForWidget(
+        TooltipAnchor(
+          message: translateForWidget(
             ref,
             allCollapsed
                 ? I18nKey.problemsPanelExpandAll
                 : I18nKey.problemsPanelCollapseAll,
           ),
-          onPressed: () {
-            ref.read(collapsedProblemFilesProvider.notifier).state =
-                allCollapsed ? <String>{} : Set<String>.from(groupPaths);
-          },
-          icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
+          child: IconButton(
+            onPressed: () {
+              ref.read(collapsedProblemFilesProvider.notifier).state =
+                  allCollapsed ? <String>{} : Set<String>.from(groupPaths);
+            },
+            icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
+          ),
         ),
       ],
     );

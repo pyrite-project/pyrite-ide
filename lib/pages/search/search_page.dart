@@ -16,6 +16,7 @@ import 'package:pyrite_ide/core/services/search/search_provider.dart';
 import 'package:pyrite_ide/core/services/search/search_service.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/pages/search/search_results_view.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 String _tr(
@@ -751,42 +752,39 @@ class _FindToggleState extends State<_FindToggle> {
       background = Colors.transparent;
       borderColor = Colors.transparent;
     }
-    return Tooltip(
+    return TooltipAnchor(
       message: widget.tooltip,
-      child: Semantics(
-        container: true,
-        child: Padding(
-          // Vertically the full inset — it is the square's only clearance from
-          // the input's edges. Horizontally half of it: the neighbouring
-          // toggle's half adds up to one full inset between the squares.
-          padding: const EdgeInsets.symmetric(
-            horizontal: _toggleInset / 2,
-            vertical: _toggleInset,
-          ),
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            onEnter: (_) => setState(() => _hovered = true),
-            onExit: (_) => setState(() => _hovered = false),
-            child: GestureDetector(
-              onTap: widget.onPressed,
-              child: Container(
-                width: _toggleSize,
-                height: _toggleSize,
-                alignment: Alignment.center,
-                // Same radius as the input, so the two shapes match.
-                decoration: BoxDecoration(
-                  borderRadius: context.innerCorners,
-                  color: background,
-                  border: Border.all(color: borderColor),
-                ),
-                child: Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: color.withAlpha(widget.active ? 255 : 150),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1,
-                  ),
+      child: Padding(
+        // Vertically the full inset — it is the square's only clearance from
+        // the input's edges. Horizontally half of it: the neighbouring
+        // toggle's half adds up to one full inset between the squares.
+        padding: const EdgeInsets.symmetric(
+          horizontal: _toggleInset / 2,
+          vertical: _toggleInset,
+        ),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onTap: widget.onPressed,
+            child: Container(
+              width: _toggleSize,
+              height: _toggleSize,
+              alignment: Alignment.center,
+              // Same radius as the input, so the two shapes match.
+              decoration: BoxDecoration(
+                borderRadius: context.innerCorners,
+                color: background,
+                border: Border.all(color: borderColor),
+              ),
+              child: Text(
+                widget.label,
+                style: TextStyle(
+                  color: color.withAlpha(widget.active ? 255 : 150),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
                 ),
               ),
             ),
@@ -813,25 +811,33 @@ class _BarIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon, size: 17),
-      // Without this the Material tap target inflates the button well past
-      // [_iconButtonSize], which would push the inputs out of alignment.
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      color: foreground.withAlpha(215),
-      disabledColor: foreground.withAlpha(70),
-      hoverColor: foreground.withAlpha(26),
-      focusColor: Colors.transparent,
-      highlightColor: foreground.withAlpha(40),
-      splashRadius: _iconButtonSize / 2,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(
-        width: _iconButtonSize,
-        height: _iconButtonSize,
+    // The tooltip lives outside the button rather than on `IconButton` itself:
+    // `IconButton` wraps its tooltip inside `Semantics(button: true)`, which is
+    // a merging node, so its overlay portal would graft onto whichever ancestor
+    // node happens to exist. Six of these sit in one row here, they would all
+    // share that node, and the losing anchors end up with a parentless
+    // semantics node -- see [TooltipAnchor].
+    return TooltipAnchor(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 17),
+        // Without this the Material tap target inflates the button well past
+        // [_iconButtonSize], which would push the inputs out of alignment.
+        style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        color: foreground.withAlpha(215),
+        disabledColor: foreground.withAlpha(70),
+        hoverColor: foreground.withAlpha(26),
+        focusColor: Colors.transparent,
+        highlightColor: foreground.withAlpha(40),
+        splashRadius: _iconButtonSize / 2,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(
+          width: _iconButtonSize,
+          height: _iconButtonSize,
+        ),
       ),
     );
   }

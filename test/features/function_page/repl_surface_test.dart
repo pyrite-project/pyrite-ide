@@ -533,6 +533,66 @@ void main() {
     );
   });
 
+  testWidgets('hovering a traceback frame shows the click cursor', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpSurface(tester, container: container);
+    writeReplOutput('>>> ');
+    await tester.pump();
+    await tester.pump();
+
+    writeReplOutput(
+      'Traceback (most recent call last):\r\n'
+      '  File "hovered_frame.py", line 7, in c\r\n'
+      "NameError: name 'x' isn't defined\r\n",
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final transcript = container.read(replTranscriptControllerProvider).text;
+    final frameStart = transcript.indexOf('File "hovered_frame.py"');
+    final frameEnd = transcript.indexOf(', line 7', frameStart);
+    final errorStart = transcript.indexOf('NameError');
+
+    // The transcript is one paragraph, so aim through its laid-out boxes: the
+    // boxes are in the paragraph's coordinates and the RichText's origin turns
+    // them back into global ones.
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.byType(RichText).first,
+    );
+    final origin = tester.getTopLeft(find.byType(RichText).first);
+    Rect boxFor(int start, int end) => paragraph
+        .getBoxesForSelection(
+          TextSelection(baseOffset: start, extentOffset: end),
+        )
+        .first
+        .toRect();
+    final framePoint = origin + boxFor(frameStart, frameEnd).center;
+    final errorPoint = origin + boxFor(errorStart, errorStart + 9).center;
+
+    MouseCursor cursor() => tester
+        .widget<MouseRegion>(
+          find.byKey(const ValueKey('repl-transcript-region')),
+        )
+        .cursor;
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(gesture.removePointer);
+    await gesture.addPointer(location: errorPoint);
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.text);
+
+    await gesture.moveTo(framePoint);
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.click);
+
+    await gesture.moveTo(errorPoint);
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.text);
+  });
+
   testWidgets('keeps multiline input and transcript in one scroll document', (
     tester,
   ) async {

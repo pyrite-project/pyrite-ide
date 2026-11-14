@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
+
+import '../../shared/md3_widgets.dart';
 
 class PermissionMonitor extends ConsumerWidget {
   const PermissionMonitor({super.key});
@@ -25,13 +27,15 @@ class PermissionMonitor extends ConsumerWidget {
         appBar: AppBar(
           title: Text(translateForWidget(ref, I18nKey.pluginsMonitorTitle)),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.restart_alt),
-              tooltip: translateInContext(
+            TooltipAnchor(
+              message: translateInContext(
                 context,
                 I18nKey.pluginsMonitorRestartRuntime,
               ),
-              onPressed: () => unawaited(_restartRuntime(context, ref)),
+              child: IconButton(
+                icon: const Icon(Icons.restart_alt),
+                onPressed: () => unawaited(_restartRuntime(context, ref)),
+              ),
             ),
           ],
           bottom: TabBar(
@@ -239,7 +243,7 @@ class _SessionMetricsCard extends StatelessWidget {
           style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
         ),
         trailing: session.eventDeliveryPaused
-            ? Tooltip(
+            ? TooltipAnchor(
                 message: translateInContext(
                   context,
                   I18nKey.pluginsMonitorDeliveryPaused,
@@ -321,29 +325,35 @@ class _SessionMetricsCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              IconButton.filledTonal(
-                onPressed: canPing ? () => unawaited(onPing!()) : null,
-                tooltip: 'Ping',
-                icon: const Icon(Icons.monitor_heart_outlined),
+              TooltipAnchor(
+                message: 'Ping',
+                child: IconButton.filledTonal(
+                  onPressed: canPing ? () => unawaited(onPing!()) : null,
+                  icon: const Icon(Icons.monitor_heart_outlined),
+                ),
               ),
               if (onResume != null)
-                IconButton.filledTonal(
-                  onPressed: onResume,
-                  tooltip: translateInContext(
+                TooltipAnchor(
+                  message: translateInContext(
                     context,
                     I18nKey.pluginsMonitorResume,
                   ),
-                  icon: const Icon(Icons.play_arrow),
+                  child: IconButton.filledTonal(
+                    onPressed: onResume,
+                    icon: const Icon(Icons.play_arrow),
+                  ),
                 ),
-              IconButton.filledTonal(
-                onPressed: onRestart == null
-                    ? null
-                    : () => unawaited(onRestart!()),
-                tooltip: translateInContext(
+              TooltipAnchor(
+                message: translateInContext(
                   context,
                   I18nKey.pluginsMonitorRestart,
                 ),
-                icon: const Icon(Icons.refresh),
+                child: IconButton.filledTonal(
+                  onPressed: onRestart == null
+                      ? null
+                      : () => unawaited(onRestart!()),
+                  icon: const Icon(Icons.refresh),
+                ),
               ),
             ],
           ),
@@ -473,14 +483,16 @@ class _OutputLogTabState extends ConsumerState<_OutputLogTab> {
                   onChanged: (value) => setState(() => _sessionId = value),
                 ),
               ),
-              IconButton(
-                onPressed: () =>
-                    ref.read(ideOutputLogProvider.notifier).clear(),
-                tooltip: translateInContext(
+              TooltipAnchor(
+                message: translateInContext(
                   context,
                   I18nKey.pluginsMonitorClear,
                 ),
-                icon: const Icon(Icons.delete_sweep),
+                child: IconButton(
+                  onPressed: () =>
+                      ref.read(ideOutputLogProvider.notifier).clear(),
+                  icon: const Icon(Icons.delete_sweep),
+                ),
               ),
             ],
           ),
@@ -531,10 +543,12 @@ class _PermissionLogTab extends ConsumerWidget {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: IconButton(
-            icon: const Icon(Icons.delete_sweep),
-            tooltip: translateForWidget(ref, I18nKey.pluginsMonitorClearLog),
-            onPressed: log.clear,
+          child: TooltipAnchor(
+            message: translateForWidget(ref, I18nKey.pluginsMonitorClearLog),
+            child: IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              onPressed: log.clear,
+            ),
           ),
         ),
         const Divider(height: 1),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -9,10 +10,10 @@ import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
-import 'package:pyrite_ide/core/services/serial/web_repl_handshake.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_file_protocol.dart';
+import 'package:pyrite_ide/core/services/serial/web_repl_handshake.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_socket.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
@@ -401,7 +402,11 @@ class WebReplNotifier extends StateNotifier<WebReplInfo> {
       if (enteredRepl && !completed && !queue.isCancelled) {
         try {
           await session.exitRepl(mode);
-        } catch (_) {}
+        } catch (error) {
+          debugPrint(
+            '[lib/core/services/serial/web_repl_provider.dart] ignored error: $error',
+          );
+        }
       }
       if (identical(_executionQueue, queue)) _executionQueue = null;
       queue.cancel();

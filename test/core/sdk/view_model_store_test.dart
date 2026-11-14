@@ -9,7 +9,7 @@ ViewInstanceId _instance({String instanceId = 'i1'}) => ViewInstanceId(
 );
 
 List<Map<String, dynamic>> _nodes(ViewModel model) =>
-    model.nodes.map((n) => Map<String, dynamic>.from(n)).toList();
+    model.nodes.map(Map<String, dynamic>.from).toList();
 
 void main() {
   test('instancesForPlugin returns only matching live models', () {

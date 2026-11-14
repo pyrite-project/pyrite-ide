@@ -128,10 +128,12 @@ class _ToolsState extends ConsumerState<Tools> {
             leadingIcon: Icons.usb,
             compact: compact,
             actions: [
-              IconButton(
-                tooltip: translateForWidget(ref, I18nKey.devicesRefreshSerial),
-                onPressed: () => ref.read(serialProvider.notifier).refresh(),
-                icon: const Icon(Icons.refresh),
+              TooltipAnchor(
+                message: translateForWidget(ref, I18nKey.devicesRefreshSerial),
+                child: IconButton(
+                  onPressed: () => ref.read(serialProvider.notifier).refresh(),
+                  icon: const Icon(Icons.refresh),
+                ),
               ),
               buildFilterMenu(filter),
             ],
@@ -264,7 +266,7 @@ class _ToolsState extends ConsumerState<Tools> {
               if (onDeviceStatus != null)
                 Padding(
                   padding: const EdgeInsetsDirectional.only(end: 4),
-                  child: Tooltip(
+                  child: TooltipAnchor(
                     message: translateForWidget(
                       ref,
                       showDeviceStatus
@@ -316,13 +318,19 @@ class _ToolsState extends ConsumerState<Tools> {
           child: const UseText(I18nKey.devicesSerialFilterClear),
         ),
       ],
-      builder: (context, controller, _) => IconButton(
-        tooltip: translateForWidget(ref, I18nKey.devicesSerialFilterMenu),
-        isSelected: filter.usbOnly,
-        onPressed: () =>
-            controller.isOpen ? controller.close() : controller.open(),
-        icon: const Icon(Icons.filter_list),
-        selectedIcon: const Icon(Icons.filter_alt),
+      // `MenuAnchor` is an `OverlayPortal` too, so its traversal-parent
+      // identifier competes with the tooltip's for one node. `TooltipAnchor`
+      // keeps its own container node outside the tooltip, which keeps the two
+      // apart -- see flutter/flutter#182444.
+      builder: (context, controller, _) => TooltipAnchor(
+        message: translateForWidget(ref, I18nKey.devicesSerialFilterMenu),
+        child: IconButton(
+          isSelected: filter.usbOnly,
+          onPressed: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          icon: const Icon(Icons.filter_list),
+          selectedIcon: const Icon(Icons.filter_alt),
+        ),
       ),
     );
   }

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/git/git_models.dart';
-import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/git/git_models.dart';
+import 'package:pyrite_ide/core/services/git/git_provider.dart';
 
 /// Git blame gutter：按行显示 author / 时间 / 短 sha，可折叠。
 ///

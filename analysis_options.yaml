@@ -14,6 +14,14 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # 本地 path 依赖都是独立 package，不应被根包的分析/修复工具改写
+    - xterm.dart/**
+    - flserial/**
+    - flutter_pty/**
+    - python_runtime/**
+    - code_forge/**
+    - super_tree/**
+    - third_party/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
@@ -28,6 +36,12 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
+    # 结构性/一致性规则：启用后由 `dart fix --apply` 自动收敛，
+    # 新代码不再产生尾逗号缺失、可变局部变量、import 乱序等问题。
+    require_trailing_commas: true
+    prefer_final_locals: true
+    directives_ordering: true
+    unnecessary_lambdas: true
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 

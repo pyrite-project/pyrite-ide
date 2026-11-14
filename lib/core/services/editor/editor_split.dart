@@ -88,7 +88,7 @@ const double newEditorGroupShare = 0.4;
 final StateNotifierProvider<EditorLayoutNotifier, EditorLayout>
 editorLayoutProvider =
     StateNotifierProvider<EditorLayoutNotifier, EditorLayout>(
-      (ref) => EditorLayoutNotifier(ref),
+      EditorLayoutNotifier.new,
     );
 
 /// The group the user last worked in, or null before any group took focus.

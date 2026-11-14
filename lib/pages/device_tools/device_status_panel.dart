@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/device_status.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 class DeviceStatusPanel extends ConsumerWidget {
   const DeviceStatusPanel({super.key});
@@ -26,17 +26,19 @@ class DeviceStatusPanel extends ConsumerWidget {
               : I18nKey.devicesStatusDisconnectedSubtitle,
           leadingIcon: Icons.memory,
           actions: [
-            IconButton(
-              tooltip: translateForWidget(
+            TooltipAnchor(
+              message: translateForWidget(
                 ref,
                 isConnected
                     ? I18nKey.devicesStatusRefresh
                     : I18nKey.devicesStatusDisconnectedSubtitle,
               ),
-              onPressed: isConnected
-                  ? () => ref.read(deviceStatusProvider.notifier).refresh()
-                  : null,
-              icon: const Icon(Icons.refresh),
+              child: IconButton(
+                onPressed: isConnected
+                    ? () => ref.read(deviceStatusProvider.notifier).refresh()
+                    : null,
+                icon: const Icon(Icons.refresh),
+              ),
             ),
           ],
         ),

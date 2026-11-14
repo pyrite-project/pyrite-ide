@@ -4,16 +4,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
+import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:tabbed_view/tabbed_view.dart';
-import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 
 void main() {
   testWidgets('a document is refused by a group outside the layout tree', (

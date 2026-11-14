@@ -70,7 +70,10 @@ void main() {
       final spans = minimapColorSpans(
         TextSpan(
           children: [
-            const TextSpan(text: 'ab', style: TextStyle(color: Color(0xFF111111))),
+            const TextSpan(
+              text: 'ab',
+              style: TextStyle(color: Color(0xFF111111)),
+            ),
             TextSpan(
               children: [
                 const TextSpan(
@@ -83,7 +86,10 @@ void main() {
                 ),
               ],
             ),
-            const TextSpan(text: 'gh', style: TextStyle(color: Color(0xFF444444))),
+            const TextSpan(
+              text: 'gh',
+              style: TextStyle(color: Color(0xFF444444)),
+            ),
           ],
         ),
         'abcdefgh',

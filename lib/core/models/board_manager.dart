@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flserial/serial_scanner.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pyrite_ide/core/models/serial_port_descriptor.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 

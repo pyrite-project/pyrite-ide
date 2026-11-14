@@ -37,10 +37,10 @@ void main() {
     test('keeps Windows path separators inside double quotes', () {
       // Only \", \\ and \$ are escapes inside double quotes; a backslash before
       // an ordinary character is part of the path.
-      expect(
-        splitLspStdioArgs(r'--config "C:\Users\me\pyrightconfig.json"'),
-        ['--config', r'C:\Users\me\pyrightconfig.json'],
-      );
+      expect(splitLspStdioArgs(r'--config "C:\Users\me\pyrightconfig.json"'), [
+        '--config',
+        r'C:\Users\me\pyrightconfig.json',
+      ]);
     });
 
     test('unescapes a quoted dollar and a quoted backslash', () {

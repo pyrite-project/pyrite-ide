@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/features/plugin_view/data/visible_range_tracker.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// Virtualized flat list for plugin views.
 ///

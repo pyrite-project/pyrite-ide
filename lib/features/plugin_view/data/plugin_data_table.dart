@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_table_view/material_table_view.dart';
 import 'package:material_table_view/table_view_typedefs.dart';
-import 'package:pyrite_ide/features/plugin_view/data/visible_range_tracker.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/features/plugin_view/data/visible_range_tracker.dart';
 
 /// A stable column definition supplied by a plugin.
 class PluginColumn {

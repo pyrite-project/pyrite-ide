@@ -119,7 +119,9 @@ Map<String, dynamic> makeEnvelope({
     'sequence': sequence,
     'type': type,
     'payload': payload ?? {},
-    'data': data,
+    // `data` 只是在个别老版本处理器里被用作出站顶层字段，当前没有调用方传它。
+    // 不传时不要写入 null，否则会平白多出一个 "data": null，与旧 envelope 不同。
+    'data': ?data,
     'timestamp': DateTime.now().millisecondsSinceEpoch,
     'deadline': ?deadline,
   };

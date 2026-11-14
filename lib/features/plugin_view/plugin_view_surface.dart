@@ -22,6 +22,8 @@ import 'package:pyrite_ide/features/plugin_view/native_view_registry.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_menu.dart';
 
+import '../../shared/md3_widgets.dart';
+
 /// Renders one plugin view instance.
 ///
 /// This is the single surface for native plugin views: the sidebar host and a
@@ -400,19 +402,21 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
 
   List<Widget> _manifestTitleActions(List<NativeTitleMenuItem> items) => [
     for (final item in items)
-      IconButton(
-        icon: Icon(pluginIcon(item.icon ?? 'material:more_horiz'), size: 18),
-        tooltip: item.title,
-        onPressed: !item.enabled
-            ? null
-            : () => _runCommand(
-                item.commandId,
-                context: {
-                  'viewId': widget.instance.viewId,
-                  'instanceId': widget.instance.instanceId,
-                  'pluginId': widget.instance.pluginId,
-                },
-              ),
+      TooltipAnchor(
+        message: item.title,
+        child: IconButton(
+          icon: Icon(pluginIcon(item.icon ?? 'material:more_horiz'), size: 18),
+          onPressed: !item.enabled
+              ? null
+              : () => _runCommand(
+                  item.commandId,
+                  context: {
+                    'viewId': widget.instance.viewId,
+                    'instanceId': widget.instance.instanceId,
+                    'pluginId': widget.instance.pluginId,
+                  },
+                ),
+        ),
       ),
   ];
 
@@ -432,12 +436,14 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
           }),
         )
       else
-        IconButton(
-          icon: Icon(pluginIcon(action['icon']?.toString()), size: 18),
-          tooltip: action['label']?.toString(),
-          onPressed: () => _emit(widget.instance.viewId, 'select', {
-            'nodeId': action['id']?.toString(),
-          }),
+        TooltipAnchor(
+          message: action['label']?.toString(),
+          child: IconButton(
+            icon: Icon(pluginIcon(action['icon']?.toString()), size: 18),
+            onPressed: () => _emit(widget.instance.viewId, 'select', {
+              'nodeId': action['id']?.toString(),
+            }),
+          ),
         ),
   ];
 

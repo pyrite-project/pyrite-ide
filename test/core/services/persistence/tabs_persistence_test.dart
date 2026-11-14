@@ -229,7 +229,12 @@ void main() {
           'selectedTabPath': '/w/a.py',
         },
       ],
-      'layout': {'axis': 'horizontal', 'children': [{'groupIndex': 0}]},
+      'layout': {
+        'axis': 'horizontal',
+        'children': [
+          {'groupIndex': 0},
+        ],
+      },
     });
 
     expect(restored.groups.single.tabs.single.filePath, '/w/a.py');

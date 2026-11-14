@@ -8,10 +8,11 @@
 library;
 
 import 'package:flutter/material.dart';
-
-import 'package:pyrite_ide/features/terminal/terminal_search.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/features/terminal/terminal_search.dart';
+
+import '../../shared/md3_widgets.dart';
 
 class TerminalSearchBar extends StatelessWidget {
   const TerminalSearchBar({
@@ -132,16 +133,20 @@ class TerminalSearchBar extends StatelessWidget {
     required VoidCallback? onPressed,
     bool selected = false,
   }) {
-    return IconButton(
-      icon: Icon(icon, size: 18),
-      tooltip: tooltip,
-      onPressed: onPressed,
-      visualDensity: VisualDensity.compact,
-      style: selected
-          ? IconButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-            )
-          : null,
+    return TooltipAnchor(
+      message: tooltip,
+      child: IconButton(
+        icon: Icon(icon, size: 18),
+        onPressed: onPressed,
+        visualDensity: VisualDensity.compact,
+        style: selected
+            ? IconButton.styleFrom(
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer,
+              )
+            : null,
+      ),
     );
   }
 }

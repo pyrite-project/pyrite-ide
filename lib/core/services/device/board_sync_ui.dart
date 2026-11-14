@@ -2,11 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
-import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+
+import '../../../shared/md3_widgets.dart';
 
 // ---------------------------------------------------------------------------
 // Board sync UI
@@ -426,7 +428,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
         ? false
         : null;
 
-    final master = Tooltip(
+    final master = TooltipAnchor(
       message: translateInContext(context, I18nKey.devicesSyncToggleAll),
       child: Checkbox(
         value: masterValue,
@@ -655,7 +657,7 @@ class _BoardSyncPreviewDialogState extends State<_BoardSyncPreviewDialog> {
         ? label
         : '$label · ${entry.note}';
 
-    return Tooltip(
+    return TooltipAnchor(
       message: detail,
       waitDuration: const Duration(milliseconds: 700),
       child: InkWell(
@@ -793,7 +795,7 @@ class _SyncRootChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
+    return TooltipAnchor(
       message: tooltip,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

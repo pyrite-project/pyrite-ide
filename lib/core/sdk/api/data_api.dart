@@ -1,9 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 
 abstract class SdkThemeCommands {
@@ -126,36 +127,6 @@ class SdkDataApi {
     runManager.registerHandler(SdkLspCommands.list, _handleLspList);
   }
 
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
   // ── Theme handlers ──
 
   void _handleThemeContribute(
@@ -168,14 +139,14 @@ class SdkDataApi {
     final data = payload['data'];
 
     if (name == null || name.isEmpty) {
-      _respondError(envelope, respond, '缺少 name');
+      respondError(envelope, respond, '缺少 name');
       return;
     }
 
     if (data is Map<String, dynamic>) {
       final terminalError = PluginThemeData.validateTerminalData(data);
       if (terminalError != null) {
-        _respondError(envelope, respond, terminalError);
+        respondError(envelope, respond, terminalError);
         return;
       }
     }
@@ -200,7 +171,7 @@ class SdkDataApi {
     }
 
     runManager.onDataChanged?.call();
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleThemeRegisterRuntime(
@@ -219,7 +190,7 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final name = payload['name']?.toString() ?? '';
     if (name.isEmpty) {
-      _respondError(envelope, respond, '缺少 name');
+      respondError(envelope, respond, '缺少 name');
       return;
     }
     ref.read(dataRegistryProvider).removeTheme(runManager.pluginId, name);
@@ -230,7 +201,7 @@ class SdkDataApi {
             item.contributionId == name))
           item,
     ];
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleThemeGet(
@@ -242,16 +213,16 @@ class SdkDataApi {
     final name = payload['name']?.toString();
 
     if (name == null || name.isEmpty) {
-      _respondError(envelope, respond, '缺少 name');
+      respondError(envelope, respond, '缺少 name');
       return;
     }
 
     final data = runManager.runtimeData['theme.$name'];
     if (data == null) {
-      _respondError(envelope, respond, '主题未注册: $name');
+      respondError(envelope, respond, '主题未注册: $name');
       return;
     }
-    _respondOk(envelope, respond, data: {'name': name, 'data': data});
+    respondOk(envelope, respond, data: {'name': name, 'data': data});
   }
 
   void _handleThemeList(
@@ -265,7 +236,7 @@ class SdkDataApi {
         themes.add(key.substring(6));
       }
     }
-    _respondOk(envelope, respond, data: themes);
+    respondOk(envelope, respond, data: themes);
   }
 
   // ── i18n handlers ──
@@ -280,7 +251,7 @@ class SdkDataApi {
     final messages = payload['messages'];
 
     if (locale == null || locale.isEmpty) {
-      _respondError(envelope, respond, '缺少 locale');
+      respondError(envelope, respond, '缺少 locale');
       return;
     }
 
@@ -304,7 +275,7 @@ class SdkDataApi {
     }
 
     runManager.onDataChanged?.call();
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleI18nRegisterRuntime(
@@ -323,7 +294,7 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final locale = payload['locale']?.toString() ?? '';
     if (locale.isEmpty) {
-      _respondError(envelope, respond, '缺少 locale');
+      respondError(envelope, respond, '缺少 locale');
       return;
     }
     ref.read(dataRegistryProvider).removeLocale(runManager.pluginId, locale);
@@ -334,7 +305,7 @@ class SdkDataApi {
             item.contributionId == locale))
           item,
     ];
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleI18nGet(
@@ -346,16 +317,16 @@ class SdkDataApi {
     final locale = payload['locale']?.toString();
 
     if (locale == null || locale.isEmpty) {
-      _respondError(envelope, respond, '缺少 locale');
+      respondError(envelope, respond, '缺少 locale');
       return;
     }
 
     final messages = runManager.runtimeData['i18n.$locale'];
     if (messages == null) {
-      _respondError(envelope, respond, '语言包未注册: $locale');
+      respondError(envelope, respond, '语言包未注册: $locale');
       return;
     }
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: {'locale': locale, 'messages': messages},
@@ -373,7 +344,7 @@ class SdkDataApi {
         locales.add(key.substring(5));
       }
     }
-    _respondOk(envelope, respond, data: locales);
+    respondOk(envelope, respond, data: locales);
   }
 
   // ── Stubs handlers ──
@@ -394,11 +365,11 @@ class SdkDataApi {
     final rawProfiles = payload['profiles'];
 
     if (providerId.isEmpty) {
-      _respondError(envelope, respond, '缺少 provider_id');
+      respondError(envelope, respond, '缺少 provider_id');
       return;
     }
     if (rawProfiles is! List) {
-      _respondError(envelope, respond, 'profiles 必须是列表');
+      respondError(envelope, respond, 'profiles 必须是列表');
       return;
     }
 
@@ -412,7 +383,7 @@ class SdkDataApi {
       profiles.add(profile);
     }
     if (profiles.isEmpty) {
-      _respondError(envelope, respond, '没有有效的 stubs profile');
+      respondError(envelope, respond, '没有有效的 stubs profile');
       return;
     }
 
@@ -446,12 +417,12 @@ class SdkDataApi {
       );
       refreshOpenLspStubsConfiguration(ref.read);
     } catch (error) {
-      _respondError(envelope, respond, error.toString());
+      respondError(envelope, respond, error.toString());
       return;
     }
 
     runManager.onDataChanged?.call();
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleStubsRegisterRuntime(
@@ -483,7 +454,7 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final providerId = payload['provider_id']?.toString() ?? '';
     if (providerId.isEmpty) {
-      _respondError(envelope, respond, '缺少 provider_id');
+      respondError(envelope, respond, '缺少 provider_id');
       return;
     }
     ref
@@ -497,7 +468,7 @@ class SdkDataApi {
           item,
     ];
     refreshOpenLspStubsConfiguration(ref.read);
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleStubsGet(
@@ -507,17 +478,17 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final providerId = payload['provider_id']?.toString();
     if (providerId == null || providerId.isEmpty) {
-      _respondError(envelope, respond, '缺少 provider_id');
+      respondError(envelope, respond, '缺少 provider_id');
       return;
     }
     final provider = ref
         .read(dataRegistryProvider)
         .getStubsProvider(providerId);
     if (provider == null) {
-      _respondError(envelope, respond, '未知 stubs provider: $providerId');
+      respondError(envelope, respond, '未知 stubs provider: $providerId');
       return;
     }
-    _respondOk(envelope, respond, data: provider.toJson());
+    respondOk(envelope, respond, data: provider.toJson());
   }
 
   void _handleStubsList(
@@ -529,7 +500,7 @@ class SdkDataApi {
         .allStubsProviders
         .map((entry) => entry.toJson())
         .toList();
-    _respondOk(envelope, respond, data: providers);
+    respondOk(envelope, respond, data: providers);
   }
 
   void _handleStubsResolveLayers(
@@ -539,7 +510,7 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final layers = payload['layers'];
     if (layers is! List) {
-      _respondError(envelope, respond, 'layers 必须是列表');
+      respondError(envelope, respond, 'layers 必须是列表');
       return;
     }
     final parsedLayers = <Map<String, String>>[];
@@ -557,7 +528,7 @@ class SdkDataApi {
     final resolved = ref
         .read(dataRegistryProvider)
         .resolveStubsLayers(parsedLayers);
-    _respondOk(envelope, respond, data: resolved);
+    respondOk(envelope, respond, data: resolved);
   }
 
   // ── LSP server handlers ──
@@ -578,11 +549,11 @@ class SdkDataApi {
     final scope = payload['scope']?.toString() ?? 'auto';
 
     if (serverId.isEmpty) {
-      _respondError(envelope, respond, '缺少 server_id');
+      respondError(envelope, respond, '缺少 server_id');
       return;
     }
     if (rawConfiguration is! Map) {
-      _respondError(envelope, respond, 'configuration 必须是对象');
+      respondError(envelope, respond, 'configuration 必须是对象');
       return;
     }
 
@@ -593,7 +564,7 @@ class SdkDataApi {
     // was not written for: without one, the profile would match every launch
     // of the declared transports and hijack the built-in servers.
     if (match.executables.isEmpty) {
-      _respondError(envelope, respond, 'match.executables 不能为空');
+      respondError(envelope, respond, 'match.executables 不能为空');
       return;
     }
     final configuration = LspServerConfigurationSpec.fromJson(
@@ -601,7 +572,7 @@ class SdkDataApi {
     );
     if (configuration.mode == LspServerConfigurationSpec.sectionedMode &&
         (configuration.section ?? '').isEmpty) {
-      _respondError(envelope, respond, 'sectioned 配置缺少 section');
+      respondError(envelope, respond, 'sectioned 配置缺少 section');
       return;
     }
 
@@ -632,12 +603,12 @@ class SdkDataApi {
       );
       refreshOpenLspStubsConfiguration(ref.read);
     } catch (error) {
-      _respondError(envelope, respond, error.toString());
+      respondError(envelope, respond, error.toString());
       return;
     }
 
     runManager.onDataChanged?.call();
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleLspRevoke(
@@ -648,7 +619,7 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final serverId = payload['server_id']?.toString() ?? '';
     if (serverId.isEmpty) {
-      _respondError(envelope, respond, '缺少 server_id');
+      respondError(envelope, respond, '缺少 server_id');
       return;
     }
     ref
@@ -662,7 +633,7 @@ class SdkDataApi {
           item,
     ];
     refreshOpenLspStubsConfiguration(ref.read);
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleLspGet(
@@ -672,15 +643,15 @@ class SdkDataApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final serverId = payload['server_id']?.toString();
     if (serverId == null || serverId.isEmpty) {
-      _respondError(envelope, respond, '缺少 server_id');
+      respondError(envelope, respond, '缺少 server_id');
       return;
     }
     final entry = ref.read(dataRegistryProvider).getLspServer(serverId);
     if (entry == null) {
-      _respondError(envelope, respond, '未知 LSP server: $serverId');
+      respondError(envelope, respond, '未知 LSP server: $serverId');
       return;
     }
-    _respondOk(envelope, respond, data: entry.toJson());
+    respondOk(envelope, respond, data: entry.toJson());
   }
 
   void _handleLspList(
@@ -692,7 +663,7 @@ class SdkDataApi {
         .allLspServers
         .map((entry) => entry.toJson())
         .toList();
-    _respondOk(envelope, respond, data: servers);
+    respondOk(envelope, respond, data: servers);
   }
 }
 

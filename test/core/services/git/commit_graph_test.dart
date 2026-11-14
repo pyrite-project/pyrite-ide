@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
-import 'package:pyrite_ide/pages/git/main.dart';
+import 'package:pyrite_ide/pages/git/git_page.dart';
 
 void main() {
   test('commit graph ignores parents that are not below the current row', () {

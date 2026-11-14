@@ -24,9 +24,9 @@ final gitRepositoryServiceProvider = Provider<GitRepositoryService>((ref) {
       packs: {
         for (final name in {locale, defaultLocale})
           name:
-              registry.getLocale(name)?.map(
-                (key, value) => MapEntry(key, '$value'),
-              ) ??
+              registry
+                  .getLocale(name)
+                  ?.map((key, value) => MapEntry(key, '$value')) ??
               const {},
       },
     ),

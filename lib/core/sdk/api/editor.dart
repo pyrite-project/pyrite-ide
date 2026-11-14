@@ -1,12 +1,14 @@
 import 'dart:io';
+
+import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/editor_key_capture.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:code_forge/code_forge.dart';
 
 abstract class SdkEditorCommands {
   // Text Content
@@ -159,36 +161,6 @@ class SdkEditor {
     );
   }
 
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
   CodeForgeController? _getController() {
     return ref
         .read(editorControllerMapProvider.notifier)
@@ -203,10 +175,10 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
-    _respondOk(envelope, respond, data: controller.text);
+    respondOk(envelope, respond, data: controller.text);
   }
 
   void _handleSetText(
@@ -215,13 +187,13 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final text = payload['text']?.toString() ?? '';
     controller.text = text;
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleGetLineCount(
@@ -230,10 +202,10 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
-    _respondOk(envelope, respond, data: controller.lineCount);
+    respondOk(envelope, respond, data: controller.lineCount);
   }
 
   void _handleGetLineText(
@@ -242,16 +214,16 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final line = payload['line'] as int? ?? 0;
     if (line < 0 || line >= controller.lineCount) {
-      _respondError(envelope, respond, '行号越界');
+      respondError(envelope, respond, '行号越界');
       return;
     }
-    _respondOk(envelope, respond, data: controller.getLineText(line));
+    respondOk(envelope, respond, data: controller.getLineText(line));
   }
 
   void _handleGetSelectedText(
@@ -260,7 +232,7 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final selection = controller.selection;
@@ -271,9 +243,9 @@ class SdkEditor {
         start.clamp(0, controller.text.length),
         end.clamp(0, controller.text.length),
       );
-      _respondOk(envelope, respond, data: text);
+      respondOk(envelope, respond, data: text);
     } else {
-      _respondOk(envelope, respond, data: '');
+      respondOk(envelope, respond, data: '');
     }
   }
 
@@ -283,13 +255,13 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final text = payload['text']?.toString() ?? '';
     controller.insertAtCurrentCursor(text);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleReplaceRange(
@@ -298,7 +270,7 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -306,7 +278,7 @@ class SdkEditor {
     final end = payload['end'] as int? ?? 0;
     final text = payload['text']?.toString() ?? '';
     controller.replaceRange(start, end, text);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleClear(
@@ -315,11 +287,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     controller.text = '';
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Cursor & Selection ──
@@ -330,14 +302,14 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final offset = controller.selection.baseOffset;
     final line = controller.getLineAtOffset(offset);
     final lineStart = controller.getLineStartOffset(line);
     final column = offset - lineStart;
-    _respondOk(envelope, respond, data: {'line': line, 'column': column});
+    respondOk(envelope, respond, data: {'line': line, 'column': column});
   }
 
   void _handleSetCursorPosition(
@@ -346,7 +318,7 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -356,7 +328,7 @@ class SdkEditor {
     final lineEnd = controller.findLineEnd(lineStart);
     final offset = (lineStart + column).clamp(0, lineEnd);
     controller.setSelectionSilently(TextSelection.collapsed(offset: offset));
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleGetSelection(
@@ -365,11 +337,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final sel = controller.selection;
-    _respondOk(envelope, respond, data: {'start': sel.start, 'end': sel.end});
+    respondOk(envelope, respond, data: {'start': sel.start, 'end': sel.end});
   }
 
   void _handleSetSelection(
@@ -378,7 +350,7 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -391,7 +363,7 @@ class SdkEditor {
         extentOffset: end.clamp(0, len),
       ),
     );
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleSelectAll(
@@ -400,11 +372,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     controller.selectAll();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleGoToLine(
@@ -413,19 +385,19 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final line = payload['line'] as int? ?? 0;
     if (line < 0 || line >= controller.lineCount) {
-      _respondError(envelope, respond, '行号越界');
+      respondError(envelope, respond, '行号越界');
       return;
     }
     controller.scrollToLine(line);
     final lineStart = controller.getLineStartOffset(line);
     controller.setSelectionSilently(TextSelection.collapsed(offset: lineStart));
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Clipboard ──
@@ -436,11 +408,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     controller.copy();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleCut(
@@ -449,11 +421,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     controller.cut();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handlePaste(
@@ -462,11 +434,11 @@ class SdkEditor {
   ) async {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     await controller.paste();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Undo / Redo ──
@@ -476,7 +448,7 @@ class SdkEditor {
     void Function(Map<String, dynamic>) respond,
   ) {
     ref.read(editorControllerMapProvider.notifier).undo();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleRedo(
@@ -484,7 +456,7 @@ class SdkEditor {
     void Function(Map<String, dynamic>) respond,
   ) {
     ref.read(editorControllerMapProvider.notifier).redo();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleCanUndo(
@@ -494,7 +466,7 @@ class SdkEditor {
     final undoCtrl = ref
         .read(editorControllerMapProvider.notifier)
         .getSelectedUndoRedoController();
-    _respondOk(envelope, respond, data: undoCtrl?.canUndo ?? false);
+    respondOk(envelope, respond, data: undoCtrl?.canUndo ?? false);
   }
 
   void _handleCanRedo(
@@ -504,7 +476,7 @@ class SdkEditor {
     final undoCtrl = ref
         .read(editorControllerMapProvider.notifier)
         .getSelectedUndoRedoController();
-    _respondOk(envelope, respond, data: undoCtrl?.canRedo ?? false);
+    respondOk(envelope, respond, data: undoCtrl?.canRedo ?? false);
   }
 
   // ── Search ──
@@ -515,7 +487,7 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -523,7 +495,7 @@ class SdkEditor {
     final matchCase = payload['match_case'] == true;
     final wholeWord = payload['whole_word'] == true;
     controller.findWord(word, matchCase: matchCase, matchWholeWord: wholeWord);
-    _respondOk(envelope, respond, data: controller.searchHighlights.length);
+    respondOk(envelope, respond, data: controller.searchHighlights.length);
   }
 
   void _handleFindRegex(
@@ -532,16 +504,16 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final pattern = payload['pattern']?.toString() ?? '';
     try {
       controller.findRegex(RegExp(pattern));
-      _respondOk(envelope, respond, data: controller.searchHighlights.length);
+      respondOk(envelope, respond, data: controller.searchHighlights.length);
     } catch (e) {
-      _respondError(envelope, respond, '正则表达式错误: $e');
+      respondError(envelope, respond, '正则表达式错误: $e');
     }
   }
 
@@ -551,11 +523,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     controller.clearSearchHighlights();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Tab Management ──
@@ -567,12 +539,12 @@ class SdkEditor {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final filePath = payload['path']?.toString();
     if (filePath == null) {
-      _respondError(envelope, respond, '缺少 path 参数');
+      respondError(envelope, respond, '缺少 path 参数');
       return;
     }
     final file = File(filePath);
     if (!file.existsSync()) {
-      _respondError(envelope, respond, '文件不存在');
+      respondError(envelope, respond, '文件不存在');
       return;
     }
     final context = appContext;
@@ -581,7 +553,7 @@ class SdkEditor {
           .read(tabbedViewControllerProvider.notifier)
           .openFile(context, file: file);
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Decorations ──
@@ -592,7 +564,7 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
@@ -600,7 +572,7 @@ class SdkEditor {
     final line = payload['line'] as int? ?? 0;
     final column = payload['column'] as int? ?? 0;
     controller.setGhostText(GhostText(text: text, line: line, column: column));
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleClearGhostText(
@@ -609,11 +581,11 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     controller.clearGhostText();
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleScrollToLine(
@@ -622,13 +594,13 @@ class SdkEditor {
   ) {
     final controller = _getController();
     if (controller == null) {
-      _respondError(envelope, respond, '没有打开的编辑器');
+      respondError(envelope, respond, '没有打开的编辑器');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final line = payload['line'] as int? ?? 0;
     controller.scrollToLine(line);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Key capture ──
@@ -639,17 +611,17 @@ class SdkEditor {
   ) {
     final manager = _runManager;
     if (manager == null) {
-      _respondError(envelope, respond, '尚未绑定插件会话');
+      respondError(envelope, respond, '尚未绑定插件会话');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final keys = _keyList(payload['keys']);
     if (keys.isEmpty) {
-      _respondError(envelope, respond, 'keys 不能为空');
+      respondError(envelope, respond, 'keys 不能为空');
       return;
     }
     ref.read(editorKeyCaptureProvider).capture(manager, keys);
-    _respondOk(envelope, respond, data: {'keys': keys});
+    respondOk(envelope, respond, data: {'keys': keys});
   }
 
   void _handleReleaseKeys(
@@ -658,14 +630,14 @@ class SdkEditor {
   ) {
     final manager = _runManager;
     if (manager == null) {
-      _respondError(envelope, respond, '尚未绑定插件会话');
+      respondError(envelope, respond, '尚未绑定插件会话');
       return;
     }
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final raw = payload['keys'];
     final keys = raw == null ? null : _keyList(raw);
     ref.read(editorKeyCaptureProvider).release(manager, keys);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   static List<String> _keyList(Object? raw) {

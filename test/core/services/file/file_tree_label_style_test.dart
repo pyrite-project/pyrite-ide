@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/file/file_page.dart';
 
 void main() {
   group('fileTreeLabelStyle', () {

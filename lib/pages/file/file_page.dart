@@ -15,17 +15,17 @@ import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_service.dart';
 import 'package:pyrite_ide/core/services/device/board_sync_ui.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_ops.dart';
-import 'package:pyrite_ide/core/services/file/file_manager.dart';
-import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_tree.dart';
-import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/file/file_manager.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -919,7 +919,7 @@ class ProjectFiles extends ConsumerWidget {
     final completer = Completer<Uri?>();
     final progress = reader.getValue<Uri>(
       Formats.fileUri,
-      (value) => completer.complete(value),
+      completer.complete,
       onError: completer.completeError,
     );
     if (progress == null) return null;
@@ -1396,143 +1396,170 @@ class ProjectFiles extends ConsumerWidget {
           compact: true,
           actions: selectionMode
               ? [
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionUploadSelected,
                     ),
-                    onPressed: isConnected && selectedCount > 0
-                        ? () => _uploadSelectedLocalItems(context, ref)
-                        : null,
-                    icon: const Icon(Icons.upload_outlined),
+                    child: IconButton(
+                      onPressed: isConnected && selectedCount > 0
+                          ? () => _uploadSelectedLocalItems(context, ref)
+                          : null,
+                      icon: const Icon(Icons.upload_outlined),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionDeleteSelected,
                     ),
-                    onPressed: selectedCount > 0
-                        ? () async {
-                            if (await confirmDelete(
-                              context,
-                              translateForWidget(
-                                ref,
-                                I18nKey.fileSelectedItemsName,
-                              ).replaceAll('{count}', selectedCount.toString()),
-                            )) {
-                              if (!context.mounted) return;
-                              await ref
-                                  .read(fileProvider.notifier)
-                                  .deleteSelectedLocalItems(context);
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? () async {
+                              if (await confirmDelete(
+                                context,
+                                translateForWidget(
+                                  ref,
+                                  I18nKey.fileSelectedItemsName,
+                                ).replaceAll(
+                                  '{count}',
+                                  selectedCount.toString(),
+                                ),
+                              )) {
+                                if (!context.mounted) return;
+                                await ref
+                                    .read(fileProvider.notifier)
+                                    .deleteSelectedLocalItems(context);
+                              }
                             }
-                          }
-                        : null,
-                    icon: const Icon(Icons.delete_outline),
+                          : null,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionClearSelection,
                     ),
-                    onPressed: selectedCount > 0
-                        ? () => controller.deselectAll()
-                        : null,
-                    icon: const Icon(Icons.deselect),
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? controller.deselectAll
+                          : null,
+                      icon: const Icon(Icons.deselect),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionExitSelection,
                     ),
-                    onPressed: () {
-                      controller.deselectAll();
-                      ref.read(localFileSelectionModeProvider.notifier).state =
-                          false;
-                    },
-                    icon: const Icon(Icons.close),
+                    child: IconButton(
+                      onPressed: () {
+                        controller.deselectAll();
+                        ref
+                                .read(localFileSelectionModeProvider.notifier)
+                                .state =
+                            false;
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
                   ),
                 ]
               : [
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionSelectItems,
                     ),
-                    onPressed: () {
-                      ref.read(localFileSelectionModeProvider.notifier).state =
-                          true;
-                    },
-                    icon: const Icon(Icons.checklist),
+                    child: IconButton(
+                      onPressed: () {
+                        ref
+                                .read(localFileSelectionModeProvider.notifier)
+                                .state =
+                            true;
+                      },
+                      icon: const Icon(Icons.checklist),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(ref, I18nKey.fileActionNewFile),
-                    onPressed: () async {
-                      final parentPath = ref.read(fileProvider)?.path ?? '';
-                      final uniquePath = await local.getUniqueFilePath(
-                        path.join(parentPath, "new_file"),
-                      );
-                      try {
-                        await ref
-                            .read(fileProvider.notifier)
-                            .createFileAndStartRename(uniquePath);
-                      } catch (error) {
-                        if (!context.mounted) return;
-                        showIdeError(
-                          context,
-                          tr(
-                            ref,
-                            I18nKey.fileMessageCreateLocalFileFailed,
-                          ).replaceAll('{error}', error.toString()),
+                  TooltipAnchor(
+                    message: translateForWidget(ref, I18nKey.fileActionNewFile),
+                    child: IconButton(
+                      onPressed: () async {
+                        final parentPath = ref.read(fileProvider)?.path ?? '';
+                        final uniquePath = await local.getUniqueFilePath(
+                          path.join(parentPath, "new_file"),
                         );
-                      }
-                    },
-                    icon: const Icon(Icons.note_add_outlined),
+                        try {
+                          await ref
+                              .read(fileProvider.notifier)
+                              .createFileAndStartRename(uniquePath);
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          showIdeError(
+                            context,
+                            tr(
+                              ref,
+                              I18nKey.fileMessageCreateLocalFileFailed,
+                            ).replaceAll('{error}', error.toString()),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.note_add_outlined),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionNewFolder,
                     ),
-                    onPressed: () async {
-                      final parentPath = ref.read(fileProvider)?.path ?? '';
-                      final uniquePath = await local.getUniqueFolderPath(
-                        path.join(parentPath, "new_folder"),
-                      );
-                      try {
-                        await ref
-                            .read(fileProvider.notifier)
-                            .createFolderAndStartRename(uniquePath);
-                      } catch (error) {
-                        if (!context.mounted) return;
-                        showIdeError(
-                          context,
-                          tr(ref, I18nKey.fileMessageCreateLocalFolderFailed, {
-                            'error': error.toString(),
-                          }),
+                    child: IconButton(
+                      onPressed: () async {
+                        final parentPath = ref.read(fileProvider)?.path ?? '';
+                        final uniquePath = await local.getUniqueFolderPath(
+                          path.join(parentPath, "new_folder"),
                         );
-                      }
-                    },
-                    icon: const Icon(Icons.create_new_folder_outlined),
+                        try {
+                          await ref
+                              .read(fileProvider.notifier)
+                              .createFolderAndStartRename(uniquePath);
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          showIdeError(
+                            context,
+                            tr(
+                              ref,
+                              I18nKey.fileMessageCreateLocalFolderFailed,
+                              {'error': error.toString()},
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.create_new_folder_outlined),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateInContext(
+                  TooltipAnchor(
+                    message: translateInContext(
                       context,
                       I18nKey.fileSyncToDeviceTooltip,
                     ),
-                    onPressed: isConnected
-                        ? () => _openBoardSyncPreview(context, ref)
-                        : null,
-                    icon: const Icon(Icons.sync_alt),
+                    child: IconButton(
+                      onPressed: isConnected
+                          ? () => _openBoardSyncPreview(context, ref)
+                          : null,
+                      icon: const Icon(Icons.sync_alt),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionRefreshLocal,
                     ),
-                    onPressed: () => ref
-                        .read(localFileItemsProvider.notifier)
-                        .buildRootFileListItems(),
-                    icon: const Icon(Icons.refresh),
+                    child: IconButton(
+                      onPressed: () => ref
+                          .read(localFileItemsProvider.notifier)
+                          .buildRootFileListItems(),
+                      icon: const Icon(Icons.refresh),
+                    ),
                   ),
                 ],
         );
@@ -1570,104 +1597,41 @@ class ProjectFiles extends ConsumerWidget {
           compact: true,
           actions: selectionMode
               ? [
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionDownloadSelected,
                     ),
-                    onPressed: hasLocalWorkspace && selectedCount > 0
-                        ? () => _downloadSelectedBoardItems(context, ref)
-                        : null,
-                    icon: const Icon(Icons.download_outlined),
+                    child: IconButton(
+                      onPressed: hasLocalWorkspace && selectedCount > 0
+                          ? () => _downloadSelectedBoardItems(context, ref)
+                          : null,
+                      icon: const Icon(Icons.download_outlined),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: translateForWidget(
+                  TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.fileActionDeleteSelected,
                     ),
-                    onPressed: selectedCount > 0
-                        ? () async {
-                            if (await confirmDelete(
-                              context,
-                              translateForWidget(
-                                ref,
-                                I18nKey.fileSelectedItemsName,
-                              ).replaceAll('{count}', selectedCount.toString()),
-                            )) {
-                              try {
-                                if (!context.mounted) return;
-                                await ref
-                                    .read(boardProvider)
-                                    .deleteSelectedBoardItems(context);
-                              } on DeviceNotReadyException catch (_) {
-                                if (!context.mounted) return;
-                                final sendCtrlC =
-                                    await showDeviceNotReadyDialog(
-                                      context,
-                                      operation: translateForWidget(
-                                        ref,
-                                        I18nKey.fileOperationDeleteBoardFile,
-                                      ),
-                                    );
-                                if (sendCtrlC) {
-                                  sendCommandToActiveDevice(ref.read, "\x03");
-                                }
-                              }
-                            }
-                          }
-                        : null,
-                    icon: const Icon(Icons.delete_outline),
-                  ),
-                  IconButton(
-                    tooltip: translateForWidget(
-                      ref,
-                      I18nKey.fileActionClearSelection,
-                    ),
-                    onPressed: selectedCount > 0
-                        ? () => controller.deselectAll()
-                        : null,
-                    icon: const Icon(Icons.deselect),
-                  ),
-                  IconButton(
-                    tooltip: translateForWidget(
-                      ref,
-                      I18nKey.fileActionExitSelection,
-                    ),
-                    onPressed: () {
-                      controller.deselectAll();
-                      ref.read(boardFileSelectionModeProvider.notifier).state =
-                          false;
-                    },
-                    icon: const Icon(Icons.close),
-                  ),
-                ]
-              : [
-                  IconButton(
-                    tooltip: translateForWidget(
-                      ref,
-                      I18nKey.fileActionSelectItems,
-                    ),
-                    onPressed: () {
-                      ref.read(boardFileSelectionModeProvider.notifier).state =
-                          true;
-                    },
-                    icon: const Icon(Icons.checklist),
-                  ),
-                  Builder(
-                    builder: (context) {
-                      final isLoading = ref.watch(boardFileListLoadingProvider);
-                      return IconButton(
-                        tooltip: translateForWidget(
-                          ref,
-                          I18nKey.fileActionRefreshBoard,
-                        ),
-                        onPressed: isLoading
-                            ? null
-                            : () async {
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? () async {
+                              if (await confirmDelete(
+                                context,
+                                translateForWidget(
+                                  ref,
+                                  I18nKey.fileSelectedItemsName,
+                                ).replaceAll(
+                                  '{count}',
+                                  selectedCount.toString(),
+                                ),
+                              )) {
                                 try {
+                                  if (!context.mounted) return;
                                   await ref
-                                      .watch(boardFileItemsProvider.notifier)
-                                      .buildRootFileListItems();
+                                      .read(boardProvider)
+                                      .deleteSelectedBoardItems(context);
                                 } on DeviceNotReadyException catch (_) {
                                   if (!context.mounted) return;
                                   final sendCtrlC =
@@ -1675,23 +1639,109 @@ class ProjectFiles extends ConsumerWidget {
                                         context,
                                         operation: translateForWidget(
                                           ref,
-                                          I18nKey.fileOperationRefreshBoardFile,
+                                          I18nKey.fileOperationDeleteBoardFile,
                                         ),
                                       );
                                   if (sendCtrlC) {
                                     sendCommandToActiveDevice(ref.read, "\x03");
                                   }
                                 }
-                              },
-                        icon: isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.refresh),
+                              }
+                            }
+                          : null,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionClearSelection,
+                    ),
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? controller.deselectAll
+                          : null,
+                      icon: const Icon(Icons.deselect),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionExitSelection,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        controller.deselectAll();
+                        ref
+                                .read(boardFileSelectionModeProvider.notifier)
+                                .state =
+                            false;
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ]
+              : [
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionSelectItems,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        ref
+                                .read(boardFileSelectionModeProvider.notifier)
+                                .state =
+                            true;
+                      },
+                      icon: const Icon(Icons.checklist),
+                    ),
+                  ),
+                  Builder(
+                    builder: (context) {
+                      final isLoading = ref.watch(boardFileListLoadingProvider);
+                      return TooltipAnchor(
+                        message: translateForWidget(
+                          ref,
+                          I18nKey.fileActionRefreshBoard,
+                        ),
+                        child: IconButton(
+                          onPressed: isLoading
+                              ? null
+                              : () async {
+                                  try {
+                                    await ref
+                                        .watch(boardFileItemsProvider.notifier)
+                                        .buildRootFileListItems();
+                                  } on DeviceNotReadyException catch (_) {
+                                    if (!context.mounted) return;
+                                    final sendCtrlC =
+                                        await showDeviceNotReadyDialog(
+                                          context,
+                                          operation: translateForWidget(
+                                            ref,
+                                            I18nKey
+                                                .fileOperationRefreshBoardFile,
+                                          ),
+                                        );
+                                    if (sendCtrlC) {
+                                      sendCommandToActiveDevice(
+                                        ref.read,
+                                        "\x03",
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh),
+                        ),
                       );
                     },
                   ),

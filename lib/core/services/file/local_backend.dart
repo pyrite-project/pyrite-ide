@@ -166,10 +166,10 @@ Future<File?> sysGetFile() async {
 }
 
 Future<File?> sysCreateFile() async {
-  FileSaveLocation? path0 = await getSaveLocation();
+  final FileSaveLocation? path0 = await getSaveLocation();
   File? file;
   if (path0 != null) {
-    String path = path0.path;
+    final String path = path0.path;
     file = File(path);
     await file.create();
   } else {
@@ -188,7 +188,7 @@ Future<String?> sysSaveAs(
   String? encoding,
   bool byteOrderMark = false,
 }) async {
-  FileSaveLocation? path0 = await getSaveLocation();
+  final FileSaveLocation? path0 = await getSaveLocation();
   if (path0 == null) return null;
   final file = File(path0.path);
   await file.create();

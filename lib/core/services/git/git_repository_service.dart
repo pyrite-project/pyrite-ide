@@ -4,11 +4,11 @@ import 'dart:io';
 
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_isolate_runner.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
-import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 const _maxUntrackedScanEntries = 20000;
 const _maxUntrackedStatusEntries = 1000;

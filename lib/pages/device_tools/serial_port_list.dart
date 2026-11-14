@@ -137,10 +137,7 @@ class _SerialPortTile extends ConsumerWidget {
                         .activateSession(session.id),
                     icon: const Icon(Icons.swap_horiz),
                     label: Text(
-                      translateInContext(
-                        context,
-                        I18nKey.devicesSessionSwitch,
-                      ),
+                      translateInContext(context, I18nKey.devicesSessionSwitch),
                     ),
                   ),
                 )
@@ -149,10 +146,7 @@ class _SerialPortTile extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      translateInContext(
-                        context,
-                        I18nKey.devicesSessionInUse,
-                      ),
+                      translateInContext(context, I18nKey.devicesSessionInUse),
                     ),
                   ),
                 ),
@@ -163,10 +157,7 @@ class _SerialPortTile extends ConsumerWidget {
                     .closeSessionFor(port.path),
                 icon: const Icon(Icons.link_off),
                 label: Text(
-                  translateInContext(
-                    context,
-                    I18nKey.devicesSessionDisconnect,
-                  ),
+                  translateInContext(context, I18nKey.devicesSessionDisconnect),
                 ),
               ),
             ],

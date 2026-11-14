@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 
 abstract class SdkPersistenceCommands {
@@ -64,22 +65,22 @@ class SdkPersistence {
     final key = payload['key']?.toString() ?? '';
 
     if (group.isEmpty || key.isEmpty) {
-      _respondError(envelope, respond, '缺少 group 或 key');
+      respondError(envelope, respond, '缺少 group 或 key');
       return;
     }
 
     final file = File('$dataPath/$group/$key.json');
     if (!file.existsSync()) {
-      _respondOk(envelope, respond, data: null);
+      respondOk(envelope, respond, data: null);
       return;
     }
 
     try {
       final content = file.readAsStringSync();
       final value = jsonDecode(content);
-      _respondOk(envelope, respond, data: value);
+      respondOk(envelope, respond, data: value);
     } catch (e) {
-      _respondError(envelope, respond, '读取失败: $e');
+      respondError(envelope, respond, '读取失败: $e');
     }
   }
 
@@ -94,7 +95,7 @@ class SdkPersistence {
     final value = payload['value'];
 
     if (group.isEmpty || key.isEmpty) {
-      _respondError(envelope, respond, '缺少 group 或 key');
+      respondError(envelope, respond, '缺少 group 或 key');
       return;
     }
 
@@ -102,9 +103,9 @@ class SdkPersistence {
       final dir = await _ensureGroupDir(dataPath, group);
       final file = File('${dir.path}/$key.json');
       await file.writeAsString(jsonEncode(value));
-      _respondOk(envelope, respond);
+      respondOk(envelope, respond);
     } catch (e) {
-      _respondError(envelope, respond, '写入失败: $e');
+      respondError(envelope, respond, '写入失败: $e');
     }
   }
 
@@ -118,7 +119,7 @@ class SdkPersistence {
     final key = payload['key']?.toString() ?? '';
 
     if (group.isEmpty || key.isEmpty) {
-      _respondError(envelope, respond, '缺少 group 或 key');
+      respondError(envelope, respond, '缺少 group 或 key');
       return;
     }
 
@@ -126,7 +127,7 @@ class SdkPersistence {
     if (await file.exists()) {
       await file.delete();
     }
-    _respondOk(envelope, respond, data: true);
+    respondOk(envelope, respond, data: true);
   }
 
   void _handleListGroups(
@@ -136,7 +137,7 @@ class SdkPersistence {
   ) async {
     final dir = Directory(dataPath);
     if (!await dir.exists()) {
-      _respondOk(envelope, respond, data: <String>[]);
+      respondOk(envelope, respond, data: <String>[]);
       return;
     }
 
@@ -146,7 +147,7 @@ class SdkPersistence {
         groups.add(entity.path.split(Platform.pathSeparator).last);
       }
     }
-    _respondOk(envelope, respond, data: groups);
+    respondOk(envelope, respond, data: groups);
   }
 
   void _handleListKeys(
@@ -158,13 +159,13 @@ class SdkPersistence {
     final group = payload['group']?.toString() ?? '';
 
     if (group.isEmpty) {
-      _respondError(envelope, respond, '缺少 group');
+      respondError(envelope, respond, '缺少 group');
       return;
     }
 
     final dir = Directory('$dataPath/$group');
     if (!await dir.exists()) {
-      _respondOk(envelope, respond, data: <String>[]);
+      respondOk(envelope, respond, data: <String>[]);
       return;
     }
 
@@ -175,7 +176,7 @@ class SdkPersistence {
         keys.add(fileName.substring(0, fileName.length - 5));
       }
     }
-    _respondOk(envelope, respond, data: keys);
+    respondOk(envelope, respond, data: keys);
   }
 
   void _handleClear(
@@ -187,7 +188,7 @@ class SdkPersistence {
     final group = payload['group']?.toString() ?? '';
 
     if (group.isEmpty) {
-      _respondError(envelope, respond, '缺少 group');
+      respondError(envelope, respond, '缺少 group');
       return;
     }
 
@@ -195,40 +196,10 @@ class SdkPersistence {
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   // ── Response Helpers ──
-
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
 }
 
 final Provider<SdkPersistence> sdkPersistenceProvider = Provider(

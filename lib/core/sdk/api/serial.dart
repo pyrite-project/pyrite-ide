@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 
 abstract class SdkSerialCommands {
   static const String listPorts = 'sdk.serial.list_ports';
@@ -76,7 +77,7 @@ class SdkSerial {
     void Function(Map<String, dynamic>) respond,
   ) {
     final sessions = ref.read(serialProvider.notifier).sessions.sessions;
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: [
@@ -98,12 +99,12 @@ class SdkSerial {
     final payload = _payload(envelope);
     final id = payload['id']?.toString() ?? payload['session_id']?.toString();
     if (id == null || id.isEmpty) {
-      _respondError(envelope, respond, 'Missing session id');
+      respondError(envelope, respond, 'Missing session id');
       return;
     }
     final notifier = ref.read(serialProvider.notifier);
     if (!notifier.sessions.sessions.any((session) => session.id == id)) {
-      _respondError(envelope, respond, 'No such serial session: $id');
+      respondError(envelope, respond, 'No such serial session: $id');
       return;
     }
     notifier.activateSession(id);
@@ -117,7 +118,7 @@ class SdkSerial {
     final payload = _payload(envelope);
     final id = payload['id']?.toString() ?? payload['session_id']?.toString();
     if (id == null || id.isEmpty) {
-      _respondError(envelope, respond, 'Missing session id');
+      respondError(envelope, respond, 'Missing session id');
       return;
     }
     final notifier = ref.read(serialProvider.notifier);
@@ -125,39 +126,11 @@ class SdkSerial {
         .where((item) => item.id == id)
         .firstOrNull;
     if (session == null) {
-      _respondError(envelope, respond, 'No such serial session: $id');
+      respondError(envelope, respond, 'No such serial session: $id');
       return;
     }
     await notifier.closeSessionFor(session.portPath);
     _handleGetStatus(envelope, respond);
-  }
-
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond(
-      makeEnvelope(
-        type: SdkCommands.responseOk,
-        payload: {'data': data},
-        replyTo: envelope['id']?.toString(),
-      ),
-    );
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond(
-      makeEnvelope(
-        type: SdkCommands.responseError,
-        payload: {'message': message},
-        replyTo: envelope['id']?.toString(),
-      ),
-    );
   }
 
   Map<String, dynamic> _payload(Map<String, dynamic> envelope) {
@@ -173,7 +146,7 @@ class SdkSerial {
   ) async {
     await ref.read(serialProvider.notifier).refresh();
     final state = ref.read(serialProvider);
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: state.portInfos
@@ -194,7 +167,7 @@ class SdkSerial {
   ) {
     final state = ref.read(serialProvider);
     final hardwareResetStrategy = ref.read(hardwareResetStrategyProvider);
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: {
@@ -216,7 +189,7 @@ class SdkSerial {
     final payload = _payload(envelope);
     final port = payload['port']?.toString() ?? payload['path']?.toString();
     if (port == null || port.isEmpty) {
-      _respondError(envelope, respond, 'Missing serial port');
+      respondError(envelope, respond, 'Missing serial port');
       return;
     }
 
@@ -224,7 +197,7 @@ class SdkSerial {
       await ref.read(serialProvider.notifier).connectPort(port);
       _handleGetStatus(envelope, respond);
     } catch (e) {
-      _respondError(envelope, respond, e.toString());
+      respondError(envelope, respond, e.toString());
     }
   }
 
@@ -234,9 +207,9 @@ class SdkSerial {
   ) async {
     try {
       await ref.read(serialProvider.notifier).disconnectPort();
-      _respondOk(envelope, respond);
+      respondOk(envelope, respond);
     } catch (e) {
-      _respondError(envelope, respond, e.toString());
+      respondError(envelope, respond, e.toString());
     }
   }
 
@@ -245,18 +218,18 @@ class SdkSerial {
     void Function(Map<String, dynamic>) respond,
   ) {
     if (!_isConnected) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = _payload(envelope);
     final data = payload['data'];
     final bytes = _bytesFrom(data);
     if (bytes == null) {
-      _respondError(envelope, respond, 'Invalid serial data');
+      respondError(envelope, respond, 'Invalid serial data');
       return;
     }
     ref.read(serialProvider.notifier).sendBytes(Uint8List.fromList(bytes));
-    _respondOk(envelope, respond, data: bytes.length);
+    respondOk(envelope, respond, data: bytes.length);
   }
 
   void _handleSendCommand(
@@ -264,19 +237,19 @@ class SdkSerial {
     void Function(Map<String, dynamic>) respond,
   ) {
     if (!_isConnected) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = _payload(envelope);
     final command = payload['command']?.toString();
     if (command == null) {
-      _respondError(envelope, respond, 'Missing command');
+      respondError(envelope, respond, 'Missing command');
       return;
     }
     ref
         .read(serialProvider.notifier)
         .sendCommand(command, chunked: payload['chunked'] != false);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   Future<void> _handleRead(
@@ -284,7 +257,7 @@ class SdkSerial {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     final payload = _payload(envelope);
@@ -314,7 +287,7 @@ class SdkSerial {
     final data = maxBytes == null || buffer.length <= maxBytes
         ? buffer
         : buffer.sublist(0, maxBytes);
-    _respondOk(
+    respondOk(
       envelope,
       respond,
       data: {'data': data, 'text': utf8.decode(data, allowMalformed: true)},
@@ -328,7 +301,7 @@ class SdkSerial {
     final payload = _payload(envelope);
     final code = payload['code']?.toString();
     if (code == null) {
-      _respondError(envelope, respond, 'Missing Python code');
+      respondError(envelope, respond, 'Missing Python code');
       return;
     }
     final timeoutMs = (payload['timeout_ms'] as num?)?.toInt() ?? 20000;
@@ -338,9 +311,9 @@ class SdkSerial {
         code,
         timeout: Duration(milliseconds: timeoutMs),
       );
-      _respondOk(envelope, respond, data: output);
+      respondOk(envelope, respond, data: output);
     } catch (e) {
-      _respondError(envelope, respond, e.toString());
+      respondError(envelope, respond, e.toString());
     }
   }
 
@@ -349,18 +322,18 @@ class SdkSerial {
     void Function(Map<String, dynamic>) respond,
   ) async {
     if (!_isConnected) {
-      _respondError(envelope, respond, '设备未连接');
+      respondError(envelope, respond, '设备未连接');
       return;
     }
     try {
       final accepted = await hardwareResetDevice(ref.read);
       if (!accepted) {
-        _respondError(envelope, respond, 'Hardware reset is disabled');
+        respondError(envelope, respond, 'Hardware reset is disabled');
         return;
       }
-      _respondOk(envelope, respond, data: true);
+      respondOk(envelope, respond, data: true);
     } catch (e) {
-      _respondError(envelope, respond, e.toString());
+      respondError(envelope, respond, e.toString());
     }
   }
 
@@ -370,11 +343,11 @@ class SdkSerial {
   ) {
     final value = (_payload(envelope)['value'] as num?)?.toInt();
     if (value == null) {
-      _respondError(envelope, respond, 'Missing baud rate');
+      respondError(envelope, respond, 'Missing baud rate');
       return;
     }
     ref.read(serialProvider.notifier).setBaudRate(value);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   void _handleSetAutoReconnect(
@@ -383,7 +356,7 @@ class SdkSerial {
   ) {
     final value = _payload(envelope)['value'];
     ref.read(serialProvider.notifier).setAutoReconnect(value == true);
-    _respondOk(envelope, respond);
+    respondOk(envelope, respond);
   }
 
   List<int>? _bytesFrom(dynamic data) {

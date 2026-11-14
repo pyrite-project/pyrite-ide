@@ -70,9 +70,8 @@ void main() {
     // spelling; refusing that made case-only renames impossible.
     final renamed = await renameFile(source.path, 'foo.py');
     expect(path.basename(renamed), 'foo.py');
-    expect(
-      temp.listSync().map((entity) => path.basename(entity.path)),
-      ['foo.py'],
-    );
+    expect(temp.listSync().map((entity) => path.basename(entity.path)), [
+      'foo.py',
+    ]);
   });
 }

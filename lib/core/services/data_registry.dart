@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
-import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 
 final dataContributionsProvider = StateProvider<List<DataContributionRecord>>(
   (ref) => const [],

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/services/git/git_models.dart';

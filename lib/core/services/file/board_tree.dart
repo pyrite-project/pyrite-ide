@@ -80,9 +80,7 @@ final StateNotifierProvider<
   BoardFileItemsNotifier,
   List<TreeNode<FileSystemItem>>
 >
-boardFileItemsProvider = StateNotifierProvider(
-  (ref) => BoardFileItemsNotifier(ref),
-);
+boardFileItemsProvider = StateNotifierProvider(BoardFileItemsNotifier.new);
 
 // ---------------------------------------------------------------------------
 // Board tree controller

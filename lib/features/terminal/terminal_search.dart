@@ -9,11 +9,11 @@
 library;
 
 import 'package:flutter/painting.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:xterm/xterm.dart';
 
 import 'terminal_link_parser.dart';
-import 'package:pyrite_ide/core/i18n/i18n_key.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 
 /// One match, in cell-buffer coordinates.
 class TerminalSearchMatch {

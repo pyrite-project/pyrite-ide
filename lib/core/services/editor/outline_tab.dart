@@ -53,10 +53,14 @@ void openOutlineTab(WidgetRef ref) {
       return;
     }
   }
-  ref.read(editorLayoutProvider.notifier).splitGroupWithNewTab(
-    target: ref.read(activeEditorControllerProvider),
-    tab: buildOutlineTab(translateForWidget(ref, I18nKey.editorOutlineTitle)),
-    where: PaneEdge.right,
-    focusCreated: false,
-  );
+  ref
+      .read(editorLayoutProvider.notifier)
+      .splitGroupWithNewTab(
+        target: ref.read(activeEditorControllerProvider),
+        tab: buildOutlineTab(
+          translateForWidget(ref, I18nKey.editorOutlineTitle),
+        ),
+        where: PaneEdge.right,
+        focusCreated: false,
+      );
 }

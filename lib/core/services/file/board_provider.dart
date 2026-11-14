@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,8 +11,8 @@ import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
@@ -655,7 +656,11 @@ class BoardNotifier {
       if (await File(targetPath).exists()) {
         try {
           originContent = await File(targetPath).readAsString();
-        } catch (_) {}
+        } catch (error) {
+          debugPrint(
+            '[lib/core/services/file/board_provider.dart] ignored error: $error',
+          );
+        }
       }
       if (originContent != null && originContent != content) {
         final diff = computeDiff(originContent, content);
@@ -797,4 +802,4 @@ class BoardNotifier {
   }
 }
 
-final boardProvider = Provider<BoardNotifier>((ref) => BoardNotifier(ref));
+final boardProvider = Provider<BoardNotifier>(BoardNotifier.new);

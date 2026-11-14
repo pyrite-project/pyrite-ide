@@ -1,0 +1,26 @@
+# .mailmap —— 归并同一贡献者的多套 name/email
+#
+# 历史提交里同一个人的显示名/邮箱有多套（GitHub noreply、私人邮箱、本地 user.name 等），
+# 会让 `git shortlog -sne` 与 `git blame --mailmap` 把一个人算成多个作者。
+# 格式：Proper Name <proper@email> Commit Name <commit@email>
+# 只写邮箱的形式（Proper Name <proper@email> <commit@email>）表示“凡该邮箱的提交都归到此人”。
+
+# ---- Can1425 ----------------------------------------------------------
+# 101759631 是 Can1425 的 GitHub 数字 ID；W-Can1425 为本地 user.name 变体。
+Can1425 <myqf1425@126.com> <101759631+Can1425@users.noreply.github.com>
+Can1425 <myqf1425@126.com> W-Can1425 <101759631+Can1425@users.noreply.github.com>
+
+# ---- kaixin1106 / microcrab / kaixin168sxz ----------------------------
+# 122666772 是同一 GitHub 账号，历史上出现过 kaixin1106 / kaixin168sxz / Microcrab 三个名字。
+kaixin1106 <kaixin168kx@163.com> <122666772+kaixin1106@users.noreply.github.com>
+kaixin1106 <kaixin168kx@163.com> <122666772+kaixin168sxz@users.noreply.github.com>
+kaixin1106 <kaixin168kx@163.com> <122666772+microcrab-project@users.noreply.github.com>
+kaixin1106 <kaixin168kx@163.com> kaixin <kaixin168kx@163.com>
+kaixin1106 <kaixin168kx@163.com> kaixin168sxz <kaixin168kx@163.com>
+
+# ---- Kai Nordherd -----------------------------------------------------
+Kai Nordherd <262930583+kainordherd@users.noreply.github.com> Kai <262930583+kainordherd@users.noreply.github.com>
+
+# ---- 单一身份，无需映射（显式列出以便就近维护，新增变体请补在上方）----
+LP_OVER <d110101010101@outlook.com>
+gxxk-dev <gxxk@duck.com>

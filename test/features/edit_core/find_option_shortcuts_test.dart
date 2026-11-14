@@ -10,7 +10,7 @@ import 'package:pyrite_ide/core/models/search_options.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
-import 'package:pyrite_ide/features/edit_core/main.dart';
+import 'package:pyrite_ide/features/edit_core/edit_core.dart';
 import 'package:pyrite_ide/shared/search_field.dart';
 
 Future<void> _press(

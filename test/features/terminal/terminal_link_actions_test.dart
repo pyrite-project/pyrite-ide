@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/features/terminal/terminal_link_actions.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/features/terminal/terminal_link_actions.dart';
 
 void main() {
   group('isSafeTerminalUrl', () {

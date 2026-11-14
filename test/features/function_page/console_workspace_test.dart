@@ -140,9 +140,8 @@ void main() {
   ) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    container
-        .read(focusedWorkspacePaneProvider.notifier)
-        .state = WorkspacePane.editor;
+    container.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.editor;
     await _pumpDockableWorkspace(tester, container);
 
     expect(container.read(focusedWorkspacePaneProvider), WorkspacePane.editor);

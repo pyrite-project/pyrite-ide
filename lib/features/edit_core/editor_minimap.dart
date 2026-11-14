@@ -568,7 +568,7 @@ class _MinimapViewState extends State<_MinimapView> {
     // stays as the backstop it is for a very short stride, say a very tall
     // window on a very dense display.
     final step = math.max(1, (window.count / _maxBars).ceil());
-    var highlighter = _resolveHighlighter();
+    final highlighter = _resolveHighlighter();
     var highlightTimedOut = false;
 
     // One snapshot of every sampled line, taken up front. Highlighting below

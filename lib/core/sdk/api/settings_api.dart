@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
@@ -698,36 +699,6 @@ class SdkSettings {
     runManager.registerHandler(SdkSettingsCommands.list, _handleList);
   }
 
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
   void _handleGet(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
@@ -736,18 +707,18 @@ class SdkSettings {
     final name = payload['name']?.toString();
 
     if (name == null || name.isEmpty) {
-      _respondError(envelope, respond, '缺少 name');
+      respondError(envelope, respond, '缺少 name');
       return;
     }
 
     final entry = SettingsRegistry._find(name);
     if (entry == null) {
-      _respondError(envelope, respond, '未知设置: $name');
+      respondError(envelope, respond, '未知设置: $name');
       return;
     }
 
     final value = entry.getter(ref);
-    _respondOk(envelope, respond, data: {'name': name, 'value': value});
+    respondOk(envelope, respond, data: {'name': name, 'value': value});
   }
 
   void _handleSet(
@@ -759,21 +730,21 @@ class SdkSettings {
     final value = payload['value'];
 
     if (name == null || name.isEmpty) {
-      _respondError(envelope, respond, '缺少 name');
+      respondError(envelope, respond, '缺少 name');
       return;
     }
 
     final entry = SettingsRegistry._find(name);
     if (entry == null) {
-      _respondError(envelope, respond, '未知设置: $name');
+      respondError(envelope, respond, '未知设置: $name');
       return;
     }
 
     try {
       entry.setter(ref, value);
-      _respondOk(envelope, respond, data: true);
+      respondOk(envelope, respond, data: true);
     } catch (e) {
-      _respondError(envelope, respond, '设置失败: $e');
+      respondError(envelope, respond, '设置失败: $e');
     }
   }
 
@@ -782,7 +753,7 @@ class SdkSettings {
     void Function(Map<String, dynamic>) respond,
   ) {
     final settings = SettingsRegistry.listAll();
-    _respondOk(envelope, respond, data: settings);
+    respondOk(envelope, respond, data: settings);
   }
 }
 

@@ -8,10 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -1197,9 +1197,7 @@ Future<T> _runTransaction<T>(
           queue.cancel();
           debugPrint('[txn] queue cancelled, isCancelled=${queue.isCancelled}');
         },
-        onForceReset: () {
-          requestHardwareReset();
-        },
+        onForceReset: requestHardwareReset,
       ),
     );
 
@@ -1462,7 +1460,7 @@ Future<String> runPythonOnDevice(
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
-      return () => sub.close();
+      return sub.close;
     },
   );
 }
@@ -1484,7 +1482,7 @@ Future<T> runPythonInReplSession<T>(
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
-      return () => sub.close();
+      return sub.close;
     },
   );
 }
@@ -1526,7 +1524,7 @@ Future<void> runPythonOnDeviceStreaming(
       final sub = ref.listenManual(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
-      return () => sub.close();
+      return sub.close;
     },
     forceMode: forceMode,
     softReset: softReset,
@@ -1570,7 +1568,7 @@ Future<void> runPythonOnDeviceWithRawInput(
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
-      return () => sub.close();
+      return sub.close;
     },
   );
 }
@@ -1630,7 +1628,7 @@ Future<Uint8List> runPythonReadDeviceFile(
       final sub = ref.listen(serialProvider, (_, next) {
         if ((next as UsbSerialState?)?.isConnected == false) queue.cancel();
       });
-      return () => sub.close();
+      return sub.close;
     },
   );
 }

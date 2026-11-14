@@ -130,4 +130,116 @@ void main() {
     expect(container.read(ideOutputLogProvider), isEmpty);
     expect(ideOutputController.selection, isNull);
   });
+
+  /// The viewport's scroll position, the one the log's own scrolling uses.
+  ScrollPosition logScrollPosition(WidgetTester tester) {
+    final scrollable = find.descendant(
+      of: find.byType(TerminalView),
+      matching: find.byType(Scrollable),
+    );
+    return tester.state<ScrollableState>(scrollable.first).position;
+  }
+
+  /// The text of the line drawn at the top of the viewport.
+  String topVisibleLine(WidgetTester tester) {
+    final render = tester
+        .state<TerminalViewState>(find.byType(TerminalView))
+        .renderTerminal;
+    final cell = render.getCellOffset(const Offset(2, 2));
+    return ideOutputTerminal.buffer.lines[cell.y].toString().trim();
+  }
+
+  testWidgets('a reader scrolled up keeps their lines while the log grows', (
+    tester,
+  ) async {
+    await pumpLogView(tester);
+    // Fill the scrollback so that every further line drops the oldest one: a
+    // full buffer is what used to slide the text under a fixed viewport.
+    for (var i = 0; i < ideOutputTerminal.maxLines + 100; i++) {
+      ideOutputTerminal.write('line $i\r\n');
+    }
+    await tester.pumpAndSettle();
+
+    final position = logScrollPosition(tester);
+    final lineHeight = tester
+        .state<TerminalViewState>(find.byType(TerminalView))
+        .renderTerminal
+        .lineHeight;
+    position.jumpTo(position.maxScrollExtent - 40 * lineHeight);
+    await tester.pumpAndSettle();
+
+    final before = topVisibleLine(tester);
+    for (var i = 0; i < 20; i++) {
+      ideOutputTerminal.write('new $i\r\n');
+    }
+    await tester.pumpAndSettle();
+
+    expect(topVisibleLine(tester), before);
+  });
+
+  testWidgets('a reader at the bottom follows the new output', (tester) async {
+    await pumpLogView(tester);
+    for (var i = 0; i < ideOutputTerminal.maxLines + 100; i++) {
+      ideOutputTerminal.write('line $i\r\n');
+    }
+    await tester.pumpAndSettle();
+
+    final position = logScrollPosition(tester);
+    ideOutputTerminal.write('the newest line\r\n');
+    await tester.pumpAndSettle();
+
+    expect(position.pixels, position.maxScrollExtent);
+    final lines = ideOutputTerminal.buffer.lines;
+    final render = tester
+        .state<TerminalViewState>(find.byType(TerminalView))
+        .renderTerminal;
+    final bottomCell = render.getCellOffset(Offset(2, render.size.height - 4));
+    // The entry ends with a line break, so the blank line the cursor sits on is
+    // the last one and the text is the row above it.
+    expect(lines[bottomCell.y].toString().trim(), isEmpty);
+    expect(lines[bottomCell.y - 1].toString().trim(), 'the newest line');
+  });
+
+  testWidgets('a selection stays on its text while the log grows', (
+    tester,
+  ) async {
+    await pumpLogView(tester);
+    for (var i = 0; i < ideOutputTerminal.maxLines + 100; i++) {
+      ideOutputTerminal.write('line $i\r\n');
+    }
+    await tester.pumpAndSettle();
+
+    final position = logScrollPosition(tester);
+    final lineHeight = tester
+        .state<TerminalViewState>(find.byType(TerminalView))
+        .renderTerminal
+        .lineHeight;
+    position.jumpTo(position.maxScrollExtent - 30 * lineHeight);
+    await tester.pumpAndSettle();
+
+    final render = tester
+        .state<TerminalViewState>(find.byType(TerminalView))
+        .renderTerminal;
+    final top = render.getCellOffset(const Offset(2, 2));
+    ideOutputController.setSelection(
+      ideOutputTerminal.buffer.createAnchorFromOffset(CellOffset(0, top.y)),
+      ideOutputTerminal.buffer.createAnchorFromOffset(
+        CellOffset(12, top.y + 3),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final before = ideOutputTerminal.buffer.getText(
+      ideOutputController.selection!,
+    );
+
+    for (var i = 0; i < 20; i++) {
+      ideOutputTerminal.write('new $i\r\n');
+    }
+    await tester.pumpAndSettle();
+
+    expect(
+      ideOutputTerminal.buffer.getText(ideOutputController.selection!),
+      before,
+    );
+  });
 }

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart' as video;
 
+import '../../shared/md3_widgets.dart';
+
 /// Host-owned native video player for the `Video` plugin component.
 ///
 /// Replaces the former RFW-coupled media widget: playback is driven directly by
@@ -280,15 +282,21 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
           builder: (context, value, child) {
             return Row(
               children: <Widget>[
-                IconButton(
-                  tooltip: value.isPlaying ? 'Pause' : 'Play',
-                  color: Colors.white,
-                  icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
-                  onPressed: () {
-                    unawaited(
-                      value.isPlaying ? controller.pause() : controller.play(),
-                    );
-                  },
+                TooltipAnchor(
+                  message: value.isPlaying ? 'Pause' : 'Play',
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: Icon(
+                      value.isPlaying ? Icons.pause : Icons.play_arrow,
+                    ),
+                    onPressed: () {
+                      unawaited(
+                        value.isPlaying
+                            ? controller.pause()
+                            : controller.play(),
+                      );
+                    },
+                  ),
                 ),
                 Expanded(
                   child: video.VideoProgressIndicator(
@@ -297,17 +305,19 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
-                IconButton(
-                  tooltip: value.volume == 0 ? 'Unmute' : 'Mute',
-                  color: Colors.white,
-                  icon: Icon(
-                    value.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                TooltipAnchor(
+                  message: value.volume == 0 ? 'Unmute' : 'Mute',
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: Icon(
+                      value.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                    ),
+                    onPressed: () {
+                      unawaited(
+                        controller.setVolume(value.volume == 0 ? 1.0 : 0.0),
+                      );
+                    },
                   ),
-                  onPressed: () {
-                    unawaited(
-                      controller.setVolume(value.volume == 0 ? 1.0 : 0.0),
-                    );
-                  },
                 ),
               ],
             );
@@ -345,14 +355,16 @@ class _FullscreenPlayer extends StatelessWidget {
               alignment: Alignment.topLeft,
               child: Padding(
                 padding: const EdgeInsets.all(8),
-                child: IconButton(
-                  tooltip: 'Close',
-                  color: Colors.white,
-                  icon: const Icon(Icons.fullscreen_exit),
-                  onPressed: () {
-                    onClosed?.call();
-                    Navigator.of(context).pop();
-                  },
+                child: TooltipAnchor(
+                  message: 'Close',
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: const Icon(Icons.fullscreen_exit),
+                    onPressed: () {
+                      onClosed?.call();
+                      Navigator.of(context).pop();
+                    },
+                  ),
                 ),
               ),
             ),

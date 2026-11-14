@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flserial/flserial.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/serial/serial_session_registry.dart';
 
 /// Stand-in for an open [FlSerial] handle.

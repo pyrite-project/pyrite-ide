@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
@@ -14,14 +15,13 @@ import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/file/file_sort.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -429,7 +429,11 @@ __pyrite_read_fp.close()
 del __pyrite_read_fp
 del __pyrite_read_path
 ''');
-        } catch (_) {}
+        } catch (error) {
+          debugPrint(
+            '[lib/core/services/file/board_backend.dart] ignored error: $error',
+          );
+        }
       }
     });
     return result;
@@ -548,7 +552,11 @@ except OSError:
 _emit_ok(True)
 '''),
           );
-        } catch (_) {}
+        } catch (error) {
+          debugPrint(
+            '[lib/core/services/file/board_backend.dart] ignored error: $error',
+          );
+        }
       }
     }
   }
@@ -657,7 +665,11 @@ try:
 except Exception:
   pass
 ''');
-            } catch (_) {}
+            } catch (error) {
+              debugPrint(
+                '[lib/core/services/file/board_backend.dart] ignored error: $error',
+              );
+            }
           }
         }
       }),
@@ -1154,7 +1166,7 @@ except Exception as _pyrite_exc:
 // ---------------------------------------------------------------------------
 
 final boardFileBackendProvider = Provider<BoardFileBackend>(
-  (ref) => SerialBoardFileBackend(ref),
+  SerialBoardFileBackend.new,
 );
 
 // ---------------------------------------------------------------------------
@@ -1443,12 +1455,20 @@ class BoardFileOps {
           if (ignore != null && ignore.isIgnored(entity.path)) continue;
           try {
             total += await entity.length();
-          } catch (_) {}
+          } catch (error) {
+            debugPrint(
+              '[lib/core/services/file/board_backend.dart] ignored error: $error',
+            );
+          }
         }
       } else if (type == io.FileSystemEntityType.file) {
         try {
           total += await io.File(localPath).length();
-        } catch (_) {}
+        } catch (error) {
+          debugPrint(
+            '[lib/core/services/file/board_backend.dart] ignored error: $error',
+          );
+        }
       }
     }
     return total;
@@ -1524,7 +1544,11 @@ class BoardTransfer {
         }
         try {
           totalBytes += await file.length();
-        } catch (_) {}
+        } catch (error) {
+          debugPrint(
+            '[lib/core/services/file/board_backend.dart] ignored error: $error',
+          );
+        }
       }
       final budget = await _ops.preflightUploadSpace(totalBytes);
       if (budget.status == SpaceBudgetStatus.insufficient) {

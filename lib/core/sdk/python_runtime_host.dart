@@ -8,8 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/python_bridge_plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
@@ -97,8 +97,7 @@ class PythonRuntimeHost {
     this.stopTimeout = const Duration(seconds: 2),
   }) : _bootstrapRuntime = bootstrapRuntime ?? _defaultBootstrapRuntime,
        _resetRuntime = resetRuntime ?? SeriousPython.resetRuntime,
-       _supportDirectory =
-           supportDirectory ?? (() => getApplicationSupportDirectory()),
+       _supportDirectory = supportDirectory ?? (getApplicationSupportDirectory),
        _transportFactory = transportFactory ?? _defaultTransportFactory,
        _runProgram = runProgram ?? _defaultRunProgram,
        _sessionIdFactory = sessionIdFactory ?? _newSessionId,
@@ -275,7 +274,11 @@ class PythonRuntimeHost {
         pending.map((future) async {
           try {
             await future;
-          } catch (_) {}
+          } catch (error) {
+            debugPrint(
+              '[lib/core/sdk/python_runtime_host.dart] ignored error: $error',
+            );
+          }
         }),
       );
     }
@@ -538,7 +541,11 @@ class PythonRuntimeHost {
               waitForReply: true,
             )
             .timeout(stopTimeout);
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[lib/core/sdk/python_runtime_host.dart] ignored error: $error',
+        );
+      }
     }
     final completion = session.programCompletion;
     var programExited = completion == null || session._programExited;

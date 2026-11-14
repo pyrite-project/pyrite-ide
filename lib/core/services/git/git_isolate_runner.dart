@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:git2dart/git2dart.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 
 /// 跨 isolate 传递的失败描述。
 ///

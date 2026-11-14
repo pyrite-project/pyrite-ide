@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -18,7 +19,6 @@ import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// One jumpable place in a file: a file path plus an optional LSP
 /// line/character position inside it.
@@ -317,7 +317,11 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
           color: Theme.of(context).colorScheme.primary.withAlpha(45),
         ),
       );
-    } catch (_) {}
+    } catch (error) {
+      debugPrint(
+        '[lib/features/edit_core/lsp_location_dialog.dart] ignored error: $error',
+      );
+    }
     var offset = _previewController.getLineStartOffset(targetLine);
     offset = (offset + (entry.character ?? 0))
         .clamp(0, _previewController.text.length)

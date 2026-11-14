@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -13,11 +12,14 @@ import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
-import 'package:super_context_menu/super_context_menu.dart';
 import 'package:pyrite_ide/shared/tabbed_view/native_tab_drag.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_chrome.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tab_close_actions.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_header_widget.dart';
+import 'package:super_context_menu/super_context_menu.dart';
 import 'package:tabbed_view/src/draggable_config.dart';
+import 'package:tabbed_view/src/internal/size_holder.dart';
+import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 import 'package:tabbed_view/src/tab_status.dart';
 import 'package:tabbed_view/src/theme/side_tabs_layout.dart';
@@ -26,9 +28,6 @@ import 'package:tabbed_view/src/theme/tab_theme_data.dart';
 import 'package:tabbed_view/src/theme/tabbed_view_theme_data.dart';
 import 'package:tabbed_view/src/theme/theme_widget.dart';
 import 'package:tabbed_view/src/theme/vertical_alignment.dart';
-import 'package:tabbed_view/src/internal/size_holder.dart';
-import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
-import 'package:pyrite_ide/shared/tabbed_view/tab_header_widget.dart';
 
 /// Listener for the tabs with the mouse over.
 typedef UpdateHoveredIndex = void Function(int? tabIndex);
@@ -53,7 +52,7 @@ class TabWidget extends ConsumerWidget {
   final TabStatus status;
   final TabbedViewProvider provider;
   final UpdateHoveredIndex updateHoveredIndex;
-  final Function onClose;
+  final VoidCallback onClose;
   final SizeHolder sizeHolder;
 
   @override
@@ -74,7 +73,7 @@ class TabWidget extends ConsumerWidget {
 
     TabDecorationBuilder? decorationBuilder = tabTheme.decorationBuilder;
     while (decorationBuilder != null) {
-      TabDecoration tabDecoration = decorationBuilder(
+      final TabDecoration tabDecoration = decorationBuilder(
         status: status,
         tabBarPosition: theme.tabsArea.position,
       );
@@ -137,7 +136,7 @@ class TabWidget extends ConsumerWidget {
                   : null,
               onSecondaryTapDown: (details) {
                 if (provider.onTabSecondaryTap != null) {
-                  TabData tab = provider.controller.tabs[index];
+                  final TabData tab = provider.controller.tabs[index];
                   provider.onTabSecondaryTap!(index, tab, details);
                 }
               },
@@ -279,7 +278,7 @@ class TabWidget extends ConsumerWidget {
 
   Future<void> _closeTab(BuildContext context, int index) async {
     final tabData = provider.controller.getTabByIndex(index);
-    await closeTabs(context, provider, [tabData], onClosed: () => onClose());
+    await closeTabs(context, provider, [tabData], onClosed: onClose);
   }
 }
 

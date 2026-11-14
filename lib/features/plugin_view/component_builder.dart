@@ -1,23 +1,25 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/core/sdk/component_schema.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/sdk/component_method_registry.dart';
+import 'package:pyrite_ide/core/sdk/component_schema.dart';
+import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/component_error_boundary.dart';
 import 'package:pyrite_ide/features/plugin_view/component_host_state.dart';
 import 'package:pyrite_ide/features/plugin_view/data/plugin_data_table.dart';
 import 'package:pyrite_ide/features/plugin_view/data/plugin_tree_view.dart';
 import 'package:pyrite_ide/features/plugin_view/data/plugin_virtual_list.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_canvas.dart';
-import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_dialog.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_markdown.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_menu.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_split_view.dart';
-import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_video_player.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/shared/pyrite_menu.dart';
+
+import '../../shared/md3_widgets.dart';
 
 /// Signature for dispatching a component event back to the plugin.
 ///
@@ -1102,7 +1104,7 @@ class ComponentBuilder {
           ),
         );
       case 'Tooltip':
-        return Tooltip(
+        return TooltipAnchor(
           message: props['message']?.toString() ?? '',
           child: children.isEmpty
               ? const SizedBox.shrink()
@@ -2204,20 +2206,24 @@ class ComponentBuilder {
     );
     return props['tooltip'] == null
         ? sized
-        : Tooltip(message: props['tooltip'].toString(), child: sized);
+        : TooltipAnchor(message: props['tooltip'].toString(), child: sized);
   }
 
   Widget _buildIconButton(BuildContext context, Map<String, dynamic> props) {
     final id = _id(props);
-    return IconButton(
-      icon: Icon(
-        _icon(props['icon']?.toString()),
-        size: (props['size'] as num?)?.toDouble() ?? 16,
+    return TooltipAnchor(
+      message: props['tooltip']?.toString(),
+      child: IconButton(
+        icon: Icon(
+          _icon(props['icon']?.toString()),
+          size: (props['size'] as num?)?.toDouble() ?? 16,
+        ),
+        visualDensity: VisualDensity.compact,
+        style: _buttonStyle(context, props),
+        onPressed: _enabled(props)
+            ? () => onEvent(id, 'press', const {})
+            : null,
       ),
-      tooltip: props['tooltip']?.toString(),
-      visualDensity: VisualDensity.compact,
-      style: _buttonStyle(context, props),
-      onPressed: _enabled(props) ? () => onEvent(id, 'press', const {}) : null,
     );
   }
 

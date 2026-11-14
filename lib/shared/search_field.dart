@@ -7,6 +7,8 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/search_options.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 
+import './md3_widgets.dart';
+
 /// The find option a key event toggles (Alt+C / Alt+W / Alt+R, or Cmd+Alt on
 /// Apple platforms), if any.
 SearchOption? searchOptionForKeyEvent(KeyEvent event) {
@@ -48,6 +50,7 @@ class SearchOptionToggle extends StatefulWidget {
     required this.onPressed,
     this.size = 26,
     this.cornerInset = 8,
+    this.spacing = 2,
   });
 
   final SearchOption option;
@@ -63,6 +66,11 @@ class SearchOptionToggle extends StatefulWidget {
   /// arcs concentric with it.
   final double cornerInset;
 
+  /// Clear space kept on the square's leading side. Adjacent toggles add
+  /// theirs together, so this is half the gap the cluster shows, and the same
+  /// distance the first square keeps from the field's text.
+  final double spacing;
+
   @override
   State<SearchOptionToggle> createState() => _SearchOptionToggleState();
 }
@@ -77,7 +85,7 @@ class _SearchOptionToggleState extends State<SearchOptionToggle> {
     // `container: true` prevents adjacent toolbar buttons from merging this
     // tooltip's semantics anchor into one shared node. See
     // flutter/flutter#182444.
-    return Tooltip(
+    return TooltipAnchor(
       message: widget.tooltip,
       child: Semantics(
         container: true,
@@ -85,7 +93,7 @@ class _SearchOptionToggleState extends State<SearchOptionToggle> {
         toggled: active,
         child: Padding(
           // Separates adjacent toggles without shrinking the painted square.
-          padding: const EdgeInsets.only(left: 2),
+          padding: EdgeInsets.only(left: widget.spacing),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) => setState(() => _hovered = true),
@@ -139,9 +147,13 @@ class _SearchOptionToggleState extends State<SearchOptionToggle> {
 /// A compact search input with the `Aa` / `ab` / `.*` toggles inside its
 /// trailing edge, like VS Code's find widget.
 ///
+/// The box mirrors the search page's find input: the same height, corner
+/// radius, fill, outline and typography, with the magnifier sitting outside
+/// the box, so both places read as the same control.
+///
 /// Alt+C / Alt+W / Alt+R toggle the options while the field has focus, and
 /// Escape clears the text.
-class OptionsSearchField extends ConsumerWidget {
+class OptionsSearchField extends ConsumerStatefulWidget {
   const OptionsSearchField({
     super.key,
     required this.controller,
@@ -153,10 +165,14 @@ class OptionsSearchField extends ConsumerWidget {
     this.hasError = false,
   });
 
-  /// Gap between the field's rounded edge and the toggles inside it.
-  static const double _toggleInset = 4;
-  static const double _toggleSize = 22;
-  static const double _fieldInset = 8;
+  /// Height of the bordered box, shared with the search page's find input.
+  static const double _fieldHeight = 32;
+
+  /// Edge length of an option toggle's painted square.
+  static const double _toggleSize = 24;
+
+  /// Clear space a toggle's painted square keeps from the box's edges.
+  static const double _toggleInset = 3;
 
   final TextEditingController controller;
   final FocusNode? focusNode;
@@ -169,15 +185,28 @@ class OptionsSearchField extends ConsumerWidget {
   final bool hasError;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OptionsSearchField> createState() => _OptionsSearchFieldState();
+}
+
+class _OptionsSearchFieldState extends ConsumerState<OptionsSearchField> {
+  /// Backs the outline's focus state when the caller supplies no focus node.
+  final FocusNode _fallbackFocusNode = FocusNode();
+
+  FocusNode get _focusNode => widget.focusNode ?? _fallbackFocusNode;
+
+  @override
+  void dispose() {
+    _fallbackFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     String tr(I18nKey key) => translateForWidget(ref, key);
     final scheme = Theme.of(context).colorScheme;
-    final foreground = scheme.onSurfaceVariant;
-    final radius = context.nestedCorners(_fieldInset);
-    OutlineInputBorder border(Color color) => OutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: color),
-    );
+    final foreground = scheme.onSurface;
+    final options = widget.options;
+    final onOptionsChanged = widget.onOptionsChanged;
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,
@@ -189,55 +218,89 @@ class OptionsSearchField extends ConsumerWidget {
         }
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape &&
-            controller.text.isNotEmpty) {
-          controller.clear();
-          onChanged('');
+            widget.controller.text.isNotEmpty) {
+          widget.controller.clear();
+          widget.onChanged('');
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
       },
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        maxLines: 1,
-        style: const TextStyle(fontSize: 13),
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          isDense: true,
-          filled: true,
-          fillColor: scheme.surfaceContainerHighest.withAlpha(110),
-          hintText: hintText,
-          hintStyle: TextStyle(color: foreground.withAlpha(150), fontSize: 13),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 9,
-          ),
-          prefixIcon: Icon(Icons.search, size: 16, color: foreground),
-          prefixIconConstraints: const BoxConstraints(minWidth: 32),
-          suffixIcon: Padding(
-            padding: const EdgeInsetsDirectional.only(end: _toggleInset),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final option in SearchOption.values)
-                  SearchOptionToggle(
-                    option: option,
-                    tooltip: searchOptionTooltip(tr, option),
-                    active: options.isOn(option),
-                    foreground: foreground,
-                    size: _toggleSize,
-                    cornerInset: _fieldInset + _toggleInset,
-                    onPressed: () => onOptionsChanged(options.toggled(option)),
+      child: Row(
+        children: [
+          Icon(Icons.search, size: 16, color: foreground),
+          const SizedBox(width: 6),
+          Expanded(
+            // Only the box decoration depends on focus, so the row inside is
+            // built once and handed back unchanged.
+            child: ListenableBuilder(
+              listenable: _focusNode,
+              builder: (context, child) => Container(
+                height: OptionsSearchField._fieldHeight,
+                decoration: BoxDecoration(
+                  color: Color.alphaBlend(
+                    foreground.withAlpha(12),
+                    scheme.surface,
                   ),
-              ],
+                  borderRadius: context.innerCorners,
+                  border: Border.all(
+                    color: widget.hasError
+                        ? scheme.error
+                        : _focusNode.hasFocus
+                        ? foreground.withAlpha(120)
+                        : foreground.withAlpha(46),
+                  ),
+                ),
+                child: child,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: TextField(
+                        controller: widget.controller,
+                        focusNode: _focusNode,
+                        maxLines: 1,
+                        style: TextStyle(color: foreground, fontSize: 13),
+                        cursorColor: foreground,
+                        onChanged: widget.onChanged,
+                        decoration: InputDecoration.collapsed(
+                          hintText: widget.hintText,
+                          hintStyle: TextStyle(
+                            color: foreground.withAlpha(110),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (final option in SearchOption.values)
+                    SearchOptionToggle(
+                      option: option,
+                      tooltip: searchOptionTooltip(tr, option),
+                      active: options.isOn(option),
+                      foreground: foreground,
+                      size: OptionsSearchField._toggleSize,
+                      // Same radius as the box, so the nesting reads as one
+                      // shape.
+                      cornerInset: context.corners.gap,
+                      // Half of the inset, so neighbouring squares sit
+                      // [_toggleInset] apart — the gap the search page's find
+                      // input uses.
+                      spacing: OptionsSearchField._toggleInset / 2,
+                      onPressed: () =>
+                          onOptionsChanged(options.toggled(option)),
+                    ),
+                  // The squares carry their spacing on the leading side only,
+                  // so the cluster's trailing clearance from the box's right
+                  // edge needs the full inset here — the same distance the
+                  // squares keep from the top and bottom edges.
+                  const SizedBox(width: OptionsSearchField._toggleInset),
+                ],
+              ),
             ),
           ),
-          suffixIconConstraints: const BoxConstraints(minHeight: 32),
-          enabledBorder: border(
-            hasError ? scheme.error : scheme.outlineVariant,
-          ),
-          focusedBorder: border(hasError ? scheme.error : scheme.primary),
-        ),
+        ],
       ),
     );
   }

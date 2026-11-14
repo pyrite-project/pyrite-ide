@@ -2,33 +2,33 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
-import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
-import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
-import 'package:pyrite_ide/core/sdk/types.dart';
-import 'package:pyrite_ide/core/sdk/api/file.dart';
 import 'package:pyrite_ide/core/sdk/api/board.dart';
-import 'package:pyrite_ide/core/sdk/api/editor.dart';
-import 'package:pyrite_ide/core/sdk/api/persistence.dart';
-import 'package:pyrite_ide/core/sdk/api/tab.dart';
-import 'package:pyrite_ide/core/sdk/api/settings_api.dart';
-import 'package:pyrite_ide/core/sdk/api/data_api.dart';
-import 'package:pyrite_ide/core/sdk/api/message_api.dart';
 import 'package:pyrite_ide/core/sdk/api/clipboard_api.dart';
-import 'package:pyrite_ide/core/sdk/api/serial.dart';
-import 'package:pyrite_ide/core/sdk/api/dialog.dart';
-import 'package:pyrite_ide/core/sdk/api/events_api.dart';
-import 'package:pyrite_ide/core/sdk/api/document_api.dart';
-import 'package:pyrite_ide/core/sdk/api/runtime_api.dart';
-import 'package:pyrite_ide/core/sdk/api/env_api.dart';
-import 'package:pyrite_ide/core/sdk/api/view_api.dart';
 import 'package:pyrite_ide/core/sdk/api/configuration_api.dart';
+import 'package:pyrite_ide/core/sdk/api/data_api.dart';
+import 'package:pyrite_ide/core/sdk/api/dialog.dart';
+import 'package:pyrite_ide/core/sdk/api/document_api.dart';
+import 'package:pyrite_ide/core/sdk/api/editor.dart';
+import 'package:pyrite_ide/core/sdk/api/env_api.dart';
+import 'package:pyrite_ide/core/sdk/api/events_api.dart';
+import 'package:pyrite_ide/core/sdk/api/file.dart';
+import 'package:pyrite_ide/core/sdk/api/message_api.dart';
+import 'package:pyrite_ide/core/sdk/api/persistence.dart';
+import 'package:pyrite_ide/core/sdk/api/runtime_api.dart';
+import 'package:pyrite_ide/core/sdk/api/serial.dart';
+import 'package:pyrite_ide/core/sdk/api/settings_api.dart';
+import 'package:pyrite_ide/core/sdk/api/tab.dart';
+import 'package:pyrite_ide/core/sdk/api/view_api.dart';
 import 'package:pyrite_ide/core/sdk/component_method_registry.dart';
 import 'package:pyrite_ide/core/sdk/context_key_host.dart';
-import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
-import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
+import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
+import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 
@@ -338,6 +338,4 @@ final StateNotifierProvider<
   PluginRunManagerNotifier,
   Map<Plugin, PluginRunManager>
 >
-pluginRunManagerProvider = StateNotifierProvider(
-  (ref) => PluginRunManagerNotifier(ref),
-);
+pluginRunManagerProvider = StateNotifierProvider(PluginRunManagerNotifier.new);

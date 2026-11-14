@@ -254,8 +254,7 @@ class _Subscription {
     required this.queueLimit,
     Timer Function(Duration, void Function())? scheduleTimer,
   }) : _sink = sink,
-       _scheduleTimer =
-           scheduleTimer ?? ((duration, cb) => Timer(duration, cb));
+       _scheduleTimer = scheduleTimer ?? (Timer.new);
 
   final String id;
   final String pluginId;

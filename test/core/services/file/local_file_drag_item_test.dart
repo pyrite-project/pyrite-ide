@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pyrite_ide/pages/file/main.dart';
+import 'package:pyrite_ide/pages/file/file_page.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 void main() {

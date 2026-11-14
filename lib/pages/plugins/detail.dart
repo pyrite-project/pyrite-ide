@@ -12,8 +12,8 @@ import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_config_store.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
@@ -877,17 +877,22 @@ class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
             ),
           ),
           if (_search.text.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.close, size: 16),
-              tooltip: translateForWidget(ref, I18nKey.commonClose),
-              onPressed: () {
-                _search.clear();
-                setState(() {});
-              },
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              style: IconButton.styleFrom(
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            TooltipAnchor(
+              message: translateForWidget(ref, I18nKey.commonClose),
+              child: IconButton(
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: () {
+                  _search.clear();
+                  setState(() {});
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 32,
+                  height: 32,
+                ),
+                style: IconButton.styleFrom(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
             ),
           const SizedBox(width: 8),
@@ -1219,18 +1224,20 @@ class _SettingRow extends StatelessWidget {
           ),
         ),
         if (_modified && onReset != null) _resetButton(context, onReset!),
-        IconButton(
-          icon: Icon(
-            _isPassword ? Icons.key_outlined : Icons.edit_outlined,
-            size: 16,
-          ),
-          tooltip: translateInContext(context, _editLabel),
-          onPressed: () => _openEditor(context),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-          visualDensity: VisualDensity.compact,
-          style: IconButton.styleFrom(
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        TooltipAnchor(
+          message: translateInContext(context, _editLabel),
+          child: IconButton(
+            icon: Icon(
+              _isPassword ? Icons.key_outlined : Icons.edit_outlined,
+              size: 16,
+            ),
+            onPressed: () => _openEditor(context),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
           ),
         ),
       ],
@@ -1239,16 +1246,18 @@ class _SettingRow extends StatelessWidget {
 
   Widget _resetButton(BuildContext context, VoidCallback onReset) {
     final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      icon: const Icon(Icons.restart_alt, size: 18),
-      tooltip: translateInContext(context, I18nKey.pluginsDetailResetToDefault),
-      onPressed: onReset,
-      color: scheme.primary,
-      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-      padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return TooltipAnchor(
+      message: translateInContext(context, I18nKey.pluginsDetailResetToDefault),
+      child: IconButton(
+        icon: const Icon(Icons.restart_alt, size: 18),
+        onPressed: onReset,
+        color: scheme.primary,
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
       ),
     );
   }
@@ -1458,21 +1467,23 @@ class _SettingRow extends StatelessWidget {
                           borderRadius: context.innerCorners,
                         ),
                         suffixIcon: _isPassword
-                            ? IconButton(
-                                icon: Icon(
-                                  revealPassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  size: 18,
-                                ),
-                                tooltip: translateInContext(
+                            ? TooltipAnchor(
+                                message: translateInContext(
                                   context,
                                   revealPassword
                                       ? I18nKey.pluginsDetailHidePassword
                                       : I18nKey.pluginsDetailShowPassword,
                                 ),
-                                onPressed: () => setDialogState(
-                                  () => revealPassword = !revealPassword,
+                                child: IconButton(
+                                  icon: Icon(
+                                    revealPassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: 18,
+                                  ),
+                                  onPressed: () => setDialogState(
+                                    () => revealPassword = !revealPassword,
+                                  ),
                                 ),
                               )
                             : null,
@@ -1792,22 +1803,24 @@ class _SettingFieldState extends State<_SettingField> {
   }
 
   Widget _revealButton(BuildContext context) {
-    return IconButton(
-      icon: Icon(
-        _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-        size: 16,
-      ),
-      tooltip: translateInContext(
+    return TooltipAnchor(
+      message: translateInContext(
         context,
         _revealed
             ? I18nKey.pluginsDetailHidePassword
             : I18nKey.pluginsDetailShowPassword,
       ),
-      onPressed: () => setState(() => _revealed = !_revealed),
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      child: IconButton(
+        icon: Icon(
+          _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+          size: 16,
+        ),
+        onPressed: () => setState(() => _revealed = !_revealed),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
       ),
     );
   }

@@ -51,10 +51,7 @@ String webReplDeviceLabel(String host, int port) {
 final activeDeviceLabelProvider = Provider<String?>((ref) {
   switch (ref.watch(activeDeviceTransportProvider)) {
     case ActiveDeviceTransport.webRepl:
-      return webReplDeviceLabel(
-        ref.watch(webReplHost),
-        ref.watch(webReplPort),
-      );
+      return webReplDeviceLabel(ref.watch(webReplHost), ref.watch(webReplPort));
     case ActiveDeviceTransport.serial:
       return ref.watch(serialProvider).selectedPortName;
     case ActiveDeviceTransport.disconnected:

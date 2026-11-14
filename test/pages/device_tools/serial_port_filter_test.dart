@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/models/serial_port_descriptor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/pages/device_tools/main.dart';
+import 'package:pyrite_ide/pages/device_tools/device_tools_page.dart';
 
 /// A [SerialNotifier] holding fixed ports and never touching the system.
 class _FakeSerialNotifier extends SerialNotifier {

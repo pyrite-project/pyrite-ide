@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flserial/serial_scanner.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('SerialPortInfo', () {

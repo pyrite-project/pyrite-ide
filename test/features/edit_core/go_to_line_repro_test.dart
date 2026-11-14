@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/features/edit_core/main.dart';
+import 'package:pyrite_ide/features/edit_core/edit_core.dart';
 
 /// Drives the real Ctrl+G flow - shortcut, dialog, submit, scroll jump -
 /// through the app's [EditCore] subtree, and fails on ANY framework error

@@ -1,10 +1,10 @@
 import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 class WebReplSocket {
   WebReplSocket._(this._socket, this._iterator);

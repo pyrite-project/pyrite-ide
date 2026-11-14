@@ -12,29 +12,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/search_options.dart' show SearchOption;
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/terminal.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart'
+    show activeEditorTabProvider;
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
-import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/search/search_provider.dart';
 import 'package:pyrite_ide/core/services/search/search_service.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_run_directory.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart'
-    show activeEditorTabProvider;
-import 'package:pyrite_ide/shared/dialog_form_fields.dart';
-import 'package:pyrite_ide/shared/search_field.dart';
-import 'package:pyrite_ide/core/models/search_options.dart' show SearchOption;
-import 'package:pyrite_ide/shared/pyrite_floating_toolbar.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
@@ -43,8 +41,12 @@ import 'package:pyrite_ide/features/edit_core/lsp_context_menu_actions.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_text_edits.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/shared/dialog_form_fields.dart';
+import 'package:pyrite_ide/shared/pyrite_floating_toolbar.dart';
 import 'package:pyrite_ide/shared/pyrite_menu.dart';
+import 'package:pyrite_ide/shared/search_field.dart';
+
+import '../../shared/md3_widgets.dart';
 
 class EditCore extends ConsumerStatefulWidget {
   const EditCore({
@@ -225,10 +227,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
       SingleActivator(LogicalKeyboardKey.f3, shift: true): () {
         _findController.previous();
       },
-      for (final activator in findActivators())
-        activator: () {
-          _openFind();
-        },
+      for (final activator in findActivators()) activator: _openFind,
       for (final activator in replaceActivators())
         activator: () {
           _openFind(replace: true);
@@ -247,9 +246,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
             }
           },
       for (final activator in toggleCommentActivators())
-        activator: () {
-          _toggleLineComment();
-        },
+        activator: _toggleLineComment,
     };
 
     if (pending != null || pendingDownload != null) {
@@ -433,7 +430,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
     if (marker == null) return;
 
     final selection = controller.selection;
-    var startLine = controller.getLineAtOffset(selection.start);
+    final startLine = controller.getLineAtOffset(selection.start);
     var endLine = controller.getLineAtOffset(selection.end);
     // A selection ending exactly at a line start does not include that line.
     if (!selection.isCollapsed &&
@@ -1556,26 +1553,28 @@ class _EditorFindBar extends ConsumerWidget implements PreferredSizeWidget {
     required String tooltip,
     required VoidCallback? onPressed,
   }) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon, size: 17),
-      // Without this the Material tap target inflates the button to 48px, which
-      // would overflow the row and invalidate the width the inputs are sized
-      // against.
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      color: foreground.withAlpha(215),
-      disabledColor: foreground.withAlpha(70),
-      hoverColor: foreground.withAlpha(26),
-      focusColor: Colors.transparent,
-      highlightColor: foreground.withAlpha(40),
-      splashRadius: _buttonSize / 2,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(
-        width: _buttonSize,
-        height: _buttonSize,
+    return TooltipAnchor(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 17),
+        // Without this the Material tap target inflates the button to 48px, which
+        // would overflow the row and invalidate the width the inputs are sized
+        // against.
+        style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        color: foreground.withAlpha(215),
+        disabledColor: foreground.withAlpha(70),
+        hoverColor: foreground.withAlpha(26),
+        focusColor: Colors.transparent,
+        highlightColor: foreground.withAlpha(40),
+        splashRadius: _buttonSize / 2,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(
+          width: _buttonSize,
+          height: _buttonSize,
+        ),
       ),
     );
   }

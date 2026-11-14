@@ -22,7 +22,11 @@ void main() {
         'junk',
         {'name': 'no id'},
         {'id': 42, 'name': 'number id'},
-        {'id': 'b.plugin', 'name': 'B', 'platforms': ['linux', 7]},
+        {
+          'id': 'b.plugin',
+          'name': 'B',
+          'platforms': ['linux', 7],
+        },
       ]);
 
       expect(entries.map((entry) => entry.id), ['a.plugin', '42', 'b.plugin']);

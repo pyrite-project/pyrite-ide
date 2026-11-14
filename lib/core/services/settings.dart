@@ -28,7 +28,7 @@ final StateProvider<String> editorTextFontProvider = StateProvider<String>(
 final ByteData _null = ByteData(0);
 
 Future<ByteData> loadFontData() async {
-  File? file = await local.sysGetFile();
+  final File? file = await local.sysGetFile();
   if (file != null) {
     final bytes = await file.readAsBytes();
     return ByteData.sublistView(bytes);
@@ -38,8 +38,8 @@ Future<ByteData> loadFontData() async {
 }
 
 void customizationEditorTextFont() async {
-  Future<ByteData> data = loadFontData();
-  ByteData data0 = await data;
+  final Future<ByteData> data = loadFontData();
+  final ByteData data0 = await data;
 
   if (data0 != _null) {
     final FontLoader font = FontLoader("custom");
@@ -50,8 +50,8 @@ void customizationEditorTextFont() async {
 }
 
 void customizationTerminalTextFont() async {
-  Future<ByteData> data = loadFontData();
-  ByteData data0 = await data;
+  final Future<ByteData> data = loadFontData();
+  final ByteData data0 = await data;
 
   if (data0 != _null) {
     final FontLoader font = FontLoader("custom");

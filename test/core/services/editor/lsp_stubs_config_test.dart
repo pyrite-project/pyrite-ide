@@ -7,9 +7,9 @@ import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/zuban_lsp_server.dart';
-import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
+import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 void main() {

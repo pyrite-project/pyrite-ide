@@ -2,8 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
@@ -45,9 +45,7 @@ final StateNotifierProvider<
   LocalFileItemsNotifier,
   List<TreeNode<FileSystemItem>>
 >
-localFileItemsProvider = StateNotifierProvider(
-  (ref) => LocalFileItemsNotifier(ref),
-);
+localFileItemsProvider = StateNotifierProvider(LocalFileItemsNotifier.new);
 
 // ---------------------------------------------------------------------------
 // Local tree controller

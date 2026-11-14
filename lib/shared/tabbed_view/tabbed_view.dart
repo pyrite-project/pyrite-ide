@@ -3,10 +3,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
 import 'package:pyrite_ide/shared/tabbed_view/content_area.dart';
-import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:pyrite_ide/shared/tabbed_view/tabs_area.dart';
+import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tabbed_view_controller.dart';
 import 'package:tabbed_view/src/theme/tabbed_view_theme_data.dart';
@@ -93,9 +92,9 @@ class _TabbedViewState extends State<TabbedView> {
 
   @override
   Widget build(BuildContext context) {
-    TabbedViewThemeData theme = TabbedViewTheme.of(context);
+    final TabbedViewThemeData theme = TabbedViewTheme.of(context);
 
-    TabbedViewProvider provider = TabbedViewProvider(
+    final TabbedViewProvider provider = TabbedViewProvider(
       controller: widget.controller,
       contentBuilder: widget.contentBuilder,
       tabReorderEnabled: widget.tabReorderEnabled,
@@ -115,12 +114,12 @@ class _TabbedViewState extends State<TabbedView> {
     );
     final bool tabsAreaVisible =
         widget.tabsAreaVisible ?? theme.tabsArea.visible;
-    List<LayoutId> children = [];
+    final List<LayoutId> children = [];
     if (tabsAreaVisible) {
-      Widget tabArea = TabsArea(provider: provider);
+      final Widget tabArea = TabsArea(provider: provider);
       children.add(LayoutId(id: 1, child: tabArea));
     }
-    Widget contentArea = ContentArea(
+    final Widget contentArea = ContentArea(
       provider: provider,
       tabsAreaVisible: tabsAreaVisible,
     );

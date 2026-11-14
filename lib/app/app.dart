@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -12,12 +14,11 @@ import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/sdk/environment_broadcaster.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
-import 'package:dynamic_color/dynamic_color.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
@@ -107,7 +108,7 @@ class PyriteIDE extends ConsumerWidget {
       );
 
       if (Platform.isAndroid) {
-        SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
+        final SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           systemNavigationBarColor: scheme.surfaceContainer,
         );

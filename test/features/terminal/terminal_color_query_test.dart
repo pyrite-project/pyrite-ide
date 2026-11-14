@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/function_page.dart';
 import 'package:xterm/xterm.dart';
 

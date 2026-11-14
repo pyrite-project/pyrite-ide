@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+
 import 'package:ffi/ffi.dart';
+import 'package:flserial/flserial.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flserial/flserial.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
-import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/port_catalog/serial_port_catalog.dart';
 import 'package:pyrite_ide/core/services/serial/serial_session_registry.dart';
@@ -157,7 +158,11 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     try {
       final ports = await _catalog.scan(refreshMetadata: true);
       state = state.copyWith(ports: ports);
-    } catch (_) {}
+    } catch (error) {
+      debugPrint(
+        '[lib/core/services/serial/serial_provider.dart] ignored error: $error',
+      );
+    }
   }
 
   @override
@@ -479,4 +484,4 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 }
 
 final StateNotifierProvider<SerialNotifier, SerialProviderState>
-serialProvider = StateNotifierProvider((ref) => SerialNotifier(ref));
+serialProvider = StateNotifierProvider(SerialNotifier.new);

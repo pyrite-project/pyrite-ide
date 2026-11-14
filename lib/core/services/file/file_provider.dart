@@ -1,5 +1,6 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,22 +9,22 @@ import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
-import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart';
-import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/device/file_hash.dart';
 import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
-import 'package:pyrite_ide/core/services/file/canonical_path.dart';
-import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/core/services/file/file_ops.dart';
-import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_backend.dart' as utils;
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/file/canonical_path.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_backend.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -1221,7 +1222,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     ref.read(localFileTreeViewControllerProvider).setSelectedNodeId(id);
     final node = ref.read(localFileTreeViewControllerProvider).findNodeById(id);
     if (node == null || node.data is! FileItem) return null;
-    File file = File(id);
+    final File file = File(id);
     if (context.mounted) {
       await ref
           .read(tabbedViewControllerProvider.notifier)
@@ -1285,7 +1286,11 @@ class FileNotifier extends StateNotifier<Directory?> {
             .read(boardProvider)
             .ops
             .getFileContent(targetPath);
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[lib/core/services/file/file_provider.dart] ignored error: $error',
+        );
+      }
       if (originContent != null && originContent != content) {
         final diff = computeDiff(originContent, content);
 
@@ -1613,4 +1618,4 @@ class FileNotifier extends StateNotifier<Directory?> {
 }
 
 final StateNotifierProvider<FileNotifier, Directory?> fileProvider =
-    StateNotifierProvider((ref) => FileNotifier(ref));
+    StateNotifierProvider(FileNotifier.new);

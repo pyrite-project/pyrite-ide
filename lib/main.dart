@@ -1,43 +1,45 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+
 import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:git2dart/git2dart.dart';
-import 'package:pyrite_ide/core/models/pane_edge.dart';
-import 'package:pyrite_ide/app/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:git2dart/git2dart.dart';
+import 'package:pyrite_ide/app/app.dart';
+import 'package:pyrite_ide/core/flutter/error_log_dedupe.dart';
+import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
+import 'package:pyrite_ide/core/sdk/environment_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
+import 'package:pyrite_ide/core/services/periodic_task/periodic_task.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
-import 'package:pyrite_ide/core/services/editor/editor_split.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
-import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
-import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/window_placement.dart';
-import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
-import 'package:pyrite_ide/core/models/settings.dart';
-import 'package:pyrite_ide/core/models/terminal_appearance.dart';
-import 'package:pyrite_ide/core/services/periodic_task/main.dart';
-import 'package:pyrite_ide/core/services/file/board_backend.dart';
-import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
-import 'package:pyrite_ide/features/window.dart';
-import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
-import 'package:pyrite_ide/core/sdk/environment_provider.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:pyrite_ide/features/window.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
 
 String? getPythonPath() {
@@ -88,6 +90,20 @@ void _appendIdeOutputLater(String text) {
   });
 }
 
+/// Folds the same error when it is reported again and again, frame after frame.
+///
+/// Some framework failures (a semantics assertion, for instance) fire twice per
+/// frame, so writing each stack trace turns the output panel into an unreadable
+/// wall and hides every other message. The first report is kept verbatim and
+/// the rest are tallied into a single line once the flood stops; nothing is
+/// hidden, only repeated less often.
+final ErrorLogDedupe _errorLogDedupe = ErrorLogDedupe(
+  emitSummary: (text) {
+    _appendIdeOutputLater(text);
+    GitDebugLog.log(text);
+  },
+);
+
 void _installIdeOutputLogger() {
   if (_defaultDebugPrint != null) return;
   _defaultDebugPrint = debugPrint;
@@ -100,6 +116,9 @@ void _installIdeOutputLogger() {
 
   FlutterError.onError = (FlutterErrorDetails details) {
     final message = details.exceptionAsString();
+    // Matched on the message alone: the stack of a repeated framework error is
+    // identical, and the message is what the tally line shows to the reader.
+    if (!_errorLogDedupe.admit(signature: message)) return;
     final stack = details.stack?.toString();
     GitDebugLog.log(
       'FlutterError library=${details.library ?? ''} '
@@ -112,6 +131,7 @@ void _installIdeOutputLogger() {
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
+    if (!_errorLogDedupe.admit(signature: 'uncaught|$error')) return true;
     GitDebugLog.log(
       'PlatformDispatcher.onError',
       error: error,
@@ -308,12 +328,11 @@ void _startAutoSave() {
     if (!_persistDirty) return;
     unawaited(_savePersistedDataNow());
   });
-  container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
-    _triggerSave();
-  };
-  container.read(pluginManagerProvider.notifier).setOnChanged(() {
-    _triggerPluginSave();
-  });
+  container.read(tabbedViewControllerProvider.notifier).onUnsavedChange =
+      _triggerSave;
+  container
+      .read(pluginManagerProvider.notifier)
+      .setOnChanged(_triggerPluginSave);
   for (final provider in _persistedSettingsProviders) {
     _settingsSubscriptions.add(
       container.listen<Object?>(provider, (_, _) => _triggerSave()),

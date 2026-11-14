@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
@@ -19,7 +21,6 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:path/path.dart' as path;
 
 /// The language id sent to the language server for every document.
 ///
@@ -133,7 +134,7 @@ class EditorControllerMapNotifier
       }
     }
 
-    CodeForgeController controller = PyriteCodeForgeController(
+    final CodeForgeController controller = PyriteCodeForgeController(
       lspConfig: lspConfig,
     );
     // Bind the path before the buffer. The editor widget only assigns
@@ -376,7 +377,7 @@ final StateNotifierProvider<
   Map<String, CodeForgeController>
 >
 editorControllerMapProvider = StateNotifierProvider(
-  (ref) => EditorControllerMapNotifier(ref),
+  EditorControllerMapNotifier.new,
 );
 
 /// Snapshots the LSP capability settings as the client capabilities to negotiate.

@@ -2,23 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/device_executor.dart';
-import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/features/edit_core/main.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/features/edit_core/edit_core.dart';
 import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_strip_theme.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
-import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
-import 'package:pyrite_ide/shared/tabbed_view/tab_strip_theme.dart';
+
+import '../../shared/md3_widgets.dart';
 
 /// The editor area: the layout tree recorded in [editorLayoutProvider], laid
 /// out recursively so a group can be split again inside itself.
@@ -152,107 +154,121 @@ class EditorToolbar extends ConsumerWidget implements PreferredSizeWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            IconButton(
-              tooltip: translateForWidget(ref, I18nKey.commonSave),
-              icon: const Icon(Icons.save_outlined),
-              onPressed: canSave ? () => saveFile(context, ref) : null,
+            TooltipAnchor(
+              message: translateForWidget(ref, I18nKey.commonSave),
+              child: IconButton(
+                icon: const Icon(Icons.save_outlined),
+                onPressed: canSave ? () => saveFile(context, ref) : null,
+              ),
             ),
             const SizedBox(width: 4),
             (fileValue?.isBoardFile == true)
-                ? IconButton(
-                    tooltip: translateForWidget(
+                ? TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.editorToolbarDownload,
                     ),
-                    icon: const Icon(Icons.download_outlined),
-                    onPressed: canSave && isConnected
-                        ? () => ref
-                              .read(boardProvider)
-                              .downloadSelectedBoardItem(context)
-                        : null,
+                    child: IconButton(
+                      icon: const Icon(Icons.download_outlined),
+                      onPressed: canSave && isConnected
+                          ? () => ref
+                                .read(boardProvider)
+                                .downloadSelectedBoardItem(context)
+                          : null,
+                    ),
                   )
-                : IconButton(
-                    tooltip: translateForWidget(
+                : TooltipAnchor(
+                    message: translateForWidget(
                       ref,
                       I18nKey.editorToolbarUpload,
                     ),
-                    icon: const Icon(Icons.upload_outlined),
-                    onPressed: canSave && isConnected
-                        ? () => ref
-                              .read(fileProvider.notifier)
-                              .uploadSelectedLocalFileItem(
-                                context,
-                                selectedTab: active.tab,
-                              )
-                        : null,
+                    child: IconButton(
+                      icon: const Icon(Icons.upload_outlined),
+                      onPressed: canSave && isConnected
+                          ? () => ref
+                                .read(fileProvider.notifier)
+                                .uploadSelectedLocalFileItem(
+                                  context,
+                                  selectedTab: active.tab,
+                                )
+                          : null,
+                    ),
                   ),
             const SizedBox(width: 4),
-            IconButton(
-              tooltip: translateForWidget(ref, I18nKey.editorToolbarRun),
-              icon: const Icon(Icons.play_arrow),
-              onPressed: canSave && isConnected
-                  ? () => runCurrentFile(context, ref)
-                  : null,
+            TooltipAnchor(
+              message: translateForWidget(ref, I18nKey.editorToolbarRun),
+              child: IconButton(
+                icon: const Icon(Icons.play_arrow),
+                onPressed: canSave && isConnected
+                    ? () => runCurrentFile(context, ref)
+                    : null,
+              ),
             ),
             const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
             const EditorOutlineToggle(),
-            IconButton(
-              tooltip: translateForWidget(
+            TooltipAnchor(
+              message: translateForWidget(
                 ref,
                 isConnected
                     ? I18nKey.editorToolbarInterruptDevice
                     : I18nKey.editorToolbarInterruptNeedsDevice,
               ),
-              icon: const Icon(Icons.stop_circle_outlined),
-              onPressed: isConnected
-                  ? () {
-                      sendCommandToActiveDevice(ref.read, "\x03");
-                    }
-                  : null,
+              child: IconButton(
+                icon: const Icon(Icons.stop_circle_outlined),
+                onPressed: isConnected
+                    ? () {
+                        sendCommandToActiveDevice(ref.read, "\x03");
+                      }
+                    : null,
+              ),
             ),
-            IconButton(
-              tooltip: translateForWidget(
+            TooltipAnchor(
+              message: translateForWidget(
                 ref,
                 serialConnected &&
                         hardwareResetStrategy != HardwareResetStrategy.disabled
                     ? I18nKey.editorToolbarHardwareReset
                     : I18nKey.editorToolbarHardwareResetUnavailable,
               ),
-              icon: const Icon(Icons.power_settings_new),
-              onPressed:
-                  serialConnected &&
-                      hardwareResetStrategy != HardwareResetStrategy.disabled
-                  ? () async {
-                      final accepted = await hardwareResetDevice(ref.read);
-                      if (!context.mounted) return;
-                      showIdeMessage(
-                        context,
-                        translateForWidget(
-                          ref,
-                          accepted
-                              ? I18nKey.editorToolbarHardwareResetStarted
-                              : I18nKey.editorToolbarHardwareResetFailed,
-                        ),
-                        type: accepted
-                            ? IdeMessageType.success
-                            : IdeMessageType.error,
-                      );
-                    }
-                  : null,
+              child: IconButton(
+                icon: const Icon(Icons.power_settings_new),
+                onPressed:
+                    serialConnected &&
+                        hardwareResetStrategy != HardwareResetStrategy.disabled
+                    ? () async {
+                        final accepted = await hardwareResetDevice(ref.read);
+                        if (!context.mounted) return;
+                        showIdeMessage(
+                          context,
+                          translateForWidget(
+                            ref,
+                            accepted
+                                ? I18nKey.editorToolbarHardwareResetStarted
+                                : I18nKey.editorToolbarHardwareResetFailed,
+                          ),
+                          type: accepted
+                              ? IdeMessageType.success
+                              : IdeMessageType.error,
+                        );
+                      }
+                    : null,
+              ),
             ),
-            IconButton(
-              tooltip: translateForWidget(
+            TooltipAnchor(
+              message: translateForWidget(
                 ref,
                 isConnected
                     ? I18nKey.editorToolbarSoftReboot
                     : I18nKey.editorToolbarSoftRebootNeedsDevice,
               ),
-              icon: const Icon(Icons.restart_alt),
-              onPressed: isConnected
-                  ? () {
-                      sendCommandToActiveDevice(ref.read, "\x04");
-                    }
-                  : null,
+              child: IconButton(
+                icon: const Icon(Icons.restart_alt),
+                onPressed: isConnected
+                    ? () {
+                        sendCommandToActiveDevice(ref.read, "\x04");
+                      }
+                    : null,
+              ),
             ),
             PopupMenuButton<String>(
               tooltip: translateForWidget(
@@ -360,12 +376,14 @@ class EditorOutlineToggle extends ConsumerWidget {
     ref.watch(editorLayoutProvider);
     ref.watch(activeEditorTabProvider);
     final hasOutline = ref.read(editorLayoutProvider).tabs.any(isOutlineTab);
-    return IconButton(
-      tooltip: translateForWidget(ref, I18nKey.editorOutlineTitle),
-      isSelected: hasOutline,
-      icon: const Icon(Icons.account_tree_outlined),
-      selectedIcon: const Icon(Icons.account_tree),
-      onPressed: () => openOutlineTab(ref),
+    return TooltipAnchor(
+      message: translateForWidget(ref, I18nKey.editorOutlineTitle),
+      child: IconButton(
+        isSelected: hasOutline,
+        icon: const Icon(Icons.account_tree_outlined),
+        selectedIcon: const Icon(Icons.account_tree),
+        onPressed: () => openOutlineTab(ref),
+      ),
     );
   }
 }

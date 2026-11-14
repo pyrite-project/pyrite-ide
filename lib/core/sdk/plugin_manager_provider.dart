@@ -7,10 +7,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
-import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
@@ -1307,6 +1307,4 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
 }
 
 final StateNotifierProvider<PluginManagerNotifier, Map<String, Plugin>>
-pluginManagerProvider = StateNotifierProvider(
-  (ref) => PluginManagerNotifier(ref),
-);
+pluginManagerProvider = StateNotifierProvider(PluginManagerNotifier.new);

@@ -5,8 +5,8 @@ import 'dart:typed_data';
 import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
@@ -348,5 +348,5 @@ Stream<String> decodeTerminalOutput(Stream<List<int>> output) {
 
 final desktopTerminalProvider =
     StateNotifierProvider<DesktopTerminalNotifier, DesktopTerminalState>(
-      (ref) => DesktopTerminalNotifier(ref),
+      DesktopTerminalNotifier.new,
     );

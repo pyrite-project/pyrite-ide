@@ -8,7 +8,8 @@ import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
-
+import 'package:tabbed_view/src/internal/tab/tab_button_widget.dart';
+import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
 import 'package:tabbed_view/src/tab_bar_position.dart';
 import 'package:tabbed_view/src/tab_button.dart';
 import 'package:tabbed_view/src/tab_data.dart';
@@ -20,8 +21,8 @@ import 'package:tabbed_view/src/theme/tabbed_view_theme_data.dart';
 import 'package:tabbed_view/src/theme/theme_widget.dart';
 import 'package:tabbed_view/src/theme/vertical_alignment.dart';
 import 'package:tabbed_view/src/unselected_tab_buttons_behavior.dart';
-import 'package:tabbed_view/src/internal/tab/tab_button_widget.dart';
-import 'package:tabbed_view/src/internal/tabbed_view_provider.dart';
+
+import '../md3_widgets.dart';
 
 /// The count VSCode prints beside a tab name whose file has problems.
 ///
@@ -56,7 +57,7 @@ class _ProblemsBadge extends StatelessWidget {
 
     final textStyle = DefaultTextStyle.of(context).style;
 
-    return Tooltip(
+    return TooltipAnchor(
       message: message,
       child: Text(
         '$count',
@@ -85,7 +86,7 @@ class TabHeaderWidget extends StatelessWidget {
   final int index;
   final TabStatus status;
   final TabbedViewProvider provider;
-  final Function onClose;
+  final VoidCallback onClose;
   final SideTabsLayout sideTabsLayout;
 
   /// Diagnostics for the file behind this tab, when it shows one.
@@ -95,7 +96,7 @@ class TabHeaderWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final TabbedViewThemeData theme = TabbedViewTheme.of(context);
     final TabThemeData tabTheme = theme.tab;
-    List<Widget> textAndButtons = _textAndButtons(context);
+    final List<Widget> textAndButtons = _textAndButtons(context);
 
     CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.center;
     if (tabTheme.verticalAlignment == VerticalAlignment.top) {
@@ -103,7 +104,7 @@ class TabHeaderWidget extends StatelessWidget {
     } else if (tabTheme.verticalAlignment == VerticalAlignment.bottom) {
       crossAxisAlignment = CrossAxisAlignment.end;
     }
-    Widget textAndButtonsContainer = ClipRect(
+    final Widget textAndButtonsContainer = ClipRect(
       child: IntrinsicWidth(
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -141,23 +142,23 @@ class TabHeaderWidget extends StatelessWidget {
   List<Widget> _textAndButtons(BuildContext context) {
     final TabbedViewThemeData theme = TabbedViewTheme.of(context);
     final TabThemeData tabTheme = theme.tab;
-    List<Widget> textAndButtons = [];
+    final List<Widget> textAndButtons = [];
 
-    TabData tab = provider.controller.tabs[index];
-    TabStatusThemeData? statusTheme = tabTheme.getTabThemeFor(status);
+    final TabData tab = provider.controller.tabs[index];
+    final TabStatusThemeData? statusTheme = tabTheme.getTabThemeFor(status);
 
-    Color color = statusTheme?.buttonColor ?? tabTheme.buttonColor;
-    Color hoverColor =
+    final Color color = statusTheme?.buttonColor ?? tabTheme.buttonColor;
+    final Color hoverColor =
         statusTheme?.hoveredButtonColor ?? tabTheme.hoveredButtonColor ?? color;
-    Color disabledColor =
+    final Color disabledColor =
         statusTheme?.disabledButtonColor ?? tabTheme.disabledButtonColor;
 
-    BoxDecoration? normalBackground =
+    final BoxDecoration? normalBackground =
         statusTheme?.buttonBackground ?? tabTheme.buttonBackground;
-    BoxDecoration? hoverBackground =
+    final BoxDecoration? hoverBackground =
         statusTheme?.hoveredButtonBackground ??
         tabTheme.hoveredButtonBackground;
-    BoxDecoration? disabledBackground =
+    final BoxDecoration? disabledBackground =
         statusTheme?.disabledButtonBackground ??
         tabTheme.disabledButtonBackground;
 
@@ -180,7 +181,7 @@ class TabHeaderWidget extends StatelessWidget {
       ); // Use final buttonsOffset
     }
 
-    Widget? leading = tab.leading?.call(context, status);
+    final Widget? leading = tab.leading?.call(context, status);
     if (leading != null) {
       textAndButtons.add(leading);
     }
@@ -198,7 +199,7 @@ class TabHeaderWidget extends StatelessWidget {
       // ("will not be in the tree and is not the new root"). The tab strip is
       // the worst place for this: tabs sit side by side and a partially
       // visible one is common. See flutter/flutter#182444.
-      tabText = Tooltip(
+      tabText = TooltipAnchor(
         message: tab.tooltip!,
         child: Semantics(container: true, child: tabText),
       );
@@ -228,7 +229,7 @@ class TabHeaderWidget extends StatelessWidget {
           // Use final buttonsGap
           padding = EdgeInsets.only(left: tabTheme.buttonsGap);
         }
-        TabButton button = buttons[i];
+        final TabButton button = buttons[i];
         textAndButtons.add(
           Container(
             padding: padding,
@@ -276,7 +277,7 @@ class TabHeaderWidget extends StatelessWidget {
       if (buttons != null && buttons.isNotEmpty && tabTheme.buttonsGap > 0) {
         padding = EdgeInsets.only(left: tabTheme.buttonsGap);
       }
-      TabButton closeButton = TabButton.icon(
+      final TabButton closeButton = TabButton.icon(
         tabTheme.closeIcon,
         onPressed: () async {
           final TabData tabData = provider.controller.tabs[index];
@@ -309,7 +310,7 @@ class TabHeaderWidget extends StatelessWidget {
   }
 
   Future<void> _onClose(BuildContext context, int index) async {
-    TabData tabData = provider.controller.getTabByIndex(index);
+    final TabData tabData = provider.controller.getTabByIndex(index);
     if (provider.tabRemoveInterceptor == null ||
         (await provider.tabRemoveInterceptor!(context, index, tabData))) {
       onClose();

@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 
 abstract class SdkClipboardCommands {
@@ -12,25 +13,7 @@ class SdkClipboardApi {
   final Ref ref;
 
   void bind(PluginRunManager runManager) {
-    runManager.registerHandler(
-      SdkClipboardCommands.setText,
-      (envelope, respond) => _handleSetText(envelope, respond),
-    );
-  }
-
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
+    runManager.registerHandler(SdkClipboardCommands.setText, _handleSetText);
   }
 
   void _handleSetText(
@@ -40,11 +23,11 @@ class SdkClipboardApi {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final text = payload['text']?.toString() ?? '';
     if (text.isEmpty) {
-      _respondOk(envelope, respond, data: false);
+      respondOk(envelope, respond, data: false);
       return;
     }
     Clipboard.setData(ClipboardData(text: text)).then((_) {
-      _respondOk(envelope, respond, data: true);
+      respondOk(envelope, respond, data: true);
     });
   }
 }
