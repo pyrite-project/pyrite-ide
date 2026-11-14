@@ -230,6 +230,9 @@ class EditorDocumentHost implements DocumentHost {
   ) {
     final existing = _handles[tab];
     if (existing != null && identical(existing.controller, editor)) {
+      // A rename or move keeps the tab and controller but changes the path the
+      // access object resolves symbols against; the document keeps its id.
+      existing.filePath = value.filePath;
       return existing;
     }
     final handle = _DocumentHandle(tab, editor, value.filePath);
@@ -309,7 +312,10 @@ class _DocumentHandle {
 
   final TabData tab;
   final CodeForgeController controller;
-  final String filePath;
+
+  /// The path the document currently resolves to. Not final: a rename or move
+  /// rebases the tab in place while the document stays open.
+  String filePath;
 }
 
 final Provider<EditorDocumentHost> editorDocumentHostProvider = Provider((ref) {
