@@ -176,6 +176,67 @@ void main() {
     manager.dispose();
   });
 
+  test('a stopped session is restarted when its view opens again', () async {
+    final running = <String>{};
+    var starts = 0;
+    final manager = ActivationManagerNotifier(
+      startPlugin: (plugin) async {
+        starts++;
+        running.add(plugin.id);
+        return true;
+      },
+      stopPlugin: (plugin) async => running.remove(plugin.id),
+      hasLiveSession: (plugin) => running.contains(plugin.id),
+    );
+    final plugin = _plugin();
+
+    expect(await manager.activateForView(plugin, 'fixture.home'), isTrue);
+    expect(manager.record(plugin.id)?.state, ActivationState.active);
+    expect(running, contains(plugin.id));
+
+    // Stopped from the plugin page or killed by a crash: the record still
+    // says active, but the run manager no longer has a session.
+    running.remove(plugin.id);
+    expect(manager.record(plugin.id)?.state, ActivationState.active);
+    expect(running, isNot(contains(plugin.id)));
+
+    expect(await manager.activateForView(plugin, 'fixture.home'), isTrue);
+    expect(starts, 2);
+    expect(running, contains(plugin.id));
+    expect(manager.record(plugin.id)?.state, ActivationState.active);
+    manager.dispose();
+  });
+
+  test('a command restarts the plugin when its session was stopped', () async {
+    final running = <String>{};
+    var starts = 0;
+    final manager = ActivationManagerNotifier(
+      startPlugin: (plugin) async {
+        starts++;
+        running.add(plugin.id);
+        return true;
+      },
+      stopPlugin: (plugin) async => running.remove(plugin.id),
+      hasLiveSession: (plugin) => running.contains(plugin.id),
+    );
+    final plugin = _plugin(events: const ['onCommand:fixture.run']);
+
+    expect(await manager.activateForCommand([plugin], 'fixture.run'), [
+      plugin.id,
+    ]);
+    running.remove(plugin.id);
+
+    expect(await manager.activateForCommand([plugin], 'fixture.run'), [
+      plugin.id,
+    ]);
+    expect(starts, 2);
+    // The dispatcher resolves the manager after activation; a live session
+    // must be there instead of an active record without a manager.
+    expect(running, contains(plugin.id));
+    expect(manager.record(plugin.id)?.state, ActivationState.active);
+    manager.dispose();
+  });
+
   test('shutdown waits for pending work before stopping everything', () async {
     final gate = Completer<bool>();
     var stopAllCalls = 0;
