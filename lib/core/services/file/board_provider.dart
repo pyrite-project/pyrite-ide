@@ -40,6 +40,10 @@ class BoardNotifier {
   @visibleForTesting
   Future<File> Function(String boardPath) mirrorFileReader = getLocalFile;
 
+  /// Local mirror path the editor keeps for a board file.
+  Future<String> correspondingFilePath(String boardPath) async =>
+      (await mirrorFileReader(boardPath)).path;
+
   TreeNode<FileSystemItem>? getFocusFileNode() {
     return getFocusFileNodeFromProvider(
       ref,
