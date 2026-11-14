@@ -26,14 +26,19 @@ class ActivationManagerNotifier
     required Future<bool> Function(Plugin plugin) startPlugin,
     required Future<void> Function(Plugin plugin) stopPlugin,
     Future<void> Function()? stopAll,
+    // Whether [plugin] still has a running session. Without it the manager
+    // trusts its own `active` records.
+    bool Function(Plugin plugin)? hasLiveSession,
   }) : _startPlugin = startPlugin,
        _stopPlugin = stopPlugin,
        _stopAll = stopAll,
+       _hasLiveSession = hasLiveSession,
        super({});
 
   final Future<bool> Function(Plugin plugin) _startPlugin;
   final Future<void> Function(Plugin plugin) _stopPlugin;
   final Future<void> Function()? _stopAll;
+  final bool Function(Plugin plugin)? _hasLiveSession;
   final Map<String, Future<bool>> _pending = {};
   final Map<String, Future<void>> _stopping = {};
 
@@ -80,6 +85,11 @@ class ActivationManagerNotifier
     return activated;
   }
 
+  /// Starts [plugin] for [reason] unless it already has a live session.
+  ///
+  /// An `active` record alone is not enough: a plugin stopped from the plugin
+  /// page, killed by a crash, or dropped by a runtime restart keeps its record
+  /// until something asks for it again, so the session is checked first.
   Future<bool> activate(Plugin plugin, {required String reason}) {
     if (plugin.manifest == null ||
         !plugin.manifest!.activationEvents.contains(reason)) {
@@ -94,7 +104,12 @@ class ActivationManagerNotifier
       return Future.value(false);
     }
     final current = state[plugin.id];
-    if (current?.state == ActivationState.active) return Future.value(true);
+    // An out-of-band stop or a crash only clears the run manager session, so
+    // an active record is revalidated before it is trusted.
+    if (current?.state == ActivationState.active &&
+        (_hasLiveSession?.call(plugin) ?? true)) {
+      return Future.value(true);
+    }
     final pending = _pending[plugin.id];
     if (pending != null) return pending;
 
@@ -262,5 +277,8 @@ activationManagerProvider =
         },
         stopPlugin: ref.read(pluginRunManagerProvider.notifier).stop,
         stopAll: ref.read(pluginRunManagerProvider.notifier).stopAllForShutdown,
+        hasLiveSession: (plugin) =>
+            plugin.type == PluginType.data ||
+            ref.read(pluginRunManagerProvider.notifier).isRunning(plugin.id),
       ),
     );
