@@ -177,5 +177,60 @@ void main() {
       expect(session.baudRate, 921600);
       expect(session.id, isNot(session.portPath));
     });
+
+    test(
+      'replacing a transport keeps the session and drops the old handle',
+      () async {
+        final registry = SerialSessionRegistry();
+        final oldHandle = _FakeSerial('COM3');
+        final session = _session(registry, port: 'COM3', serial: oldHandle);
+        registry.adopt(session);
+        final replacement = _FakeSerial('COM3');
+
+        final replaced = await registry.replaceTransport(
+          session.id,
+          () async => SerialTransport(
+            serial: replacement,
+            events: const Stream<SerialEvent>.empty().listen((_) {}),
+          ),
+        );
+
+        expect(replaced, isTrue);
+        expect(registry.sessions, hasLength(1));
+        expect(registry.activeSession?.id, session.id);
+        expect(session.serial, same(replacement));
+        expect(oldHandle.closed, isTrue);
+        expect(oldHandle.disposed, isTrue);
+      },
+    );
+
+    test('a failed transport replacement removes only that session', () async {
+      final registry = SerialSessionRegistry();
+      final firstHandle = _FakeSerial('COM3');
+      final secondHandle = _FakeSerial('COM5');
+      final first = _session(registry, port: 'COM3', serial: firstHandle);
+      final second = _session(registry, port: 'COM5', serial: secondHandle);
+      registry.adopt(first);
+      registry.adopt(second);
+
+      final replaced = await registry.replaceTransport(second.id, () async {
+        return null;
+      });
+
+      expect(replaced, isFalse);
+      expect(registry.sessions, hasLength(1));
+      expect(registry.activeSession?.id, first.id);
+      expect(firstHandle.disposed, isFalse);
+      expect(secondHandle.disposed, isTrue);
+    });
+
+    test('replacing an unknown session reports failure', () async {
+      final registry = SerialSessionRegistry();
+
+      expect(
+        await registry.replaceTransport('nope', () async => null),
+        isFalse,
+      );
+    });
   });
 }

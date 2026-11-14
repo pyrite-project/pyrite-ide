@@ -202,14 +202,18 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
     bindReplOnOutputCallback();
     final serial = ref.read(serialPortFactoryProvider)();
-    _eventSub = serial.events.listen(_onEvent);
+    // flserial events carry no port identity. The subscription this closure is
+    // bound to supplies it, so two open boards cannot feed each other's data
+    // into the REPL or a running transaction.
+    final subscription = serial.events.listen((event) => _onEvent(path, event));
+    _eventSub = subscription;
     final config = _serialConfig();
     final ok = await serial.open(path, config);
     if (ok) {
       final session = sessions.create(
         portPath: path,
         serial: serial,
-        events: _eventSub!,
+        events: subscription,
         baudRate: state.baudRate,
       );
       _serial = serial;
@@ -226,8 +230,10 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       if (_runConnectInitialization) ensureFilesystemMountedIfEnabled();
     } else {
       final error = serial.lastOpenError;
-      await _eventSub?.cancel();
-      _eventSub = null;
+      await subscription.cancel();
+      if (identical(_eventSub, subscription)) {
+        _eventSub = sessions.activeSession?.events;
+      }
       await serial.dispose();
       // The exception carries this too, but only to the one caller that
       // happens to catch it; the log keeps the reason for the next reader.
@@ -248,38 +254,76 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     flowControl: 0,
   );
 
-  void _onEvent(SerialEvent event) {
+  /// Routes one event from [portPath]'s subscription.
+  ///
+  /// `SerialEvent` has no port identity, so the port is captured where the
+  /// subscription is created. Only the active session's transport may move
+  /// this notifier's state or feed the REPL; an inactive board keeps its
+  /// handle but its bytes are discarded.
+  void _onEvent(String portPath, SerialEvent event) {
+    final session = sessions.sessionForPort(portPath);
+    final isActive = sessions.activeSession?.portPath == portPath;
     switch (event.type) {
       case SerialEventType.connected:
-        state = state.copyWith(isConnected: true);
+        if (isActive) {
+          state = state.copyWith(isConnected: true);
+        }
       case SerialEventType.disconnected:
-        _autoDisconnect();
+        if (session != null) {
+          unawaited(_handleTransportLost(session));
+        }
       case SerialEventType.data:
-        final data = event.data as Uint8List;
-        handleData(data);
+        if (isActive) {
+          handleData(event.data as Uint8List);
+        }
       case SerialEventType.lineStatusChanged:
         break;
       case SerialEventType.error:
-        AppLog.e('serial', 'transport error', error: event.data);
-        _autoDisconnect();
+        AppLog.e('serial', 'transport error on $portPath', error: event.data);
+        if (session != null) {
+          unawaited(_handleTransportLost(session));
+        }
+    }
+  }
+
+  /// Drops the one session whose transport went away.
+  ///
+  /// A board that is merely open in the background must not take the active
+  /// board down with it: only [session] is closed. When it was the active
+  /// session, the registry promotes the oldest remaining one, and automatic
+  /// reconnection targets the port that was actually lost.
+  Future<void> _handleTransportLost(SerialSession session) async {
+    final wasActive = session.isActive;
+    AppLog.w(
+      'serial',
+      'transport lost on ${session.portPath}; dropping its session',
+    );
+    if (wasActive) resetReplOutputDecoder();
+    await sessions.close(session.id);
+    if (!wasActive) return;
+    _catalog.scan().then((ports) {
+      if (!state.isConnected) {
+        state = state.copyWith(ports: ports);
+      }
+    });
+    if (state.autoReconnect) {
+      scheduleReconnect(session.portPath);
     }
   }
 
   void _autoDisconnect() {
+    final active = sessions.activeSession;
+    if (active != null) {
+      unawaited(_handleTransportLost(active));
+      return;
+    }
     AppLog.w('serial', 'transport lost; dropping the active session');
     resetReplOutputDecoder();
     final portName = state.selectedPortName;
-    final active = sessions.activeSession;
-    // The handle is already gone: drop the session rather than disposing it
-    // again, and only then fall back to whatever session remains.
-    if (active != null) {
-      unawaited(closeSessionFor(active.portPath, notify: true));
-    } else {
-      _eventSub?.cancel();
-      _eventSub = null;
-      _serial = null;
-      state = state.copyWith(clearSelectedPort: true, isConnected: false);
-    }
+    _eventSub?.cancel();
+    _eventSub = null;
+    _serial = null;
+    state = state.copyWith(clearSelectedPort: true, isConnected: false);
     _catalog.scan().then((ports) {
       if (!state.isConnected) {
         state = state.copyWith(ports: ports);
@@ -346,16 +390,22 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     if (active != null) {
       await sessions.close(active.id);
     } else {
-      await _eventSub?.cancel();
-      _eventSub = null;
-      if (_serial != null) {
-        await _serial!.close();
-        await _serial!.dispose();
-        _serial = null;
-      }
+      await _clearUnregisteredTransport();
     }
     if (sessions.activeSession == null) {
       state = state.copyWith(clearSelectedPort: true, isConnected: false);
+    }
+  }
+
+  /// Releases the notifier's mirror when no session owns it.
+  Future<void> _clearUnregisteredTransport() async {
+    await _eventSub?.cancel();
+    _eventSub = null;
+    final stale = _serial;
+    _serial = null;
+    if (stale != null) {
+      await stale.close();
+      await stale.dispose();
     }
   }
 
@@ -428,58 +478,66 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       return true;
     } catch (error) {
       AppLog.w('serial', 'hardware reset failed', error: error);
-      // Disconnect explicitly so subsequent operations fail fast instead of
-      // repeatedly timing out behind a stale connected state.
-      await disconnectPort();
+      // Disconnect the reset board explicitly so subsequent operations fail
+      // fast instead of repeatedly timing out behind a stale connected state.
+      // Closing by port keeps a second open board untouched even when the
+      // failed reset has already promoted it to active.
+      await closeSessionFor(portName);
+      if (sessions.activeSession == null) {
+        await _clearUnregisteredTransport();
+        state = state.copyWith(clearSelectedPort: true, isConnected: false);
+      }
       return false;
     }
   }
 
   Future<bool> _refreshSerialHandleAfterReset(String portName) async {
     AppLog.d('serial', 'refreshing serial handle after hardware reset');
-    await _eventSub?.cancel();
-    _eventSub = null;
+    final session = sessions.sessionForPort(portName);
+    if (session == null) return false;
 
-    final previous = _serial;
+    var attempts = 0;
+    // Nothing may address the invalid handle while it is being replaced; the
+    // registry notification re-points the mirror once a transport exists.
     _serial = null;
     state = state.copyWith(isConnected: false);
-    if (previous != null) {
-      await previous.close();
-      await previous.dispose();
-    }
-
-    const attempts = 34;
-    for (var attempt = 1; attempt <= attempts; attempt++) {
-      if (attempt > 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 150));
-      }
-
-      final replacement = ref.read(serialPortFactoryProvider)();
-      final replacementSub = replacement.events.listen(_onEvent);
-      try {
-        if (await replacement.open(portName, _serialConfig())) {
-          _serial = replacement;
-          _eventSub = replacementSub;
-          state = state.copyWith(selectedPortName: portName, isConnected: true);
-          AppLog.d(
-            'serial',
-            'serial handle refreshed after $attempt attempt(s)',
-          );
-          return true;
+    // The registry closes the invalid handle and installs the replacement in
+    // one step, so nothing can keep addressing the disposed transport.
+    final reopened = await sessions.replaceTransport(session.id, () async {
+      const maxAttempts = 34;
+      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+        attempts = attempt;
+        if (attempt > 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 150));
         }
-      } catch (error) {
-        AppLog.w(
-          'serial',
-          'serial handle refresh attempt $attempt failed',
-          error: error,
-        );
-      }
-      await replacementSub.cancel();
-      await replacement.dispose();
-    }
 
-    AppLog.w('serial', 'serial handle refresh timed out');
-    return false;
+        final replacement = ref.read(serialPortFactoryProvider)();
+        final replacementSub = replacement.events.listen(
+          (event) => _onEvent(portName, event),
+        );
+        try {
+          if (await replacement.open(portName, _serialConfig())) {
+            return SerialTransport(serial: replacement, events: replacementSub);
+          }
+        } catch (error) {
+          AppLog.w(
+            'serial',
+            'serial handle refresh attempt $attempt failed',
+            error: error,
+          );
+        }
+        await replacementSub.cancel();
+        await replacement.dispose();
+      }
+      return null;
+    });
+
+    if (!reopened) {
+      AppLog.w('serial', 'serial handle refresh timed out');
+      return false;
+    }
+    AppLog.d('serial', 'serial handle refreshed after $attempts attempt(s)');
+    return true;
   }
 
   /// Reconnect to the current port at a different baud rate.
@@ -497,11 +555,9 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
     // Close this port's session (not every port) before reopening it at the
     // new rate: a baud change only concerns the board being retuned, and the
-    // other boards must stay connected.
+    // other boards must stay connected. The registry notification has already
+    // moved `_serial`/`_eventSub` to the remaining active session, if any.
     await closeSessionFor(portName, notify: false);
-    await _eventSub?.cancel();
-    _eventSub = null;
-    _serial = null;
     // No board remains open, so the app is disconnected until the reopen
     // succeeds. Another active session (a second board) keeps its state.
     if (sessions.activeSession == null) {
