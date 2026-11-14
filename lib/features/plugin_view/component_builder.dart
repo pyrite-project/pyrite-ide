@@ -1606,6 +1606,17 @@ class ComponentBuilder {
 
   String _id(Map<String, dynamic> props) => props['id']?.toString() ?? '';
 
+  /// Id used to address an event to its own component.
+  ///
+  /// The SDK view layer assigns every component a deterministic auto id when
+  /// the plugin omits one, so [props] normally carries an id. [fallback] keeps
+  /// hand-built trees and older snapshots on the historical stable id instead
+  /// of deriving a new one from part position.
+  String _eventId(Map<String, dynamic> props, String fallback) {
+    final id = _id(props);
+    return id.isEmpty ? fallback : id;
+  }
+
   bool _enabled(Map<String, dynamic> props) => props['enabled'] != false;
 
   List<Widget> _spaced(
@@ -1793,6 +1804,7 @@ class ComponentBuilder {
   ) {
     if (children.isEmpty) return const SizedBox.shrink();
     final selected = props['selected']?.toString();
+    final componentId = _eventId(props, 'tabs');
     var index = children.indexWhere(
       (c) => _props(c)['id']?.toString() == selected,
     );
@@ -1805,7 +1817,7 @@ class ComponentBuilder {
         Row(
           children: [
             for (var i = 0; i < children.length; i++)
-              _tabHeader(context, children[i], i == index, scheme),
+              _tabHeader(context, componentId, children[i], i == index, scheme),
           ],
         ),
         IndexedStack(
@@ -1818,6 +1830,7 @@ class ComponentBuilder {
 
   Widget _tabHeader(
     BuildContext context,
+    String componentId,
     Map<String, dynamic> tab,
     bool active,
     ColorScheme scheme,
@@ -1825,7 +1838,7 @@ class ComponentBuilder {
     final tabProps = _props(tab);
     return InkWell(
       onTap: () =>
-          onEvent('tabs', 'change', {'id': tabProps['id']?.toString()}),
+          onEvent(componentId, 'change', {'id': tabProps['id']?.toString()}),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
@@ -1853,11 +1866,13 @@ class ComponentBuilder {
   ) {
     final collapsed = props['collapsed'] == true;
     final collapsible = props['collapsible'] == true;
+    final componentId = _eventId(props, 'section');
     final header = props['title'] == null
         ? null
         : InkWell(
             onTap: collapsible
-                ? () => onEvent('section', 'toggle', {'collapsed': !collapsed})
+                ? () =>
+                      onEvent(componentId, 'toggle', {'collapsed': !collapsed})
                 : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),

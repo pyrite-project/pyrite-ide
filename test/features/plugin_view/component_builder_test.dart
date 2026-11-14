@@ -488,6 +488,135 @@ void main() {
       expect(harness.events.single.payload['value'], true);
     });
 
+    testWidgets('clicking a tab emits change with the Tabs id', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => harness.builder.build(context, {
+              'type': 'Tabs',
+              'props': {'id': 'main', 'selected': 'tab-a'},
+              'events': {'change': true},
+              'children': [
+                {
+                  'type': 'Tab',
+                  'props': {'id': 'tab-a', 'label': 'Tab A'},
+                  'children': [
+                    {
+                      'type': 'Text',
+                      'props': {'value': 'Alpha content'},
+                    },
+                  ],
+                },
+                {
+                  'type': 'Tab',
+                  'props': {'id': 'tab-b', 'label': 'Tab B'},
+                  'children': [
+                    {
+                      'type': 'Text',
+                      'props': {'value': 'Beta content'},
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Tab B'));
+      expect(harness.events.single.id, 'main');
+      expect(harness.events.single.event, 'change');
+      // The payload still names the selected tab; only the addressing id
+      // changes to the Tabs component.
+      expect(harness.events.single.payload['id'], 'tab-b');
+    });
+
+    testWidgets('a tab click without a Tabs id keeps the historical id', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => harness.builder.build(context, {
+              'type': 'Tabs',
+              'props': {'selected': 'tab-a'},
+              'events': {'change': true},
+              'children': [
+                {
+                  'type': 'Tab',
+                  'props': {'id': 'tab-a', 'label': 'Tab A'},
+                },
+                {
+                  'type': 'Tab',
+                  'props': {'id': 'tab-b', 'label': 'Tab B'},
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Tab B'));
+      expect(harness.events.single.id, 'tabs');
+    });
+
+    testWidgets('toggling a Section emits toggle with the Section id', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => harness.builder.build(context, {
+              'type': 'Section',
+              'props': {
+                'id': 's1',
+                'title': 'Details',
+                'collapsible': true,
+                'collapsed': false,
+              },
+              'events': {'toggle': true},
+              'children': [
+                {
+                  'type': 'Text',
+                  'props': {'value': 'Section body'},
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Details'));
+      expect(harness.events.single.id, 's1');
+      expect(harness.events.single.event, 'toggle');
+      expect(harness.events.single.payload['collapsed'], isTrue);
+    });
+
+    testWidgets('toggling a Section without an id keeps the historical id', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => harness.builder.build(context, {
+              'type': 'Section',
+              'props': {
+                'title': 'Details',
+                'collapsible': true,
+                'collapsed': false,
+              },
+              'events': {'toggle': true},
+              'children': [
+                {
+                  'type': 'Text',
+                  'props': {'value': 'Section body'},
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Details'));
+      expect(harness.events.single.id, 'section');
+    });
+
     testWidgets('selecting a VirtualList row emits select with the item id', (
       tester,
     ) async {
