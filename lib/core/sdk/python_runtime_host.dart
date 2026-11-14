@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/python_bridge_plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_boot.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:serious_python/serious_python.dart';
 
 enum PluginSessionState { starting, ready, stopping, stopped, failed }
@@ -256,8 +257,15 @@ class PythonRuntimeHost {
       await _stopSession(session);
     } on PluginStartCancelledException {
       // Cancellation is the requested result.
-    } catch (_) {
-      // Failed starts clean up their own session and transport.
+    } catch (error) {
+      // Failed starts clean up their own session and transport, but the
+      // reason belongs in the log: it is the difference between "the user
+      // stopped it" and "it never came up".
+      AppLog.d(
+        'plugin',
+        'stop of an in-flight start ignored a start failure plugin=$pluginId',
+        error: error,
+      );
     }
   }
 
@@ -275,8 +283,10 @@ class PythonRuntimeHost {
           try {
             await future;
           } catch (error) {
-            debugPrint(
-              '[lib/core/sdk/python_runtime_host.dart] ignored error: $error',
+            AppLog.d(
+              'plugin',
+              'a start still in flight failed during shutdown',
+              error: error,
             );
           }
         }),
@@ -440,8 +450,25 @@ class PythonRuntimeHost {
         throw StateError('Plugin exited during startup: ${plugin.id}');
       }
       session._state = PluginSessionState.ready;
+      // Plugin startup is otherwise invisible: the output panel only shows
+      // what the plugin prints, so a slow or failing start left no trace of
+      // how long it took or which session it belonged to.
+      AppLog.i(
+        'plugin',
+        'ready ${plugin.id} session=$sessionId generation=$generation '
+            'type=${plugin.type.name} runOnce=$runOnce '
+            'startup=${_clock().difference(session.startedAt).inMilliseconds}ms',
+      );
       return session;
     } catch (error, stackTrace) {
+      if (error is! PluginStartCancelledException) {
+        AppLog.e(
+          'plugin',
+          'start failed ${plugin.id}',
+          error: error,
+          stack: stackTrace,
+        );
+      }
       if (session != null) {
         session._state = PluginSessionState.failed;
         await _stopSession(
@@ -473,6 +500,11 @@ class PythonRuntimeHost {
               session.state != PluginSessionState.stopping &&
               session.state != PluginSessionState.stopped) {
             session._state = PluginSessionState.failed;
+            AppLog.w(
+              'plugin',
+              'exited ${session.pluginId} session=${session.sessionId} '
+                  'unexpectedly${error == null ? '' : ': $error'}',
+            );
             onOutput?.call(
               error == null
                   ? '[${session.pluginId}] Python exited unexpectedly'
@@ -541,10 +573,16 @@ class PythonRuntimeHost {
               waitForReply: true,
             )
             .timeout(stopTimeout);
-      } catch (error) {
-        debugPrint(
-          '[lib/core/sdk/python_runtime_host.dart] ignored error: $error',
+      } catch (error, stackTrace) {
+        // The plugin is on its way out either way, but a plugin that cannot
+        // answer dispose is why files or ports sometimes stay locked.
+        AppLog.w(
+          'plugin',
+          'dispose hook failed plugin=${session.pluginId} '
+          'session=${session.sessionId}',
+          error: error,
         );
+        AppLog.d('plugin', 'dispose stack', error: stackTrace);
       }
     }
     final completion = session.programCompletion;
@@ -555,14 +593,28 @@ class PythonRuntimeHost {
         programExited = true;
       } on TimeoutException {
         // Keep the session tracked until the daemon target really exits.
-      } catch (_) {
+      } catch (error) {
         programExited = true;
+        AppLog.d(
+          'plugin',
+          'program completion reported an error plugin=${session.pluginId}',
+          error: error,
+        );
       }
     }
     session._programExited = programExited;
     try {
       await session.manager.stop().timeout(stopTimeout);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      // Falls back to closing the transport, which can leave the child
+      // process behind: the one stop path worth a warning.
+      AppLog.w(
+        'plugin',
+        'graceful stop failed, closing transport plugin=${session.pluginId} '
+        'session=${session.sessionId}',
+        error: error,
+      );
+      AppLog.d('plugin', 'stop stack', error: stackTrace);
       await session.transport.close();
     }
     programExited = programExited || session._programExited;
@@ -589,11 +641,21 @@ class PythonRuntimeHost {
         );
       }
       session._state = finalState;
+      AppLog.i(
+        'plugin',
+        'stopped ${session.pluginId} session=${session.sessionId} '
+            'state=${finalState.name} '
+            'uptime=${_clock().difference(session.startedAt).inMilliseconds}ms',
+      );
       if (identical(_sessions[session.pluginId], session)) {
         _sessions.remove(session.pluginId);
       }
     } else {
       session._state = PluginSessionState.failed;
+      AppLog.w(
+        'plugin',
+        'stop timed out ${session.pluginId} session=${session.sessionId}',
+      );
       // A later completion callback may finish cleanup and remove it.
       session._stopFuture = null;
     }

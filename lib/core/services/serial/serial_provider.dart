@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
 import 'package:pyrite_ide/core/services/serial/device_status_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
@@ -125,7 +126,14 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
         ports: ports,
         isConnected: isOpen && portName != null,
       );
-    } catch (_) {
+    } catch (error) {
+      // Runs on a timer, so this stays at debug: a port scan that keeps
+      // failing would otherwise write a warning every tick.
+      AppLog.d(
+        'serial',
+        'port scan failed during update; keeping the previous list',
+        error: error,
+      );
       if (_serial == null && state.isConnected) {
         state = state.copyWith(isConnected: false);
       }
@@ -148,7 +156,14 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
       _closeHandle!(handle);
       return Future.value(true);
-    } catch (_) {
+    } catch (error) {
+      // Answering "still present" keeps the connection: a probe that cannot
+      // run is not evidence the port vanished.
+      AppLog.d(
+        'serial',
+        'existence probe failed for $portName, assuming present',
+        error: error,
+      );
       return Future.value(true);
     }
   }
@@ -159,14 +174,19 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       final ports = await _catalog.scan(refreshMetadata: true);
       state = state.copyWith(ports: ports);
     } catch (error) {
-      debugPrint(
-        '[lib/core/services/serial/serial_provider.dart] ignored error: $error',
+      // The visible symptom is an empty or stale port list; without this line
+      // it looks like the machine has no serial ports at all.
+      AppLog.w(
+        'serial',
+        'refreshing the serial port list failed',
+        error: error,
       );
     }
   }
 
   @override
   Future<void> connectPort(String path) async {
+    final cycle = Stopwatch()..start();
     // Connecting a second port must not drop the first board: a session is
     // opened alongside the existing ones and only becomes the one the IDE
     // talks to. Re-connecting an already open port just switches to it.
@@ -195,6 +215,13 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       _serial = serial;
       sessions.adopt(session);
       state = state.copyWith(selectedPortName: path, isConnected: true);
+      // A connection is the first thing a bug report needs: which port, at
+      // which rate, how long the open took, and how many sessions are open.
+      AppLog.i(
+        'serial',
+        'connected $path at ${state.baudRate} baud in '
+            '${cycle.elapsedMilliseconds}ms sessions=${sessions.sessions.length}',
+      );
       sendCommand('\x03', chunked: false);
       if (_runConnectInitialization) ensureFilesystemMountedIfEnabled();
     } else {
@@ -202,6 +229,13 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       await _eventSub?.cancel();
       _eventSub = null;
       await serial.dispose();
+      // The exception carries this too, but only to the one caller that
+      // happens to catch it; the log keeps the reason for the next reader.
+      AppLog.w(
+        'serial',
+        'open $path failed after ${cycle.elapsedMilliseconds}ms: '
+            '${error ?? 'no reason reported'}',
+      );
       throw SerialOpenException(path, error);
     }
   }
@@ -226,12 +260,13 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
       case SerialEventType.lineStatusChanged:
         break;
       case SerialEventType.error:
-        debugPrint('[serial] transport error: ${event.data}');
+        AppLog.e('serial', 'transport error', error: event.data);
         _autoDisconnect();
     }
   }
 
   void _autoDisconnect() {
+    AppLog.w('serial', 'transport lost; dropping the active session');
     resetReplOutputDecoder();
     final portName = state.selectedPortName;
     final active = sessions.activeSession;
@@ -303,6 +338,8 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
 
   @override
   Future<void> disconnectPort() async {
+    final portName = state.selectedPortName;
+    AppLog.i('serial', 'disconnect requested port=$portName');
     resetReplOutputDecoder();
     cancelReconnect();
     final active = sessions.activeSession;
@@ -348,25 +385,27 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
           strategy == HardwareResetStrategy.rtsPulse && !capabilities.rts ||
           strategy == HardwareResetStrategy.esp32 &&
               (!capabilities.dtr || !capabilities.rts)) {
-        debugPrint(
-          '[serial] hardware reset unsupported: strategy=$strategy '
-          'dtr=${capabilities.dtr} rts=${capabilities.rts}',
+        AppLog.w(
+          'serial',
+          'hardware reset unsupported: strategy=$strategy '
+              'dtr=${capabilities.dtr} rts=${capabilities.rts}',
         );
         return false;
       }
 
-      debugPrint(
-        '[serial] hardware reset start: strategy=$strategy '
-        'dtr=${capabilities.dtr} rts=${capabilities.rts}',
+      AppLog.i(
+        'serial',
+        'hardware reset start: strategy=$strategy '
+            'dtr=${capabilities.dtr} rts=${capabilities.rts}',
       );
       await applyHardwareResetSequence(
         strategy,
         setDtr: (active) async {
-          debugPrint('[serial] hardware reset line DTR=$active');
+          AppLog.d('serial', 'reset line DTR=$active');
           await serial.setDTR(active);
         },
         setRts: (active) async {
-          debugPrint('[serial] hardware reset line RTS=$active');
+          AppLog.d('serial', 'reset line RTS=$active');
           await serial.setRTS(active);
         },
       );
@@ -385,10 +424,10 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
         throw StateError('Serial port did not return after hardware reset');
       }
       await Future<void>.delayed(const Duration(milliseconds: 600));
-      debugPrint('[serial] hardware reset pulse complete');
+      AppLog.i('serial', 'hardware reset pulse complete');
       return true;
     } catch (error) {
-      debugPrint('[serial] hardware reset failed: $error');
+      AppLog.w('serial', 'hardware reset failed', error: error);
       // Disconnect explicitly so subsequent operations fail fast instead of
       // repeatedly timing out behind a stale connected state.
       await disconnectPort();
@@ -397,7 +436,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
   }
 
   Future<bool> _refreshSerialHandleAfterReset(String portName) async {
-    debugPrint('[serial] refreshing serial handle after hardware reset');
+    AppLog.d('serial', 'refreshing serial handle after hardware reset');
     await _eventSub?.cancel();
     _eventSub = null;
 
@@ -422,21 +461,24 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
           _serial = replacement;
           _eventSub = replacementSub;
           state = state.copyWith(selectedPortName: portName, isConnected: true);
-          debugPrint(
-            '[serial] serial handle refreshed after $attempt attempt(s)',
+          AppLog.d(
+            'serial',
+            'serial handle refreshed after $attempt attempt(s)',
           );
           return true;
         }
       } catch (error) {
-        debugPrint(
-          '[serial] serial handle refresh attempt $attempt failed: $error',
+        AppLog.w(
+          'serial',
+          'serial handle refresh attempt $attempt failed',
+          error: error,
         );
       }
       await replacementSub.cancel();
       await replacement.dispose();
     }
 
-    debugPrint('[serial] serial handle refresh timed out');
+    AppLog.w('serial', 'serial handle refresh timed out');
     return false;
   }
 
@@ -451,7 +493,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     final portName = state.selectedPortName;
     if (portName == null) return false;
 
-    debugPrint('[serial] reconnecting at $newBaud baud');
+    AppLog.i('serial', 'reconnecting at $newBaud baud');
 
     // Close this port's session (not every port) before reopening it at the
     // new rate: a baud change only concerns the board being retuned, and the
@@ -474,7 +516,7 @@ class SerialNotifier extends BaseUsbSerialNotifier<SerialProviderState> {
     try {
       await connectPort(portName);
     } on SerialOpenException catch (error) {
-      debugPrint('[serial] reconnect at $newBaud baud failed: $error');
+      AppLog.w('serial', 'reconnect at $newBaud baud failed', error: error);
       return false;
     } finally {
       _runConnectInitialization = true;

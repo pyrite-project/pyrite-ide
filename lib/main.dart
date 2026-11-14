@@ -28,6 +28,7 @@ import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/periodic_task/periodic_task.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
@@ -120,6 +121,17 @@ void _installIdeOutputLogger() {
     // identical, and the message is what the tally line shows to the reader.
     if (!_errorLogDedupe.admit(signature: message)) return;
     final stack = details.stack?.toString();
+    // Goes to the log file as well as the output panel: a framework error is
+    // the most common "it broke and I have no idea why" report, and the panel
+    // is gone after a restart.
+    AppLog.e(
+      'flutter',
+      'uncaught FlutterError '
+          'library=${details.library ?? '-'} '
+          'context=${details.context?.toString() ?? '-'}',
+      error: details.exception,
+      stack: details.stack,
+    );
     GitDebugLog.log(
       'FlutterError library=${details.library ?? ''} '
       'context=${details.context?.toString() ?? ''}',
@@ -131,7 +143,15 @@ void _installIdeOutputLogger() {
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
+    // Frame-after-frame repeats of the same failure are tallied into one line
+    // by the dedupe gate; the first report still reaches the log file.
     if (!_errorLogDedupe.admit(signature: 'uncaught|$error')) return true;
+    AppLog.e(
+      'uncaught',
+      'unhandled async error type=${error.runtimeType}',
+      error: error,
+      stack: stack,
+    );
     GitDebugLog.log(
       'PlatformDispatcher.onError',
       error: error,
@@ -485,6 +505,7 @@ Future<void> _startRuntimeAndPlugins() async {
 
 // PyriteIDE: Hello World.
 void main() async {
+  final bootCycle = Stopwatch()..start();
   GitDebugLog.startSession();
   GitDebugLog.log('main start');
   PyriteWidgetsBinding.ensureInitialized();
@@ -522,6 +543,24 @@ void main() async {
   container = ProviderContainer();
   _installIdeOutputLogger();
   GitDebugLog.log('ProviderContainer and global error logging installed');
+
+  // One banner per launch: a report that says "it is slow to start" or "the
+  // board reconnected by itself" has nothing to correlate otherwise, and a run
+  // that ends without an error still leaves evidence it happened.
+  AppLog.session('lifecycle', {
+    'os': '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+    'dart': Platform.version.split(' ').first,
+    'mode': kReleaseMode
+        ? 'release'
+        : kProfileMode
+        ? 'profile'
+        : 'debug',
+    'locale': Platform.localeName,
+    'cpus': Platform.numberOfProcessors,
+    'plugins': persistedPlugins?.length ?? 0,
+    'pluginMetadata': pluginMetadataLoaded ? 'ok' : 'failed',
+    'bootMs': bootCycle.elapsedMilliseconds,
+  });
 
   _applyData(data);
 

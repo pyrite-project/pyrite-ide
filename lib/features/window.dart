@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/window_placement.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
@@ -22,6 +23,7 @@ import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
 import 'package:pyrite_ide/core/services/window_placement.dart';
@@ -145,6 +147,9 @@ class UseWindow with WindowListener {
       );
     }
     if (!mayClose) return;
+    // A shutdown is the last moment the log can record that plugins and
+    // terminals were asked to stop, and how long that took.
+    AppLog.i('lifecycle', 'closing window; stopping plugins and terminals');
     _closing = true;
     _placementCaptureTimer?.cancel();
     await _captureWindowPlacement(force: true);
@@ -155,10 +160,20 @@ class UseWindow with WindowListener {
         _closeDesktopTerminals(),
         _stopPlugins(),
       ]).timeout(const Duration(seconds: 2));
-    } catch (_) {
+    } catch (error) {
+      AppLog.w(
+        'lifecycle',
+        'shutdown cleanup did not finish in time',
+        error: error,
+      );
     } finally {
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
+      // The buffered tail of this session is the part worth keeping: it holds
+      // whatever went wrong during shutdown. exit() does not run the flush
+      // timer.
+      AppLog.i('lifecycle', 'window destroyed; flushing log');
+      AppLog.flushSync();
       exit(0);
     }
   }
@@ -244,7 +259,14 @@ class UseWindow with WindowListener {
           try {
             await notifier.saveTab(tab);
           } catch (error) {
-            debugPrint('[lib/features/window.dart] ignored error: $error');
+            // The window still closes, so this line is the only trace that a
+            // file was left unwritten.
+            AppLog.w(
+              'window',
+              'saving a tab before close failed '
+                  'tab=${editorTabValueOf(tab)?.filePath ?? 'unknown'}',
+              error: error,
+            );
           }
         }
         container
@@ -387,7 +409,9 @@ class UseWindow with WindowListener {
           .closeAll()
           .timeout(const Duration(seconds: 1));
     } catch (error) {
-      debugPrint('[lib/features/window.dart] ignored error: $error');
+      // A terminal that does not close leaves a shell process behind, which is
+      // the usual reason a rebuild fails with "file in use".
+      AppLog.w('lifecycle', 'closing desktop terminals failed', error: error);
     }
   }
 
@@ -400,7 +424,7 @@ class UseWindow with WindowListener {
           .deactivateAllForShutdown()
           .timeout(const Duration(seconds: 2));
     } catch (error) {
-      debugPrint('[lib/features/window.dart] ignored error: $error');
+      AppLog.w('lifecycle', 'deactivating plugins failed', error: error);
     }
   }
 }

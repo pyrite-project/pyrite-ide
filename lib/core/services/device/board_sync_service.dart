@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
@@ -10,6 +9,7 @@ import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 /// Builds a [SyncTreeSnapshot] from a local directory tree.
 ///
@@ -54,8 +54,9 @@ Future<SyncTreeSnapshot> scanLocalWorkspace(
       } on FileSystemException catch (error) {
         // A file we cannot stat cannot be compared; skipping it is better than
         // aborting the whole plan, but it must be visible in logs.
-        debugPrint(
-          '[sync] skipping unreadable local file ${entity.path}: $error',
+        AppLog.d(
+          'sync',
+          'skipping unreadable local file ${entity.path}: $error',
         );
       }
     }
@@ -273,6 +274,7 @@ class BoardSyncExecutor {
     var skipped = 0;
     var cancelled = false;
     final failures = <BoardSyncEntryFailure>[];
+    final cycle = Stopwatch()..start();
 
     try {
       // Only the rows about to be transferred may create directories:
@@ -287,8 +289,15 @@ class BoardSyncExecutor {
         final target = ops.normalizeBoardPath('/$directory');
         try {
           await ops.createFolder(target);
-        } catch (_) {
+        } catch (error) {
           // Existing directories raise; verify instead of assuming failure.
+          // Keeping the reason makes an unexpected "cannot create" (a full
+          // flash, a read-only card) distinguishable from a plain mkdir EEXIST.
+          AppLog.d(
+            'sync',
+            'create folder raised, verifying instead path=$target',
+            error: error,
+          );
           if (!await ops.boardFolderExists(target)) rethrow;
         }
       }
@@ -319,7 +328,6 @@ class BoardSyncExecutor {
               final bytes = await localFile.readAsBytes();
               if (_boardCopyMatches(boardChecksums, entry, bytes)) {
                 skipped++;
-                debugPrint('[sync] skipping identical ${entry.relativePath}');
                 continue;
               }
               await ops.writeFileBytesWithProgress(
@@ -342,7 +350,6 @@ class BoardSyncExecutor {
                 );
                 if (localChecksum == boardChecksum) {
                   skipped++;
-                  debugPrint('[sync] skipping identical ${entry.relativePath}');
                   continue;
                 }
               }
@@ -363,11 +370,20 @@ class BoardSyncExecutor {
         } catch (error) {
           // One failed file must not abort the whole sync: the device stays
           // usable and the rest of the plan can still be applied.
-          debugPrint('[sync] failed ${entry.relativePath}: $error');
+          AppLog.w('sync', 'failed ${entry.relativePath}: $error');
           failures.add(BoardSyncEntryFailure(entry: entry, error: error));
         }
       }
 
+      // One summary replaces the per-file "skipping identical" lines, which
+      // were emitted once per unchanged file and are the noisiest part of a
+      // sync between an already-matching workspace and its board.
+      AppLog.i(
+        'sync',
+        'plan applied entries=${entries.length} uploaded=$uploaded '
+            'downloaded=$downloaded skipped=$skipped failed=${failures.length} '
+            'cancelled=$cancelled elapsed=${cycle.elapsedMilliseconds}ms',
+      );
       if (cancelled) {
         progress.cancelledByUser(message: _tr(I18nKey.devicesSyncCancelled));
       } else if (failures.isEmpty) {
