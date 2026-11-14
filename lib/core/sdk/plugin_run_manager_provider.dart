@@ -21,6 +21,7 @@ import 'package:pyrite_ide/core/sdk/api/tab.dart';
 import 'package:pyrite_ide/core/sdk/api/view_api.dart';
 import 'package:pyrite_ide/core/sdk/component_method_registry.dart';
 import 'package:pyrite_ide/core/sdk/context_key_host.dart';
+import 'package:pyrite_ide/core/sdk/editor_key_capture.dart';
 import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
@@ -29,6 +30,7 @@ import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
+import 'package:pyrite_ide/core/sdk/view_route_stack.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 
@@ -80,7 +82,8 @@ class PluginRunManagerNotifier
           liveManager = manager;
           _bindManager(manager, dataOnly: false);
         },
-        onStopped: () => _removeRuntimeState(plugin.id),
+        onStopped: () =>
+            _removeRuntimeState(plugin.id, sessionId: liveManager?.sessionId),
       );
       final manager = session.manager;
       manager.onDataChanged = () {
@@ -134,6 +137,7 @@ class PluginRunManagerNotifier
       ref.read(viewModelStoreProvider).clearPlugin(plugin.id);
       ref.read(componentMethodRegistryProvider).clearPlugin(plugin.id);
     }
+    _releaseSessionResources(plugin.id, manager?.sessionId);
     state = {
       for (final entry in state.entries)
         if (entry.key.id != plugin.id) entry.key: entry.value,
@@ -162,8 +166,11 @@ class PluginRunManagerNotifier
           _bindManager(manager, dataOnly: true);
         },
         // DataPlugin contributions are persistent data, not runtime state.
-        onStopped: () =>
-            _removeRuntimeState(plugin.id, removeDataContributions: false),
+        onStopped: () => _removeRuntimeState(
+          plugin.id,
+          sessionId: liveManager?.sessionId,
+          removeDataContributions: false,
+        ),
       );
       metricsRegistry.markActivated(plugin.id);
       metricsRegistry.endSession(plugin.id);
@@ -206,7 +213,8 @@ class PluginRunManagerNotifier
             plugin.manifest?.autoStart == true)
           plugin.id,
     };
-    for (final manager in state.values) {
+    final managers = state.values.toList(growable: false);
+    for (final manager in managers) {
       manager.metrics?.markStopping();
     }
     await _runtimeHost.restartRuntime();
@@ -216,6 +224,12 @@ class PluginRunManagerNotifier
     ref.read(viewModelStoreProvider).clear();
     ref.read(componentMethodRegistryProvider).clear();
     state = {};
+    // A runtime restart invalidates every session. The per-session stop
+    // callbacks normally do this too; repeat it here so a callback that never
+    // fired cannot leave captures or route stacks behind.
+    for (final manager in managers) {
+      _releaseSessionResources(manager.pluginId, manager.sessionId);
+    }
     ref
         .read(pluginMetricsProvider)
         .recordRuntimeRestart(_runtimeHost.generation);
@@ -267,6 +281,7 @@ class PluginRunManagerNotifier
 
   void _removeRuntimeState(
     String pluginId, {
+    String? sessionId,
     bool removeDataContributions = true,
   }) {
     final runtimeSession = _runtimeHost.sessions[pluginId];
@@ -283,10 +298,31 @@ class PluginRunManagerNotifier
     ref.read(pluginEventBusProvider).clearPlugin(pluginId);
     ref.read(viewModelStoreProvider).clearPlugin(pluginId);
     ref.read(componentMethodRegistryProvider).clearPlugin(pluginId);
+    _releaseSessionResources(pluginId, sessionId ?? runtimeSession?.sessionId);
     state = {
       for (final entry in state.entries)
         if (entry.key.id != pluginId) entry.key: entry.value,
     };
+  }
+
+  /// Drops resources that are scoped to one plugin session.
+  ///
+  /// Key captures and view route stacks are keyed by session, so the cleanup
+  /// must address the session that created them; a plugin-wide sweep is only
+  /// the fallback when no live session identity is left. The host does not
+  /// consume [EditorKeyCaptureRegistry.interceptKeyEvent] yet, so this is not
+  /// user-visible behaviour: it just keeps both registries from retaining
+  /// stopped sessions.
+  void _releaseSessionResources(String pluginId, String? sessionId) {
+    final captures = ref.read(editorKeyCaptureProvider);
+    final routes = ref.read(viewRouteStacksProvider);
+    if (sessionId == null) {
+      captures.releasePlugin(pluginId);
+      routes.clearPlugin(pluginId);
+    } else {
+      captures.releaseSession(sessionId);
+      routes.clearSession(pluginId, sessionId);
+    }
   }
 
   Set<String> _visiblePluginIds() {
