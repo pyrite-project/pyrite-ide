@@ -270,8 +270,85 @@ class PluginRunManager {
         );
         return;
       }
-      handler(envelope, respond);
+      unawaited(_invokeHandler(type, handler, envelope, respond));
     };
+  }
+
+  /// Runs a registered handler without letting its failure escape.
+  ///
+  /// [CommandHandler] is declared as returning `void`, so an async handler's
+  /// `Future` is erased at the static type. Invoking through `dynamic` recovers
+  /// it; a rejected future would otherwise surface as an unhandled async error
+  /// while the plugin waited forever for a reply that was never sent.
+  Future<void> _invokeHandler(
+    String type,
+    CommandHandler handler,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+  ) async {
+    var responded = false;
+    void trackedRespond(Map<String, dynamic> response) {
+      respond(response);
+      responded = true;
+    }
+
+    try {
+      final result = (handler as dynamic)(envelope, trackedRespond);
+      if (result is Future) await result;
+    } catch (error, stackTrace) {
+      _reportHandlerFailure(
+        type,
+        envelope,
+        trackedRespond,
+        error,
+        stackTrace,
+        alreadyResponded: responded,
+      );
+    }
+  }
+
+  /// Answers a failed command with `sdk.response.error`.
+  ///
+  /// The response itself can fail — the transport may be closing, or the
+  /// envelope may carry a value `jsonEncode` rejects — so a second failure is
+  /// logged rather than thrown back into the dispatch loop.
+  void _reportHandlerFailure(
+    String type,
+    Map<String, dynamic> envelope,
+    void Function(Map<String, dynamic>) respond,
+    Object error,
+    StackTrace stackTrace, {
+    required bool alreadyResponded,
+  }) {
+    final message = error.toString();
+    AppLog.e(
+      'plugin',
+      '$type failed: $message',
+      error: error,
+      stack: stackTrace,
+    );
+    metrics?.recordError('$type failed: $message', traceback: '$stackTrace');
+    _emit('$type failed: $message');
+    // The plugin already has an answer for this request; a second envelope
+    // would be dropped as a duplicate reply and only muddy the trace.
+    if (alreadyResponded) return;
+    try {
+      respond(
+        makeEnvelope(
+          type: SdkCommands.responseError,
+          payload: {'code': 'handler_error', 'message': message},
+          replyTo: _requestId(envelope),
+        ),
+      );
+    } catch (sendError, sendStackTrace) {
+      AppLog.e(
+        'plugin',
+        'could not report $type failure',
+        error: sendError,
+        stack: sendStackTrace,
+      );
+      _emit('could not report $type failure: $sendError');
+    }
   }
 
   bool _matchesContext(Map<String, dynamic> envelope) {
