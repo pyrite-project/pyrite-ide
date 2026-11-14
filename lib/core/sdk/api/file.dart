@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
@@ -14,6 +13,7 @@ import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 abstract class SdkFileCommands {
   static const String getDirList = 'sdk.file.get_dir_list';
@@ -106,7 +106,11 @@ class SdkFile {
           }
         }
       } catch (error) {
-        debugPrint('[lib/core/sdk/api/file.dart] ignored error: $error');
+        AppLog.w(
+          'plugin',
+          '[lib/core/sdk/api/file.dart] ignored error',
+          error: error,
+        );
       }
     }
 

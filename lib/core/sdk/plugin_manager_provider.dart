@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +12,7 @@ import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 
@@ -57,7 +57,11 @@ Future<void> _deleteDirectory(Directory directory) async {
   try {
     if (await directory.exists()) await directory.delete(recursive: true);
   } catch (error) {
-    debugPrint('PluginManager: Failed to clean ${directory.path}: $error');
+    AppLog.w(
+      'plugin',
+      'PluginManager: Failed to clean ${directory.path}',
+      error: error,
+    );
   }
 }
 
@@ -279,8 +283,10 @@ Future<Set<String>> _recoverNewBackups(
       }
     } catch (error) {
       failed.add(pluginId);
-      debugPrint(
-        'PluginManager: Failed to recover replacement $pluginId: $error',
+      AppLog.w(
+        'plugin',
+        'PluginManager: Failed to recover replacement $pluginId',
+        error: error,
       );
     }
   }
@@ -311,9 +317,10 @@ Future<Set<String>> _recoverUnmarkedNewPackages(
       }
     } catch (error) {
       failed.add(pluginId);
-      debugPrint(
-        'PluginManager: Failed to recover unmarked replacement '
-        '$pluginId: $error',
+      AppLog.w(
+        'plugin',
+        'PluginManager: Failed to recover unmarked replacement $pluginId',
+        error: error,
       );
     }
   }
@@ -399,13 +406,19 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
     } on PluginManifestException catch (error) {
       failed.add(pluginId);
       manifestErrors[pluginId] = error.code;
-      debugPrint(
+      AppLog.w(
+        'plugin',
         'PluginManager: Failed to recover $pluginId '
-        '[${error.code}]: ${error.message}',
+            '[${error.code}]: ${error.message}',
+        error: error,
       );
     } catch (error) {
       failed.add(pluginId);
-      debugPrint('PluginManager: Failed to recover $pluginId: $error');
+      AppLog.w(
+        'plugin',
+        'PluginManager: Failed to recover $pluginId',
+        error: error,
+      );
     }
   }
   return _ActiveRecoveryResult(failed, manifestErrors);
@@ -764,7 +777,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           blocked.remove(pluginId);
         } catch (error) {
           blocked.add(pluginId);
-          debugPrint('PluginManager: Failed to remove $pluginId: $error');
+          AppLog.w(
+            'plugin',
+            'PluginManager: Failed to remove $pluginId',
+            error: error,
+          );
         }
       }
     }
@@ -798,8 +815,10 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
             state = next;
             await marker.delete();
           } catch (error) {
-            debugPrint(
-              'PluginManager: Failed to finish replacement $pluginId: $error',
+            AppLog.w(
+              'plugin',
+              'PluginManager: Failed to finish replacement $pluginId',
+              error: error,
             );
           }
           continue;
@@ -808,15 +827,20 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         try {
           manifest = PluginTomlParser.parseFromDirectory(replacement);
         } on PluginManifestException catch (error) {
-          debugPrint(
+          AppLog.w(
+            'plugin',
             'PluginManager: Invalid replacement package $pluginId '
-            '[${error.code}]: ${error.message}',
+                '[${error.code}]: ${error.message}',
+            error: error,
           );
           continue;
         }
         final entryPoint = File(path.join(replacement.path, '__main__.py'));
         if (manifest.id != pluginId || !await entryPoint.exists()) {
-          debugPrint('PluginManager: Invalid replacement package $pluginId');
+          AppLog.w(
+            'plugin',
+            'PluginManager: Invalid replacement package $pluginId',
+          );
           continue;
         }
         try {
@@ -828,9 +852,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
                 .whereType<PluginManifestV2>(),
           );
         } on PluginManifestException catch (error) {
-          debugPrint(
+          AppLog.w(
+            'plugin',
             'PluginManager: Conflicting replacement package $pluginId '
-            '[${error.code}]: ${error.message}',
+                '[${error.code}]: ${error.message}',
+            error: error,
           );
           continue;
         }
@@ -863,9 +889,10 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
                     ? rollbackError.code
                     : PluginManifestErrorCode.invalidSchema,
               );
-              debugPrint(
-                'PluginManager: Failed to read active metadata for '
-                '$pluginId: $rollbackError',
+              AppLog.w(
+                'plugin',
+                'PluginManager: Failed to read active metadata for $pluginId',
+                error: rollbackError,
               );
             }
             final rollbackState = {...state, pluginId: rollbackPlugin};
@@ -873,13 +900,18 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
             try {
               await _save(rollbackState.values);
             } catch (rollbackError) {
-              debugPrint(
-                'PluginManager: Failed to restore metadata for '
-                '$pluginId: $rollbackError',
+              AppLog.e(
+                'plugin',
+                'PluginManager: Failed to restore metadata for $pluginId',
+                error: rollbackError,
               );
             }
           }
-          debugPrint('PluginManager: Failed to apply $pluginId: $error');
+          AppLog.e(
+            'plugin',
+            'PluginManager: Failed to apply $pluginId',
+            error: error,
+          );
         }
       }
     }
@@ -1286,7 +1318,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       if (await updateMarker.exists()) await updateMarker.delete();
       await _save(next.values);
     } catch (error) {
-      debugPrint('PluginManager: Uninstall queued for $pluginId: $error');
+      AppLog.w(
+        'plugin',
+        'PluginManager: Uninstall queued for $pluginId',
+        error: error,
+      );
     }
   }
 
@@ -1297,7 +1333,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     try {
       await _save(state.values);
     } catch (error) {
-      debugPrint('PluginManager: Failed to persist plugins: $error');
+      AppLog.e(
+        'plugin',
+        'PluginManager: Failed to persist plugins',
+        error: error,
+      );
     }
   }
 
