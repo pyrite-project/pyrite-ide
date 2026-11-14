@@ -54,6 +54,7 @@ class ComponentBuilder {
     this.hostAppBarActions = const [],
     this.limits = const ComponentLimits(),
     this.pluginRootPath,
+    this.dataRevision,
   });
 
   final ComponentRegistry registry;
@@ -65,6 +66,13 @@ class ComponentBuilder {
   final List<Widget> hostAppBarActions;
   final ComponentLimits limits;
   final String? pluginRootPath;
+
+  /// Revision of the view model these components are built from.
+  ///
+  /// Data components use it to distinguish a host rebuild (same revision)
+  /// from a new plugin snapshot (new revision): only the latter invalidates
+  /// the ranges requested against the previous list window.
+  final int? dataRevision;
 
   bool _hostAppBarActionsConsumed = false;
   bool _buildSucceeded = false;
@@ -2414,6 +2422,7 @@ class ComponentBuilder {
       items: {for (var i = 0; i < items.length; i++) i: items[i]},
       itemCount: itemCount,
       itemExtent: (props['itemHeight'] as num?)?.toDouble() ?? 22,
+      dataRevision: dataRevision,
       selectedId: props['selectedId']?.toString(),
       emptyLabel: props['emptyLabel']?.toString(),
       onSelect: (itemId) => onEvent(id, 'select', {'itemId': itemId}),
@@ -2495,6 +2504,7 @@ class ComponentBuilder {
       rowCount: rowCount,
       rowHeight: (props['rowHeight'] as num?)?.toDouble() ?? 28,
       showHeader: props['showHeader'] != false,
+      dataRevision: dataRevision,
       selectedId: props['selectedId']?.toString(),
       sortColumn: props['sortColumn']?.toString(),
       sortAscending: props['sortAscending'] != false,

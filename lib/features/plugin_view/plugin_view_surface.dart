@@ -327,6 +327,7 @@ class _PluginViewSurfaceState extends ConsumerState<PluginViewSurface> {
       onContextMenuRequest: _requestContextMenu,
       hostAppBarActions: manifestTitleActions,
       pluginRootPath: _manager?.assetsPath,
+      dataRevision: model.revision,
     );
     // A view model whose single node is a component tree renders as that tree;
     // otherwise the renderer interprets the nodes (rows, tree nodes, entries).

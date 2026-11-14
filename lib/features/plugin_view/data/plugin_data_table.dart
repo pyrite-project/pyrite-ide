@@ -47,6 +47,7 @@ class PluginDataTable extends StatefulWidget {
     required this.rowCount,
     this.rowHeight = 28,
     this.showHeader = true,
+    this.dataRevision,
     this.selectedId,
     this.sortColumn,
     this.sortAscending = true,
@@ -65,6 +66,9 @@ class PluginDataTable extends StatefulWidget {
   final int rowCount;
   final double rowHeight;
   final bool showHeader;
+
+  /// Revision of the plugin data this table was built from.
+  final int? dataRevision;
   final String? selectedId;
   final String? sortColumn;
   final bool sortAscending;
@@ -183,6 +187,12 @@ class PluginDataTableState extends State<PluginDataTable> {
   @override
   void didUpdateWidget(covariant PluginDataTable oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.dataRevision != oldWidget.dataRevision) {
+      // A new plugin snapshot may have replaced the loaded window. Ranges
+      // requested against the previous one are not guaranteed to arrive, so
+      // rows still missing now must be asked for again.
+      _tracker.reset();
+    }
     if (oldWidget.selectedId != widget.selectedId &&
         widget.selectedId != _selectedRowId) {
       _selectedRowId = widget.selectedId;
