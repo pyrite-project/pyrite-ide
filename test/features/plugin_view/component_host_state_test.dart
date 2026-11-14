@@ -99,6 +99,65 @@ void main() {
     );
   });
 
+  test('a changed plugin value takes an editable control back', () {
+    host.effectiveProps({'id': 'query', 'value': 'alpha'});
+    host.registerComponent('query', 'TextField', {
+      'id': 'query',
+      'value': 'alpha',
+    });
+    host.recordEdit('query', 'beta', (_) {});
+    expect(host.displayValue('query', 'alpha'), 'beta');
+
+    // The plugin has not reacted yet: the user's input stays.
+    host.effectiveProps({'id': 'query', 'value': 'alpha'});
+    host.registerComponent('query', 'TextField', {
+      'id': 'query',
+      'value': 'alpha',
+    });
+    expect(host.displayValue('query', 'alpha'), 'beta');
+
+    // The plugin renders a different value: it owns the control again.
+    host.effectiveProps({'id': 'query', 'value': 'gamma'});
+    expect(host.displayValue('query', 'gamma'), 'gamma');
+  });
+
+  test(
+    'a plugin echo acknowledges the edit so a later snapshot can reset it',
+    () {
+      host.effectiveProps({'id': 'flag', 'value': false});
+      host.registerComponent('flag', 'Checkbox', {
+        'id': 'flag',
+        'value': false,
+      });
+      host.flush('flag', true, (_) {});
+      expect(host.displayValue('flag', false), isTrue);
+
+      // The plugin renders the toggled value: both sides agree, so the local
+      // override is dropped without changing what is on screen.
+      host.effectiveProps({'id': 'flag', 'value': true});
+      expect(host.displayValue('flag', true), isTrue);
+
+      // A later snapshot is free to reset the control.
+      host.effectiveProps({'id': 'flag', 'value': false});
+      expect(host.displayValue('flag', false), isFalse);
+    },
+  );
+
+  test('an echo of an earlier emitted value keeps newer local input', () {
+    host.effectiveProps({'id': 'query', 'value': ''});
+    host.registerComponent('query', 'TextField', {'id': 'query', 'value': ''});
+    host.flush('query', 'a', (_) {});
+    host.recordEdit('query', 'ab', (_) {});
+
+    // The plugin echoes the value emitted before the latest keystroke.
+    host.effectiveProps({'id': 'query', 'value': 'a'});
+    expect(host.displayValue('query', 'a'), 'ab');
+
+    // A genuinely new plugin value still wins.
+    host.effectiveProps({'id': 'query', 'value': 'z'});
+    expect(host.displayValue('query', 'z'), 'z');
+  });
+
   test('unknown components and methods use stable errors', () async {
     await expectLater(
       host.invokeComponentMethod('missing', 'open', const {}),
