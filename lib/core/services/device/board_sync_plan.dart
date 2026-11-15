@@ -156,7 +156,14 @@ class BoardSyncEntry {
       direction: _directionFor(nextAction),
       local: local,
       board: board,
-      selectable: selectable ?? (nextAction != BoardSyncAction.unchanged),
+      // Preserve the current flag when the action is not being overridden: a
+      // row can be unselectable for reasons unrelated to its action (a
+      // truncated local scan), and recomputing here would silently undo that.
+      selectable:
+          selectable ??
+          (action == null
+              ? this.selectable
+              : nextAction != BoardSyncAction.unchanged),
       ignoredByDefault: ignoredByDefault ?? this.ignoredByDefault,
       note: note ?? (nextAction == this.action ? this.note : null),
     );
