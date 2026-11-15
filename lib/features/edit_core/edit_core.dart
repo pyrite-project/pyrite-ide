@@ -472,42 +472,26 @@ class _EditCoreState extends ConsumerState<EditCore> {
     // the final break untouched; only the breaks between selected lines are
     // rebuilt, using the style each of them already had.
     final blockEnd = lineStarts.last + oldLines.last.length;
-    final growth = replacement.length - (blockEnd - blockStart);
-
-    int mapOffset(int offset) {
-      // Offsets past the trimmed block (a selection that ended at the next
-      // line's start) shift by the block's size change.
-      if (offset >= blockEnd) return offset + growth;
-      var remaining = offset - blockStart;
-      var index = 0;
-      while (index < oldLines.length - 1) {
-        if (remaining <= oldLines[index].length) break;
-        final span = oldLines[index].length + separators[index].length;
-        if (remaining < span) {
-          // Between the '\r' and '\n' of a CRLF break: treat it as the line
-          // end rather than inventing a position inside the new break.
-          remaining = oldLines[index].length;
-          break;
-        }
-        remaining -= span;
-        index++;
-      }
-      var shift = 0;
-      for (var i = 0; i < index; i++) {
-        shift += result.deltas[i];
-      }
-      final newLength = oldLines[index].length + result.deltas[index];
-      var local = remaining + result.deltas[index];
-      if (local < 0) local = 0;
-      if (local > newLength) local = newLength;
-      return blockStart + shift + local;
-    }
 
     controller.replaceRange(blockStart, blockEnd, replacement.toString());
     controller.setSelectionSilently(
       TextSelection(
-        baseOffset: mapOffset(selection.baseOffset),
-        extentOffset: mapOffset(selection.extentOffset),
+        baseOffset: mapCommentToggleOffset(
+          offset: selection.baseOffset,
+          blockStart: blockStart,
+          blockEnd: blockEnd,
+          oldLines: oldLines,
+          separators: separators,
+          deltas: result.deltas,
+        ),
+        extentOffset: mapCommentToggleOffset(
+          offset: selection.extentOffset,
+          blockStart: blockStart,
+          blockEnd: blockEnd,
+          oldLines: oldLines,
+          separators: separators,
+          deltas: result.deltas,
+        ),
       ),
     );
   }
