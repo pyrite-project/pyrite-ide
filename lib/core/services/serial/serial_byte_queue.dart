@@ -101,7 +101,16 @@ class SerialByteQueue {
     }
 
     final stopwatch = timeout == null ? null : (Stopwatch()..start());
+    // [timeout] is an idle deadline, not a cap on the whole read: a script that
+    // keeps producing output may run for as long as it needs. Restart the
+    // window whenever the buffered byte count changes, which covers both newly
+    // arrived data and a chunk being consumed.
+    var lastAvailable = -1;
     while (true) {
+      if (stopwatch != null && availableLength != lastAvailable) {
+        lastAvailable = availableLength;
+        stopwatch.reset();
+      }
       final index = _indexOf(pattern);
       if (index >= 0) {
         if (index > 0) {
@@ -113,6 +122,9 @@ class SerialByteQueue {
       final safeLength = availableLength - pattern.length + 1;
       if (safeLength > 0) {
         onData(_take(safeLength));
+        // Record the post-consume count so the next arrival is detectable even
+        // when it restores the same buffer length this iteration started with.
+        lastAvailable = availableLength;
       }
       await _waitForData(_remainingNullable(timeout, stopwatch));
     }
