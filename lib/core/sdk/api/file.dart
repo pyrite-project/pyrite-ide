@@ -124,12 +124,19 @@ class SdkFile {
     respondOk(envelope, respond, data: ref.read(fileProvider)?.path);
   }
 
-  void _handleSaveCurrentFile(
+  Future<void> _handleSaveCurrentFile(
     Map<String, dynamic> envelope,
     void Function(Map<String, dynamic>) respond,
-  ) {
-    ref.read(fileProvider.notifier).saveCurrentFile();
-    respondOk(envelope, respond);
+  ) async {
+    // A read-only buffer, or a declined overwrite prompt, leaves the file
+    // untouched. Reporting success before the write finishes told plugins the
+    // opposite.
+    final saved = await ref.read(fileProvider.notifier).saveCurrentFile();
+    if (saved) {
+      respondOk(envelope, respond);
+    } else {
+      respondError(envelope, respond, '文件未保存');
+    }
   }
 
   void _handleSaveCurrentFileAs(
