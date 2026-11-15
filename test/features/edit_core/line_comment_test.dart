@@ -92,4 +92,62 @@ void main() {
       expect(toggleLineComments(commented, marker: '//*')!.lines, ['a']);
     });
   });
+
+  group('mapCommentToggleOffset', () {
+    int map(
+      int offset, {
+      required List<String> lines,
+      required List<String> separators,
+      required List<int> deltas,
+    }) {
+      final blockStart = 0;
+      final oldLength =
+          lines.fold<int>(0, (sum, line) => sum + line.length) +
+          separators.fold<int>(0, (sum, separator) => sum + separator.length);
+      return mapCommentToggleOffset(
+        offset: offset,
+        blockStart: blockStart,
+        blockEnd: oldLength,
+        oldLines: lines,
+        separators: separators,
+        deltas: deltas,
+      );
+    }
+
+    test('maps a caret inside the last LF line past the earlier lines', () {
+      // "abc\ndef" commented with "# " becomes "# abc\n# def".
+      expect(
+        map(5, lines: ['abc', 'def'], separators: ['\n'], deltas: [2, 2]),
+        9,
+      );
+    });
+
+    test('maps a caret inside the last CRLF line past the earlier lines', () {
+      // "abc\r\ndef" becomes "# abc\r\n# def"; offset 6 is before "e".
+      expect(
+        map(6, lines: ['abc', 'def'], separators: ['\r\n'], deltas: [2, 2]),
+        10,
+      );
+    });
+
+    test('maps line starts and ends for each line', () {
+      final lines = ['abc', 'def'];
+      final separators = ['\n'];
+      final deltas = [2, 2];
+      // The caret stays on the text, after the inserted marker.
+      expect(map(0, lines: lines, separators: separators, deltas: deltas), 2);
+      // Start of the second line's text.
+      expect(map(4, lines: lines, separators: separators, deltas: deltas), 8);
+      // End of the block shifts by the total growth.
+      expect(map(7, lines: lines, separators: separators, deltas: deltas), 11);
+    });
+
+    test('snaps an offset inside a CRLF break to the line end', () {
+      // Offset 4 is the '\n' of "abc\r\n"; the caret lands after "# abc".
+      expect(
+        map(4, lines: ['abc', 'def'], separators: ['\r\n'], deltas: [2, 2]),
+        5,
+      );
+    });
+  });
 }

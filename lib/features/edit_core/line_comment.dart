@@ -80,3 +80,55 @@ LineCommentToggleResult? toggleLineComments(
   if (!changed) return null;
   return LineCommentToggleResult(newLines, deltas);
 }
+
+/// Maps [offset] in the original line block to its position after
+/// [toggleLineComments] was applied.
+///
+/// [blockStart] is the buffer offset of the first line, [blockEnd] the offset
+/// just past the last line's text (its line break is not part of the block),
+/// and [separators] the line breaks between consecutive [oldLines]. A caret
+/// past [blockEnd] shifts by the block's net size change.
+///
+/// Each preceding line contributes its *new* length plus its separator, so the
+/// result is a real buffer offset rather than a sum of deltas. Offsets between
+/// the `\r` and `\n` of a CRLF break are snapped to that line's end.
+int mapCommentToggleOffset({
+  required int offset,
+  required int blockStart,
+  required int blockEnd,
+  required List<String> oldLines,
+  required List<String> separators,
+  required List<int> deltas,
+}) {
+  var growth = 0;
+  for (final delta in deltas) {
+    growth += delta;
+  }
+  if (offset >= blockEnd) return offset + growth;
+
+  var remaining = offset - blockStart;
+  if (remaining < 0) remaining = 0;
+  var index = 0;
+  while (index < oldLines.length - 1) {
+    if (remaining <= oldLines[index].length) break;
+    final span = oldLines[index].length + separators[index].length;
+    if (remaining < span) {
+      // Between the '\r' and '\n' of a CRLF break: treat it as the line end
+      // rather than inventing a position inside the new break.
+      remaining = oldLines[index].length;
+      break;
+    }
+    remaining -= span;
+    index++;
+  }
+
+  var shift = 0;
+  for (var i = 0; i < index; i++) {
+    shift += oldLines[i].length + separators[i].length + deltas[i];
+  }
+  final newLength = oldLines[index].length + deltas[index];
+  var local = remaining + deltas[index];
+  if (local < 0) local = 0;
+  if (local > newLength) local = newLength;
+  return blockStart + shift + local;
+}
