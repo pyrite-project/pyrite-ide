@@ -609,16 +609,47 @@ class BoardNotifier {
                   foregroundColor: Theme.of(context).colorScheme.onError,
                 ),
                 onPressed: () async {
-                  ref
-                          .read(
-                            editorControllerMapProvider,
-                          )[correspondingFilePath]
-                          ?.text =
-                      content;
+                  final controller = ref.read(
+                    editorControllerMapProvider,
+                  )[correspondingFilePath];
+                  // A read-only buffer cannot be written back, so replacing it
+                  // would leave an edit that can never be saved. Refuse before
+                  // touching the text.
+                  if (controller?.readOnly == true) {
+                    Navigator.pop(dialogContext, false);
+                    if (!context.mounted) return;
+                    showEditorSnackBar(
+                      context,
+                      translateWithReplacements(
+                        ref,
+                        I18nKey.dialogActualContentReadOnly,
+                        {'path': correspondingFilePath},
+                      ),
+                    );
+                    return;
+                  }
+
+                  final previousText = controller?.text;
+                  controller?.text = content;
                   Navigator.pop(dialogContext, false);
                   if (!await ref
                       .read(fileProvider.notifier)
                       .saveTabForPath(correspondingFilePath)) {
+                    // The write was refused (for example by an external-change
+                    // prompt). Put the buffer back and say so, rather than
+                    // leaving the tab holding content that cannot be saved.
+                    if (controller != null && controller.text == content) {
+                      controller.text = previousText ?? controller.text;
+                    }
+                    if (!context.mounted) return;
+                    showEditorSnackBar(
+                      context,
+                      translateWithReplacements(
+                        ref,
+                        I18nKey.dialogActualContentSaveFailed,
+                        {'path': correspondingFilePath},
+                      ),
+                    );
                     return;
                   }
                   if (!context.mounted) return;

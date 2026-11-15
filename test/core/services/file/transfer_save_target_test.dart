@@ -20,6 +20,7 @@ import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:tabbed_view/src/tab_data.dart';
 
 /// A controller stand-in with just the buffer and read-only flag the transfer
@@ -330,6 +331,58 @@ void main() {
       (container.read(fileProvider.notifier) as _TestFileNotifier).writtenTexts,
       ['编辑器内容'],
     );
+  });
+
+  testWidgets('using the actual content leaves a read-only buffer untouched', (
+    tester,
+  ) async {
+    final mirrorFile = File(path.join(root.path, 'main.py'))
+      ..writeAsStringSync('mirror old');
+    final otherFile = File(path.join(workspace.path, 'b.py'))
+      ..writeAsStringSync('focused tab old');
+    final compared = _FakeEditorController('board edit');
+    final focused = _FakeEditorController('focused buffer');
+    final comparedTab = tabFor(
+      mirrorFile,
+      compared,
+      isSaved: false,
+      readOnly: true,
+    );
+    final focusedTab = tabFor(otherFile, focused, isSaved: false);
+    backend.files['/main.py'] = 'board old';
+
+    final container = containerWith({mirrorFile.path: compared});
+    container.read(fileProvider.notifier).setDirectory(workspace);
+    openTabs(container, [comparedTab, focusedTab], focused: focusedTab);
+    await pumpShell(tester, container);
+    await focusBoardFile(tester, container, mirrorFile);
+
+    final context = tester.element(find.byType(Scaffold));
+    unawaited(container.read(boardProvider).downloadSelectedBoardItem(context));
+    await pumpUntil(
+      tester,
+      () =>
+          find.text(I18nKey.dialogActualContent.fallback).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.text(I18nKey.dialogActualContent.fallback));
+    await pumpUntil(tester, () => false, frames: 200);
+
+    expect(compared.text, 'board edit');
+    expect(mirrorFile.readAsStringSync(), 'mirror old');
+    expect(backend.reads, ['/main.py']);
+    final expected = I18nKey.dialogActualContentReadOnly.fallback.replaceAll(
+      '{path}',
+      mirrorFile.path,
+    );
+    expect(
+      container
+          .read(ideMessageProvider)
+          .where((entry) => entry.message == expected),
+      hasLength(1),
+    );
+
+    // Let the message's dismissal timer run out before the binding checks.
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('upload sends the bytes the save wrote, not the stale file', (

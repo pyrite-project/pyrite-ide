@@ -1309,6 +1309,14 @@ enum I18nKey {
   dialogCancelUpload('dialog.action.cancel_upload', '取消上传'),
   dialogEditorContent('dialog.action.editor_content', '编辑器中内容'),
   dialogActualContent('dialog.action.actual_content', '实际内容'),
+  dialogActualContentReadOnly(
+    'dialog.action.actual_content_read_only',
+    '{path} 是只读文件，编辑器内容未改变',
+  ),
+  dialogActualContentSaveFailed(
+    'dialog.action.actual_content_save_failed',
+    '{path} 保存失败，编辑器内容未改变',
+  ),
   editorConfirmUpload('editor.pending.confirm_upload', '确认上传'),
   editorConfirmDownload('editor.pending.confirm_download', '确认下载'),
   editorUploadedToDevice('editor.message.uploaded_to_device', '已上传到设备：{path}'),
