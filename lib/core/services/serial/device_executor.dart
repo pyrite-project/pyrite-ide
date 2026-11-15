@@ -769,9 +769,10 @@ class DeviceSession {
     if (ack.length != 2 || ack[0] != 0x4f || ack[1] != 0x4b) {
       throw const DeviceSessionException('Raw REPL did not acknowledge code.');
     }
-    // The startup timeout also bounds each streamed frame: a device that
+    // The timeout is an idle deadline for each streamed frame: a device that
     // stops emitting output must surface as an error instead of holding the
-    // REPL transaction (and its mutex) forever.
+    // REPL transaction (and its mutex) forever, while a long-running script
+    // that keeps producing output is allowed to finish.
     await queue.readUntilStreaming(_eot, timeout: timeout, onData: onStdout);
     await queue.readUntilStreaming(_eot, timeout: timeout, onData: onStderr);
     await queue.readUntil(_prompt, timeout);
