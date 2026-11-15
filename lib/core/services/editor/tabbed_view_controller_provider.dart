@@ -302,7 +302,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// [isSaved] false so the modified dot comes back, [encoding] and
   /// [byteOrderMark] so a later save reproduces the file's bytes, and
   /// [initialCaretOffset] to put the caret back where it was.
-  Future openFile(
+  ///
+  /// Returns the tab that now shows the file, which can be an existing tab
+  /// matched by identity rather than by the exact path spelling the caller
+  /// supplied. Callers that need to act on the opened document must use this
+  /// result instead of looking the path up again.
+  Future<TabData?> openFile(
     BuildContext context, {
     File? file,
     bool isBoardFile = false,
@@ -335,7 +340,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
       if (open != null) {
         focusTab(open);
-        return;
+        return open;
       }
 
       // Fresh file: classify its bytes before anything reaches a tab. Binary
@@ -353,28 +358,28 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         try {
           prepared = await prepareFileForEditing(file);
         } on FileSystemException {
-          return;
+          return null;
         }
         switch (prepared) {
           case BinaryFilePrepared():
-            if (!context.mounted) return;
+            if (!context.mounted) return null;
             final proceed = await showBinaryFileDialog(
               ref,
               context,
               filePath: file.path,
             );
-            if (!proceed) return;
+            if (!proceed) return null;
             text = prepared.text;
             openReadOnly = prepared.readOnly;
           case UndecodableFilePrepared():
-            if (!context.mounted) return;
+            if (!context.mounted) return null;
             final decoded = await showEncodingRetryDialog(
               ref,
               context,
               filePath: file.path,
               bytes: prepared.bytes,
             );
-            if (decoded == null) return;
+            if (decoded == null) return null;
             text = decoded.text;
             fileEncoding = decoded.encoding;
           default:
@@ -406,7 +411,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
 
       if (newTab == null) {
-        return;
+        return null;
       }
 
       openTab(newTab);
@@ -420,7 +425,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           ref.read(tabletSelectedIndex.notifier).state = 3;
         }
       }
+      return newTab;
     }
+    return null;
   }
 
   /// Puts the caret back in a tab that was just reopened.

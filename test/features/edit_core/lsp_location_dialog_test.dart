@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
@@ -38,6 +39,35 @@ void main() {
         const TextSelection.collapsed(offset: 1),
         reason: 'no tab exists for the target, so there is nothing to move',
       );
+    });
+
+    testWidgets('a symlinked spelling jumps in the tab that already holds '
+        'the file', (tester) async {
+      final dir = Directory.systemTemp.createTempSync('pyrite_lsp_identity');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final real = File('${dir.path}/real.py')
+        ..writeAsStringSync('zero\none\ntwo\n');
+      final link = Link('${dir.path}/alias.py')..createSync(real.path);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final existing = _RecordingController('zero\none\ntwo\n');
+      existing.selection = const TextSelection.collapsed(offset: 0);
+      _installActiveTab(container, real.path, existing);
+
+      final harness = await _pumpHarness(tester, container);
+
+      // The jump target is spelled through the symlink; the open tab holds the
+      // resolved path, so only the identity-based lookup can find it.
+      await tester.runAsync(
+        () => revealLspLocation(harness.context, harness.ref, link.path, 2, 1),
+      );
+
+      expect(existing.selection, const TextSelection.collapsed(offset: 10));
+      final tabs = allEditorControllers(container)
+          .expand((group) => group.tabs)
+          .where((tab) => editorTabValueOf(tab)?.filePath == real.path);
+      expect(tabs, hasLength(1), reason: 'the jump must not open a second tab');
     });
 
     testWidgets('a cancelled open leaves the active tab caret alone', (
@@ -185,7 +215,7 @@ class _CancelledOpenNotifier extends TabbedViewControllerNotifier {
   _CancelledOpenNotifier(super.ref);
 
   @override
-  Future<void> openFile(
+  Future<TabData?> openFile(
     BuildContext context, {
     File? file,
     bool isBoardFile = false,
@@ -196,7 +226,7 @@ class _CancelledOpenNotifier extends TabbedViewControllerNotifier {
     String? encoding,
     bool byteOrderMark = false,
     int? initialCaretOffset,
-  }) async {}
+  }) async => null;
 }
 
 void _installActiveTab(
