@@ -95,16 +95,18 @@ Future<void> revealLspLocation(
   if (line == null || character == null) return;
   final targetPath = canonicalLocalPath(path);
   final tabs = ref.read(tabbedViewControllerProvider.notifier);
-  await tabs.openFile(context, file: File(targetPath));
+  // The opened tab is returned rather than looked up again: `openFile` also
+  // resolves a tab by filesystem identity, so the stored spelling can differ
+  // from [targetPath] (a symlink, or a different drive-letter casing) and an
+  // exact-path lookup would miss it.
+  final openedTab = await tabs.openFile(context, file: File(targetPath));
   if (!context.mounted) return;
-  // `openFile` returns without opening anything when the file cannot be read,
-  // when the binary/encoding prompt is dismissed, or when the picker is
-  // cancelled. The tab is the proof the jump target exists: the active tab is
-  // merely whatever the user was looking at, and moving its caret would edit
-  // an unrelated file.
-  final targetController = editorTabValueOf(
-    tabs.findFileTab(targetPath),
-  )?.editorController;
+  // `openFile` returns null when the file cannot be read, when the
+  // binary/encoding prompt is dismissed, or when the picker is cancelled. The
+  // tab is the proof the jump target exists: the active tab is merely whatever
+  // the user was looking at, and moving its caret would edit an unrelated
+  // file.
+  final targetController = editorTabValueOf(openedTab)?.editorController;
   if (targetController == null) return;
   final offset = (targetController.getLineStartOffset(line) + character).clamp(
     0,
