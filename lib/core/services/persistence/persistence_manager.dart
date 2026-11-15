@@ -161,6 +161,28 @@ class PersistenceManager {
   final ProjectPersistence projectPersistence;
   final TabsPersistence tabsPersistence;
 
+  /// Serialized payload last written for each store.
+  ///
+  /// Saves are scheduled by provider changes, and navigation providers are in
+  /// that set: a page or panel switch would otherwise rewrite every JSON store
+  /// (including serializing every unsaved buffer) a second later. Comparing
+  /// the payload skips a store whose content did not move.
+  final Map<String, String> _savedPayloads = {};
+
+  /// Writes [data] through [write] unless its serialized form is unchanged.
+  Future<void> _saveStore<T>(
+    String store,
+    T data,
+    Object? Function(T data) toJson,
+    Future<bool> Function(T data, String encoded) write,
+  ) async {
+    final payload = jsonEncode(toJson(data));
+    if (_savedPayloads[store] == payload) return;
+    // Only remember a payload that actually reached disk, so a failed write is
+    // retried by the next schedule instead of being skipped forever.
+    if (await write(data, payload)) _savedPayloads[store] = payload;
+  }
+
   Future<PersistedData> loadAll() async {
     final app = await appPersistence.load();
     final settings = await settingsPersistence.load();
@@ -431,7 +453,8 @@ class PersistenceManager {
 
   Future<void> saveFromContainer(ProviderContainer container) async {
     await Future.wait([
-      appPersistence.save(
+      _saveStore<AppPersistedData>(
+        'app',
         AppPersistedData(
           themeMode: container.read(themeMode).name,
           themeStyle: container.read(themeStyle).value,
@@ -443,8 +466,11 @@ class PersistenceManager {
           alwaysOnTop: container.read(alwaysOnTopProvider),
           windowPlacement: container.read(windowPlacementProvider),
         ),
+        (data) => data.toJson(),
+        (data, encoded) => appPersistence.save(data, encoded: encoded),
       ),
-      settingsPersistence.save(
+      _saveStore<SettingsPersistedData>(
+        'settings',
         SettingsPersistedData(
           editorTextFont: container.read(editorTextFontProvider),
           editorFontSize: container.read(editorFontSize),
@@ -526,8 +552,11 @@ class PersistenceManager {
               .read(hardwareResetStrategyProvider)
               .name,
         ),
+        (data) => data.toJson(),
+        (data, encoded) => settingsPersistence.save(data, encoded: encoded),
       ),
-      functionPagePersistence.save(
+      _saveStore<FunctionPagePersistedData>(
+        'functionPage',
         FunctionPagePersistedData(
           desktopSelectedIndex: container.read(desktopSelectedIndex),
           mobileSelectedIndex: container.read(mobileSelectedIndex),
@@ -536,19 +565,30 @@ class PersistenceManager {
           consolePageShow: container.read(consolePageShow),
           consoleDockSide: container.read(consoleDockSideProvider).name,
         ),
+        (data) => data.toJson(),
+        (data, encoded) => functionPagePersistence.save(data, encoded: encoded),
       ),
       _saveProject(container),
       _saveTabs(container),
-      dataContributionsPersistence.save(
+      _saveStore<List<DataContributionRecord>>(
+        'dataContributions',
         container.read(dataContributionsProvider),
+        (records) => {
+          'records': [for (final r in records) r.toJson()],
+        },
+        (records, encoded) =>
+            dataContributionsPersistence.save(records, encoded: encoded),
       ),
     ]);
   }
 
   Future<void> _saveProject(ProviderContainer container) async {
     final projectPath = container.read(persistedProjectPathProvider);
-    await projectPersistence.save(
+    await _saveStore<ProjectPersistedData>(
+      'project',
       ProjectPersistedData(projectPath: projectPath),
+      (data) => data.toJson(),
+      (data, encoded) => projectPersistence.save(data, encoded: encoded),
     );
   }
 
@@ -564,7 +604,8 @@ class PersistenceManager {
         primary: primary,
         convert: _persistGroup,
       );
-      await tabsPersistence.save(
+      await _saveStore<TabsPersistedData>(
+        'tabs',
         TabsPersistedData(
           tabs: const [],
           selectedTabIndex: 0,
@@ -572,18 +613,23 @@ class PersistenceManager {
           layout: persisted.node,
           primaryGroupIndex: persisted.primaryIndex,
         ),
+        (data) => data.toJson(),
+        (data, encoded) => tabsPersistence.save(data, encoded: encoded),
       );
       return;
     }
     // A single group needs no tree: the flat list restores it, and it is the
     // only place its tabs are written, so no buffer is serialized twice.
     final group = _persistGroup(primary);
-    await tabsPersistence.save(
+    await _saveStore<TabsPersistedData>(
+      'tabs',
       TabsPersistedData(
         tabs: group.tabs,
         selectedTabIndex: primary.selectedIndex ?? 0,
         selectedTabPath: group.selectedTabPath,
       ),
+      (data) => data.toJson(),
+      (data, encoded) => tabsPersistence.save(data, encoded: encoded),
     );
   }
 

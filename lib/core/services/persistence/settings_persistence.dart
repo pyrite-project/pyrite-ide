@@ -354,17 +354,26 @@ class SettingsPersistence {
     }
   }
 
-  Future<void> save(SettingsPersistedData data) async {
+  /// Returns whether the bytes reached disk.
+  ///
+  /// [encoded] lets the save scheduler reuse a payload it already serialized
+  /// to decide whether the store changed.
+  Future<bool> save(SettingsPersistedData data, {String? encoded}) async {
     try {
       final file = await _file;
       // Temp file + rename, matching TabsPersistence and PluginPersistence.
       // A partial write here used to produce truncated JSON that `load` then
       // swallowed into `null`, silently resetting every user setting.
       final temp = File('${file.path}.tmp');
-      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.writeAsString(
+        encoded ?? jsonEncode(data.toJson()),
+        flush: true,
+      );
       await temp.rename(file.path);
+      return true;
     } catch (e) {
       debugPrint('SettingsPersistence: Failed to save: $e');
+      return false;
     }
   }
 }
