@@ -182,6 +182,22 @@ void main() {
     expect(host.displayValue('query', 'z'), 'z');
   });
 
+  test('an echo of any recently emitted value keeps newer local input', () {
+    host.effectiveProps({'id': 'query', 'value': ''});
+    host.registerComponent('query', 'TextField', {'id': 'query', 'value': ''});
+    host.flush('query', 'a', (_) {});
+    host.flush('query', 'ab', (_) {});
+    host.recordEdit('query', 'abc', (_) {});
+
+    // The plugin echoes the value emitted two keystrokes ago. It is still an
+    // echo of this control's own output, so it must not win over "abc".
+    host.effectiveProps({'id': 'query', 'value': 'a'});
+    expect(host.displayValue('query', 'a'), 'abc');
+
+    // Settle the pending debounce without leaving a timer behind.
+    host.flush('query', 'abc', (_) {});
+  });
+
   test('unknown components and methods use stable errors', () async {
     await expectLater(
       host.invokeComponentMethod('missing', 'open', const {}),
