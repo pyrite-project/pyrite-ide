@@ -61,6 +61,41 @@ void main() {
     expect(notifier.remoteUrlUpdates, [(name: _remoteName, url: _newUrl)]);
     expect(find.byType(AlertDialog), findsNothing);
   });
+
+  testWidgets(
+    'submitting again while the confirmation is pending runs it once',
+    (tester) async {
+      final notifier = await _pumpGitPage(tester);
+      await _openEditUrlDialog(tester);
+      await tester.enterText(_dialogTextField(), _newUrl);
+
+      // Activate the same submit twice before the first one can finish. The
+      // first call is suspended on its confirmation dialog, so the second must
+      // be ignored rather than stacking another operation.
+      final field = tester.widget<TextField>(_dialogTextField());
+      field.onSubmitted!(_newUrl);
+      field.onSubmitted!(_newUrl);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.widgetWithText(AlertDialog, _editUrlConfirmTitle),
+        findsOneWidget,
+        reason: 'the second submit must not stack a second confirmation',
+      );
+      expect(
+        tester
+            .widget<FilledButton>(_dialogConfirmButton(_editUrlDialogTitle))
+            .onPressed,
+        isNull,
+        reason: 'the action must be disabled while it is in flight',
+      );
+
+      await tester.tap(_dialogConfirmButton(_editUrlConfirmTitle));
+      await tester.pumpAndSettle();
+
+      expect(notifier.remoteUrlUpdates, [(name: _remoteName, url: _newUrl)]);
+    },
+  );
 }
 
 Future<_RecordingGitNotifier> _pumpGitPage(WidgetTester tester) async {
