@@ -330,6 +330,45 @@ void main() {
     },
   );
 
+  test('names written by earlier builds keep working across scripts', () async {
+    const group = '笔记';
+    const key = '标题 1';
+    const value = {'note': 'ok'};
+
+    final setResponse = await harness.set(group, key, value);
+    expect(setResponse['type'], SdkCommands.responseOk, reason: '$setResponse');
+
+    final file = File('${harness.dataPath}/$group/$key.json');
+    expect(await file.exists(), isTrue);
+    expect(jsonDecode(await file.readAsString()), value);
+
+    final getResponse = await harness.get(group, key);
+    expect(getResponse['payload'], {'data': value});
+
+    final deleteResponse = await harness.delete(group, key);
+    expect(
+      deleteResponse['type'],
+      SdkCommands.responseOk,
+      reason: '$deleteResponse',
+    );
+    expect(await file.exists(), isFalse);
+  });
+
+  test('names that cannot be one path segment are still rejected', () async {
+    const unsafe = <String>[
+      '.hidden',
+      'trailing.',
+      ' leading',
+      'trailing ',
+      'tab\there',
+    ];
+
+    for (final name in unsafe) {
+      _expectRejected(await harness.get(name, 'key'), 'group');
+      _expectRejected(await harness.set(name, 'key', 1), 'group');
+    }
+  });
+
   test('clear removes only the addressed group', () async {
     await harness.set('keep', 'k', 1);
     await harness.set('drop', 'k', 1);

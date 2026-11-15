@@ -51,20 +51,29 @@ class SdkPersistence {
   /// trailing dots cannot alias the data directory or its parent on platforms
   /// whose filesystems trim them; separators and drive prefixes are rejected
   /// outright.
-  static final RegExp _segmentPattern = RegExp(
-    r'^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$',
-  );
+  ///
+  /// Everything else is left to the plugin: names written by earlier builds
+  /// may hold any script or a space, and rejecting those would make data that
+  /// already exists on disk unreachable.
+  static final RegExp _controlChars = RegExp(r'[\x00-\x1f\x7f]');
 
   static String? _segmentError(String field, String value) {
     if (value.isEmpty) return '缺少 $field';
+    if (value.length > 128) return '$field 过长';
     if (value.contains('/') || value.contains('\\') || value.contains('..')) {
       return '$field 不能包含路径分隔符或 ".."';
     }
-    if (value.replaceAll('.', '').isEmpty) {
+    if (value.replaceAll('.', '').trim().isEmpty) {
       return '$field 不能只由点号组成';
     }
-    if (!_segmentPattern.hasMatch(value)) {
-      return '$field 只能包含字母、数字、下划线、连字符和单段内的点号';
+    if (_controlChars.hasMatch(value)) {
+      return '$field 不能包含控制字符';
+    }
+    if (value != value.trim() || value.endsWith('.')) {
+      return '$field 不能以空白字符开头或结尾，也不能以点号结尾';
+    }
+    if (value.split('.').any((segment) => segment.isEmpty)) {
+      return '$field 不能包含空路径段';
     }
     return null;
   }
