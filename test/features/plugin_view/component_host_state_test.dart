@@ -143,6 +143,30 @@ void main() {
     },
   );
 
+  test('a debounced edit is not emitted after the plugin takes the value '
+      'back', () async {
+    final debounced = ComponentHostState(
+      instance: _instance,
+      debounce: const Duration(milliseconds: 20),
+    );
+    addTearDown(debounced.dispose);
+    debounced.effectiveProps({'id': 'query', 'value': 'alpha'});
+    debounced.registerComponent('query', 'TextField', {
+      'id': 'query',
+      'value': 'alpha',
+    });
+    final emitted = <Object?>[];
+    debounced.recordEdit('query', 'typed', emitted.add);
+
+    // A snapshot with a different value wins reconciliation before the timer
+    // fires, so the host drops the pending keystroke.
+    debounced.effectiveProps({'id': 'query', 'value': 'reset'});
+    expect(debounced.displayValue('query', 'reset'), 'reset');
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(emitted, isEmpty);
+  });
+
   test('an echo of an earlier emitted value keeps newer local input', () {
     host.effectiveProps({'id': 'query', 'value': ''});
     host.registerComponent('query', 'TextField', {'id': 'query', 'value': ''});

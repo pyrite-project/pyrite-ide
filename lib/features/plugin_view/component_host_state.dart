@@ -47,6 +47,13 @@ class ComponentHostState implements ComponentMethodHostEntry {
   /// further; that echo must not discard the newer local input.
   final Map<String, Object?> _lastEmittedValues = {};
 
+  /// Monotonic edit counter per component.
+  ///
+  /// A debounce timer captures the generation it was scheduled for; if a
+  /// plugin snapshot clears the local value in the meantime, the stale
+  /// keystroke must not be pushed to the plugin.
+  final Map<String, int> _editGenerations = {};
+
   final Map<String, TreeIndex> _trees = {};
   final Map<String, String> _componentTypes = {};
   final Map<String, Map<String, dynamic>> _componentProps = {};
@@ -253,9 +260,13 @@ class ComponentHostState implements ComponentMethodHostEntry {
 
   void recordEdit(String id, Object? value, void Function(Object? value) emit) {
     _recordLocalValue(id, value);
+    final generation = _editGenerations[id];
     _debounces[id]?.cancel();
     _debounces[id] = Timer(debounce, () {
       _debounces.remove(id);
+      // The plugin may have taken the value back while the timer was waiting.
+      // Emitting then would push a keystroke the host already discarded.
+      if (_editGenerations[id] != generation) return;
       if (_localValues.containsKey(id)) _lastEmittedValues[id] = value;
       emit(value);
     });
@@ -276,12 +287,16 @@ class ComponentHostState implements ComponentMethodHostEntry {
   void _recordLocalValue(String id, Object? value) {
     _localValues[id] = value;
     _editBases.putIfAbsent(id, () => _pluginValues[id]);
+    _editGenerations[id] = (_editGenerations[id] ?? 0) + 1;
   }
 
   void _clearLocalValue(String id) {
     _localValues.remove(id);
     _editBases.remove(id);
     _lastEmittedValues.remove(id);
+    // Bump the generation instead of removing it: a timer scheduled before
+    // the clear still holds the old number and will now skip its emit.
+    _editGenerations[id] = (_editGenerations[id] ?? 0) + 1;
   }
 
   Object? displayValue(String id, Object? pluginValue) =>
