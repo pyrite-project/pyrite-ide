@@ -1409,6 +1409,10 @@ enum I18nKey {
     'editor.file.deleted_on_disk',
     '{path} 已被外部删除，保存将重新创建该文件',
   ),
+  editorFileCannotReloadUndecodable(
+    'editor.file.cannot_reload_undecodable',
+    '{path} 的内容无法作为文本读取，已取消保存',
+  ),
   editorFileSavedAs('file.message.saved_as', '已另存为：{path}'),
   editorCommentUnsupported('editor.comment.unsupported', '当前语言不支持注释切换'),
   editorMenuToggleBlockComment('editor.menu.toggle_block_comment', '切换块注释'),

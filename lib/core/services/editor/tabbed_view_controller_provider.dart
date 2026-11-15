@@ -91,6 +91,15 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// every time.
   final Map<String, FileDiskStamp> _declinedExternalChanges = {};
 
+  /// Disk bytes that cannot be decoded as text, keyed by file path.
+  ///
+  /// Reloading such a file cannot change the buffer, so asking the same
+  /// question on every focus change only repeats a refusal the user already
+  /// made. The stamp keeps new bytes eligible for a fresh prompt. A save for
+  /// the same bytes is refused with an explicit message instead of silently
+  /// doing nothing.
+  final Map<String, FileDiskStamp> _undecodableExternalChanges = {};
+
   /// Paths already reported as missing from disk.
   ///
   /// A deleted file stays deleted until someone recreates it, so without this
@@ -640,6 +649,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     if (declined != null) {
       _declinedExternalChanges[newPath] = declined;
     }
+    final undecodable = _undecodableExternalChanges.remove(oldPath);
+    if (undecodable != null) {
+      _undecodableExternalChanges[newPath] = undecodable;
+    }
     // A rename is not a deletion, and the new path is present by definition,
     // so any "reported missing" record belongs to the path that no longer
     // exists and must not follow the tab to its new name.
@@ -952,6 +965,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     _lastSavedText.remove(filePath);
     _diskStamps.remove(filePath);
     _declinedExternalChanges.remove(filePath);
+    _undecodableExternalChanges.remove(filePath);
     _notifiedMissingFiles.remove(filePath);
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
@@ -1182,17 +1196,20 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     switch (action) {
       case ExternalChangeAction.none:
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
         return true;
       case ExternalChangeAction.touchOnly:
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
         return true;
       case ExternalChangeAction.deleted:
         _diskStamps.remove(value.filePath);
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         // The buffer stays editable. Locking it was meant to stop a save from
         // recreating a file someone deliberately removed, but the editor is in
         // no position to know that: a branch switch, a stash pop or a formatter
@@ -1222,6 +1239,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         return true;
       case ExternalChangeAction.reload:
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         _notifiedMissingFiles.remove(value.filePath);
         await _reloadTabFromDisk(tab, value, diskText!);
         return true;
@@ -1229,6 +1247,14 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         if (!context.mounted) return false;
         // Planning a prompt means the file is there, so the stamp is too.
         final stamp = currentStamp!;
+        // The same undecodable bytes were already explained: reloading them
+        // changes nothing, so do not reopen the prompt. A save is still
+        // refused, but out loud.
+        final undecodableStamp = _undecodableExternalChanges[value.filePath];
+        if (undecodableStamp != null && undecodableStamp.sameAs(stamp)) {
+          if (onSaveConflict) _showUndecodableRefusal(value.filePath);
+          return !onSaveConflict;
+        }
         final declinedStamp = _declinedExternalChanges[value.filePath];
         if (declinedStamp != null) {
           if (declinedStamp.sameAs(stamp)) {
@@ -1258,13 +1284,18 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             if (diskText == null) {
               // The new bytes cannot be decoded into the buffer, so there is
               // nothing to reload. Writing now would replace content the user
-              // has never been shown.
+              // has never been shown. Remember the stamp so the next focus
+              // check does not ask the same unanswerable question again.
+              _undecodableExternalChanges[value.filePath] = stamp;
+              if (onSaveConflict) _showUndecodableRefusal(value.filePath);
               return false;
             }
+            _undecodableExternalChanges.remove(value.filePath);
             await _reloadTabFromDisk(tab, value, diskText);
             return true;
           case ExternalChangeResolution.keepEditor:
             _declinedExternalChanges.remove(value.filePath);
+            _undecodableExternalChanges.remove(value.filePath);
             // The buffer wins, so whatever happens next must proceed. The disk
             // text becomes the baseline until the pending write replaces it:
             // that keeps the tab honestly dirty and stops the focus check from
@@ -1281,6 +1312,23 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
             return false;
         }
     }
+  }
+
+  /// Tells the user why a save was refused after the disk bytes turned out to
+  /// be unreadable as text.
+  void _showUndecodableRefusal(String filePath) {
+    ref
+        .read(ideMessageProvider.notifier)
+        .show(
+          translateWithReplacements(
+            ref,
+            I18nKey.editorFileCannotReloadUndecodable,
+            {'path': filePath},
+          ),
+          type: IdeMessageType.warning,
+          duration: const Duration(seconds: 12),
+          closeable: true,
+        );
   }
 
   Future<void> _reloadTabFromDisk(
