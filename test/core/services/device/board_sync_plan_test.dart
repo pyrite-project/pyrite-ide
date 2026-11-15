@@ -387,6 +387,28 @@ void main() {
       expect(plan.hasWork, isTrue);
     });
 
+    test('an ignored board-only row stays unselectable', () {
+      final plan = buildSyncPlan(
+        local: const SyncTreeSnapshot(
+          files: <String, SyncFileInfo>{},
+          directories: <String>{},
+          root: '/root',
+          truncated: true,
+        ),
+        board: _snapshot({
+          'build/boot.py': _board('build/boot.py', 7, _at(2000)),
+        }),
+        ignore: SyncIgnoreRules.parse('build\n'),
+      );
+
+      final row = plan.entries.single;
+      expect(row.ignoredByDefault, isTrue);
+      expect(row.selectable, isFalse);
+      expect(row.note, isNotNull);
+      expect(plan.actionable, isEmpty);
+      expect(plan.defaultSelection, isEmpty);
+    });
+
     test('keeps rows whose local copy was scanned uploadable', () {
       final plan = buildSyncPlan(
         local: SyncTreeSnapshot(
