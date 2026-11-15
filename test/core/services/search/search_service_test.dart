@@ -356,6 +356,40 @@ void main() {
       expect(await file.readAsString(), 'X\r\nX\r\n');
     });
 
+    test('keeps a CRLF separator inside an expanded group reference', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a\r\nb');
+
+      const options = SearchOptions(
+        pattern: r'a(\s*)b',
+        isRegExp: true,
+        replaceText: r'a<$1>b',
+      );
+      final replaced = await replaceAllInResults([
+        FileSearchResult(filePath: file.path, matches: const []),
+      ], options);
+
+      expect(replaced, 1);
+      expect(await file.readAsString(), 'a<\r\n>b');
+    });
+
+    test('keeps a CRLF separator inside the whole-match reference', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a\r\nb');
+
+      const options = SearchOptions(
+        pattern: r'a\s*b',
+        isRegExp: true,
+        replaceText: r'<$0>',
+      );
+      final replaced = await replaceAllInResults([
+        FileSearchResult(filePath: file.path, matches: const []),
+      ], options);
+
+      expect(replaced, 1);
+      expect(await file.readAsString(), '<a\r\nb>');
+    });
+
     test(
       'keeps an unusable group reference literal instead of failing',
       () async {
@@ -445,6 +479,24 @@ void main() {
         expect(await file.readAsString(), 'foo\r\nX\r\n');
       },
     );
+
+    test('keeps a CRLF separator inside a group reference', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a\r\nb');
+
+      final ok = await replaceOneOccurrence(
+        file.path,
+        const SearchOptions(
+          pattern: r'a(\s*)b',
+          isRegExp: true,
+          replaceText: r'a<$1>b',
+        ),
+        0,
+      );
+
+      expect(ok, isTrue);
+      expect(await file.readAsString(), 'a<\r\n>b');
+    });
 
     test('returns false when the occurrence does not exist', () async {
       final file = File(path.join(temp.path, 'a.txt'));

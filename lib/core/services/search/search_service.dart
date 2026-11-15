@@ -418,6 +418,13 @@ Future<List<FileSearchResult>> searchInDirectory(
 /// covers in the raw on-disk content.
 typedef _DisplayedMatch = ({RegExpMatch match, int start, int end});
 
+/// The displayed matches for one file plus the map needed to translate any
+/// offset in their normalized text back to the raw file.
+typedef _DisplayedMatches = ({
+  List<_DisplayedMatch> matches,
+  List<int> droppedCrAt,
+});
+
 /// The matches [matchFiles] would list for [content], with each span mapped
 /// back to [content]'s offsets.
 ///
@@ -426,7 +433,7 @@ typedef _DisplayedMatch = ({RegExpMatch match, int start, int end});
 /// list omits (zero-length and line-terminator matches) are omitted here too,
 /// which keeps a result ordinal pointing at the row the user clicked even
 /// when CRLF normalization changes the raw text.
-List<_DisplayedMatch> _displayedMatches(String content, RegExp regex) {
+_DisplayedMatches _displayedMatches(String content, RegExp regex) {
   final normalized = _normalizeForReplace(content);
   final lineStarts = _lineStarts(normalized.text);
   final matches = <_DisplayedMatch>[];
@@ -438,7 +445,7 @@ List<_DisplayedMatch> _displayedMatches(String content, RegExp regex) {
       end: _rawOffset(match.end, normalized.droppedCrAt),
     ));
   }
-  return matches;
+  return (matches: matches, droppedCrAt: normalized.droppedCrAt);
 }
 
 /// Replaces every match the results list shows in the files that currently
@@ -472,14 +479,20 @@ Future<int> replaceAllInResults(
       continue;
     }
 
-    final matches = _displayedMatches(content, regex);
+    final displayed = _displayedMatches(content, regex);
+    final matches = displayed.matches;
     if (matches.isEmpty) {
       done++;
       onProgress?.call(done, results.length);
       continue;
     }
 
-    final newContent = _replaceContent(content, matches, options);
+    final newContent = _replaceContent(
+      content,
+      matches,
+      options,
+      droppedCrAt: displayed.droppedCrAt,
+    );
     if (newContent != content) {
       try {
         await file.writeAsString(newContent);
@@ -514,11 +527,17 @@ Future<bool> replaceOneOccurrence(
   if (content == null) return false;
 
   final regex = options.toRegExp(multiLine: true);
-  final matches = _displayedMatches(content, regex);
+  final displayed = _displayedMatches(content, regex);
+  final matches = displayed.matches;
   if (occurrenceIndex < 0 || occurrenceIndex >= matches.length) return false;
   final target = matches[occurrenceIndex];
 
-  final replacement = _expandReplacement(target.match, options);
+  final replacement = _expandReplacement(
+    target.match,
+    options,
+    content: content,
+    droppedCrAt: displayed.droppedCrAt,
+  );
   final newContent =
       content.substring(0, target.start) +
       replacement +
@@ -543,15 +562,44 @@ Future<bool> replaceOneOccurrence(
 /// come straight from the user's replacement text, and `$12345678901234567890`
 /// overflows a 64-bit int, so parsing it would throw and abort the whole
 /// replace instead of inserting the literal text the user typed.
-String _expandReplacement(Match match, SearchOptions options) {
+String _expandReplacement(
+  Match match,
+  SearchOptions options, {
+  required String content,
+  required List<int> droppedCrAt,
+}) {
   if (!options.isRegExp) return options.replaceText;
+
+  // Group text comes from the normalized match, but the bytes written into a
+  // raw span must keep the file's own separators. Locate the group inside the
+  // match's normalized text, then map that span back to [content] and copy
+  // the raw bytes, so a `\r\n` inside a capture stays intact.
+  String rawGroup(int index) {
+    final text = match.group(index);
+    if (text == null) return '';
+    if (index == 0) {
+      return content.substring(
+        _rawOffset(match.start, droppedCrAt),
+        _rawOffset(match.end, droppedCrAt),
+      );
+    }
+    if (text.isEmpty) return '';
+    final matchText = match.group(0) ?? '';
+    final relativeStart = matchText.indexOf(text);
+    if (relativeStart < 0) return text;
+    final start = match.start + relativeStart;
+    return content.substring(
+      _rawOffset(start, droppedCrAt),
+      _rawOffset(start + text.length, droppedCrAt),
+    );
+  }
+
   return options.replaceText.replaceAllMapped(RegExp(r'\$(\d+)'), (group) {
     final reference = group.group(0)!;
     final index = int.tryParse(group.group(1)!);
     if (index == null) return reference;
-    if (index == 0) return match.group(0) ?? '';
     if (index > match.groupCount) return reference;
-    return match.group(index) ?? '';
+    return rawGroup(index);
   });
 }
 
@@ -565,13 +613,21 @@ String _expandReplacement(Match match, SearchOptions options) {
 String _replaceContent(
   String content,
   List<_DisplayedMatch> matches,
-  SearchOptions options,
-) {
+  SearchOptions options, {
+  required List<int> droppedCrAt,
+}) {
   final buffer = StringBuffer();
   var cursor = 0;
   for (final target in matches) {
     buffer.write(content.substring(cursor, target.start));
-    buffer.write(_expandReplacement(target.match, options));
+    buffer.write(
+      _expandReplacement(
+        target.match,
+        options,
+        content: content,
+        droppedCrAt: droppedCrAt,
+      ),
+    );
     cursor = target.end;
   }
   buffer.write(content.substring(cursor));
