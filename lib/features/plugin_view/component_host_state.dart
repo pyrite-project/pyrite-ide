@@ -41,11 +41,14 @@ class ComponentHostState implements ComponentMethodHostEntry {
   /// The plugin value that was current when each local edit started.
   final Map<String, Object?> _editBases = {};
 
-  /// The most recent value a local edit sent to the plugin.
+  /// Recently emitted values per component, oldest first.
   ///
-  /// An echo of an older emitted value can arrive after the user typed
-  /// further; that echo must not discard the newer local input.
-  final Map<String, Object?> _lastEmittedValues = {};
+  /// An echo of any earlier emitted value can arrive after the user typed
+  /// further; treating only the most recent one as an echo would let a delayed
+  /// snapshot discard the newer local input. Bounded so a long editing session
+  /// cannot grow the list without limit.
+  final Map<String, List<Object?>> _emittedHistory = {};
+  static const int _emittedHistoryLimit = 16;
 
   /// Monotonic edit counter per component.
   ///
@@ -84,6 +87,7 @@ class ComponentHostState implements ComponentMethodHostEntry {
       // rebuild; its edit baseline keeps protecting it, so only the last
       // observed plugin value is dropped here.
       _pluginValues.remove(id);
+      _emittedHistory.remove(id);
       final controller = _controllers.remove(id);
       if (controller is ChangeNotifier) controller.dispose();
     }
@@ -116,8 +120,8 @@ class ComponentHostState implements ComponentMethodHostEntry {
       acknowledge(id, pluginValue);
       return;
     }
-    if (_lastEmittedValues.containsKey(id) &&
-        pluginValue == _lastEmittedValues[id]) {
+    final emitted = _emittedHistory[id];
+    if (emitted != null && emitted.contains(pluginValue)) {
       return;
     }
     if (_editBases.containsKey(id) && pluginValue == _editBases[id]) {
@@ -267,7 +271,7 @@ class ComponentHostState implements ComponentMethodHostEntry {
       // The plugin may have taken the value back while the timer was waiting.
       // Emitting then would push a keystroke the host already discarded.
       if (_editGenerations[id] != generation) return;
-      if (_localValues.containsKey(id)) _lastEmittedValues[id] = value;
+      if (_localValues.containsKey(id)) _rememberEmitted(id, value);
       emit(value);
     });
   }
@@ -275,8 +279,16 @@ class ComponentHostState implements ComponentMethodHostEntry {
   void flush(String id, Object? value, void Function(Object? value) emit) {
     _debounces.remove(id)?.cancel();
     _recordLocalValue(id, value);
-    _lastEmittedValues[id] = value;
+    _rememberEmitted(id, value);
     emit(value);
+  }
+
+  /// Adds [value] to the component's bounded echo history.
+  void _rememberEmitted(String id, Object? value) {
+    final history = _emittedHistory.putIfAbsent(id, () => <Object?>[]);
+    if (history.isNotEmpty && history.last == value) return;
+    history.add(value);
+    if (history.length > _emittedHistoryLimit) history.removeAt(0);
   }
 
   /// Records [value] as the host-local value for [id].
@@ -293,7 +305,8 @@ class ComponentHostState implements ComponentMethodHostEntry {
   void _clearLocalValue(String id) {
     _localValues.remove(id);
     _editBases.remove(id);
-    _lastEmittedValues.remove(id);
+    // The echo history survives: a delayed snapshot of a value this control
+    // emitted earlier is still an echo, not a new plugin value.
     // Bump the generation instead of removing it: a timer scheduled before
     // the clear still holds the old number and will now skip its emit.
     _editGenerations[id] = (_editGenerations[id] ?? 0) + 1;
@@ -535,7 +548,8 @@ class ComponentHostState implements ComponentMethodHostEntry {
     _localValueKeys.clear();
     _pluginValues.clear();
     _editBases.clear();
-    _lastEmittedValues.clear();
+    _emittedHistory.clear();
+    _editGenerations.clear();
     _trees.clear();
     _componentTypes.clear();
     _componentProps.clear();
