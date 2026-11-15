@@ -1,0 +1,214 @@
+name: Pyra PR Builder
+run-name: pyra:${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Pyra request reference
+        required: true
+        type: string
+      pr_number:
+        description: Target pull request number
+        required: true
+        type: string
+      source_sha:
+        description: Exact source commit
+        required: true
+        type: string
+      source_repository:
+        description: Verified PR source repository
+        required: true
+        type: string
+      workflow_sha:
+        description: Exact trusted base-branch workflow commit
+        required: true
+        type: string
+
+# These limits apply even though dispatch runs in the base branch context.
+# PR scripts must never inherit release secrets or default-branch cache access.
+permissions:
+  contents: read
+cache-mode: none
+
+concurrency:
+  group: pyra-pr-${{ github.repository_id }}-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+env:
+  PYRA_SOURCE_SHA: ${{ inputs.source_sha }}
+  PYRA_WORKFLOW_SHA: ${{ inputs.workflow_sha }}
+  PYRA_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+  PYRA_PR_NUMBER: ${{ inputs.pr_number }}
+  PYRA_REQUEST_ID: ${{ inputs.request_id }}
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  analyze:
+    name: pyra-analyze
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate dispatch snapshot
+        run: |
+          set -euo pipefail
+          [[ "$PYRA_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$PYRA_WORKFLOW_SHA" == "$GITHUB_SHA" ]]
+          [[ "$PYRA_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$PYRA_REQUEST_ID" =~ ^build_[A-Za-z0-9_-]+$ ]]
+          [[ "$PYRA_SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+      - name: Checkout exact PR source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+          submodules: recursive
+      - name: Verify source identity
+        run: test "$(git rev-parse HEAD)" = "$PYRA_SOURCE_SHA"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: "3.44.4"
+          channel: stable
+          cache: false
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos lib test
+      - run: flutter test --reporter expanded
+
+  build:
+    name: pyra-${{ matrix.target }}
+    needs: analyze
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+            python_platform: Linux
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            python_platform: Linux
+          - target: macos-universal
+            runner: macos-15
+            python_platform: Darwin
+          - target: windows-x64
+            runner: windows-2022
+            python_platform: Windows
+          - target: android
+            runner: ubuntu-24.04
+            python_platform: Android
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate workflow snapshot
+        run: |
+          set -euo pipefail
+          [[ "$PYRA_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$PYRA_WORKFLOW_SHA" == "$GITHUB_SHA" ]]
+      - name: Checkout exact PR source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+          submodules: recursive
+      - name: Verify source identity
+        run: test "$(git rev-parse HEAD)" = "$PYRA_SOURCE_SHA"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: "3.44.4"
+          channel: stable
+          cache: false
+      - name: Set up Java
+        if: matrix.target == 'android'
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Linux dependencies
+        if: startsWith(matrix.target, 'linux-')
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build libgtk-3-dev pkg-config libmpv-dev mpv
+      - name: Install macOS dependencies
+        if: matrix.target == 'macos-universal'
+        run: brew install automake libtool
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - name: Install both macOS Rust targets
+        if: matrix.target == 'macos-universal'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: flutter pub get
+      - name: Package Python runtime
+        env:
+          PYRA_PYTHON_PLATFORM: ${{ matrix.python_platform }}
+        run: |
+          export SERIOUS_PYTHON_SITE_PACKAGES="$GITHUB_WORKSPACE/assets/python_runtime_boot"
+          dart run serious_python:main package assets/python_runtime_boot \
+            --platform "$PYRA_PYTHON_PLATFORM" \
+            --asset assets/python_runtime_boot.zip --verbose
+          mkdir -p pyra-out
+      - name: Build Linux
+        if: startsWith(matrix.target, 'linux-')
+        env:
+          PYRA_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          arch="${PYRA_TARGET#linux-}"
+          flutter build linux --release --verbose --target-platform "linux-$arch"
+          tar -czf "pyra-out/$PYRA_TARGET.tar.gz" -C "build/linux/$arch/release" bundle
+      - name: Build macOS Universal
+        if: matrix.target == 'macos-universal'
+        env:
+          # Flutter forwards FLUTTER_XCODE_* to xcodebuild. Release defaults to
+          # universal; make both required slices explicit for native plugins too.
+          FLUTTER_XCODE_ARCHS: arm64 x86_64
+          FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "NO"
+          FLUTTER_XCODE_CODE_SIGN_IDENTITY: "-"
+        run: |
+          set -euo pipefail
+          flutter build macos --release --no-tree-shake-icons --verbose
+          app="build/macos/Build/Products/Release/PyriteIDE.app"
+          binary="$app/Contents/MacOS/PyriteIDE"
+          lipo -verify_arch arm64 x86_64 "$binary"
+          # Validate native frameworks and Python extensions, not just the runner.
+          while IFS= read -r -d '' file; do
+            if file -b "$file" | grep -q 'Mach-O'; then
+              lipo -verify_arch arm64 x86_64 "$file"
+            fi
+          done < <(find "$app" -type f -print0)
+          ditto -c -k --sequesterRsrc --keepParent "$app" pyra-out/macos-universal.zip
+      - name: Build Windows
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          flutter build windows --release --verbose
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath pyra-out/windows-x64.zip
+      - name: Build Android APKs
+        if: matrix.target == 'android'
+        run: |
+          set -euo pipefail
+          flutter build apk --release --split-per-abi --no-tree-shake-icons --verbose
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "pyra-out/android-$abi.apk"
+          done
+      - name: Upload packages for Pyra
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pyra-${{ matrix.target }}-${{ github.run_attempt }}
+          path: pyra-out/*
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
