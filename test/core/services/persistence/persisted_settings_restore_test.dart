@@ -49,32 +49,37 @@ class _RecordingContainer extends ProviderContainer {
 
 class _NoopAppPersistence extends AppPersistence {
   @override
-  Future<void> save(AppPersistedData data) async {}
+  Future<bool> save(AppPersistedData data, {String? encoded}) async => true;
 }
 
 class _NoopSettingsPersistence extends SettingsPersistence {
   @override
-  Future<void> save(SettingsPersistedData data) async {}
+  Future<bool> save(SettingsPersistedData data, {String? encoded}) async =>
+      true;
 }
 
 class _NoopFunctionPagePersistence extends FunctionPagePersistence {
   @override
-  Future<void> save(FunctionPagePersistedData data) async {}
+  Future<bool> save(FunctionPagePersistedData data, {String? encoded}) async =>
+      true;
 }
 
 class _NoopProjectPersistence extends ProjectPersistence {
   @override
-  Future<void> save(ProjectPersistedData data) async {}
+  Future<bool> save(ProjectPersistedData data, {String? encoded}) async => true;
 }
 
 class _NoopTabsPersistence extends TabsPersistence {
   @override
-  Future<void> save(TabsPersistedData data) async {}
+  Future<bool> save(TabsPersistedData data, {String? encoded}) async => true;
 }
 
 class _NoopDataContributionsPersistence extends DataContributionsPersistence {
   @override
-  Future<void> save(List<DataContributionRecord> records) async {}
+  Future<bool> save(
+    List<DataContributionRecord> records, {
+    String? encoded,
+  }) async => true;
 }
 
 void main() {

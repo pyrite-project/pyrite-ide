@@ -63,17 +63,26 @@ class FunctionPagePersistence {
     }
   }
 
-  Future<void> save(FunctionPagePersistedData data) async {
+  /// Returns whether the bytes reached disk.
+  ///
+  /// [encoded] lets the save scheduler reuse a payload it already serialized
+  /// to decide whether the store changed.
+  Future<bool> save(FunctionPagePersistedData data, {String? encoded}) async {
     try {
       final file = await _file;
       // Temp file + rename, like the other JSON stores: a crash mid-write
       // leaves truncated JSON behind, and load() turns a parse error into
       // null, which silently resets this store to its defaults.
       final temp = File('${file.path}.tmp');
-      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.writeAsString(
+        encoded ?? jsonEncode(data.toJson()),
+        flush: true,
+      );
       await temp.rename(file.path);
+      return true;
     } catch (e) {
       debugPrint('FunctionPagePersistence: Failed to save: $e');
+      return false;
     }
   }
 }
