@@ -6,11 +6,12 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/git/git_blame_gutter.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_provider.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/shared/dialog_form_fields.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
@@ -55,7 +56,7 @@ class _GitPageState extends ConsumerState<GitPage> {
   @override
   void initState() {
     super.initState();
-    GitDebugLog.log('GitPage.initState');
+    AppLog.d('git', 'GitPage.initState');
     _messageController = TextEditingController();
     _authorController = TextEditingController(text: _fallbackAuthorName);
     _emailController = TextEditingController(text: _fallbackAuthorEmail);
@@ -68,7 +69,7 @@ class _GitPageState extends ConsumerState<GitPage> {
 
   @override
   void dispose() {
-    GitDebugLog.log('GitPage.dispose');
+    AppLog.d('git', 'GitPage.dispose');
     _messageController.dispose();
     _authorController.dispose();
     _emailController.dispose();
@@ -100,11 +101,11 @@ class _GitPageState extends ConsumerState<GitPage> {
     });
     final state = ref.watch(gitProvider);
     final snapshot = state.snapshot;
-    if (GitDebugLog.enabled) {
+    if (AppLog.debugEnabled) {
       final buildSignature = _gitPageBuildSignature(state, snapshot);
       if (buildSignature != _lastLoggedBuildSignature) {
         _lastLoggedBuildSignature = buildSignature;
-        GitDebugLog.log('GitPage.build $buildSignature');
+        AppLog.d('git', 'GitPage.build $buildSignature');
       }
     }
     if (snapshot == null) {
@@ -147,9 +148,9 @@ class _GitPageState extends ConsumerState<GitPage> {
         ),
       );
     }
-    GitDebugLog.log('GitPage.syncCommitIdentity start');
+    AppLog.d('git', 'GitPage.syncCommitIdentity start');
     _syncCommitIdentity(snapshot);
-    GitDebugLog.log('GitPage.syncCommitIdentity end');
+    AppLog.d('git', 'GitPage.syncCommitIdentity end');
 
     return Theme(
       data: _compactChromeTheme(context),

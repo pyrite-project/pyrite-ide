@@ -6,9 +6,9 @@ import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/git/git_isolate_runner.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 const _maxUntrackedScanEntries = 20000;
 const _maxUntrackedStatusEntries = 1000;
@@ -73,22 +73,23 @@ class GitRepositoryService {
   Duration get commandTimeout => _commandTimeout;
 
   Future<GitRepositorySnapshot?> loadSnapshot(String? workspacePath) async {
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService.loadSnapshot start workspace=$workspacePath',
     );
     final rootPath = await discoverRoot(workspacePath);
     if (rootPath == null) {
-      GitDebugLog.log('GitRepositoryService.loadSnapshot no repository found');
+      AppLog.d('git', 'GitRepositoryService.loadSnapshot no repository found');
       return null;
     }
     return _runInIsolate('loadSnapshot', () async {
       try {
         return await _withRepository(rootPath, _buildSnapshot);
-      } catch (error, stackTrace) {
-        GitDebugLog.log(
+      } catch (error) {
+        AppLog.d(
+          'git',
           'GitRepositoryService.loadSnapshot error root=$rootPath',
           error: error,
-          stackTrace: stackTrace,
         );
         rethrow;
       }
@@ -1071,7 +1072,7 @@ class GitRepositoryService {
     T? fallback,
   }) async {
     final stopwatch = Stopwatch()..start();
-    GitDebugLog.log('GitRepositoryService.$label isolate start');
+    AppLog.d('git', 'GitRepositoryService.$label isolate start');
     try {
       final result = await runGitJob<T>(
         () async => body(),
@@ -1080,24 +1081,26 @@ class GitRepositoryService {
         describeError: _describeJobError,
         translate: _tr,
       );
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService.$label isolate end '
-        '${stopwatch.elapsedMilliseconds}ms',
+            '${stopwatch.elapsedMilliseconds}ms',
       );
       return result;
     } on GitJobFailureException catch (error, stackTrace) {
       final restored = _restoreJobError(error.failure);
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService.$label isolate failed code=${error.failure.code}',
         error: restored,
-        stackTrace: error.failure.stack.isEmpty ? stackTrace : null,
       );
       if (swallowErrors) return fallback as T;
       Error.throwWithStackTrace(restored, stackTrace);
     } on TimeoutException {
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService.$label isolate timeout '
-        '${stopwatch.elapsedMilliseconds}ms',
+            '${stopwatch.elapsedMilliseconds}ms',
       );
       if (swallowErrors) return fallback as T;
       rethrow;
@@ -1168,7 +1171,7 @@ class GitRepositoryService {
         : p.dirname(workspacePath);
     try {
       final gitDir = Repository.discover(startPath: startPath);
-      GitDebugLog.log('Repository.discover end gitDir=$gitDir');
+      AppLog.d('git', 'Repository.discover end gitDir=$gitDir');
       final repo = Repository.open(gitDir);
       try {
         final workdir = repo.workdir;
@@ -1177,11 +1180,11 @@ class GitRepositoryService {
       } finally {
         repo.free();
       }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService.discoverRoot failed startPath=$startPath',
         error: error,
-        stackTrace: stackTrace,
       );
       return null;
     }
@@ -1190,87 +1193,33 @@ class GitRepositoryService {
   /// 组装一次完整 snapshot。所有回调都在同一个 isolate 里执行，返回的
   /// [GitRepositorySnapshot] 只含基本类型/DTO，可安全跨 isolate 传递。
   Future<GitRepositorySnapshot> _buildSnapshot(Repository repo) async {
-    final statusEntries = GitDebugLog.timeSync(
-      'GitRepositoryService.statusEntries',
-      () => _statusEntries(repo),
-      result: (value) =>
-          'count=${value.length} untracked=${value.where((entry) => entry.isUntracked).length}',
-    );
-    final conflicts = await GitDebugLog.timeAsync(
-      'GitRepositoryService.conflicts',
-      () => _conflicts(repo, statusEntries),
-      result: (value) => 'count=${value.length}',
-    );
-    final aheadBehind = GitDebugLog.timeSync(
-      'GitRepositoryService.aheadBehind',
-      () => _aheadBehind(repo),
-      result: (value) => 'ahead=${value.$1} behind=${value.$2}',
-    );
-    final unstagedPatch = await GitDebugLog.timeAsync(
-      'GitRepositoryService.unstagedPatch',
-      () => _unstagedPatch(repo, statusEntries),
-      result: (value) => 'bytes=${value.length}',
-    );
+    final statusEntries = _statusEntries(repo);
+    final conflicts = await _conflicts(repo, statusEntries);
+    final aheadBehind = _aheadBehind(repo);
+    final unstagedPatch = await _unstagedPatch(repo, statusEntries);
     final root = _normalizeWorkdir(repo.workdir);
     final gitDir = p.normalize(repo.path);
-    final branchLabel = GitDebugLog.timeSync(
-      'GitRepositoryService.branchLabel',
-      () => _branchLabel(repo),
-    );
-    final stateLabel = GitDebugLog.timeSync(
-      'GitRepositoryService.repositoryStateLabel',
-      () => _repositoryStateLabel(repo),
-    );
+    final branchLabel = _branchLabel(repo);
+    final stateLabel = _repositoryStateLabel(repo);
     final isDetached = _isDetached(repo);
     final isEmpty = _isEmpty(repo);
     final authorName = _configValue(repo, 'user.name') ?? 'Pyrite User';
     final authorEmail =
         _configValue(repo, 'user.email') ?? 'pyrite@example.local';
-    final branches = GitDebugLog.timeSync(
-      'GitRepositoryService.branches',
-      () => _branches(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final remotes = GitDebugLog.timeSync(
-      'GitRepositoryService.remotes',
-      () => _remotes(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final stashes = GitDebugLog.timeSync(
-      'GitRepositoryService.stashes',
-      () => _stashes(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final tags = GitDebugLog.timeSync(
-      'GitRepositoryService.tags',
-      () => _tags(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final submodules = GitDebugLog.timeSync(
-      'GitRepositoryService.submodules',
-      () => _submodules(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final worktrees = GitDebugLog.timeSync(
-      'GitRepositoryService.worktrees',
-      () => _worktrees(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final commits = GitDebugLog.timeSync(
-      'GitRepositoryService.commits',
-      () => _commits(repo),
-      result: (value) => 'count=${value.length}',
-    );
-    final stagedPatch = GitDebugLog.timeSync(
-      'GitRepositoryService.stagedPatch',
-      () => _stagedPatch(repo),
-      result: (value) => 'bytes=${value.length}',
-    );
+    final branches = _branches(repo);
+    final remotes = _remotes(repo);
+    final stashes = _stashes(repo);
+    final tags = _tags(repo);
+    final submodules = _submodules(repo);
+    final worktrees = _worktrees(repo);
+    final commits = _commits(repo);
+    final stagedPatch = _stagedPatch(repo);
 
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService.loadSnapshot complete root=$root '
-      'gitDir=$gitDir status=${statusEntries.length} '
-      'branches=${branches.length} commits=${commits.length}',
+          'gitDir=$gitDir status=${statusEntries.length} '
+          'branches=${branches.length} commits=${commits.length}',
     );
     return GitRepositorySnapshot(
       rootPath: root,
@@ -1302,25 +1251,22 @@ class GitRepositoryService {
     FutureOr<T> Function(Repository repo) action,
   ) async {
     final stopwatch = Stopwatch()..start();
-    GitDebugLog.log('Repository.open(root) start root=$rootPath');
+    AppLog.d('git', 'Repository.open(root) start root=$rootPath');
     final repo = Repository.open(rootPath);
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'Repository.open(root) end ${stopwatch.elapsedMilliseconds}ms '
-      'path=${repo.path} workdir=${repo.workdir}',
+          'path=${repo.path} workdir=${repo.workdir}',
     );
     try {
       return await action(repo);
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
-        'Repository action error root=$rootPath',
-        error: error,
-        stackTrace: stackTrace,
-      );
+    } catch (error) {
+      AppLog.d('git', 'Repository action error root=$rootPath', error: error);
       rethrow;
     } finally {
-      GitDebugLog.log('Repository.free(root) start root=$rootPath');
+      AppLog.d('git', 'Repository.free(root) start root=$rootPath');
       repo.free();
-      GitDebugLog.log('Repository.free(root) end root=$rootPath');
+      AppLog.d('git', 'Repository.free(root) end root=$rootPath');
     }
   }
 
@@ -1370,7 +1316,8 @@ class GitRepositoryService {
     List<GitStatusEntry> entries,
   ) async {
     final rootPath = _normalizeWorkdir(repo.workdir);
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._unstagedPatch start entries=${entries.length}',
     );
     final parts = <String>[_trackedUnstagedPatch(repo)];
@@ -1378,9 +1325,10 @@ class GitRepositoryService {
     for (final entry in entries) {
       if (!entry.isUntracked) continue;
       if (untrackedPatchCount >= _maxSnapshotUntrackedPatches) break;
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService._unstagedPatch untracked start '
-        'path=${entry.path} index=$untrackedPatchCount',
+            'path=${entry.path} index=$untrackedPatchCount',
       );
       final patch = await _untrackedFilePatch(rootPath, entry.path);
       if (patch.isNotEmpty) parts.add(patch);
@@ -1390,32 +1338,35 @@ class GitRepositoryService {
   }
 
   String _trackedUnstagedPatch(Repository repo, {String? filePath}) {
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._trackedUnstagedPatch start filePath=$filePath',
     );
     final index = repo.index;
     try {
-      GitDebugLog.log('Diff.indexToWorkdir start filePath=$filePath');
+      AppLog.d('git', 'Diff.indexToWorkdir start filePath=$filePath');
       final diff = Diff.indexToWorkdir(repo: repo, index: index);
       try {
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'Diff.indexToWorkdir end filePath=$filePath length=${diff.length}',
         );
         final patch = _patchText(diff, filePath: filePath);
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitRepositoryService._trackedUnstagedPatch end '
-          'filePath=$filePath bytes=${patch.length}',
+              'filePath=$filePath bytes=${patch.length}',
         );
         return patch;
       } finally {
-        GitDebugLog.log('Diff.indexToWorkdir free filePath=$filePath');
+        AppLog.d('git', 'Diff.indexToWorkdir free filePath=$filePath');
         diff.free();
       }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._trackedUnstagedPatch failed filePath=$filePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return '';
     } finally {
@@ -1424,36 +1375,39 @@ class GitRepositoryService {
   }
 
   String _stagedPatch(Repository repo, {String? filePath}) {
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._stagedPatch start filePath=$filePath',
     );
     final index = repo.index;
     try {
-      GitDebugLog.log('Diff.treeToIndex start filePath=$filePath');
+      AppLog.d('git', 'Diff.treeToIndex start filePath=$filePath');
       final diff = Diff.treeToIndex(
         repo: repo,
         tree: _headTreeOrNull(repo),
         index: index,
       );
       try {
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'Diff.treeToIndex end filePath=$filePath length=${diff.length}',
         );
         final patch = _patchText(diff, filePath: filePath);
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitRepositoryService._stagedPatch end '
-          'filePath=$filePath bytes=${patch.length}',
+              'filePath=$filePath bytes=${patch.length}',
         );
         return patch;
       } finally {
-        GitDebugLog.log('Diff.treeToIndex free filePath=$filePath');
+        AppLog.d('git', 'Diff.treeToIndex free filePath=$filePath');
         diff.free();
       }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._stagedPatch failed filePath=$filePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return '';
     } finally {
@@ -1463,21 +1417,22 @@ class GitRepositoryService {
 
   String _patchText(Diff diff, {String? filePath}) {
     if (filePath == null) {
-      GitDebugLog.log('Diff.patch start length=${diff.length}');
+      AppLog.d('git', 'Diff.patch start length=${diff.length}');
       final patch = diff.patch.trimRight();
-      GitDebugLog.log('Diff.patch end bytes=${patch.length}');
+      AppLog.d('git', 'Diff.patch end bytes=${patch.length}');
       return patch;
     }
 
     final wanted = _gitPath(filePath);
     final parts = <String>[];
     for (var index = 0; index < diff.length; index += 1) {
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'Patch.fromDiff start filePath=$filePath index=$index length=${diff.length}',
       );
       final patch = Patch.fromDiff(diff: diff, index: index);
       try {
-        GitDebugLog.log('Patch.fromDiff end filePath=$filePath index=$index');
+        AppLog.d('git', 'Patch.fromDiff end filePath=$filePath index=$index');
         final delta = patch.delta;
         final paths = {
           _gitPath(delta.oldFile.path),
@@ -1495,12 +1450,14 @@ class GitRepositoryService {
   }
 
   Future<String> _untrackedFilePatch(String rootPath, String filePath) async {
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._untrackedFilePatch start path=$filePath',
     );
     final file = File(p.join(rootPath, filePath));
     if (!await file.exists()) {
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService._untrackedFilePatch missing path=$filePath',
       );
       return '';
@@ -1516,15 +1473,16 @@ class GitRepositoryService {
     late final int length;
     try {
       length = await file.length();
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService._untrackedFilePatch length path=$filePath '
-        'bytes=$length',
+            'bytes=$length',
       );
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._untrackedFilePatch length failed path=$filePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return '';
     }
@@ -1539,11 +1497,11 @@ class GitRepositoryService {
     late final List<int> bytes;
     try {
       bytes = await file.readAsBytes();
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._untrackedFilePatch read failed path=$filePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return '';
     }
@@ -1568,13 +1526,14 @@ class GitRepositoryService {
   }
 
   List<GitStatusEntry> _statusEntries(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._statusEntries repo.status start');
+    AppLog.d('git', 'GitRepositoryService._statusEntries repo.status start');
     final statuses = Map<String, Set<GitStatus>>.fromEntries(
       repo.status.entries.map(
         (entry) => MapEntry(_gitPath(entry.key), entry.value),
       ),
     );
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._statusEntries repo.status end count=${statuses.length}',
     );
     _addUntrackedStatuses(repo, statuses);
@@ -1604,9 +1563,10 @@ class GitRepositoryService {
     if (rootPath.isEmpty) return;
 
     final stopwatch = Stopwatch()..start();
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._addUntrackedStatuses start root=$rootPath '
-      'existing=${statuses.length}',
+          'existing=${statuses.length}',
     );
     final trackedPaths = _trackedIndexPaths(repo);
     final pendingDirectories = <Directory>[Directory(rootPath)];
@@ -1625,11 +1585,12 @@ class GitRepositoryService {
           break;
         }
         scannedEntries++;
-        if (GitDebugLog.enabled && scannedEntries % 1000 == 0) {
-          GitDebugLog.log(
+        if (AppLog.debugEnabled && scannedEntries % 1000 == 0) {
+          AppLog.d(
+            'git',
             'GitRepositoryService._addUntrackedStatuses progress '
-            'scanned=$scannedEntries untracked=$untrackedEntries '
-            'pendingDirs=${pendingDirectories.length}',
+                'scanned=$scannedEntries untracked=$untrackedEntries '
+                'pendingDirs=${pendingDirectories.length}',
           );
         }
 
@@ -1667,11 +1628,12 @@ class GitRepositoryService {
         }
       }
     }
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._addUntrackedStatuses end '
-      'elapsed=${stopwatch.elapsedMilliseconds}ms scanned=$scannedEntries '
-      'untracked=$untrackedEntries total=${statuses.length} '
-      'pendingDirs=${pendingDirectories.length}',
+          'elapsed=${stopwatch.elapsedMilliseconds}ms scanned=$scannedEntries '
+          'untracked=$untrackedEntries total=${statuses.length} '
+          'pendingDirs=${pendingDirectories.length}',
     );
   }
 
@@ -1690,11 +1652,11 @@ class GitRepositoryService {
   List<FileSystemEntity> _listDirectory(Directory directory) {
     try {
       return directory.listSync(followLinks: false);
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._listDirectory failed path=${directory.path}',
         error: error,
-        stackTrace: stackTrace,
       );
       return const [];
     }
@@ -1703,11 +1665,11 @@ class GitRepositoryService {
   Set<GitStatus> _statusFile(Repository repo, String relativePath) {
     try {
       return repo.statusFile(relativePath);
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'Repository.statusFile failed path=$relativePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return const {};
     }
@@ -1726,11 +1688,11 @@ class GitRepositoryService {
     try {
       return Ignore.pathIsIgnored(repo: repo, path: relativePath) ||
           Ignore.pathIsIgnored(repo: repo, path: '$relativePath/');
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'Ignore.pathIsIgnored failed path=$relativePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return false;
     }
@@ -1789,7 +1751,7 @@ class GitRepositoryService {
   }
 
   List<GitBranchInfo> _branches(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._branches start');
+    AppLog.d('git', 'GitRepositoryService._branches start');
     return [
       ..._branchInfos(repo, remote: false),
       ..._remoteBranchInfosFromRefs(repo),
@@ -1797,12 +1759,13 @@ class GitRepositoryService {
   }
 
   List<GitBranchInfo> _branchInfos(Repository repo, {required bool remote}) {
-    GitDebugLog.log('GitRepositoryService._branchInfos start remote=$remote');
+    AppLog.d('git', 'GitRepositoryService._branchInfos start remote=$remote');
     final branches = remote ? repo.branchesRemote : repo.branchesLocal;
     final infos = [
       for (final branch in branches) _branchInfo(repo, branch, remote: remote),
     ];
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._branchInfos end remote=$remote count=${infos.length}',
     );
     return infos;
@@ -1831,7 +1794,7 @@ class GitRepositoryService {
   }
 
   List<GitBranchInfo> _remoteBranchInfosFromRefs(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._remoteBranchInfosFromRefs start');
+    AppLog.d('git', 'GitRepositoryService._remoteBranchInfosFromRefs start');
     final refs = _remoteRefTargets(repo);
     final branches = [
       for (final entry in refs.entries)
@@ -1844,9 +1807,10 @@ class GitRepositoryService {
         ),
     ];
     branches.sort((a, b) => a.name.compareTo(b.name));
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._remoteBranchInfosFromRefs end '
-      'count=${branches.length}',
+          'count=${branches.length}',
     );
     return branches;
   }
@@ -1877,12 +1841,12 @@ class GitRepositoryService {
         if (_isRemoteHeadRef(branchName)) continue;
         refs[branchName] = parts[0];
       }
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._readPackedRemoteRefs failed '
-        'path=$packedRefsPath',
+            'path=$packedRefsPath',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }
@@ -1903,11 +1867,11 @@ class GitRepositoryService {
         if (value.isEmpty || value.startsWith('ref:')) continue;
         refs[branchName] = value;
       }
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._readLooseRemoteRefs failed path=$refsRootPath',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }
@@ -1979,12 +1943,12 @@ class GitRepositoryService {
       } finally {
         branch.free();
       }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._ensureBranchUpstream skipped '
-        'branch=$branchName remote=$remoteName',
+            'branch=$branchName remote=$remoteName',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }
@@ -2046,24 +2010,24 @@ class GitRepositoryService {
         repo: repo,
         name: 'refs/remotes/$remoteName/$branchName',
       );
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._pruneRemoteTrackingBranch failed '
-        'remote=$remoteName branch=$branchName',
+            'remote=$remoteName branch=$branchName',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }
 
   List<GitRemoteInfo> _remotes(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._remotes start');
+    AppLog.d('git', 'GitRepositoryService._remotes start');
     final remotes = <GitRemoteInfo>[];
     for (final name in repo.remotes) {
-      GitDebugLog.log('Remote.lookup start name=$name');
+      AppLog.d('git', 'Remote.lookup start name=$name');
       final remote = Remote.lookup(repo: repo, name: name);
       try {
-        GitDebugLog.log('Remote.lookup end name=$name url=${remote.url}');
+        AppLog.d('git', 'Remote.lookup end name=$name url=${remote.url}');
         remotes.add(
           GitRemoteInfo(
             name: remote.name,
@@ -2074,18 +2038,19 @@ class GitRepositoryService {
           ),
         );
       } finally {
-        GitDebugLog.log('Remote.free name=$name');
+        AppLog.d('git', 'Remote.free name=$name');
         remote.free();
       }
     }
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._remotes end count=${remotes.length}',
     );
     return remotes;
   }
 
   List<GitStashInfo> _stashes(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._stashes start');
+    AppLog.d('git', 'GitRepositoryService._stashes start');
     final stashes = [
       for (final stash in repo.stashes)
         GitStashInfo(
@@ -2094,20 +2059,21 @@ class GitRepositoryService {
           message: stash.message,
         ),
     ];
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._stashes end count=${stashes.length}',
     );
     return stashes;
   }
 
   List<GitTagInfo> _tags(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._tagsFromRefs start');
+    AppLog.d('git', 'GitRepositoryService._tagsFromRefs start');
     final refs = _tagRefTargets(repo);
     final tags = [
       for (final entry in refs.entries) _tagInfo(repo, entry.key, entry.value),
     ];
     tags.sort((a, b) => a.name.compareTo(b.name));
-    GitDebugLog.log('GitRepositoryService._tags end count=${tags.length}');
+    AppLog.d('git', 'GitRepositoryService._tags end count=${tags.length}');
     return tags;
   }
 
@@ -2131,11 +2097,11 @@ class GitRepositoryService {
         }
       }
       _freeGitObject(object);
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._tagInfo failed name=$name',
         error: error,
-        stackTrace: stackTrace,
       );
     }
     return GitTagInfo(name: name, targetSha: targetSha);
@@ -2190,11 +2156,11 @@ class GitRepositoryService {
         if (!refName.startsWith('refs/tags/')) continue;
         refs[refName.substring('refs/tags/'.length)] = parts[0];
       }
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._readPackedTagRefs failed path=$packedRefsPath',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }
@@ -2211,23 +2177,24 @@ class GitRepositoryService {
         if (value.isEmpty || value.startsWith('ref:')) continue;
         refs[name] = value;
       }
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._readLooseTagRefs failed path=$refsRootPath',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }
 
   List<GitSubmoduleInfo> _submodules(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._submodules start');
+    AppLog.d('git', 'GitRepositoryService._submodules start');
     final submodules = <GitSubmoduleInfo>[];
     for (final path in repo.submodules) {
-      GitDebugLog.log('Submodule.lookup start path=$path');
+      AppLog.d('git', 'Submodule.lookup start path=$path');
       final submodule = Submodule.lookup(repo: repo, name: path);
       try {
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'Submodule.lookup end path=$path name=${submodule.name}',
         );
         submodules.add(
@@ -2242,25 +2209,26 @@ class GitRepositoryService {
           ),
         );
       } finally {
-        GitDebugLog.log('Submodule.free path=$path');
+        AppLog.d('git', 'Submodule.free path=$path');
         submodule.free();
       }
     }
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._submodules end count=${submodules.length}',
     );
     return submodules;
   }
 
   List<GitWorktreeInfo> _worktrees(Repository repo) {
-    GitDebugLog.log('GitRepositoryService._worktrees start');
+    AppLog.d('git', 'GitRepositoryService._worktrees start');
     final rootPath = _normalizeWorkdir(repo.workdir);
     final worktrees = <GitWorktreeInfo>[];
     for (final name in repo.worktrees) {
-      GitDebugLog.log('Worktree.lookup start name=$name');
+      AppLog.d('git', 'Worktree.lookup start name=$name');
       final worktree = Worktree.lookup(repo: repo, name: name);
       try {
-        GitDebugLog.log('Worktree.lookup end name=$name path=${worktree.path}');
+        AppLog.d('git', 'Worktree.lookup end name=$name path=${worktree.path}');
         final worktreePath = p.normalize(worktree.path);
         if (p.equals(worktreePath, rootPath)) continue;
         worktrees.add(
@@ -2273,11 +2241,12 @@ class GitRepositoryService {
           ),
         );
       } finally {
-        GitDebugLog.log('Worktree.free name=$name');
+        AppLog.d('git', 'Worktree.free name=$name');
         worktree.free();
       }
     }
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._worktrees end count=${worktrees.length}',
     );
     return worktrees;
@@ -2288,23 +2257,25 @@ class GitRepositoryService {
     int limit = 80,
     String? pathspec,
   }) {
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitRepositoryService._commits start limit=$limit pathspec=$pathspec',
     );
     if (_isEmpty(repo)) return const [];
     final walker = RevWalk(repo);
     try {
-      GitDebugLog.log('RevWalk.sorting start pathspec=$pathspec');
+      AppLog.d('git', 'RevWalk.sorting start pathspec=$pathspec');
       walker.sorting(const {GitSort.topological, GitSort.time});
-      GitDebugLog.log('RevWalk.pushHead start pathspec=$pathspec');
+      AppLog.d('git', 'RevWalk.pushHead start pathspec=$pathspec');
       walker.pushHead();
       final walkLimit = pathspec == null ? limit : 2000;
       final commits = <GitCommitInfo>[];
       for (final commit in walker.walk(limit: walkLimit)) {
         if (commits.length % 20 == 0) {
-          GitDebugLog.log(
+          AppLog.d(
+            'git',
             'RevWalk progress pathspec=$pathspec count=${commits.length} '
-            'oid=${commit.oid.sha}',
+                'oid=${commit.oid.sha}',
           );
         }
         if (pathspec != null && !_commitTouchesPath(repo, commit, pathspec)) {
@@ -2313,20 +2284,21 @@ class GitRepositoryService {
         commits.add(_commitInfo(commit));
         if (commits.length >= limit) break;
       }
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitRepositoryService._commits end count=${commits.length} '
-        'pathspec=$pathspec',
+            'pathspec=$pathspec',
       );
       return commits;
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._commits failed pathspec=$pathspec',
         error: error,
-        stackTrace: stackTrace,
       );
       return const [];
     } finally {
-      GitDebugLog.log('RevWalk.free pathspec=$pathspec');
+      AppLog.d('git', 'RevWalk.free pathspec=$pathspec');
       walker.free();
     }
   }
@@ -2525,12 +2497,12 @@ class GitRepositoryService {
     );
     try {
       localBranch.setUpstream(remoteBranchName);
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitRepositoryService._ensureLocalTrackingBranch setUpstream failed '
-        'remote=$remoteBranchName local=$localName',
+            'remote=$remoteBranchName local=$localName',
         error: error,
-        stackTrace: stackTrace,
       );
     }
   }

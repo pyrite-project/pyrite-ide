@@ -346,6 +346,9 @@ class AppLog {
     }
   }
 
+  /// The file [w] and [e] records are appended to.
+  static String get logPath => _logPath;
+
   static String get _logPath => p.join(_logDirectoryPath(), _fileName);
 
   static String _logDirectoryPath() {

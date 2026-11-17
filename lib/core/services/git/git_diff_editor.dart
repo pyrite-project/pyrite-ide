@@ -1,8 +1,6 @@
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/constants/editor_themes.dart';
-import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/git/diff_display.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
@@ -42,17 +40,15 @@ class GitDiffEditor extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeKey = ref.watch(editorThemeKey);
-    final entry = findEditorThemeByKey(themeKey) ?? editorThemes.first;
-    final brightness = Theme.of(context).brightness;
     final surface = Theme.of(context).scaffoldBackgroundColor;
-    final resolvedTheme = applySurfaceBackground(
-      resolveEditorTheme(entry, brightness),
-      surface,
-    );
+    // The diff pane resolves its theme exactly like the main editor, so a
+    // plugin theme's token styles and typography apply here too. The cached
+    // bundle keeps the style objects identity-stable while the theme is
+    // unchanged, which is what lets CodeForge skip its didUpdateWidget work
+    // on unrelated rebuilds.
+    final bundle = resolveEditorSurfaceBundle(context, ref);
+    final resolvedTheme = bundle.theme;
     final colors = editorSurfaceColors(context, resolvedTheme);
-    final fontSize = ref.watch(editorFontSize);
-    final fontFamily = editorTextFonts[ref.watch(editorTextFontProvider)];
 
     return DecoratedBox(
       decoration: BoxDecoration(color: surface),
@@ -67,13 +63,24 @@ class GitDiffEditor extends ConsumerWidget {
         background: colors.background,
         editorTheme: resolvedTheme,
         language: resolveEditorLanguage(filePath).mode,
-        baseTextStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
-        estimatedLineHeight: fontSize * 1.2,
+        baseTextStyle: TextStyle(
+          fontSize: bundle.fontSize,
+          fontFamily: bundle.fontFamily,
+          height: bundle.lineHeight,
+        ),
+        estimatedLineHeight: bundle.fontSize * (bundle.lineHeight ?? 1.2),
         child: CodeForge(
-          key: ValueKey('git-diff_${themeKey}_${brightness.name}'),
+          // The key names the file only: a theme switch updates the editor in
+          // place (the diff's scroll position survives) instead of
+          // recreating the element.
+          key: ValueKey('git-diff_$filePath'),
           editorTheme: resolvedTheme,
           controller: controller,
-          textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+          textStyle: TextStyle(
+            fontSize: bundle.fontSize,
+            fontFamily: bundle.fontFamily,
+            height: bundle.lineHeight,
+          ),
           lineWrap: ref.watch(editorWordWrap),
           useSpaceAsTab: true,
           tabSize: 4,

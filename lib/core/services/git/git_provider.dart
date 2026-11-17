@@ -7,10 +7,12 @@ import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 
 final gitRepositoryServiceProvider = Provider<GitRepositoryService>((ref) {
   // 服务实例（含 _tr 闭包）会作为 isolate 消息发送，translate 只能捕获纯数据
@@ -39,9 +41,9 @@ final gitProvider = StateNotifierProvider<GitNotifier, GitViewState>((ref) {
 
 class GitNotifier extends StateNotifier<GitViewState> {
   GitNotifier(this.ref) : super(const GitViewState()) {
-    GitDebugLog.log('GitNotifier created');
+    AppLog.d('git', 'GitNotifier created');
     ref.listen(localWorkspaceProvider, (_, next) {
-      GitDebugLog.log('localWorkspaceProvider changed path=${next?.path}');
+      AppLog.d('git', 'localWorkspaceProvider changed path=${next?.path}');
       refresh(workspacePath: next?.path);
     });
     Future.microtask(() {
@@ -77,14 +79,15 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (state.isBusy) {
       // 不再直接丢弃：记下挂起刷新，当前操作结束（isBusy=false）后补一次。
       _pendingWatchedRefresh = true;
-      GitDebugLog.log('GitNotifier.refresh deferred because state.isBusy=true');
+      AppLog.d('git', 'GitNotifier.refresh deferred because state.isBusy=true');
       return;
     }
     final path = workspacePath ?? ref.read(localWorkspaceProvider)?.path;
-    if (GitDebugLog.enabled) {
-      GitDebugLog.log(
+    if (AppLog.debugEnabled) {
+      AppLog.d(
+        'git',
         'GitNotifier.refresh requested workspacePath=$path '
-        'currentSnapshot=${_snapshotSummary(state.snapshot)}',
+            'currentSnapshot=${_snapshotSummary(state.snapshot)}',
       );
     }
     await _run(
@@ -142,7 +145,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> stage(String path) async {
     await _runRoot(
       (root) async => _service.stage(root, [path]),
-      success: _msgWith(I18nKey.gitMessageStaged, {'path': path}),
+      success: _msgWith(I18nKey.gitMessageStaged, {
+        'path': displayPathName(path),
+      }),
       selectPathAfterRefresh: path,
       selectStagedAfterRefresh: true,
     );
@@ -151,7 +156,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> unstage(String path) async {
     await _runRoot(
       (root) async => _service.unstage(root, [path]),
-      success: _msgWith(I18nKey.gitMessageUnstaged, {'path': path}),
+      success: _msgWith(I18nKey.gitMessageUnstaged, {
+        'path': displayPathName(path),
+      }),
       selectPathAfterRefresh: path,
       selectStagedAfterRefresh: false,
     );
@@ -160,7 +167,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> discardChanges(GitStatusEntry entry) async {
     await _runRoot(
       (root) async => _service.discardChanges(root, entry),
-      success: _msgWith(I18nKey.gitMessageDiscarded, {'path': entry.path}),
+      success: _msgWith(I18nKey.gitMessageDiscarded, {
+        'path': displayPathName(entry.path),
+      }),
     );
   }
 
@@ -356,7 +365,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> markResolved(String path) async {
     await _runRoot(
       (root) async => _service.markResolved(root, path),
-      success: _msgWith(I18nKey.gitMessageMarkedResolved, {'path': path}),
+      success: _msgWith(I18nKey.gitMessageMarkedResolved, {
+        'path': displayPathName(path),
+      }),
     );
   }
 
@@ -407,11 +418,11 @@ class GitNotifier extends StateNotifier<GitViewState> {
     }
     try {
       return await _service.inspectBranchDeletionTarget(rootPath, name);
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier.inspectBranchDeletionTarget error name=$name',
         error: error,
-        stackTrace: stackTrace,
       );
       state = state.copyWith(error: error.toString());
       return null;
@@ -524,9 +535,11 @@ class GitNotifier extends StateNotifier<GitViewState> {
           blame: blame,
           blamePath: path,
           lastMessage: blame.isEmpty
-              ? _msgWith(I18nKey.gitMessageBlameEmpty, {'path': path})
+              ? _msgWith(I18nKey.gitMessageBlameEmpty, {
+                  'path': displayPathName(path),
+                })
               : _msgWith(I18nKey.gitMessageBlameLoaded, {
-                  'path': path,
+                  'path': displayPathName(path),
                   'count': '${blame.length}',
                 }),
         );
@@ -627,6 +640,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
       await _loadAndApplySnapshot(
         state.workspacePath ?? ref.read(localWorkspaceProvider)?.path,
       );
+      // Switching branches swaps the files the pane lists, so it is re-read
+      // before the caller gets control back.
+      ref.read(localFileItemsProvider.notifier).requestReload();
       return null;
     } on GitCheckoutBlockedException catch (error) {
       state = state.copyWith(clearError: true);
@@ -636,11 +652,11 @@ class GitNotifier extends StateNotifier<GitViewState> {
         paths: error.paths,
         message: error.message,
       );
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier.checkoutBranch error name=$name remote=$remote',
         error: error,
-        stackTrace: stackTrace,
       );
       state = state.copyWith(error: error.toString());
       return null;
@@ -672,12 +688,12 @@ class GitNotifier extends StateNotifier<GitViewState> {
         );
       }
       await afterRefresh?.call();
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
-        'GitNotifier._run error',
-        error: error,
-        stackTrace: stackTrace,
-      );
+      // A git operation rewrites the working tree — a checkout brings files in
+      // and out, a pull moves them, a discarded `.gitignore` restyles the whole
+      // pane — so the file pane is re-read here, once, for every operation.
+      ref.read(localFileItemsProvider.notifier).requestReload();
+    } catch (error) {
+      AppLog.d('git', 'GitNotifier._run error', error: error);
       state = state.copyWith(error: error.toString());
     } finally {
       state = state.copyWith(isBusy: false);
@@ -708,9 +724,11 @@ class GitNotifier extends StateNotifier<GitViewState> {
       lastMessage:
           lastMessage ??
           (history.isEmpty
-              ? _msgWith(I18nKey.gitMessagePathSelected, {'path': path})
+              ? _msgWith(I18nKey.gitMessagePathSelected, {
+                  'path': displayPathName(path),
+                })
               : _msgWith(I18nKey.gitMessagePathHistoryFound, {
-                  'path': path,
+                  'path': displayPathName(path),
                   'count': '${history.length}',
                 })),
       clearError: true,
@@ -719,15 +737,17 @@ class GitNotifier extends StateNotifier<GitViewState> {
 
   Future<void> _loadAndApplySnapshot(String? workspacePath) async {
     final stopwatch = Stopwatch()..start();
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitNotifier._loadAndApplySnapshot start workspacePath=$workspacePath '
-      'selectedPath=${state.selectedPath}',
+          'selectedPath=${state.selectedPath}',
     );
     final snapshot = await _service.loadSnapshot(workspacePath);
-    if (GitDebugLog.enabled) {
-      GitDebugLog.log(
+    if (AppLog.debugEnabled) {
+      AppLog.d(
+        'git',
         'GitNotifier._loadAndApplySnapshot service returned '
-        '${stopwatch.elapsedMilliseconds}ms ${_snapshotSummary(snapshot)}',
+            '${stopwatch.elapsedMilliseconds}ms ${_snapshotSummary(snapshot)}',
       );
     }
     ref.invalidate(gitStatusSummaryProvider);
@@ -754,9 +774,10 @@ class GitNotifier extends StateNotifier<GitViewState> {
         clearSelection = true;
       } else {
         selectedStaged = _preferredSelectedStaged(selectedEntry);
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitNotifier refreshing selected diff path=$selectedPath '
-          'staged=$selectedStaged',
+              'staged=$selectedStaged',
         );
         selectedPatch = await _service.diffForEntry(
           snapshot.rootPath,
@@ -774,9 +795,10 @@ class GitNotifier extends StateNotifier<GitViewState> {
       clearError: true,
       clearSelection: clearSelection,
     );
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitNotifier._loadAndApplySnapshot applied '
-      '${stopwatch.elapsedMilliseconds}ms clearSelection=$clearSelection',
+          '${stopwatch.elapsedMilliseconds}ms clearSelection=$clearSelection',
     );
   }
 
@@ -814,30 +836,31 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (rootPath == null || rootPath.isEmpty) return;
 
     try {
-      GitDebugLog.log('GitNotifier installing workspace watch root=$rootPath');
+      AppLog.d('git', 'GitNotifier installing workspace watch root=$rootPath');
       _workspaceWatch = Directory(rootPath).watch(recursive: false).listen((
         event,
       ) {
         if (_isIgnoredFileEvent(event.path)) return;
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitNotifier workspace event type=${event.type} path=${event.path}',
         );
         _scheduleWatchedRefresh();
       });
       _watchedRootPath = rootPath;
-      GitDebugLog.log('GitNotifier workspace watch installed root=$rootPath');
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+      AppLog.d('git', 'GitNotifier workspace watch installed root=$rootPath');
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier workspace watch FileSystemException root=$rootPath',
         error: error,
-        stackTrace: stackTrace,
       );
       // Some platforms or network folders do not support recursive watching.
-    } on UnsupportedError catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on UnsupportedError catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier workspace watch UnsupportedError root=$rootPath',
         error: error,
-        stackTrace: stackTrace,
       );
       // The Git page still supports manual refresh in this case.
     }
@@ -870,7 +893,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
       if (state.isBusy) {
         // 关键修复：busy 时只记录挂起，不再递归重排 timer。
         _pendingWatchedRefresh = true;
-        GitDebugLog.log('GitNotifier watched refresh deferred while busy');
+        AppLog.d('git', 'GitNotifier watched refresh deferred while busy');
         return;
       }
       _pendingWatchedRefresh = false;
@@ -882,12 +905,8 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> _refreshFromWatcher() async {
     try {
       await refresh(workspacePath: state.snapshot?.rootPath);
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
-        'GitNotifier._refreshFromWatcher failed',
-        error: error,
-        stackTrace: stackTrace,
-      );
+    } catch (error) {
+      AppLog.d('git', 'GitNotifier._refreshFromWatcher failed', error: error);
       state = state.copyWith(error: error.toString());
     }
   }
@@ -900,7 +919,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (!_pendingWatchedRefresh) return;
     if (state.isBusy) return;
     _pendingWatchedRefresh = false;
-    GitDebugLog.log('GitNotifier flushing deferred refresh');
+    AppLog.d('git', 'GitNotifier flushing deferred refresh');
     unawaited(_refreshFromWatcher());
   }
 

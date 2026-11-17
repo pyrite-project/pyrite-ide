@@ -11,7 +11,8 @@ class _GitHeader extends ConsumerWidget {
     return PaneHeader(
       title: I18nKey.gitSourceControl,
       subtitle:
-          '${snapshot.branchLabel} · ${snapshot.stateLabel} · ${snapshot.rootPath}',
+          '${snapshot.branchLabel} · ${snapshot.stateLabel} · '
+          '${displayPathName(snapshot.rootPath)}',
       leadingIcon: Icons.account_tree_outlined,
       compact: true,
       actions: [
@@ -1379,7 +1380,7 @@ class _StatusTile extends ConsumerWidget {
             translateForWidget(
               ref,
               I18nKey.gitDiscardChangesMessage,
-            ).replaceAll('{path}', entry.path),
+            ).replaceAll('{path}', displayPathName(entry.path)),
           ),
           actions: [
             TextButton(
@@ -1473,10 +1474,11 @@ GitStatusEntry? _statusEntryForPath(List<GitStatusEntry> entries, String path) {
 }
 
 List<_DiffFileItem> _diffFilesFromSnapshot(GitRepositorySnapshot snapshot) {
-  if (GitDebugLog.enabled) {
-    GitDebugLog.log(
+  if (AppLog.debugEnabled) {
+    AppLog.d(
+      'git',
       'GitPage._diffFilesFromSnapshot start stagedPatch=${snapshot.stagedPatch.length} '
-      'unstagedPatch=${snapshot.unstagedPatch.length}',
+          'unstagedPatch=${snapshot.unstagedPatch.length}',
     );
   }
   final files = <_DiffFileItem>[
@@ -1489,10 +1491,11 @@ List<_DiffFileItem> _diffFilesFromSnapshot(GitRepositorySnapshot snapshot) {
     final key = '${file.staged}\u0000${file.path}';
     if (seen.add(key)) deduped.add(file);
   }
-  if (GitDebugLog.enabled) {
-    GitDebugLog.log(
+  if (AppLog.debugEnabled) {
+    AppLog.d(
+      'git',
       'GitPage._diffFilesFromSnapshot end files=${files.length} '
-      'deduped=${deduped.length}',
+          'deduped=${deduped.length}',
     );
   }
   return deduped;
@@ -1500,8 +1503,9 @@ List<_DiffFileItem> _diffFilesFromSnapshot(GitRepositorySnapshot snapshot) {
 
 List<_DiffFileItem> _diffFilesFromPatch(String patch, {required bool staged}) {
   if (patch.trim().isEmpty) return const [];
-  if (GitDebugLog.enabled) {
-    GitDebugLog.log(
+  if (AppLog.debugEnabled) {
+    AppLog.d(
+      'git',
       'GitPage._diffFilesFromPatch start staged=$staged bytes=${patch.length}',
     );
   }
@@ -1528,8 +1532,9 @@ List<_DiffFileItem> _diffFilesFromPatch(String patch, {required bool staged}) {
   }
   flushSection();
 
-  if (GitDebugLog.enabled) {
-    GitDebugLog.log(
+  if (AppLog.debugEnabled) {
+    AppLog.d(
+      'git',
       'GitPage._diffFilesFromPatch end staged=$staged files=${files.length}',
     );
   }

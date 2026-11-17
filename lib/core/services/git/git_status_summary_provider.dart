@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 final gitStatusSummaryProvider = Provider<GitStatusSummary?>((ref) {
   final workspacePath = ref.watch(localWorkspaceProvider)?.path;
@@ -32,7 +32,8 @@ class GitStatusSummary {
     final label =
         fallbackBranchLabel ?? I18nKey.gitStatusSummaryFallback.fallback;
     try {
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitStatusSummary.inspect start workspace=$workspacePath',
       );
       if (workspacePath == null || workspacePath.isEmpty) return null;
@@ -40,35 +41,37 @@ class GitStatusSummary {
       final startPath = Directory(normalizedPath).existsSync()
           ? normalizedPath
           : p.dirname(normalizedPath);
-      GitDebugLog.log('GitStatusSummary.discover start startPath=$startPath');
+      AppLog.d('git', 'GitStatusSummary.discover start startPath=$startPath');
       final gitDir = Repository.discover(startPath: startPath);
-      GitDebugLog.log('GitStatusSummary.discover end gitDir=$gitDir');
-      GitDebugLog.log('GitStatusSummary.open start gitDir=$gitDir');
+      AppLog.d('git', 'GitStatusSummary.discover end gitDir=$gitDir');
+      AppLog.d('git', 'GitStatusSummary.open start gitDir=$gitDir');
       final repo = Repository.open(gitDir);
 
       try {
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitStatusSummary.open end path=${repo.path} workdir=${repo.workdir}',
         );
         final summary = GitStatusSummary(
           rootPath: _rootPath(repo, gitDir),
           branchLabel: _branchLabel(repo, label),
         );
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitStatusSummary.inspect end root=${summary.rootPath} '
-          'branch=${summary.branchLabel}',
+              'branch=${summary.branchLabel}',
         );
         return summary;
       } finally {
-        GitDebugLog.log('GitStatusSummary.free start gitDir=$gitDir');
+        AppLog.d('git', 'GitStatusSummary.free start gitDir=$gitDir');
         repo.free();
-        GitDebugLog.log('GitStatusSummary.free end gitDir=$gitDir');
+        AppLog.d('git', 'GitStatusSummary.free end gitDir=$gitDir');
       }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitStatusSummary.inspect failed workspace=$workspacePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return null;
     }

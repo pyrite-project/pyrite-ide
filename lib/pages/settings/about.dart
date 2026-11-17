@@ -12,7 +12,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
@@ -358,7 +358,7 @@ class _AppDetailsState extends ConsumerState<AppDetails> {
     final layers = ref.read(microPythonStubsLayers);
     return _DiagnosticInfo(
       platform: Platform.operatingSystem,
-      logPath: GitDebugLog.path,
+      logPath: AppLog.logPath,
       supportPath: support.path,
       pluginPath: path.join(support.path, 'plugin'),
       cachePath: cache.path,
