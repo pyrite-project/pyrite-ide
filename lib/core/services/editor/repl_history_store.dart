@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 /// On-disk store for the REPL's input history.
 ///
@@ -24,8 +25,8 @@ import 'package:path/path.dart' as path;
 class ReplHistoryStore {
   ReplHistoryStore({this.directory});
 
-  /// Directory holding the history files. Defaults to the app support
-  /// directory, overridable in tests.
+  /// Directory holding the history files. Defaults to
+  /// `<application support>/data`, overridable in tests.
   final String? directory;
 
   /// Per-bucket cap, matching what the in-memory list used to enforce.
@@ -36,27 +37,20 @@ class ReplHistoryStore {
   /// accumulate history files forever.
   static const int maxBuckets = 32;
 
-  String get _dir => directory ?? defaultHistoryDirectory();
+  Future<String>? _directoryPath;
 
-  /// Where history lives for the current platform.
-  ///
-  /// Uses the same support directory as the rest of the app's user data rather
-  /// than the current directory, which for a desktop app is wherever the user
-  /// happened to launch it from and may not be writable.
-  static String defaultHistoryDirectory() {
-    final support = Platform.environment['APPDATA'];
-    if (Platform.isWindows && support != null && support.isNotEmpty) {
-      return path.join(support, 'PyriteIDE');
-    }
-    final home =
-        Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    return path.join(home, '.pyrite_ide');
+  Future<String> _dirPath() => _directoryPath ??= _resolveDirectory();
+
+  Future<String> _resolveDirectory() async {
+    final override = directory;
+    if (override != null) return override;
+    final support = await getApplicationSupportDirectory();
+    return path.join(support.path, 'data');
   }
 
-  File _fileFor(String bucket) =>
-      File(path.join(_dir, 'repl_history_${_sanitize(bucket)}.json'));
+  Future<File> _fileFor(String bucket) async => File(
+    path.join(await _dirPath(), 'repl_history_${_sanitize(bucket)}.json'),
+  );
 
   /// Keeps a bucket name usable as a file name.
   ///
@@ -77,7 +71,7 @@ class ReplHistoryStore {
   Future<List<String>> load(String bucket) async {
     if (bucket.isEmpty) return const [];
     try {
-      final file = _fileFor(bucket);
+      final file = await _fileFor(bucket);
       if (!await file.exists()) return const [];
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is! Map) return const [];
@@ -106,7 +100,7 @@ class ReplHistoryStore {
       final trimmed = entries.length > maxEntriesPerBucket
           ? entries.sublist(entries.length - maxEntriesPerBucket)
           : entries;
-      final file = _fileFor(bucket);
+      final file = await _fileFor(bucket);
       await file.parent.create(recursive: true);
       await file.writeAsString(
         jsonEncode({'bucket': bucket, 'entries': trimmed}),
@@ -125,14 +119,15 @@ class ReplHistoryStore {
   /// [keep] is never pruned even if it is the oldest, so the device currently
   /// in use cannot have its history swept away by this call.
   Future<void> _pruneOldBuckets({required String keep}) async {
-    final dir = Directory(_dir);
+    final keepPath = (await _fileFor(keep)).path;
+    final dir = Directory(await _dirPath());
     if (!await dir.exists()) return;
     final files = <File>[];
     await for (final entity in dir.list()) {
       if (entity is! File) continue;
       if (!path.basename(entity.path).startsWith('repl_history_')) continue;
       if (!entity.path.endsWith('.json')) continue;
-      if (entity.path == _fileFor(keep).path) continue;
+      if (entity.path == keepPath) continue;
       files.add(entity);
     }
     if (files.length < maxBuckets) return;
