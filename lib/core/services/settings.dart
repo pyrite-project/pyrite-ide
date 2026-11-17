@@ -88,13 +88,21 @@ StateProvider<String> lspWebSocketPath = StateProvider<String>(
 );
 StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
 StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
+
+/// Plugin-provided language server the IDE should run, or null for the
+/// built-in manual configuration.
+///
+/// The value is a server id contributed over the data API (unique across
+/// plugins); the owning plugin turns it into a launch command and keeps the
+/// server's configuration profile.
+StateProvider<String?> lspPluginServerId = StateProvider<String?>(
+  (ref) => null,
+);
 StateProvider<String> lspVirtualEnvironment = StateProvider<String>(
   (ref) => "",
 );
-StateProvider<BasedPyrightTypeCheckingMode> lspBasedPyrightTypeCheckingMode =
-    StateProvider<BasedPyrightTypeCheckingMode>(
-      (ref) => BasedPyrightTypeCheckingMode.standard,
-    );
+StateProvider<LspTypeCheckingMode> lspTypeCheckingMode =
+    StateProvider<LspTypeCheckingMode>((ref) => LspTypeCheckingMode.standard);
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>(
@@ -187,9 +195,7 @@ StateProvider<List<int>> terminalCustomPalette = StateProvider<List<int>>(
   (ref) => kDefaultTerminalCustomPalette,
 );
 
-StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(
-  (ref) => false,
-);
+StateProvider<bool> useMaterialContextMenu = StateProvider<bool>((ref) => true);
 
 const Map<String, String> uploadConfirmStyles = {
   "toolbar": "toolbar",

@@ -79,9 +79,12 @@ class LspServerMatchRules {
 /// inputs are placed under the keys the server reads: [stubsPathsKey] receives
 /// the resolved stubs directories, [pythonExecutableKey] the selected
 /// interpreter, and [typeCheckingModeKey] the configured strictness level,
-/// translated through [typeCheckingModeValues] (a BasedPyright level name to
-/// the server's own value; unmapped levels pass through unchanged). [extra]
+/// translated through [typeCheckingModeValues] (an [LspTypeCheckingMode] name
+/// to the server's own value; unmapped levels pass through unchanged). [extra]
 /// carries static options verbatim.
+///
+/// Every key may be dotted to reach a nested option object, which is how a
+/// profile describes `pylsp`'s `plugins.jedi.extra_paths` without an adapter.
 class LspServerConfigurationSpec {
   const LspServerConfigurationSpec({
     this.mode = 'flat',
@@ -105,21 +108,56 @@ class LspServerConfigurationSpec {
   final Map<String, dynamic> extra;
 
   Map<String, dynamic> build(LspServerContext context) {
-    final options = <String, dynamic>{
-      if (stubsPathsKey != null && context.stubsPaths.isNotEmpty)
-        stubsPathsKey!: context.stubsPaths,
-      if (pythonExecutableKey != null && context.pythonInterpreter.isNotEmpty)
-        pythonExecutableKey!: context.pythonInterpreter,
-      ?typeCheckingModeKey: mapTypeCheckingMode(context.typeCheckingMode),
-      ...extra,
-    };
+    final options = <String, dynamic>{};
+    if (stubsPathsKey != null && context.stubsPaths.isNotEmpty) {
+      _writeNested(options, stubsPathsKey!, context.stubsPaths);
+    }
+    if (pythonExecutableKey != null && context.pythonInterpreter.isNotEmpty) {
+      _writeNested(options, pythonExecutableKey!, context.pythonInterpreter);
+    }
+    if (typeCheckingModeKey case final key?) {
+      _writeNested(options, key, mapTypeCheckingMode(context.typeCheckingMode));
+    }
+    for (final entry in extra.entries) {
+      _writeNested(options, entry.key, entry.value);
+    }
     if (mode != sectionedMode) return options;
     final section = this.section;
     if (section == null || section.isEmpty) return options;
     return {section: options};
   }
 
-  String mapTypeCheckingMode(BasedPyrightTypeCheckingMode mode) =>
+  /// Writes [value] at [key], treating dots as nesting.
+  ///
+  /// A server whose options live deeper than one level — pylsp wants
+  /// `plugins.jedi.extra_paths` — would otherwise need a bespoke adapter.
+  /// Dots are only a path separator here; keys that really contain one are not
+  /// supported by any server this runs against.
+  static void _writeNested(
+    Map<String, dynamic> target,
+    String key,
+    Object? value,
+  ) {
+    final segments = key
+        .split('.')
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    if (segments.isEmpty) return;
+    var cursor = target;
+    for (final segment in segments.take(segments.length - 1)) {
+      final existing = cursor[segment];
+      if (existing is Map<String, dynamic>) {
+        cursor = existing;
+        continue;
+      }
+      final created = <String, dynamic>{};
+      cursor[segment] = created;
+      cursor = created;
+    }
+    cursor[segments.last] = value;
+  }
+
+  String mapTypeCheckingMode(LspTypeCheckingMode mode) =>
       typeCheckingModeValues[mode.jsonName] ?? mode.jsonName;
 
   Map<String, dynamic> toJson() => {
@@ -219,14 +257,24 @@ class LspServerProfileAdapter extends LspServerAdapter {
   Map<String, dynamic> buildConfiguration(LspServerContext context) =>
       entry.configuration.build(context);
 
+  /// Expands the profile's environment templates.
+  ///
+  /// An entry that expands to nothing is dropped rather than exported empty: a
+  /// profile can declare `MYPYPATH: {stubsPaths}` for the stubs case without
+  /// wiping a `MYPYPATH` the user already set when no stubs are configured.
   @override
   Map<String, String> buildEnvironment(
     LspServerContext context,
     Map<String, String> baseEnvironment,
-  ) => {
-    for (final template in entry.environment.entries)
-      template.key: expandTemplate(template.value, context),
-  };
+  ) {
+    final environment = <String, String>{};
+    for (final template in entry.environment.entries) {
+      final value = expandTemplate(template.value, context);
+      if (value.isEmpty) continue;
+      environment[template.key] = value;
+    }
+    return environment;
+  }
 
   /// Fills the supported placeholders; unknown ones stay verbatim so a typo
   /// is visible in the launched process instead of silently vanishing.
@@ -238,4 +286,13 @@ class LspServerProfileAdapter extends LspServerAdapter {
           )
           .replaceAll('{pythonInterpreter}', context.pythonInterpreter)
           .replaceAll('{workspacePath}', context.workspacePath);
+
+  /// A profile that carries stubs through `{stubsPaths}` hands them to the
+  /// process environment, which the server reads once at launch — so the
+  /// settings page has to ask for a restart instead of assuming the new paths
+  /// reach a running server.
+  @override
+  bool get deliversStubsViaEnvironment => entry.environment.values.any(
+    (template) => template.contains('{stubsPaths}'),
+  );
 }

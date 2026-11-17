@@ -6,6 +6,7 @@ import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
@@ -33,6 +34,15 @@ class _SettingEntry {
     required this.getter,
     required this.setter,
   });
+}
+
+/// Evicts the pooled workspace language servers after a launch setting moved.
+///
+/// The editor keeps one server per workspace root; its transport, executable
+/// and arguments are frozen at spawn time, so a changed setting can only take
+/// effect on a fresh start. Called by every launch-related setter below.
+void evictLspLaunchConfigs(Ref ref) {
+  ref.read(editorControllerMapProvider.notifier).evictLspConfigs();
 }
 
 class SettingsRegistry {
@@ -240,6 +250,7 @@ class SettingsRegistry {
       setter: (ref, v) {
         final parsed = LspType.fromJsonName(v.toString());
         if (parsed != null) ref.read(lspType.notifier).state = parsed;
+        evictLspLaunchConfigs(ref);
       },
     ),
     _SettingEntry(
@@ -247,23 +258,30 @@ class SettingsRegistry {
       type: 'string',
       provider: lspWebSocketPath,
       getter: (ref) => ref.read(lspWebSocketPath),
-      setter: (ref, v) =>
-          ref.read(lspWebSocketPath.notifier).state = v.toString(),
+      setter: (ref, v) {
+        ref.read(lspWebSocketPath.notifier).state = v.toString();
+        evictLspLaunchConfigs(ref);
+      },
     ),
     _SettingEntry(
       name: 'lsp.stdio_executable',
       type: 'string',
       provider: lspStdioExecutable,
       getter: (ref) => ref.read(lspStdioExecutable),
-      setter: (ref, v) =>
-          ref.read(lspStdioExecutable.notifier).state = v.toString(),
+      setter: (ref, v) {
+        ref.read(lspStdioExecutable.notifier).state = v.toString();
+        evictLspLaunchConfigs(ref);
+      },
     ),
     _SettingEntry(
       name: 'lsp.stdio_args',
       type: 'string',
       provider: lspStdioArgs,
       getter: (ref) => ref.read(lspStdioArgs),
-      setter: (ref, v) => ref.read(lspStdioArgs.notifier).state = v.toString(),
+      setter: (ref, v) {
+        ref.read(lspStdioArgs.notifier).state = v.toString();
+        evictLspLaunchConfigs(ref);
+      },
     ),
     _SettingEntry(
       name: 'lsp.virtual_environment',
@@ -276,12 +294,26 @@ class SettingsRegistry {
       },
     ),
     _SettingEntry(
-      name: 'lsp.basedpyright.type_checking_mode',
+      name: 'lsp.plugin_server_id',
       type: 'string',
-      provider: lspBasedPyrightTypeCheckingMode,
-      getter: (ref) => ref.read(lspBasedPyrightTypeCheckingMode).jsonName,
+      provider: lspPluginServerId,
+      getter: (ref) => ref.read(lspPluginServerId) ?? '',
       setter: (ref, v) {
-        final parsed = BasedPyrightTypeCheckingMode.fromJsonName(v?.toString());
+        final value = v?.toString().trim() ?? '';
+        final previous = ref.read(lspPluginServerId) ?? '';
+        ref.read(lspPluginServerId.notifier).state = value.isEmpty
+            ? null
+            : value;
+        if (previous != value) evictLspLaunchConfigs(ref);
+      },
+    ),
+    _SettingEntry(
+      name: 'lsp.type_checking_mode',
+      type: 'string',
+      provider: lspTypeCheckingMode,
+      getter: (ref) => ref.read(lspTypeCheckingMode).jsonName,
+      setter: (ref, v) {
+        final parsed = LspTypeCheckingMode.fromJsonName(v?.toString());
         if (parsed == null) {
           throw ArgumentError.value(
             v,
@@ -289,7 +321,7 @@ class SettingsRegistry {
             'Expected off, basic, standard, strict, or all',
           );
         }
-        ref.read(lspBasedPyrightTypeCheckingMode.notifier).state = parsed;
+        ref.read(lspTypeCheckingMode.notifier).state = parsed;
         refreshOpenLspConfiguration(ref.read);
       },
     ),

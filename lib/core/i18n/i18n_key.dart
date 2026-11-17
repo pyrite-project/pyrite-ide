@@ -18,7 +18,7 @@ enum I18nKey {
   settingsFileSortTitle('settings.file_sort.title', '文件排序'),
   settingsFileSortSubtitle(
     'settings.file_sort.subtitle',
-    '本地与设备文件树同时生效，文件夹始终在前',
+    '本地与设备文件树同时生效；按类型时文件夹在前',
   ),
   settingsFileSortByName('settings.file_sort.name', '按名称'),
   settingsFileSortByType('settings.file_sort.type', '按类型'),
@@ -158,6 +158,12 @@ enum I18nKey {
   ),
   pluginsEmptyTitle('plugins.empty.title', '尚未安装插件'),
   pluginsEmptyMessage('plugins.empty.message', '从本地 PYRIX 包注册插件后，它们会显示在这里。'),
+  pluginsConfirmMismatchTitle('plugins.confirm_mismatch.title', '插件与当前系统不匹配'),
+  pluginsConfirmMismatchMessage(
+    'plugins.confirm_mismatch.message',
+    '该插件面向 {target} 构建，与当前系统 {current} 不匹配，安装后可能无法正常运行。是否仍要安装？',
+  ),
+  pluginsInstallAnyway('plugins.install_anyway', '仍要安装'),
   fileLocalProjectTitle('file.local.title', '本地项目'),
   fileBoardTitle('file.board.title', '设备文件'),
   fileSelectedCount('file.selected_count', '已选择 {count} 项'),
@@ -165,6 +171,7 @@ enum I18nKey {
   fileActionUploadSelected('file.action.upload_selected', '上传选中项'),
   fileActionDownloadSelected('file.action.download_selected', '下载选中项'),
   fileActionDeleteSelected('file.action.delete_selected', '删除选中项'),
+  fileActionSelectAll('file.action.select_all', '全选'),
   fileActionClearSelection('file.action.clear_selection', '清除选择'),
   fileActionExitSelection('file.action.exit_selection', '退出选择模式'),
   fileActionSelectItems('file.action.select_items', '选择项目'),
@@ -829,33 +836,15 @@ enum I18nKey {
     'settings.lsp.virtual_environment.updated',
     '虚拟环境已更新',
   ),
-  settingsLspBasedPyrightSection(
-    'settings.lsp.basedpyright.title',
-    'BasedPyright',
+  settingsLspPluginServerSection('settings.lsp.plugin_server.title', '语言服务器来源'),
+  settingsLspPluginServerDescription(
+    'settings.lsp.plugin_server.description',
+    '选择由插件提供的语言服务器；内置表示手动设置连接方式。',
   ),
-  settingsLspBasedPyrightTypeCheckingMode(
-    'settings.lsp.basedpyright.type_checking_mode',
-    '类型检查严格程度',
-  ),
-  settingsLspBasedPyrightTypeCheckingModeOff(
-    'settings.lsp.basedpyright.type_checking_mode.off',
-    '关闭',
-  ),
-  settingsLspBasedPyrightTypeCheckingModeBasic(
-    'settings.lsp.basedpyright.type_checking_mode.basic',
-    '基础',
-  ),
-  settingsLspBasedPyrightTypeCheckingModeStandard(
-    'settings.lsp.basedpyright.type_checking_mode.standard',
-    '标准',
-  ),
-  settingsLspBasedPyrightTypeCheckingModeStrict(
-    'settings.lsp.basedpyright.type_checking_mode.strict',
-    '严格',
-  ),
-  settingsLspBasedPyrightTypeCheckingModeAll(
-    'settings.lsp.basedpyright.type_checking_mode.all',
-    '全部',
+  settingsLspPluginServerBuiltin('settings.lsp.plugin_server.builtin', '内置'),
+  settingsLspPluginServerManaged(
+    'settings.lsp.plugin_server.managed',
+    '连接方式由插件管理',
   ),
   settingsLspDiagnosticsSection('settings.lsp.diagnostics.title', '诊断显示'),
   settingsLspWarningDiagnostics(
@@ -1444,6 +1433,14 @@ enum I18nKey {
     '以 {encoding} 解码失败，请尝试其他编码',
   ),
   lspStartFailedOutput('lsp.output.start_failed', 'LSP 启动失败：{error}'),
+  editorLspCrashRestarted(
+    'editor.lsp.crash_restarted',
+    '语言服务器崩溃，已自动重启（第 {count} 次），正在重新连接编辑器',
+  ),
+  editorLspCrashLoopStopped(
+    'editor.lsp.crash_loop_stopped',
+    '语言服务器反复崩溃，已停止自动重启。请检查该服务器或在设置中切换语言服务器。',
+  ),
   menuToggleFunctionPanel('menu.view.toggle_function_panel', '切换“功能”开启状态'),
   menuToggleConsolePanel('menu.view.toggle_console_panel', '切换“控制台”开启状态'),
   statusWelcomePage('status.welcome_page', '欢迎页'),

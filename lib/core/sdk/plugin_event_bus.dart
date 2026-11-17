@@ -140,6 +140,12 @@ class EventTopicRegistry {
       name: 'runtime.session.ended',
       requiredPermission: 'runtime:inspect',
     ),
+    // Language server selection (settings page → the plugin that owns it).
+    EventTopic(
+      name: 'lsp.server.selected',
+      requiredPermission: 'settings:read',
+      replayLatest: true,
+    ),
     EventTopic(
       name: 'runtime.session.state.changed',
       requiredPermission: 'runtime:inspect',

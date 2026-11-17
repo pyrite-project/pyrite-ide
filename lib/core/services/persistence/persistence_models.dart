@@ -263,8 +263,11 @@ class PersistedData {
   final String lspWebSocketPath;
   final String lspStdioExecutable;
   final String lspStdioArgs;
+
+  /// Plugin-provided language server in use, or null for the manual setup.
+  final String? lspPluginServerId;
   final String lspVirtualEnvironment;
-  final String lspBasedPyrightTypeCheckingMode;
+  final String lspTypeCheckingMode;
   final bool disableWarning;
   final bool disableError;
   final bool lspSemanticHighlighting;
@@ -358,8 +361,9 @@ class PersistedData {
     this.lspWebSocketPath = '127.0.0.1:2026',
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
+    this.lspPluginServerId,
     this.lspVirtualEnvironment = '',
-    this.lspBasedPyrightTypeCheckingMode = 'standard',
+    this.lspTypeCheckingMode = 'standard',
     this.disableWarning = false,
     this.disableError = false,
     this.lspSemanticHighlighting = true,
@@ -396,7 +400,7 @@ class PersistedData {
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
-    this.useMaterialContextMenu = false,
+    this.useMaterialContextMenu = true,
     this.uploadConfirmStyle = 'toolbar',
     this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',

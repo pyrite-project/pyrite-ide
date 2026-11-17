@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
@@ -20,6 +21,8 @@ class LspSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final dataRegistry = ref.watch(dataRegistryProvider);
+    final pluginServerId = ref.watch(lspPluginServerId);
     final body = ListView(
       padding: EdgeInsets.all(12),
       children: [
@@ -34,95 +37,6 @@ class LspSettings extends ConsumerWidget {
                 ref.read(useLsp.notifier).state = value;
               },
             ),
-
-            ListTile(title: const UseText(I18nKey.settingsLspConnectionType)),
-            RadioGroup<LspType>(
-              groupValue: ref.watch(lspType),
-              onChanged: (value) {
-                if (value != null) ref.read(lspType.notifier).state = value;
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    RadioListTile<LspType>(
-                      title: const Text("WebSocket"),
-                      subtitle: const UseText(
-                        I18nKey.settingsLspWebSocketSubtitle,
-                      ),
-                      value: LspType.webSocket,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    RadioListTile<LspType>(
-                      title: const Text("stdio"),
-                      subtitle: const UseText(I18nKey.settingsLspStdioSubtitle),
-                      value: LspType.stdio,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (ref.watch(lspType) == LspType.webSocket) ...[
-              ListTile(
-                title: const UseText(I18nKey.settingsLspWebSocketAddress),
-                subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showPathDialog(context, ref),
-              ),
-            ] else ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Column(
-                  children: [
-                    TextFormField(
-                      initialValue: ref.read(lspStdioExecutable),
-                      decoration: const InputDecoration(
-                        label: UseText(I18nKey.settingsLspExecutablePath),
-                        helper: UseText(I18nKey.settingsLspExecutablePathHint),
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (value) {
-                        ref.read(lspStdioExecutable.notifier).state = value;
-                      },
-                      onFieldSubmitted: (value) {
-                        ref.read(lspStdioExecutable.notifier).state = value
-                            .trim();
-                        showIdeSuccess(
-                          context,
-                          translateForWidget(
-                            ref,
-                            I18nKey.settingsLspExecutableUpdated,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: ref.read(lspStdioArgs),
-                      decoration: const InputDecoration(
-                        label: UseText(I18nKey.settingsLspArgs),
-                        helper: UseText(I18nKey.settingsLspArgsHint),
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (value) {
-                        ref.read(lspStdioArgs.notifier).state = value;
-                      },
-                      onFieldSubmitted: (value) {
-                        ref.read(lspStdioArgs.notifier).state = value.trim();
-                        showIdeSuccess(
-                          context,
-                          translateForWidget(
-                            ref,
-                            I18nKey.settingsLspArgsUpdated,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
             ListTile(
               leading: const Icon(Icons.folder_outlined),
               title: const UseText(I18nKey.settingsLspVirtualEnvironment),
@@ -142,24 +56,131 @@ class LspSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: I18nKey.settingsLspBasedPyrightSection,
+          title: I18nKey.settingsLspPluginServerSection,
+          description: I18nKey.settingsLspPluginServerDescription,
           children: [
-            ListTile(
-              leading: const Icon(Icons.rule_outlined),
-              title: const UseText(
-                I18nKey.settingsLspBasedPyrightTypeCheckingMode,
+            RadioGroup<String?>(
+              groupValue: pluginServerId,
+              onChanged: (value) {
+                ref.read(lspPluginServerId.notifier).state = value;
+                ref.read(pluginEventBusProvider).emit('lsp.server.selected', {
+                  'serverId': value ?? '',
+                });
+              },
+              child: Column(
+                children: [
+                  RadioListTile<String?>(
+                    title: const UseText(
+                      I18nKey.settingsLspPluginServerBuiltin,
+                    ),
+                    value: null,
+                    controlAffinity: ListTileControlAffinity.trailing,
+                  ),
+                  for (final server in dataRegistry.allLspServers)
+                    RadioListTile<String?>(
+                      title: Text(
+                        server.label.isEmpty ? server.serverId : server.label,
+                      ),
+                      subtitle: Text('by ${server.pluginId}'),
+                      value: server.serverId,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                    ),
+                ],
               ),
-              subtitle: UseText(
-                _basedPyrightTypeCheckingModeLabel(
-                  ref.watch(lspBasedPyrightTypeCheckingMode),
-                ),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () =>
-                  _showBasedPyrightTypeCheckingModeDialog(context, ref),
             ),
           ],
         ),
+        if (pluginServerId == null)
+          SettingsSection(
+            title: I18nKey.settingsLspConnectionType,
+            children: [
+              RadioGroup<LspType>(
+                groupValue: ref.watch(lspType),
+                onChanged: (value) {
+                  if (value != null) ref.read(lspType.notifier).state = value;
+                },
+                child: Column(
+                  children: [
+                    RadioListTile<LspType>(
+                      title: const Text("WebSocket"),
+                      subtitle: const UseText(
+                        I18nKey.settingsLspWebSocketSubtitle,
+                      ),
+                      value: LspType.webSocket,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                    ),
+                    RadioListTile<LspType>(
+                      title: const Text("stdio"),
+                      subtitle: const UseText(I18nKey.settingsLspStdioSubtitle),
+                      value: LspType.stdio,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                    ),
+                  ],
+                ),
+              ),
+              if (ref.watch(lspType) == LspType.webSocket)
+                ListTile(
+                  title: const UseText(I18nKey.settingsLspWebSocketAddress),
+                  subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showPathDialog(context, ref),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        initialValue: ref.read(lspStdioExecutable),
+                        decoration: const InputDecoration(
+                          label: UseText(I18nKey.settingsLspExecutablePath),
+                          helper: UseText(
+                            I18nKey.settingsLspExecutablePathHint,
+                          ),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          ref.read(lspStdioExecutable.notifier).state = value;
+                        },
+                        onFieldSubmitted: (value) {
+                          ref.read(lspStdioExecutable.notifier).state = value
+                              .trim();
+                          showIdeSuccess(
+                            context,
+                            translateForWidget(
+                              ref,
+                              I18nKey.settingsLspExecutableUpdated,
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        initialValue: ref.read(lspStdioArgs),
+                        decoration: const InputDecoration(
+                          label: UseText(I18nKey.settingsLspArgs),
+                          helper: UseText(I18nKey.settingsLspArgsHint),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          ref.read(lspStdioArgs.notifier).state = value;
+                        },
+                        onFieldSubmitted: (value) {
+                          ref.read(lspStdioArgs.notifier).state = value.trim();
+                          showIdeSuccess(
+                            context,
+                            translateForWidget(
+                              ref,
+                              I18nKey.settingsLspArgsUpdated,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         SettingsSection(
           title: I18nKey.settingsLspDiagnosticsSection,
           children: [
@@ -712,48 +733,6 @@ class LspSettings extends ConsumerWidget {
       ),
     );
   }
-
-  void _showBasedPyrightTypeCheckingModeDialog(
-    BuildContext context,
-    WidgetRef ref,
-  ) {
-    final current = ref.read(lspBasedPyrightTypeCheckingMode);
-    showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const UseText(I18nKey.settingsLspBasedPyrightTypeCheckingMode),
-        children: BasedPyrightTypeCheckingMode.values.map((mode) {
-          return SimpleDialogOption(
-            child: ListTile(
-              title: UseText(_basedPyrightTypeCheckingModeLabel(mode)),
-              trailing: mode == current ? const Icon(Icons.check) : null,
-              minTileHeight: 0,
-              onTap: () {
-                ref.read(lspBasedPyrightTypeCheckingMode.notifier).state = mode;
-                refreshOpenLspConfiguration(ref.read);
-                Navigator.pop(context);
-              },
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  I18nKey _basedPyrightTypeCheckingModeLabel(
-    BasedPyrightTypeCheckingMode mode,
-  ) => switch (mode) {
-    BasedPyrightTypeCheckingMode.off =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeOff,
-    BasedPyrightTypeCheckingMode.basic =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeBasic,
-    BasedPyrightTypeCheckingMode.standard =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeStandard,
-    BasedPyrightTypeCheckingMode.strict =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeStrict,
-    BasedPyrightTypeCheckingMode.all =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeAll,
-  };
 }
 
 /// A labelled on/off switch backed by one settings provider.

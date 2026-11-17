@@ -389,11 +389,38 @@ void main() {
     });
   });
 
+  test('type checking mode can be set, read, and listed', () async {
+    // The LSP settings setters log through the IDE output terminal, which
+    // requires the test binding to be initialized.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final harness = await _SettingsHarness.start();
+    addTearDown(harness.close);
+
+    final listResponse = await harness.list();
+    final settings = listResponse['payload']['data'] as List<dynamic>;
+    expect(
+      settings.whereType<Map>().any(
+        (item) =>
+            item['name'] == 'lsp.type_checking_mode' &&
+            item['type'] == 'string',
+      ),
+      isTrue,
+    );
+
+    _expectOk(await harness.set('lsp.type_checking_mode', 'strict'), true);
+    expect(
+      harness.container.read(lspTypeCheckingMode),
+      LspTypeCheckingMode.strict,
+    );
+    _expectOk(await harness.get('lsp.type_checking_mode'), {
+      'name': 'lsp.type_checking_mode',
+      'value': 'strict',
+    });
+  });
+
   test(
-    'BasedPyright type checking mode can be set, read, and listed',
+    'the plugin-provided language server can be set, read, and listed',
     () async {
-      // The LSP settings setters log through the IDE output terminal, which
-      // requires the test binding to be initialized.
       TestWidgetsFlutterBinding.ensureInitialized();
       final harness = await _SettingsHarness.start();
       addTearDown(harness.close);
@@ -403,24 +430,27 @@ void main() {
       expect(
         settings.whereType<Map>().any(
           (item) =>
-              item['name'] == 'lsp.basedpyright.type_checking_mode' &&
+              item['name'] == 'lsp.plugin_server_id' &&
               item['type'] == 'string',
         ),
         isTrue,
       );
 
-      _expectOk(
-        await harness.set('lsp.basedpyright.type_checking_mode', 'strict'),
-        true,
-      );
-      expect(
-        harness.container.read(lspBasedPyrightTypeCheckingMode),
-        BasedPyrightTypeCheckingMode.strict,
-      );
-      _expectOk(await harness.get('lsp.basedpyright.type_checking_mode'), {
-        'name': 'lsp.basedpyright.type_checking_mode',
-        'value': 'strict',
+      // An empty value means the built-in manual setup.
+      _expectOk(await harness.get('lsp.plugin_server_id'), {
+        'name': 'lsp.plugin_server_id',
+        'value': '',
       });
+
+      _expectOk(await harness.set('lsp.plugin_server_id', 'zuban'), true);
+      expect(harness.container.read(lspPluginServerId), 'zuban');
+      _expectOk(await harness.get('lsp.plugin_server_id'), {
+        'name': 'lsp.plugin_server_id',
+        'value': 'zuban',
+      });
+
+      _expectOk(await harness.set('lsp.plugin_server_id', ''), true);
+      expect(harness.container.read(lspPluginServerId), isNull);
     },
   );
 
@@ -472,7 +502,7 @@ void main() {
     expect(harness.container.read(themeStyle), ThemeStyle.comfortable);
     expect(harness.container.read(themeColor)?.toARGB32(), 0xff123456);
     expect(harness.container.read(activePluginThemeId), 'fixture::nord');
-    expect(harness.container.read(useMaterialContextMenu), isFalse);
+    expect(harness.container.read(useMaterialContextMenu), isTrue);
   });
 
   test('read-only settings permission denies set over transport', () async {

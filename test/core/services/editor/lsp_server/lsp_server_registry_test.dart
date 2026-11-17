@@ -3,8 +3,7 @@ import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_context.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_registry.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/pylsp_basedpyright_lsp_server.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/zuban_lsp_server.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/pylsp_lsp_server.dart';
 
 LspServerContext contextFor({
   LspType transport = LspType.stdio,
@@ -18,7 +17,7 @@ LspServerContext contextFor({
     stubsEnabled: false,
     stubsPaths: const [],
     pythonInterpreter: '',
-    typeCheckingMode: BasedPyrightTypeCheckingMode.standard,
+    typeCheckingMode: LspTypeCheckingMode.standard,
   );
 }
 
@@ -111,7 +110,7 @@ void main() {
         stubsEnabled: true,
         stubsPaths: const ['/stubs/rp2', '/stubs/shared'],
         pythonInterpreter: '/venv/bin/python',
-        typeCheckingMode: BasedPyrightTypeCheckingMode.basic,
+        typeCheckingMode: LspTypeCheckingMode.basic,
       );
 
       expect(adapter.id, 'mylsp');
@@ -142,6 +141,46 @@ void main() {
       });
     });
 
+    test('treats dots in option keys as nesting', () {
+      // pylsp reads its jedi settings two levels down; a profile has to be able
+      // to address that path without a bespoke adapter.
+      final adapter = LspServerProfileAdapter(
+        profileEntry({
+          'match': {
+            'executables': ['pylsp'],
+          },
+          'configuration': {
+            'mode': 'sectioned',
+            'section': 'pylsp',
+            'stubs_paths_key': 'plugins.jedi.extra_paths',
+            'python_executable_key': 'plugins.jedi.environment',
+            'extra': {'plugins.jedi.prioritize_extra_paths': true},
+          },
+        }),
+      );
+      final context = LspServerContext(
+        transport: LspType.stdio,
+        stdioExecutable: 'python',
+        stdioArgs: '-m pylsp',
+        stubsEnabled: true,
+        stubsPaths: const ['/stubs/rp2'],
+        pythonInterpreter: '/venv/bin/python',
+        typeCheckingMode: LspTypeCheckingMode.standard,
+      );
+
+      expect(adapter.buildConfiguration(context), {
+        'pylsp': {
+          'plugins': {
+            'jedi': {
+              'extra_paths': ['/stubs/rp2'],
+              'environment': '/venv/bin/python',
+              'prioritize_extra_paths': true,
+            },
+          },
+        },
+      });
+    });
+
     test('expands environment templates per launch', () {
       final adapter = LspServerProfileAdapter(
         profileEntry({
@@ -163,7 +202,7 @@ void main() {
         stubsEnabled: true,
         stubsPaths: const ['/stubs/rp2'],
         pythonInterpreter: '/venv/bin/python',
-        typeCheckingMode: BasedPyrightTypeCheckingMode.standard,
+        typeCheckingMode: LspTypeCheckingMode.standard,
         workspacePath: '/workspace',
       );
 
@@ -209,7 +248,7 @@ void main() {
   });
 
   group('LspServerRegistry', () {
-    test('prefers a contributed profile over the built-in servers', () {
+    test('prefers a contributed profile over the built-in server', () {
       final profile = LspServerProfileAdapter(
         profileEntry({
           'match': {
@@ -223,12 +262,19 @@ void main() {
       expect(registry.resolve(contextFor(executable: 'zuban')), same(profile));
     });
 
-    test('resolves the built-in Zuban adapter for zuban launches', () {
+    test('has no built-in adapter for a specialized server', () {
+      // BasedPyright and Zuban used to ship as built-ins; their option shapes
+      // now come from the plugin that contributes the profile, so an unclaimed
+      // launch falls through to pylsp instead of a server-specific payload.
       const registry = LspServerRegistry();
 
       expect(
         registry.resolve(contextFor(executable: 'python', args: '-m zuban')),
-        isA<ZubanLspServerAdapter>(),
+        isA<PylspLspServerAdapter>(),
+      );
+      expect(
+        registry.resolve(contextFor(executable: 'basedpyright')),
+        isA<PylspLspServerAdapter>(),
       );
     });
 
@@ -236,12 +282,12 @@ void main() {
       const registry = LspServerRegistry();
 
       expect(
-        registry.resolve(contextFor(executable: 'basedpyright')),
-        isA<PylspBasedPyrightLspServerAdapter>(),
+        registry.resolve(contextFor(executable: 'pylsp')),
+        isA<PylspLspServerAdapter>(),
       );
       expect(
         registry.resolve(contextFor(transport: LspType.webSocket)),
-        isA<PylspBasedPyrightLspServerAdapter>(),
+        isA<PylspLspServerAdapter>(),
       );
     });
 

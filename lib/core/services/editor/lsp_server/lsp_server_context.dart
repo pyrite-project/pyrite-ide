@@ -34,7 +34,7 @@ class LspServerContext {
   final String pythonInterpreter;
   final PythonVirtualEnvironment? virtualEnvironment;
 
-  final BasedPyrightTypeCheckingMode typeCheckingMode;
+  final LspTypeCheckingMode typeCheckingMode;
   final String workspacePath;
 
   /// The full stdio launch command, executable first.

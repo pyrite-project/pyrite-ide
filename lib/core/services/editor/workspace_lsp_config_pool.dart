@@ -94,6 +94,31 @@ class WorkspaceLspConfigPool<T> {
     return (config: config, created: true);
   }
 
+  /// Evicts every pooled config, handing each one to [onEvict].
+  ///
+  /// Used when launch settings change (transport, executable, arguments, the
+  /// plugin server in use): a running server was started from the old launch
+  /// and cannot be re-targeted, so the next file open must start a fresh one.
+  void evictAll() {
+    for (final config in _configs.values) {
+      _onEvict?.call(config);
+    }
+    _configs.clear();
+    _users.clear();
+  }
+
+  /// Evicts only the config pooled under [workspacePath], if any.
+  ///
+  /// Used by the crash-restart flow when it gives up (repeated crashes) and
+  /// must not leave a dead config in the pool for the next acquire to trip
+  /// over.
+  void evict(String workspacePath) {
+    final config = _configs.remove(workspacePath);
+    if (config == null) return;
+    _users.remove(workspacePath);
+    _onEvict?.call(config);
+  }
+
   /// Drops one user's claim on [config]; a `null` or unknown config is a
   /// no-op. The config is evicted and passed to `onEvict` when the last user
   /// releases it, which for a real `LspConfig` stops the server process.

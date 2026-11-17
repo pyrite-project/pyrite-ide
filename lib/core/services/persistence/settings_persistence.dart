@@ -25,8 +25,11 @@ class SettingsPersistedData {
   final String lspWebSocketPath;
   final String lspStdioExecutable;
   final String lspStdioArgs;
+
+  /// Plugin-provided language server in use, or null for the manual setup.
+  final String? lspPluginServerId;
   final String lspVirtualEnvironment;
-  final String lspBasedPyrightTypeCheckingMode;
+  final String lspTypeCheckingMode;
   final bool disableWarning;
   final bool disableError;
   final bool lspSemanticHighlighting;
@@ -101,8 +104,9 @@ class SettingsPersistedData {
     required this.lspWebSocketPath,
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
+    this.lspPluginServerId,
     this.lspVirtualEnvironment = '',
-    this.lspBasedPyrightTypeCheckingMode = 'standard',
+    this.lspTypeCheckingMode = 'standard',
     required this.disableWarning,
     required this.disableError,
     this.lspSemanticHighlighting = true,
@@ -133,7 +137,7 @@ class SettingsPersistedData {
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
-    this.useMaterialContextMenu = false,
+    this.useMaterialContextMenu = true,
     this.uploadConfirmStyle = 'toolbar',
     this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',
@@ -170,8 +174,9 @@ class SettingsPersistedData {
     'lspWebSocketPath': lspWebSocketPath,
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
+    'lspPluginServerId': lspPluginServerId,
     'lspVirtualEnvironment': lspVirtualEnvironment,
-    'lspBasedPyrightTypeCheckingMode': lspBasedPyrightTypeCheckingMode,
+    'lspTypeCheckingMode': lspTypeCheckingMode,
     'disableWarning': disableWarning,
     'disableError': disableError,
     'lspSemanticHighlighting': lspSemanticHighlighting,
@@ -244,13 +249,19 @@ class SettingsPersistedData {
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
     lspStdioArgs: json['lspStdioArgs'] as String? ?? '',
+    lspPluginServerId: json['lspPluginServerId'] as String?,
     lspVirtualEnvironment:
         json['lspVirtualEnvironment'] as String? ??
         _legacyInterpreterVirtualEnvironment(
           json['lspPythonInterpreter'] as String? ?? '',
         ),
-    lspBasedPyrightTypeCheckingMode:
-        json['lspBasedPyrightTypeCheckingMode'] as String? ?? 'standard',
+    // The setting was published as a BasedPyright-specific one before language
+    // servers moved to plugins; keep reading the old key so an upgrade does not
+    // silently reset the level the user picked.
+    lspTypeCheckingMode:
+        json['lspTypeCheckingMode'] as String? ??
+        json['lspBasedPyrightTypeCheckingMode'] as String? ??
+        'standard',
     disableWarning: json['disableWarning'] as bool? ?? false,
     disableError: json['disableError'] as bool? ?? false,
     lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? true,
@@ -294,7 +305,7 @@ class SettingsPersistedData {
             .map((value) => value.toInt())
             .toList() ??
         kDefaultTerminalCustomPalette,
-    useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
+    useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? true,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
     fileSortMode: json['fileSortMode'] as String? ?? 'name',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',

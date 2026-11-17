@@ -27,7 +27,6 @@ import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
 import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/periodic_task/periodic_task.dart';
@@ -101,7 +100,7 @@ void _appendIdeOutputLater(String text) {
 final ErrorLogDedupe _errorLogDedupe = ErrorLogDedupe(
   emitSummary: (text) {
     _appendIdeOutputLater(text);
-    GitDebugLog.log(text);
+    AppLog.w('flutter', text);
   },
 );
 
@@ -132,12 +131,6 @@ void _installIdeOutputLogger() {
       error: details.exception,
       stack: details.stack,
     );
-    GitDebugLog.log(
-      'FlutterError library=${details.library ?? ''} '
-      'context=${details.context?.toString() ?? ''}',
-      error: details.exception,
-      stackTrace: details.stack,
-    );
     _appendIdeOutputLater('$message${stack == null ? '' : '\n$stack'}');
     FlutterError.presentError(details);
   };
@@ -151,11 +144,6 @@ void _installIdeOutputLogger() {
       'unhandled async error type=${error.runtimeType}',
       error: error,
       stack: stack,
-    );
-    GitDebugLog.log(
-      'PlatformDispatcher.onError',
-      error: error,
-      stackTrace: stack,
     );
     _appendIdeOutputLater('Unhandled exception: $error\n$stack');
     // Returning true marks the error handled so a single uncaught async
@@ -209,13 +197,12 @@ void _applyData(PersistedData data) {
   container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
+  container.read(lspPluginServerId.notifier).state = data.lspPluginServerId;
   container.read(lspVirtualEnvironment.notifier).state =
       data.lspVirtualEnvironment;
-  container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
-      BasedPyrightTypeCheckingMode.fromJsonName(
-        data.lspBasedPyrightTypeCheckingMode,
-      ) ??
-      BasedPyrightTypeCheckingMode.standard;
+  container.read(lspTypeCheckingMode.notifier).state =
+      LspTypeCheckingMode.fromJsonName(data.lspTypeCheckingMode) ??
+      LspTypeCheckingMode.standard;
   container.read(disableWarning.notifier).state = data.disableWarning;
   container.read(disableError.notifier).state = data.disableError;
   container.read(lspSemanticHighlighting.notifier).state =
@@ -425,8 +412,9 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   lspWebSocketPath,
   lspStdioExecutable,
   lspStdioArgs,
+  lspPluginServerId,
   lspVirtualEnvironment,
-  lspBasedPyrightTypeCheckingMode,
+  lspTypeCheckingMode,
   disableWarning,
   disableError,
   lspSemanticHighlighting,
@@ -506,19 +494,15 @@ Future<void> _startRuntimeAndPlugins() async {
 // PyriteIDE: Hello World.
 void main() async {
   final bootCycle = Stopwatch()..start();
-  GitDebugLog.startSession();
-  GitDebugLog.log('main start');
+  AppLog.d('lifecycle', 'main start');
   PyriteWidgetsBinding.ensureInitialized();
 
   // Wait for Material Icons font to be fully loaded before first frame.
   // This prevents the "tofu" (question mark box) issue on desktop platforms.
   await Future.delayed(const Duration(milliseconds: 50));
   VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
-  GitDebugLog.log('WidgetsFlutterBinding initialized');
-  await GitDebugLog.timeAsync(
-    'git2dart PlatformSpecific.initialize',
-    PlatformSpecific.initialize,
-  );
+  AppLog.d('lifecycle', 'WidgetsFlutterBinding initialized');
+  await PlatformSpecific.initialize();
 
   persistenceManager = PersistenceManager();
   final PersistedData data = await persistenceManager.loadAll();
@@ -542,7 +526,7 @@ void main() async {
 
   container = ProviderContainer();
   _installIdeOutputLogger();
-  GitDebugLog.log('ProviderContainer and global error logging installed');
+  AppLog.d('lifecycle', 'ProviderContainer and global error logging installed');
 
   // One banner per launch: a report that says "it is slow to start" or "the
   // board reconnected by itself" has nothing to correlate otherwise, and a run
@@ -623,11 +607,11 @@ void main() async {
     ).then(
       (removed) {
         if (removed > 0) {
-          GitDebugLog.log('pruned $removed stale board mirror entries');
+          AppLog.d('board', 'pruned $removed stale board mirror entries');
         }
       },
       onError: (Object error) {
-        GitDebugLog.log('board mirror prune failed', error: error);
+        AppLog.d('board', 'board mirror prune failed', error: error);
       },
     ),
   );
@@ -635,7 +619,7 @@ void main() async {
   appWindow.bind(container);
   appWindow.init();
 
-  GitDebugLog.log('runApp start');
+  AppLog.d('lifecycle', 'runApp start');
   runApp(
     UncontrolledProviderScope(
       container: container,

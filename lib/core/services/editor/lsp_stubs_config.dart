@@ -69,7 +69,7 @@ class LspStubsConfig {
     stubsEnabled: stubsEnabled,
     stubsPaths: paths,
     pythonInterpreter: pythonInterpreter,
-    typeCheckingMode: read(lspBasedPyrightTypeCheckingMode),
+    typeCheckingMode: read(lspTypeCheckingMode),
     virtualEnvironment: virtualEnvironment,
     workspacePath: workspacePath ?? '',
   );

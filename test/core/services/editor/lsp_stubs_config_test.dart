@@ -6,14 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/zuban_lsp_server.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 void main() {
-  test('maps MicroPython stub paths for pylsp and basedpyright', () {
+  test('maps MicroPython stub paths into the pylsp jedi configuration', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container
@@ -40,23 +39,18 @@ void main() {
     );
     final pylsp =
         config.workspaceConfiguration['pylsp'] as Map<String, dynamic>;
-    final basedpyright =
-        config.workspaceConfiguration['basedpyright'] as Map<String, dynamic>;
 
     expect(config.paths, ['/stubs/rp2', '/stubs/shared']);
     expect((pylsp['plugins'] as Map<String, dynamic>)['jedi'], {
       'extra_paths': config.paths,
       'prioritize_extra_paths': true,
     });
-    expect(basedpyright['analysis'], {
-      'typeCheckingMode': 'standard',
-      'extraPaths': config.paths,
-    });
+    expect(config.workspaceConfiguration.keys, ['pylsp']);
     expect(config.initializationOptions, config.workspaceConfiguration);
   });
 
   test(
-    'maps the selected virtual environment for basedpyright without stubs',
+    'maps the selected virtual environment into the pylsp configuration',
     () {
       final root = Directory.systemTemp.createTempSync('pyrite-venv-');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -85,13 +79,6 @@ void main() {
             'jedi': {'environment': interpreter.path},
           },
         },
-        'basedpyright': {
-          'analysis': {'typeCheckingMode': 'standard'},
-        },
-        'python': {
-          'venvPath': root.parent.path,
-          'venv': root.path.split(Platform.pathSeparator).last,
-        },
       });
       final pathSeparator = Platform.isWindows ? ';' : ':';
       final environmentPath = config.environment.entries
@@ -102,7 +89,7 @@ void main() {
     },
   );
 
-  test('configures the default BasedPyright type checking mode', () {
+  test('sends no type checking options to the built-in pylsp server', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -110,66 +97,58 @@ void main() {
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
-    expect(config.workspaceConfiguration, {
-      'basedpyright': {
-        'analysis': {'typeCheckingMode': 'standard'},
-      },
-    });
+    // The IDE no longer knows a specific server's option shape: with no stubs
+    // and no virtual environment there is nothing for pylsp to be told.
+    expect(config.workspaceConfiguration, isEmpty);
   });
 
-  test('configures the selected BasedPyright type checking mode', () {
+  test('lets a contributed profile translate the type checking level', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
-        BasedPyrightTypeCheckingMode.strict;
-
-    final config = container.read(
-      Provider((ref) => buildLspStubsConfig(ref.read)),
-    );
-
-    expect(config.workspaceConfiguration['basedpyright'], {
-      'analysis': {'typeCheckingMode': 'strict'},
-    });
-  });
-
-  test('translates BasedPyright strictness levels for Zuban', () {
-    expect(zubanTypeCheckingMode(BasedPyrightTypeCheckingMode.off), 'off');
-    for (final mode in [
-      BasedPyrightTypeCheckingMode.basic,
-      BasedPyrightTypeCheckingMode.standard,
-      BasedPyrightTypeCheckingMode.strict,
-      BasedPyrightTypeCheckingMode.all,
-    ]) {
-      expect(zubanTypeCheckingMode(mode), 'default', reason: mode.name);
-    }
-  });
-
-  test('sends Zuban a supported type checking mode', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            match: LspServerMatchRules(executables: ['mylsp']),
+            configuration: LspServerConfigurationSpec(
+              typeCheckingModeKey: 'typeCheckingMode',
+              typeCheckingModeValues: {
+                'off': 'off',
+                'basic': 'auto',
+                'standard': 'auto',
+                'strict': 'auto',
+                'all': 'auto',
+              },
+            ),
+          ),
+        );
     container.read(lspType.notifier).state = LspType.stdio;
-    container.read(lspStdioExecutable.notifier).state = 'zuban';
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
+    container.read(lspTypeCheckingMode.notifier).state =
+        LspTypeCheckingMode.strict;
 
     final config = container.read(
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
-    expect(config.workspaceConfiguration, {'typeCheckingMode': 'default'});
+    expect(config.workspaceConfiguration, {'typeCheckingMode': 'auto'});
   });
 
-  test('keeps Zuban type checking off when disabled', () {
+  test('passes the type checking level through for the built-in pylsp', () {
+    // pylsp takes no strictness option, so the selection stays out of its
+    // payload even after the user changes it.
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    container.read(lspType.notifier).state = LspType.stdio;
-    container.read(lspStdioExecutable.notifier).state = 'zuban';
-    container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
-        BasedPyrightTypeCheckingMode.off;
+    container.read(lspTypeCheckingMode.notifier).state =
+        LspTypeCheckingMode.off;
 
     final config = container.read(
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
-    expect(config.workspaceConfiguration, {'typeCheckingMode': 'off'});
+    expect(config.workspaceConfiguration, isEmpty);
   });
 
   test('uses a data-plugin LSP server profile that matches the launch', () {
@@ -213,7 +192,7 @@ void main() {
     expect(config.environment['MYPYPATH'], '/stubs/shared');
   });
 
-  test('falls back to the built-in servers when no profile matches', () {
+  test('falls back to the built-in pylsp server when no profile matches', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container
@@ -228,13 +207,17 @@ void main() {
         );
     container.read(lspType.notifier).state = LspType.stdio;
     container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+    container.read(microPythonStubsEnabled.notifier).state = true;
+    container.read(microPythonStubsExtraPaths.notifier).state = const [
+      '/stubs/shared',
+    ];
 
     final config = container.read(
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
     expect(config.workspaceConfiguration.containsKey('mylsp'), isFalse);
-    expect(config.workspaceConfiguration.containsKey('basedpyright'), isTrue);
+    expect(config.workspaceConfiguration.containsKey('pylsp'), isTrue);
   });
 
   test('rejects a second plugin registering the same LSP server id', () {
@@ -291,15 +274,11 @@ void main() {
     );
 
     expect(config.virtualEnvironment, isEmpty);
-    expect(config.workspaceConfiguration, {
-      'basedpyright': {
-        'analysis': {'typeCheckingMode': 'standard'},
-      },
-    });
+    expect(config.workspaceConfiguration, isEmpty);
   });
 
   test(
-    'lets BasedPyright discover a symlinked workspace .venv',
+    'activates a symlinked workspace .venv',
     () {
       final root = Directory.systemTemp.createTempSync('pyrite-workspace-');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -400,11 +379,22 @@ void main() {
     expect(config.workspaceConfiguration.containsKey('python'), isFalse);
   });
 
-  test('marks Zuban as receiving stubs through its environment', () {
+  test('marks a profile that carries stubs in its environment', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            match: LspServerMatchRules(executables: ['mylsp']),
+            configuration: LspServerConfigurationSpec(),
+            environment: {'MYPYPATH': '{stubsPaths}'},
+          ),
+        );
     container.read(lspType.notifier).state = LspType.stdio;
-    container.read(lspStdioExecutable.notifier).state = 'zuban';
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
 
     final launch = container.read(
       Provider((ref) => resolveLspLaunch(ref.read)),
@@ -417,7 +407,7 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(lspType.notifier).state = LspType.stdio;
-    container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+    container.read(lspStdioExecutable.notifier).state = 'pylsp';
 
     final launch = container.read(
       Provider((ref) => resolveLspLaunch(ref.read)),
@@ -430,7 +420,8 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(lspType.notifier).state = LspType.stdio;
-    container.read(lspStdioExecutable.notifier).state = 'zuban';
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
+    _registerEnvDeliveredProfile(container);
 
     expect(
       container.read(
@@ -440,24 +431,28 @@ void main() {
     );
   });
 
-  test('asks to restart while Zuban serves an open workspace', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container.read(lspType.notifier).state = LspType.stdio;
-    container.read(lspStdioExecutable.notifier).state = 'zuban';
+  test(
+    'asks to restart while an environment-fed server serves a workspace',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(lspType.notifier).state = LspType.stdio;
+      container.read(lspStdioExecutable.notifier).state = 'mylsp';
+      _registerEnvDeliveredProfile(container);
 
-    expect(
-      container.read(
-        Provider(
-          (ref) => anyOpenLspNeedsRestartForStubs(
-            ref.read,
-            openWorkspacePaths: {'/tmp/pyrite-workspace'},
+      expect(
+        container.read(
+          Provider(
+            (ref) => anyOpenLspNeedsRestartForStubs(
+              ref.read,
+              openWorkspacePaths: {'/tmp/pyrite-workspace'},
+            ),
           ),
         ),
-      ),
-      isTrue,
-    );
-  });
+        isTrue,
+      );
+    },
+  );
 
   test(
     'does not ask to restart while a configuration-delivered server is open',
@@ -465,7 +460,7 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       container.read(lspType.notifier).state = LspType.stdio;
-      container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+      container.read(lspStdioExecutable.notifier).state = 'pylsp';
 
       expect(
         container.read(
@@ -498,4 +493,20 @@ void main() {
 
     expect(() => refreshOpenLspConfiguration(ref.read), returnsNormally);
   });
+}
+
+/// Contributes a profile that hands stubs to the process environment, the way
+/// the Zuban plugin does with `MYPYPATH`.
+void _registerEnvDeliveredProfile(ProviderContainer container) {
+  container
+      .read(dataRegistryProvider)
+      .registerLspServer(
+        const LspServerProfileEntry(
+          pluginId: 'lsp-fixture',
+          serverId: 'mylsp',
+          match: LspServerMatchRules(executables: ['mylsp']),
+          configuration: LspServerConfigurationSpec(),
+          environment: {'MYPYPATH': '{stubsPaths}'},
+        ),
+      );
 }

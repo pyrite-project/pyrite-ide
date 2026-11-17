@@ -75,9 +75,9 @@ class PersistenceManager {
       lspWebSocketPath: settings?.lspWebSocketPath ?? '127.0.0.1:2026',
       lspStdioExecutable: settings?.lspStdioExecutable ?? '',
       lspStdioArgs: settings?.lspStdioArgs ?? '',
+      lspPluginServerId: settings?.lspPluginServerId,
       lspVirtualEnvironment: settings?.lspVirtualEnvironment ?? '',
-      lspBasedPyrightTypeCheckingMode:
-          settings?.lspBasedPyrightTypeCheckingMode ?? 'standard',
+      lspTypeCheckingMode: settings?.lspTypeCheckingMode ?? 'standard',
       disableWarning: settings?.disableWarning ?? false,
       disableError: settings?.disableError ?? false,
       lspSemanticHighlighting: settings?.lspSemanticHighlighting ?? true,
@@ -128,7 +128,7 @@ class PersistenceManager {
           kDefaultTerminalCustomBackground,
       terminalCustomPalette:
           settings?.terminalCustomPalette ?? kDefaultTerminalCustomPalette,
-      useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
+      useMaterialContextMenu: settings?.useMaterialContextMenu ?? true,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
       fileSortMode: settings?.fileSortMode ?? 'name',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
@@ -185,10 +185,9 @@ class PersistenceManager {
           lspWebSocketPath: container.read(lspWebSocketPath),
           lspStdioExecutable: container.read(lspStdioExecutable),
           lspStdioArgs: container.read(lspStdioArgs),
+          lspPluginServerId: container.read(lspPluginServerId),
           lspVirtualEnvironment: container.read(lspVirtualEnvironment),
-          lspBasedPyrightTypeCheckingMode: container
-              .read(lspBasedPyrightTypeCheckingMode)
-              .jsonName,
+          lspTypeCheckingMode: container.read(lspTypeCheckingMode).jsonName,
           disableWarning: container.read(disableWarning),
           disableError: container.read(disableError),
           lspSemanticHighlighting: container.read(lspSemanticHighlighting),
