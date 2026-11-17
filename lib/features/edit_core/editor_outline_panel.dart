@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_outline.dart';
 import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/shared/pyrite_menu.dart';
 
@@ -24,7 +25,10 @@ import '../../shared/md3_widgets.dart';
 ///
 /// The panel follows the focused editor group's selected tab rather than
 /// owning a file of its own, so switching tabs — or focus, across a split —
-/// updates it without any coordination.
+/// updates it without any coordination. A selection that is not a file — the
+/// welcome page, a git diff, a plugin view — shows the no-file state; only
+/// the outline tab itself, which selects no file at all, keeps the last
+/// file's tree on screen.
 class EditorOutlinePanel extends ConsumerStatefulWidget {
   const EditorOutlinePanel({super.key});
 
@@ -87,8 +91,25 @@ class _EditorOutlinePanelState extends ConsumerState<EditorOutlinePanel> {
   ///
   /// The outline follows the selected tab, and selecting an outline tab in
   /// the editor bar selects no file at all — there the panel keeps showing
-  /// the last file's outline instead of claiming no file is open.
+  /// the last file's outline instead of claiming no file is open. Every other
+  /// non-file selection — the welcome page, a git diff, a plugin view — has
+  /// left the files, and the panel shows its no-file state rather than a tree
+  /// for a tab that is gone or not a document.
   TabDataValue? _lastFileTab;
+
+  /// Whether [_lastFileTab] still belongs to a tab in the editor area.
+  ///
+  /// A tab closed while the outline holds focus leaves its value behind
+  /// here; following it would show a tree for a file that is gone and attach
+  /// a listener to its disposed controller.
+  bool get _isLastFileTabLive {
+    final last = _lastFileTab;
+    if (last == null) return false;
+    return ref
+        .read(editorLayoutProvider)
+        .tabs
+        .any((tab) => identical(tab.value, last));
+  }
 
   @override
   void dispose() {
@@ -110,8 +131,23 @@ class _EditorOutlinePanelState extends ConsumerState<EditorOutlinePanel> {
         ? value
         : null;
     if (fileTab != null) _lastFileTab = fileTab;
-    final target = fileTab ?? _lastFileTab;
+    // A file tab parses that file. Selecting the outline tab itself — which
+    // selects no file — keeps the last file's tree on screen, but only while
+    // that file's tab is still alive. Anything else has left the files: the
+    // welcome page, a git diff, a plugin view, a console tab, or the closing
+    // of the last file each show the no-file state instead of a stale tree.
+    final target = fileTab ??
+        (tab != null && isOutlineTab(tab) && _isLastFileTabLive
+            ? _lastFileTab
+            : null);
     if (target == null) {
+      // Nothing to follow, so nothing to watch either: the previous file's
+      // tab may have closed with this selection, and its controller must not
+      // be touched again. The parsed tree stays cached, so returning to the
+      // file restores the outline without a reparse.
+      _detachControllerListener();
+      _activePath = null;
+      _activeController = null;
       return _EmptyState(
         icon: Icons.account_tree_outlined,
         message: translateForWidget(ref, I18nKey.editorOutlineUnavailable),
