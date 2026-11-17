@@ -35,6 +35,7 @@ import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_run_directory.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 import 'package:pyrite_ide/features/edit_core/line_comment.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_context_menu_actions.dart';
@@ -333,7 +334,9 @@ class _EditCoreState extends ConsumerState<EditCore> {
       ref,
       controller: widget.editorController,
       filePath: widget.file.path,
-      rebuildKey: activeEditorRebuildKey(context, ref),
+      // No rebuildKey: the key stays the file path, so a theme switch
+      // updates the editor in place instead of recreating it — the scroll
+      // position, undo stack and find state survive.
       undoController: widget.undoController,
       findController: _findController,
       customContextMenuItems: _editorContextMenuItems(ref),
@@ -346,7 +349,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
         _goToDefinition(context, ref, method: 'textDocument/implementation'),
       ),
       finderBuilder: (context, controller) {
-        final theme = resolveActiveThemeForSurface(context, ref);
+        final theme = resolveActiveThemeForSurface(context, ref).theme;
         final colors = editorSurfaceColors(context, theme);
         return _EditorFindBar(
           controller: controller,
@@ -1022,7 +1025,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
             translateForWidget(
               ref,
               I18nKey.editorUploadedToDevice,
-            ).replaceAll('{path}', pending.targetPath),
+            ).replaceAll('{path}', displayPathName(pending.targetPath)),
           );
     } catch (error) {
       ref
@@ -1063,7 +1066,7 @@ class _EditCoreState extends ConsumerState<EditCore> {
             translateForWidget(
               ref,
               I18nKey.editorDownloadedToLocal,
-            ).replaceAll('{path}', pending.localPath),
+            ).replaceAll('{path}', displayPathName(pending.localPath)),
           );
     } catch (error) {
       ref
@@ -1639,10 +1642,10 @@ Future<void> runCurrentFile(BuildContext context, WidgetRef ref) async {
         ref
             .read(ideMessageProvider.notifier)
             .success(
-              translateForWidget(
-                ref,
-                I18nKey.editorRunningFile,
-              ).replaceAll('{path}', controller.openedFile ?? ''),
+              translateForWidget(ref, I18nKey.editorRunningFile).replaceAll(
+                '{path}',
+                displayPathName(controller.openedFile ?? ''),
+              ),
             );
       },
       onStdout: stdoutDecoder.add,
@@ -1797,7 +1800,7 @@ Future<bool> formatEditorDocument(
             translateForWidget(
               ref,
               I18nKey.editorFormattedDocument,
-            ).replaceAll('{path}', filePath),
+            ).replaceAll('{path}', displayPathName(filePath)),
           );
     }
     return true;

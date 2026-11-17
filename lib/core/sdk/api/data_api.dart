@@ -149,6 +149,11 @@ class SdkDataApi {
         respondError(envelope, respond, terminalError);
         return;
       }
+      final editorError = PluginThemeData.validateEditorStyles(data);
+      if (editorError != null) {
+        respondError(envelope, respond, editorError);
+        return;
+      }
     }
 
     // Keep runtime contributions scoped to the current plugin session.

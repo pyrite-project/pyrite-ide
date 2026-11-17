@@ -161,6 +161,7 @@ class StyleSettings extends ConsumerWidget {
                   RadioListTile<String?>(
                     title: const UseText(I18nKey.settingsStyleBuiltin),
                     value: null,
+                    controlAffinity: ListTileControlAffinity.trailing,
                   ),
                   for (final theme in dataRegistry.allThemes)
                     RadioListTile<String?>(
@@ -173,6 +174,7 @@ class StyleSettings extends ConsumerWidget {
                         ].join(' '),
                       ),
                       value: theme.id,
+                      controlAffinity: ListTileControlAffinity.trailing,
                     ),
                 ],
               ),

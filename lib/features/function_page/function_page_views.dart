@@ -406,13 +406,14 @@ class OutputLogView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final surface = Theme.of(context).colorScheme.surface;
     return TerminalView(
       ideOutputTerminal,
       controller: ideOutputController,
       theme: buildTerminalTheme(context, ref),
       textStyle: buildTerminalStyle(ref),
-      key: ValueKey('output_${surface.toARGB32()}'),
+      // No key keyed on the surface color: xterm updates the renderer in
+      // place on a theme switch, and a recreation would drop the log's
+      // scroll position.
       onSecondaryTapUp: (details, cell) =>
           _showOutputLogContextMenu(context, ref, details.globalPosition),
     );

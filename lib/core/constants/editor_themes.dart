@@ -124,7 +124,62 @@ Map<String, TextStyle> resolveEditorTheme(
   EditorThemeEntry entry,
   Brightness brightness,
 ) {
-  return brightness == Brightness.light ? entry.light : entry.dark;
+  final theme = brightness == Brightness.light ? entry.light : entry.dark;
+  // re_highlight themes italicize comments in most of their theme files; the
+  // IDE keeps each theme's comment color but draws comments upright. Plugin
+  // styles merge on top of this base, so a plugin can still ask for an
+  // italic comment explicitly.
+  final comment = theme['comment'];
+  final normalized = comment != null && comment.fontStyle == FontStyle.italic
+      ? (Map<String, TextStyle>.from(theme)
+          ..['comment'] = comment.copyWith(fontStyle: FontStyle.normal))
+      : theme;
+  return _normalizeEditorTheme(normalized);
+}
+
+/// Runtime scope names that re_highlight languages emit but which theme files
+/// key under a highlight.js-style alias (or omit entirely). Each entry lists
+/// the theme keys to try, in order, when the scope name itself is missing.
+///
+/// Without this, tokens like `title.function` or `variable.language` fall
+/// through every built-in theme and render unstyled; with it, a theme only
+/// needs one key set and a plugin may use either naming.
+const Map<String, List<String>> _editorScopeFallbacks = {
+  'title.function': [
+    'title.function_',
+    'function-title',
+    'title.hljs-function',
+    'function',
+    'title',
+  ],
+  'title.class': ['title.class_', 'class-title', 'class', 'title'],
+  'function': ['title.function_', 'function-title', 'title'],
+  'class': ['title.class_', 'class-title', 'title'],
+  'variable.language': ['variable.language_', 'built_in', 'variable'],
+  'variable.constant': ['literal', 'variable'],
+  'char.escape': ['char.escape_', 'string'],
+  'character': ['char.escape_', 'string'],
+  'computation-expression': ['subst', 'meta'],
+  'regex': ['regexp'],
+  'params': ['function-params'],
+};
+
+/// Fills every runtime scope that is missing a style from its first available
+/// alias key. Keys that already exist (including plugin-contributed ones)
+/// always win; the fallback never overwrites an explicit style.
+Map<String, TextStyle> _normalizeEditorTheme(Map<String, TextStyle> theme) {
+  final result = Map<String, TextStyle>.from(theme);
+  for (final entry in _editorScopeFallbacks.entries) {
+    if (result.containsKey(entry.key)) continue;
+    for (final alias in entry.value) {
+      final style = result[alias];
+      if (style != null) {
+        result[entry.key] = style;
+        break;
+      }
+    }
+  }
+  return result;
 }
 
 EditorThemeEntry? findEditorThemeByKey(String key) {
@@ -140,24 +195,11 @@ Map<String, TextStyle> applySurfaceBackground(
 ) {
   final result = <String, TextStyle>{};
   for (final entry in theme.entries) {
-    final s = entry.value;
-    result[entry.key] = TextStyle(
-      color: s.color,
-      backgroundColor: entry.key == 'root' ? surfaceColor : null,
-      fontWeight: s.fontWeight,
-      fontStyle: s.fontStyle,
-      fontSize: s.fontSize,
-      letterSpacing: s.letterSpacing,
-      wordSpacing: s.wordSpacing,
-      height: s.height,
-      decoration: s.decoration,
-      decorationColor: s.decorationColor,
-      decorationStyle: s.decorationStyle,
-      fontFamily: s.fontFamily,
-      fontFamilyFallback: s.fontFamilyFallback,
-
-      overflow: s.overflow,
-    );
+    // Keep the theme's own style untouched (including token background
+    // colors); only the root surface is repainted with the app background.
+    result[entry.key] = entry.key == 'root'
+        ? entry.value.copyWith(backgroundColor: surfaceColor)
+        : entry.value;
   }
   if (!result.containsKey('root')) {
     result['root'] = TextStyle(backgroundColor: surfaceColor);
@@ -172,8 +214,10 @@ Map<String, TextStyle> mergePluginEditorTheme(
   if (override == null || override.isEmpty) return base;
   final result = Map<String, TextStyle>.from(base);
   for (final entry in override.entries) {
-    result[entry.key] = (base[entry.key] ?? const TextStyle()).copyWith(
-      color: entry.value.color,
+    // TextStyle.merge lets every field the plugin set win while fields it
+    // left unset keep the base theme's value.
+    result[entry.key] = (result[entry.key] ?? const TextStyle()).merge(
+      entry.value,
     );
   }
   return result;
@@ -181,7 +225,7 @@ Map<String, TextStyle> mergePluginEditorTheme(
 
 /// Resolves the complete highlighter theme used by the editor.
 ///
-/// Plugin themes contribute token colors rather than complete style maps. When
+/// Plugin themes contribute token styles rather than complete style maps. When
 /// one is active, use the default theme only to fill missing token styles so a
 /// user's saved editor-theme choice cannot affect the plugin contribution.
 Map<String, TextStyle> resolveActiveEditorTheme(
@@ -196,5 +240,8 @@ Map<String, TextStyle> resolveActiveEditorTheme(
     usePluginTheme ? editorThemes.first : selectedEntry,
     brightness,
   );
-  return mergePluginEditorTheme(base, pluginStyles);
+  // The post-merge pass expands scope names a plugin wrote as theme-file
+  // aliases (e.g. `title.function_`); the base's own scopes were already
+  // normalized inside resolveEditorTheme.
+  return _normalizeEditorTheme(mergePluginEditorTheme(base, pluginStyles));
 }
