@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/services/file/board_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 
 abstract class SdkBoardCommands {
   static const String getDirList = 'sdk.board.get_dir_list';
@@ -433,7 +434,7 @@ class SdkBoard {
               message: translateWithReplacements(
                 ref,
                 I18nKey.fileMessageDownloadedToLocal,
-                {'path': localPath},
+                {'path': displayPathName(localPath)},
               ),
             );
         respondOk(envelope, respond, data: true);

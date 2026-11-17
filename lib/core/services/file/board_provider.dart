@@ -19,6 +19,7 @@ import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
@@ -59,23 +60,28 @@ class BoardNotifier {
   Future<void> deleteSelectedBoardItems(BuildContext context) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectBoardItem),
       );
       return;
     }
 
-    for (final node in nodes) {
-      if (node.data is FolderItem) {
-        await ops.deleteFolder(node.id);
-      } else {
-        await ops.deleteFile(node.id);
+    try {
+      for (final node in nodes) {
+        if (node.data is FolderItem) {
+          await ops.deleteFolder(node.id);
+        } else {
+          await ops.deleteFile(node.id);
+        }
       }
+    } finally {
+      // Removed rows leave the pane through a reload, and a batch that fails
+      // part way still deleted the paths it got through — hence `finally`.
+      await ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
     }
-    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
     if (context.mounted) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageDeletedBoardItems, {
           'count': '${nodes.length}',
@@ -132,7 +138,7 @@ class BoardNotifier {
         if (node.data is FolderItem &&
             ops.isBoardPathInside(normalizedTargetFolder, sourcePath)) {
           if (context.mounted) {
-            showEditorSnackBar(
+            showEditorMessage(
               context,
               translateWithReplacements(
                 ref,
@@ -157,7 +163,7 @@ class BoardNotifier {
           switch (action) {
             case FileConflictAction.cancel:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -168,7 +174,7 @@ class BoardNotifier {
               return;
             case FileConflictAction.showDiff:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -203,6 +209,9 @@ class BoardNotifier {
             );
         await ops.move(sourcePath, targetPath);
         moved++;
+        // A move removes a row here and adds one there, which an insert alone
+        // cannot express; the reload coalesces the whole batch into one listing.
+        ref.read(boardFileItemsProvider.notifier).requestReload();
       }
 
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
@@ -216,7 +225,7 @@ class BoardNotifier {
             ),
           );
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageMoveComplete, {
             'done': '$moved',
@@ -242,7 +251,7 @@ class BoardNotifier {
   }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectBoardItem),
       );
@@ -251,7 +260,7 @@ class BoardNotifier {
 
     final localWorkspace = ref.read(fileProvider);
     if (localWorkspace == null) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageOpenLocalProject),
       );
@@ -302,7 +311,7 @@ class BoardNotifier {
           switch (action) {
             case FileConflictAction.cancel:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -314,7 +323,7 @@ class BoardNotifier {
             case FileConflictAction.showDiff:
               if (!canShowDiff) {
                 if (context.mounted) {
-                  showEditorSnackBar(
+                  showEditorMessage(
                     context,
                     translateWithReplacements(
                       ref,
@@ -332,7 +341,7 @@ class BoardNotifier {
               );
               if (!shown) {
                 if (context.mounted) {
-                  showEditorSnackBar(
+                  showEditorMessage(
                     context,
                     translateWithReplacements(
                       ref,
@@ -388,12 +397,18 @@ class BoardNotifier {
           transferredFiles.add(targetPath);
         }
         downloaded++;
+        // Each finished path lands in the local pane as it arrives: a batch
+        // that is cancelled or fails half way must not hide the files that did
+        // make it across.
+        await ref
+            .read(localFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: node.data is FolderItem);
       }
     } on FileTransferCancelledException {
       progressNotifier.cancelledByUser();
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           '${translate(ref, I18nKey.fileMessageCanceledDownload)}'
           '${translateWithReplacements(ref, I18nKey.fileTransferProgressSuffix, {'done': '$downloaded', 'skipped': '$skipped'})}',
@@ -421,7 +436,7 @@ class BoardNotifier {
           ),
         );
     if (context.mounted) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageDownloadComplete, {
           'done': '$downloaded',
@@ -541,14 +556,14 @@ class BoardNotifier {
     final selected = selectedFile ?? selectedFolder;
     final localWorkspace = ref.read(fileProvider);
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectBoardItem),
       );
       return;
     }
     if (localWorkspace == null) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageOpenLocalProject),
       );
@@ -576,7 +591,7 @@ class BoardNotifier {
               translate(
                 ref,
                 I18nKey.dialogContentMismatchMessage,
-              ).replaceAll('{path}', boardPath ?? ''),
+              ).replaceAll('{path}', displayPathName(boardPath ?? '')),
             ),
             actions: [
               TextButton(
@@ -674,7 +689,7 @@ class BoardNotifier {
           );
           if (!confirmed) {
             if (context.mounted) {
-              showEditorSnackBar(
+              showEditorMessage(
                 context,
                 translateWithReplacements(
                   ref,
@@ -738,20 +753,23 @@ class BoardNotifier {
       ref
           .read(tabbedViewControllerProvider.notifier)
           .warnOpenFilesOverwritten(boardFiles: false, filePaths: [targetPath]);
+      await ref
+          .read(localFileItemsProvider.notifier)
+          .notePathAdded(targetPath, isFolder: false);
       ref
           .read(fileTransferProgressProvider.notifier)
           .complete(
             message: translateWithReplacements(
               ref,
               I18nKey.fileMessageDownloadedToLocal,
-              {'path': targetPath},
+              {'path': displayPathName(targetPath)},
             ),
           );
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageDownloadedToLocal, {
-            'path': targetPath,
+            'path': displayPathName(targetPath),
           }),
         );
       }
@@ -765,13 +783,18 @@ class BoardNotifier {
               boardFiles: false,
               folderPaths: [targetPath],
             );
+        // The folder row appears at once; its contents are listed when the user
+        // expands it, so nothing is lost by not walking the copy here.
+        await ref
+            .read(localFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: true);
         ref
             .read(fileTransferProgressProvider.notifier)
             .complete(
               message: translateWithReplacements(
                 ref,
                 I18nKey.fileMessageDownloadedFolderToLocal,
-                {'path': targetPath},
+                {'path': displayPathName(targetPath)},
               ),
             );
       } catch (error) {
@@ -787,12 +810,12 @@ class BoardNotifier {
         rethrow;
       }
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(
             ref,
             I18nKey.fileMessageDownloadedFolderToLocal,
-            {'path': targetPath},
+            {'path': displayPathName(targetPath)},
           ),
         );
       }

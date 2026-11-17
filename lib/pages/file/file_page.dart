@@ -26,6 +26,7 @@ import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
@@ -797,6 +798,21 @@ class ProjectFiles extends ConsumerWidget {
     }
   }
 
+  /// The destination folder as a one-line menu label.
+  ///
+  /// Menu rows are narrow, so the download actions name the folder instead of
+  /// printing the whole workspace path and clipping it. [fallback] is the "no
+  /// local project" hint, which is prose rather than a path.
+  String _localFolderDisplayName(
+    WidgetRef ref,
+    TreeNode<FileSystemItem>? localFolderTarget,
+    String fallback,
+  ) {
+    final target = localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? '';
+    if (target.isEmpty) return fallback;
+    return displayPathName(target);
+  }
+
   /// Asks before a batch upload, whether or not a name clash exists.
   ///
   /// The conflict dialog only appears for files already on the board, so an
@@ -818,7 +834,7 @@ class ProjectFiles extends ConsumerWidget {
         content: Text(
           tr(ref, I18nKey.fileConfirmUploadMessage, {
             'count': count.toString(),
-            'folder': boardFolder,
+            'folder': displayPathName(boardFolder),
           }),
         ),
         actions: [
@@ -1118,10 +1134,10 @@ class ProjectFiles extends ConsumerWidget {
           title: selectedCount > 1
               ? tr(I18nKey.fileActionUploadSelectedToBoardFolder, {
                   'count': selectedCount.toString(),
-                  'folder': boardFolderTarget?.id ?? '/',
+                  'folder': displayPathName(boardFolderTarget?.id ?? '/'),
                 })
               : tr(I18nKey.fileActionUploadToBoardFolder, {
-                  'folder': boardFolderTarget?.id ?? '/',
+                  'folder': displayPathName(boardFolderTarget?.id ?? '/'),
                 }),
           callback: () => _uploadSelectedLocalItems(context, ref),
           attributes: MenuActionAttributes(
@@ -1130,7 +1146,9 @@ class ProjectFiles extends ConsumerWidget {
         ),
         MenuAction(
           title: tr(I18nKey.fileActionOverwriteBoardFile, {
-            'path': boardFileTarget?.id ?? tr(I18nKey.fileNoBoardFileSelected),
+            'path': boardFileTarget == null
+                ? tr(I18nKey.fileNoBoardFileSelected)
+                : displayPathName(boardFileTarget.id),
           }),
           callback: () async {
             try {
@@ -1150,10 +1168,10 @@ class ProjectFiles extends ConsumerWidget {
                   .buildRootFileListItems();
 
               if (!context.mounted) return;
-              showEditorSnackBar(
+              showEditorMessage(
                 context,
                 tr(I18nKey.fileMessageOverwriteBoardFile, {
-                  'path': boardFileTarget.id,
+                  'path': displayPathName(boardFileTarget.id),
                 }),
               );
             } on DeviceNotReadyException catch (_) {
@@ -1302,16 +1320,18 @@ class ProjectFiles extends ConsumerWidget {
           title: selectedCount > 1
               ? tr(I18nKey.fileActionDownloadSelectedToLocalFolder, {
                   'count': selectedCount.toString(),
-                  'folder':
-                      localFolderTarget?.id ??
-                      ref.watch(fileProvider)?.path ??
-                      tr(I18nKey.fileNoLocalProject),
+                  'folder': _localFolderDisplayName(
+                    ref,
+                    localFolderTarget,
+                    tr(I18nKey.fileNoLocalProject),
+                  ),
                 })
               : tr(I18nKey.fileActionDownloadToLocalFolder, {
-                  'folder':
-                      localFolderTarget?.id ??
-                      ref.watch(fileProvider)?.path ??
-                      tr(I18nKey.fileNoLocalProject),
+                  'folder': _localFolderDisplayName(
+                    ref,
+                    localFolderTarget,
+                    tr(I18nKey.fileNoLocalProject),
+                  ),
                 }),
           callback: () => _downloadSelectedBoardItems(context, ref),
           attributes: MenuActionAttributes(
@@ -1322,7 +1342,9 @@ class ProjectFiles extends ConsumerWidget {
         ),
         MenuAction(
           title: tr(I18nKey.fileActionOverwriteLocalFile, {
-            'path': localFileTarget?.id ?? tr(I18nKey.fileNoLocalFileSelected),
+            'path': localFileTarget == null
+                ? tr(I18nKey.fileNoLocalFileSelected)
+                : displayPathName(localFileTarget.id),
           }),
           callback: () async {
             try {
@@ -1342,10 +1364,10 @@ class ProjectFiles extends ConsumerWidget {
                   .buildRootFileListItems();
 
               if (!context.mounted) return;
-              showEditorSnackBar(
+              showEditorMessage(
                 context,
                 tr(I18nKey.fileMessageOverwriteLocalFile, {
-                  'path': localFileTarget.id,
+                  'path': displayPathName(localFileTarget.id),
                 }),
               );
             } on DeviceNotReadyException catch (_) {
@@ -2003,7 +2025,7 @@ class ProjectFiles extends ConsumerWidget {
 
     if (!context.mounted) return;
     if (!plan.hasWork) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateInContext(
           context,
@@ -2072,7 +2094,7 @@ class ProjectFiles extends ConsumerWidget {
         ),
       );
     } else {
-      showEditorSnackBar(context, outcome.summary);
+      showEditorMessage(context, outcome.summary);
     }
   }
 

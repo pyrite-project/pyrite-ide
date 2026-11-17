@@ -2,19 +2,25 @@
 ///
 /// Both trees are built from whatever order the backing store reports --
 /// `Directory.list` and the board's `os.listdir` alike -- which is neither
-/// sorted nor stable across platforms. A file explorer is expected to read
-/// folders first and then follow one consistent order, so the two builders
-/// apply this one comparator instead of each inventing its own.
+/// sorted nor stable across platforms. A file explorer is expected to follow
+/// one consistent order, so the two builders apply this one comparator
+/// instead of each inventing its own.
 library;
 
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/models/settings.dart';
 
-/// Compares two sibling entries: folders before files, then by [mode].
+/// Compares two sibling entries according to [mode].
 ///
-/// Folders are always ordered by name, whatever the mode: they have no
-/// extension to group by, and a run of folders in arrival order would be the
-/// one part of the list the setting did not fix.
+/// [FileSortMode.byName] is a plain case-insensitive name sort over
+/// everything, folders interleaved with files exactly like the raw listing a
+/// file manager shows in name order. Forcing folders to the top here instead
+/// would group the list by kind in both modes and make the two settings look
+/// identical.
+///
+/// [FileSortMode.byType] groups by kind: folders as their own kind first,
+/// then files grouped by extension, alphabetical within each group -- what a
+/// file manager's type order shows.
 int compareFileTreeEntries({
   required bool firstIsFolder,
   required String firstName,
@@ -22,13 +28,12 @@ int compareFileTreeEntries({
   required String secondName,
   FileSortMode mode = FileSortMode.byName,
 }) {
-  if (firstIsFolder != secondIsFolder) return firstIsFolder ? -1 : 1;
-  if (firstIsFolder) return _compareNames(firstName, secondName);
-
   switch (mode) {
     case FileSortMode.byName:
       return _compareNames(firstName, secondName);
     case FileSortMode.byType:
+      if (firstIsFolder != secondIsFolder) return firstIsFolder ? -1 : 1;
+      if (firstIsFolder) return _compareNames(firstName, secondName);
       final byType = _extension(firstName).compareTo(_extension(secondName));
       if (byType != 0) return byType;
       return _compareNames(firstName, secondName);

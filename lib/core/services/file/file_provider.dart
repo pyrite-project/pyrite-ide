@@ -26,6 +26,7 @@ import 'package:pyrite_ide/core/services/file/local_backend.dart' as utils;
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:super_tree/super_tree.dart';
@@ -142,6 +143,14 @@ class FileNotifier extends StateNotifier<Directory?> {
             flush: true,
           );
         }
+        // Saving `.gitignore` rewrites which rows of the local pane are hidden
+        // and dimmed; the file itself was already in the tree, so nothing else
+        // about this save changes it.
+        if (local.isGitIgnoreFilePath(value.file!.path)) {
+          await ref
+              .read(localFileItemsProvider.notifier)
+              .buildRootFileListItems();
+        }
       }
       ref.read(tabbedViewControllerProvider.notifier).afterFileSave(tab!);
     }
@@ -170,7 +179,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             .read(ideMessageProvider.notifier)
             .success(
               translateWithReplacements(ref, I18nKey.editorFileSavedAs, {
-                'path': savedPath,
+                'path': displayPathName(savedPath),
               }),
             );
       }
@@ -283,23 +292,28 @@ class FileNotifier extends StateNotifier<Directory?> {
   Future<void> deleteSelectedLocalItems(BuildContext context) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectLocalItem),
       );
       return;
     }
 
-    for (final node in nodes) {
-      if (node.data is FolderItem) {
-        await local.deleteDir(node.id);
-      } else {
-        await local.deleteFile(node.id);
+    try {
+      for (final node in nodes) {
+        if (node.data is FolderItem) {
+          await local.deleteDir(node.id);
+        } else {
+          await local.deleteFile(node.id);
+        }
       }
+    } finally {
+      // Deleted rows leave the pane through a reload, and a batch that fails
+      // part way still deleted the paths it got through — hence `finally`.
+      await ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     }
-    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
     if (context.mounted) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageDeletedLocalItems, {
           'count': nodes.length.toString(),
@@ -314,7 +328,7 @@ class FileNotifier extends StateNotifier<Directory?> {
   }) async {
     final nodes = getSelectedNodes();
     if (nodes.isEmpty) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectLocalItem),
       );
@@ -382,7 +396,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -394,7 +408,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             case FileConflictAction.showDiff:
               if (!canShowDiff) {
                 if (context.mounted) {
-                  showEditorSnackBar(
+                  showEditorMessage(
                     context,
                     translateWithReplacements(
                       ref,
@@ -412,7 +426,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               );
               if (!shown) {
                 if (context.mounted) {
-                  showEditorSnackBar(
+                  showEditorMessage(
                     context,
                     translateWithReplacements(
                       ref,
@@ -476,6 +490,12 @@ class FileNotifier extends StateNotifier<Directory?> {
           transferredFiles.add(targetPath);
         }
         uploaded++;
+        // Each file shows up on the board as it lands: a batch that is
+        // cancelled or fails half way must not leave the pane describing the
+        // state it had before the upload started.
+        ref
+            .read(boardFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: node.data is FolderItem);
       }
 
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
@@ -489,7 +509,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
           );
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageUploadComplete, {
             'done': uploaded.toString(),
@@ -501,7 +521,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       progressNotifier.cancelledByUser();
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
           '${translateWithReplacements(ref, I18nKey.fileTransferProgressSuffix, {'done': '$uploaded', 'skipped': '$skipped'})}',
@@ -588,7 +608,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -599,7 +619,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               return;
             case FileConflictAction.showDiff:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -662,6 +682,11 @@ class FileNotifier extends StateNotifier<Directory?> {
           transferredFiles.add(targetPath);
         }
         uploaded++;
+        // Inserted as it lands rather than only at the end of the batch, so a
+        // cancelled or failed upload still leaves the pane truthful.
+        ref
+            .read(boardFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: isFolder);
       }
 
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
@@ -675,7 +700,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
           );
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageUploadComplete, {
             'done': uploaded.toString(),
@@ -687,7 +712,7 @@ class FileNotifier extends StateNotifier<Directory?> {
       progressNotifier.cancelledByUser();
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           '${translate(ref, I18nKey.fileMessageCanceledUpload)}'
           '${translateWithReplacements(ref, I18nKey.fileTransferProgressSuffix, {'done': '$uploaded', 'skipped': '$skipped'})}',
@@ -721,7 +746,7 @@ class FileNotifier extends StateNotifier<Directory?> {
     if (sourcePaths.isEmpty) return;
     final localWorkspace = state;
     if (localWorkspace == null) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageOpenLocalProject),
       );
@@ -767,7 +792,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -778,7 +803,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               return;
             case FileConflictAction.showDiff:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -819,6 +844,12 @@ class FileNotifier extends StateNotifier<Directory?> {
           await File(sourcePath).copy(targetPath);
         }
         imported++;
+        // The row appears as the copy lands; the reload below still settles
+        // names, order and git-ignored styling for everything already on
+        // screen.
+        await ref
+            .read(localFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: isFolder);
       }
 
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
@@ -832,7 +863,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
           );
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageImportComplete, {
             'done': imported.toString(),
@@ -863,12 +894,12 @@ class FileNotifier extends StateNotifier<Directory?> {
     if (movableNodes.isEmpty) return;
     if (!await Directory(targetFolder).exists()) {
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(
             ref,
             I18nKey.fileMessageTargetFolderMissing,
-            {'path': targetFolder},
+            {'path': displayPathName(targetFolder)},
           ),
         );
       }
@@ -904,7 +935,7 @@ class FileNotifier extends StateNotifier<Directory?> {
         if (node.data is FolderItem &&
             _isLocalPathInside(targetFolder, sourcePath)) {
           if (context.mounted) {
-            showEditorSnackBar(
+            showEditorMessage(
               context,
               translateWithReplacements(
                 ref,
@@ -931,7 +962,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           switch (action) {
             case FileConflictAction.cancel:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -942,7 +973,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               return;
             case FileConflictAction.showDiff:
               if (context.mounted) {
-                showEditorSnackBar(
+                showEditorMessage(
                   context,
                   translateWithReplacements(
                     ref,
@@ -981,6 +1012,10 @@ class FileNotifier extends StateNotifier<Directory?> {
           await File(sourcePath).rename(targetPath);
         }
         moved++;
+        // A move is a removal and an insertion at once, which an in-place row
+        // update cannot express; the reload coalesces every move in the batch
+        // into one walk.
+        ref.read(localFileItemsProvider.notifier).requestReload();
       }
 
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
@@ -994,7 +1029,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             ),
           );
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageMoveComplete, {
             'done': moved.toString(),
@@ -1244,7 +1279,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final selected = selectedFile ?? selectedFolder;
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectLocalItem),
       );
@@ -1268,12 +1303,12 @@ class FileNotifier extends StateNotifier<Directory?> {
       } on FileSystemException {
         await _uploadLocalFileBytes(sourcePath, targetPath);
         if (context.mounted) {
-          showEditorSnackBar(
+          showEditorMessage(
             context,
             translateWithReplacements(
               ref,
               I18nKey.fileMessageUploadedToDevice,
-              {'path': targetPath},
+              {'path': displayPathName(targetPath)},
             ),
           );
         }
@@ -1304,7 +1339,7 @@ class FileNotifier extends StateNotifier<Directory?> {
           );
           if (!confirmed) {
             if (context.mounted) {
-              showEditorSnackBar(
+              showEditorMessage(
                 context,
                 translateWithReplacements(
                   ref,
@@ -1369,6 +1404,11 @@ class FileNotifier extends StateNotifier<Directory?> {
               boardFiles: true,
               filePaths: [targetPath],
             );
+        // The file is on the device now, so the board pane shows it immediately
+        // instead of only after the reload below finishes its round trips.
+        ref
+            .read(boardFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: false);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
@@ -1376,7 +1416,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               message: translateWithReplacements(
                 ref,
                 I18nKey.fileMessageUploadedToDevice,
-                {'path': targetPath},
+                {'path': displayPathName(targetPath)},
               ),
             );
       } catch (error) {
@@ -1391,10 +1431,10 @@ class FileNotifier extends StateNotifier<Directory?> {
       }
 
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(ref, I18nKey.fileMessageUploadedToDevice, {
-            'path': targetPath,
+            'path': displayPathName(targetPath),
           }),
         );
       }
@@ -1426,6 +1466,11 @@ class FileNotifier extends StateNotifier<Directory?> {
               boardFiles: true,
               folderPaths: [targetPath],
             );
+        // A folder's children are listed on expand, so inserting the folder row
+        // is all it takes for the upload to be visible right away.
+        ref
+            .read(boardFileItemsProvider.notifier)
+            .notePathAdded(targetPath, isFolder: true);
         ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
         ref
             .read(fileTransferProgressProvider.notifier)
@@ -1433,7 +1478,7 @@ class FileNotifier extends StateNotifier<Directory?> {
               message: translateWithReplacements(
                 ref,
                 I18nKey.fileMessageUploadedFolderToDevice,
-                {'path': targetPath},
+                {'path': displayPathName(targetPath)},
               ),
             );
       } catch (error) {
@@ -1448,12 +1493,12 @@ class FileNotifier extends StateNotifier<Directory?> {
       }
 
       if (context.mounted) {
-        showEditorSnackBar(
+        showEditorMessage(
           context,
           translateWithReplacements(
             ref,
             I18nKey.fileMessageUploadedFolderToDevice,
-            {'path': targetPath},
+            {'path': displayPathName(targetPath)},
           ),
         );
       }
@@ -1473,7 +1518,7 @@ class FileNotifier extends StateNotifier<Directory?> {
 
     final selected = selectedFile ?? selectedFolder;
     if (selected == null && selectedTab == null) {
-      showEditorSnackBar(
+      showEditorMessage(
         context,
         translateWithReplacements(ref, I18nKey.fileMessageSelectLocalItem),
       );
@@ -1510,7 +1555,9 @@ class FileNotifier extends StateNotifier<Directory?> {
             content: Text(
               translate(ref, I18nKey.dialogContentMismatchMessage).replaceAll(
                 '{path}',
-                selected?.id ?? selectedTab?.value.filePath ?? '',
+                displayPathName(
+                  selected?.id ?? selectedTab?.value.filePath ?? '',
+                ),
               ),
             ),
             actions: [
@@ -1594,6 +1641,9 @@ class FileNotifier extends StateNotifier<Directory?> {
       ref
           .read(tabbedViewControllerProvider.notifier)
           .warnOpenFilesOverwritten(boardFiles: true, filePaths: [targetPath]);
+      ref
+          .read(boardFileItemsProvider.notifier)
+          .notePathAdded(targetPath, isFolder: false);
       ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
       ref
           .read(fileTransferProgressProvider.notifier)
@@ -1601,7 +1651,7 @@ class FileNotifier extends StateNotifier<Directory?> {
             message: translateWithReplacements(
               ref,
               I18nKey.fileMessageUploadedToDevice,
-              {'path': targetPath},
+              {'path': displayPathName(targetPath)},
             ),
           );
     } catch (error) {

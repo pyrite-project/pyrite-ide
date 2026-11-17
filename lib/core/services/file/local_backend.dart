@@ -110,6 +110,14 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
 // Git ignore support
 // ---------------------------------------------------------------------------
 
+/// Whether [filePath] is a git ignore file.
+///
+/// Editing one of these changes which rows of the local pane are hidden, so a
+/// save has to re-read the tree even though the save itself added no file.
+bool isGitIgnoreFilePath(String filePath) {
+  return path.basename(filePath) == '.gitignore';
+}
+
 Future<Set<String>> gitIgnoredPaths(Iterable<String> entityPaths) async {
   final normalizedPaths = entityPaths.map(path.normalize).toList();
   if (normalizedPaths.isEmpty) return const {};

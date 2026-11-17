@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:super_tree/super_tree.dart';
 
@@ -683,9 +685,16 @@ TreeNode<FileSystemItem>? getFocusFolderNodeFromProvider(
   final focusNodeId = controller.selectedNodeId ?? "/";
   final focusNode = controller.findNodeById(focusNodeId);
   if (focusNode?.data is FolderItem) return focusNode;
-  final lastSlash = focusNodeId.lastIndexOf('/');
-  final parentPath = lastSlash > 0 ? focusNodeId.substring(0, lastSlash) : '/';
-  return controller.findNodeById(parentPath);
+
+  // A focused file creates into the folder that holds it. Ask the tree for the
+  // parent row rather than splitting the id: local rows carry native paths, so
+  // a focused `…\cam\LICENSE` has no `/` at all on Windows and the split fell
+  // through to the workspace root — new files then landed next to the project
+  // instead of inside `cam`.
+  final parent = focusNode?.parent;
+  if (parent != null && parent.data is FolderItem) return parent;
+
+  return controller.findNodeById(path.dirname(focusNodeId));
 }
 
 List<TreeNode<FileSystemItem>> getSelectedNodesFromProvider(
@@ -710,7 +719,7 @@ List<TreeNode<FileSystemItem>> getSelectedNodesFromProvider(
 // UI dialogs
 // ---------------------------------------------------------------------------
 
-void showEditorSnackBar(BuildContext context, String message) {
+void showEditorMessage(BuildContext context, String message) {
   showIdeSuccess(context, message);
 }
 
@@ -820,7 +829,7 @@ Future<bool> showDiffConfirmDialog(
               Text(
                 translateForWidget(ref, I18nKey.dialogDiffTarget)
                     .replaceAll('{action}', action)
-                    .replaceAll('{path}', targetPath),
+                    .replaceAll('{path}', displayPathName(targetPath)),
               ),
               const SizedBox(height: 8),
               Text(
@@ -899,14 +908,14 @@ Future<FileConflictAction> showFileConflictDialog(
               translateForWidget(
                 ref,
                 I18nKey.dialogConflictTarget,
-              ).replaceAll('{path}', targetPath),
+              ).replaceAll('{path}', displayPathName(targetPath)),
             ),
             const SizedBox(height: 8),
             Text(
               translateForWidget(
                 ref,
                 I18nKey.dialogConflictSource,
-              ).replaceAll('{path}', sourcePath),
+              ).replaceAll('{path}', displayPathName(sourcePath)),
             ),
           ],
         ),

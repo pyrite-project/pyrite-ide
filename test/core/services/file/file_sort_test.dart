@@ -36,29 +36,41 @@ void main() {
     return [for (final entry in copy) entry.name];
   }
 
-  test('folders sort before files in both modes', () {
-    for (final mode in FileSortMode.values) {
-      expect(
-        compare(
-          firstIsFolder: true,
-          firstName: 'zebra',
-          secondIsFolder: false,
-          secondName: 'alpha',
-          mode: mode,
-        ),
-        lessThan(0),
-      );
-      expect(
-        compare(
-          firstIsFolder: false,
-          firstName: 'alpha',
-          secondIsFolder: true,
-          secondName: 'zebra',
-          mode: mode,
-        ),
-        greaterThan(0),
-      );
-    }
+  test('folders sort before files only in the type mode', () {
+    // Type order groups folders as their own kind at the top.
+    expect(
+      compare(
+        firstIsFolder: true,
+        firstName: 'zebra',
+        secondIsFolder: false,
+        secondName: 'alpha',
+        mode: FileSortMode.byType,
+      ),
+      lessThan(0),
+    );
+    expect(
+      compare(
+        firstIsFolder: false,
+        firstName: 'alpha',
+        secondIsFolder: true,
+        secondName: 'zebra',
+        mode: FileSortMode.byType,
+      ),
+      greaterThan(0),
+    );
+
+    // Name order is a plain name sort: a folder whose name sorts later sits
+    // behind an earlier file, like the raw directory listing does.
+    expect(
+      compare(
+        firstIsFolder: true,
+        firstName: 'zebra',
+        secondIsFolder: false,
+        secondName: 'alpha',
+        mode: FileSortMode.byName,
+      ),
+      greaterThan(0),
+    );
   });
 
   test('folders stay alphabetical under the type mode', () {
@@ -122,7 +134,9 @@ void main() {
         (isFolder: true, name: 'Assets'),
         (isFolder: false, name: 'README.md'),
       ], FileSortMode.byName),
-      ['Assets', 'lib', 'boot.py', 'main.py', 'README.md'],
+      // Interleaved: a folder takes the slot its name sorts into instead of
+      // jumping above every file.
+      ['Assets', 'boot.py', 'lib', 'main.py', 'README.md'],
     );
   });
 

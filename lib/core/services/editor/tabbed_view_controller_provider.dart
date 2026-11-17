@@ -30,6 +30,7 @@ import 'package:pyrite_ide/core/services/git/git_diff_editor.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 import 'package:pyrite_ide/features/edit_core/edit_core.dart';
 import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
@@ -527,7 +528,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         .show(
           translateWithReplacements(ref, key, {
             'count': affectedPaths.length.toString(),
-            'path': affectedPaths.first,
+            'path': displayPathName(affectedPaths.first),
           }),
           type: IdeMessageType.warning,
           duration: const Duration(seconds: 12),
@@ -987,7 +988,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         showIdeWarning(
           context,
           translateWithReplacements(ref, I18nKey.editorReopenMissing, {
-            'path': record.path,
+            'path': displayPathName(record.path),
           }),
         );
       }
@@ -1020,7 +1021,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         showIdeError(
           context,
           translateWithReplacements(ref, I18nKey.editorReopenFailed, {
-            'path': record.path,
+            'path': displayPathName(record.path),
             'error': '$error',
           }),
         );
@@ -1182,7 +1183,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
                 translateWithReplacements(
                   ref,
                   I18nKey.editorFileDeletedOnDisk,
-                  {'path': value.filePath},
+                  {'path': displayPathName(value.filePath)},
                 ),
                 type: IdeMessageType.warning,
                 duration: const Duration(seconds: 12),
@@ -1258,7 +1259,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         .read(ideMessageProvider.notifier)
         .success(
           translateWithReplacements(ref, I18nKey.editorFileReloadedFromDisk, {
-            'path': value.filePath,
+            'path': displayPathName(value.filePath),
           }),
         );
   }
