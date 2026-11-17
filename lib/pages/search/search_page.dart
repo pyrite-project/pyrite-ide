@@ -12,6 +12,7 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/search/search_provider.dart';
 import 'package:pyrite_ide/core/services/search/search_service.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
@@ -149,12 +150,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
 
     if (context.mounted && count > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _tr(ref, I18nKey.searchReplaceDone, {'matches': '$count'}),
-          ),
-        ),
+      showIdeSuccess(
+        context,
+        _tr(ref, I18nKey.searchReplaceDone, {'matches': '$count'}),
       );
     }
   }

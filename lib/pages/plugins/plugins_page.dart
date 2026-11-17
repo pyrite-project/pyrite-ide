@@ -14,6 +14,7 @@ import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_package_compatibility.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
@@ -228,6 +229,23 @@ class Plugins extends ConsumerWidget {
 
       final zipPath = result.files.single.path!;
       if (!context.mounted) return;
+
+      // Check the package's target platform/architecture against this host
+      // before touching the plugin directories; an incompatible package can
+      // still be installed on explicit confirmation.
+      final compatibility = await inspectPluginPackageCompatibility(zipPath);
+      if (compatibility != null && !compatibility.matches) {
+        if (!context.mounted) return;
+        final confirmed = await _confirmMismatchedInstall(
+          context,
+          ref,
+          compatibility,
+        );
+        if (confirmed != true) return;
+        if (!context.mounted) return;
+      }
+
+      if (!context.mounted) return;
       showIdeMessage(
         context,
         translateForWidget(ref, I18nKey.pluginsInstalling),
@@ -250,6 +268,37 @@ class Plugins extends ConsumerWidget {
       }
     }
   }
+
+  Future<bool?> _confirmMismatchedInstall(
+    BuildContext context,
+    WidgetRef ref,
+    PluginPackageCompatibility compatibility,
+  ) => showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const UseText(I18nKey.pluginsConfirmMismatchTitle),
+      content: Text(
+        translateForWidgetWithReplacements(
+          ref,
+          I18nKey.pluginsConfirmMismatchMessage,
+          {
+            'target': compatibility.targetDescription,
+            'current': compatibility.hostDescription,
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const UseText(I18nKey.commonCancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const UseText(I18nKey.pluginsInstallAnyway),
+        ),
+      ],
+    ),
+  );
 
   void _handleMenuAction(
     BuildContext context,

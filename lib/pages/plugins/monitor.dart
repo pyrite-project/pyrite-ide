@@ -8,6 +8,7 @@ import 'package:pyrite_ide/core/sdk/permission_log.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/plugin_metrics.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 
@@ -79,25 +80,19 @@ class PermissionMonitor extends ConsumerWidget {
     try {
       await ref.read(pluginRunManagerProvider.notifier).restartRuntime();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              translateInContext(context, I18nKey.pluginsMonitorRestarted),
-            ),
-          ),
+        showIdeSuccess(
+          context,
+          translateInContext(context, I18nKey.pluginsMonitorRestarted),
         );
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              translateInContextWithReplacements(
-                context,
-                I18nKey.pluginsMonitorRestartFailed,
-                {'error': '$error'},
-              ),
-            ),
+        showIdeError(
+          context,
+          translateInContextWithReplacements(
+            context,
+            I18nKey.pluginsMonitorRestartFailed,
+            {'error': '$error'},
           ),
         );
       }
@@ -163,25 +158,19 @@ class _MetricsTab extends ConsumerWidget {
                               try {
                                 final latency = await manager.ping();
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '${session.pluginId}: ${latency.inMilliseconds} ms',
-                                      ),
-                                    ),
+                                  showIdeMessage(
+                                    context,
+                                    '${session.pluginId}: ${latency.inMilliseconds} ms',
                                   );
                                 }
                               } catch (error) {
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        translateInContextWithReplacements(
-                                          context,
-                                          I18nKey.pluginsMonitorHealthFailed,
-                                          {'error': '$error'},
-                                        ),
-                                      ),
+                                  showIdeError(
+                                    context,
+                                    translateInContextWithReplacements(
+                                      context,
+                                      I18nKey.pluginsMonitorHealthFailed,
+                                      {'error': '$error'},
                                     ),
                                   );
                                 }

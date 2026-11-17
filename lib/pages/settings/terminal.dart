@@ -9,6 +9,7 @@ import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
@@ -959,8 +960,9 @@ Future<void> _confirmResetCustomColors(
       kDefaultTerminalCustomForeground;
   ref.read(terminalCustomBackground.notifier).state =
       kDefaultTerminalCustomBackground;
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: UseText(I18nKey.settingsTerminalCustomResetDone)),
+  showIdeSuccess(
+    context,
+    translateInContext(context, I18nKey.settingsTerminalCustomResetDone),
   );
 }
 

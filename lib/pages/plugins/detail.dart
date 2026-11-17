@@ -923,7 +923,7 @@ class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
           value: true,
           label: Text(
             '${translateForWidget(ref, I18nKey.pluginsDetailFilterModified)}'
-            ' · $_modifiedCount',
+            '($_modifiedCount)',
           ),
         ),
       ],
