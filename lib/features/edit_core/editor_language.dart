@@ -7,7 +7,7 @@ import 'package:re_highlight/languages/json.dart';
 import 'package:re_highlight/languages/lua.dart';
 import 'package:re_highlight/languages/markdown.dart';
 import 'package:re_highlight/languages/properties.dart';
-import 'package:re_highlight/languages/python.dart';
+import 'package:re_highlight/languages/python.dart' show langPython;
 import 'package:re_highlight/languages/shell.dart';
 import 'package:re_highlight/languages/xml.dart';
 import 'package:re_highlight/languages/yaml.dart';
@@ -53,15 +53,60 @@ class EditorLanguage {
   };
 }
 
-/// Python, the language this editor exists for, and the fallback whenever the
-/// extension is unknown.
+/// Hardware peripheral classes, highlighted through the `type` scope.
+const List<String> _pythonPeripheralClasses = [
+  'Accel', 'ADC', 'ADCBlock', 'APA102', 'BLE', 'CAN', 'DAC', 'DHT',
+  'DHT11', 'DHT22', 'DS18X20', 'FrameBuffer', 'I2C', 'I2S', 'LED',
+  'NeoPixel', 'OneWire', 'Pin', 'PWM', 'RTC', 'SDCard', 'Servo', 'Signal',
+  'SoftI2C', 'SoftSPI', 'SPI', 'Switch', 'Timer', 'TouchPad', 'UART',
+  'WDT', 'WLAN',
+];
+
+/// Python — the language this editor exists for — and the fallback whenever
+/// the extension is unknown.
+///
+/// Built on the original `langPython` grammar in place, with the keyword
+/// classes its stock list lacks: peripheral classes as `type`, and
+/// `self`/`cls` as `variable.language` (the stock grammar matches `self` with
+/// a bare mode that carries no scope, which no theme can style). The stock
+/// `built_in` list already covers everything a sketch can call without
+/// importing (`print`, `len`, `str`, ...), and module names stay plain on
+/// purpose — a module is imported, not built in, so neither the stock grammar
+/// nor any conventional theme colors it. The `Mode` instance is the same
+/// shared `langPython` object, so the highlighter's grammar cache and
+/// registration behave exactly as before, and nothing outside this file
+/// changes.
+///
+/// Cost profile: re_highlight compiles a language lazily on its first
+/// highlight (guarded by `isCompiled`), so tuning the raw grammar here lands
+/// before the first compile and costs nothing afterwards; keyword classes
+/// compile into a single lookup per language, so the extra words don't change
+/// the per-line matching cost, and highlighting already runs line-by-line off
+/// the UI thread. Pure Dart — Android behaves identically to the desktop.
 ///
 /// Not `const`: `Mode` instances from `re_highlight` are built at load time, so
 /// neither they nor anything holding them can be a compile-time constant.
-final EditorLanguage editorLanguagePython = EditorLanguage(
-  langPython,
-  'python',
-);
+final EditorLanguage editorLanguagePython = _pythonEditorLanguage();
+
+EditorLanguage _pythonEditorLanguage() {
+  final keywords = Map<String, dynamic>.from(
+    langPython.keywords as Map<dynamic, dynamic>,
+  );
+  keywords['variable.language'] = ['self', 'cls'];
+  keywords['type'] = _pythonPeripheralClasses;
+  langPython.keywords = keywords;
+
+  final contains = langPython.contains;
+  if (contains is List) {
+    for (final mode in contains.whereType<Mode>()) {
+      if (mode.begin == r'\bself\b' && mode.scope == null) {
+        mode.scope = 'variable.language';
+        break;
+      }
+    }
+  }
+  return EditorLanguage(langPython, 'python');
+}
 
 /// Grammar for [filePath], chosen from its extension (case-insensitive).
 ///
