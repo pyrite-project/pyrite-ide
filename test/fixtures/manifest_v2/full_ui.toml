@@ -4,7 +4,6 @@ name = "Python Tools"
 version = "1.0.0"
 type = "ui"
 protocol_version = 1
-python_version = "3.14"
 author = "PyriteIDE"
 description = "Python outline and variable inspection tools"
 activation_events = [

@@ -367,7 +367,6 @@ class PluginManifestV2 {
     required this.version,
     required this.type,
     this.protocolVersion = 1,
-    this.pythonVersion,
     this.author = '',
     this.description = '',
     this.icons,
@@ -383,7 +382,6 @@ class PluginManifestV2 {
   final String version;
   final PluginType type;
   final int protocolVersion;
-  final String? pythonVersion;
   final String author;
   final String description;
   final PluginIconSet? icons;
@@ -413,7 +411,6 @@ class PluginManifestV2 {
     'version': version,
     'type': type.name,
     'protocolVersion': protocolVersion,
-    if (pythonVersion != null) 'pythonVersion': pythonVersion,
     'author': author,
     'description': description,
     if (icons != null) 'icons': icons!.toJson(),
@@ -438,7 +435,6 @@ class PluginManifestV2 {
         ),
       ),
       protocolVersion: json['protocolVersion'] as int,
-      pythonVersion: json['pythonVersion'] as String?,
       author: json['author'] as String? ?? '',
       description: json['description'] as String? ?? '',
       icons: json['icons'] == null

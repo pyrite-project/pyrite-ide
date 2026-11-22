@@ -23,7 +23,7 @@ String _manifestWithPlatforms(List<String> platforms) => _manifestTemplate
 String _runtimeMetadata(String platform, List<String> architectures) =>
     jsonEncode({
       'schema_version': 1,
-      'runtime': {'implementation': 'cpython', 'python_version': '3.13'},
+      'runtime': {'implementation': 'cpython', 'python_version': '3.14'},
       'target': {'platform': platform, 'architectures': architectures},
     });
 
