@@ -146,19 +146,21 @@ void main() {
 
       final field = find.byType(TextField);
       expect(field, findsOneWidget);
-      // The field's own container draws the box, so that is what must hold a
-      // fixed height rather than the bare editable area inside it.
-      final box = find
-          .ancestor(of: field, matching: find.byType(Container))
+      // The input decorator paints the box from the theme, so that is what
+      // must hold a fixed height rather than the bare editable area inside
+      // it. The height itself belongs to the theme; only the invariant that
+      // it never changes is asserted here.
+      final decorator = find
+          .descendant(of: field, matching: find.byType(InputDecorator))
           .first;
-      final emptyHeight = tester.getSize(box).height;
-      expect(emptyHeight, 36);
+      final emptyHeight = tester.getSize(decorator).height;
 
       await tester.enterText(field, '0');
       await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.close), findsOneWidget);
 
       // The clear button that appears while typing must not move the box.
-      expect(tester.getSize(box).height, emptyHeight);
+      expect(tester.getSize(decorator).height, emptyHeight);
     },
   );
 }

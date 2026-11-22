@@ -26,6 +26,21 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 /// it, so a value never reads as prose.
 const String _monoFont = 'JetBrainsMono';
 
+/// [_monoFont] applied on [style], with the theme's own family behind it.
+///
+/// The mono face has no CJK glyphs; value text it cannot draw would
+/// otherwise fall to an ad-hoc system font and stop matching the app's
+/// unified face. Reading the fallback from the theme keeps a plugin theme's
+/// font choice in charge.
+TextStyle _monoOf(ThemeData theme, [TextStyle? style]) {
+  final family = theme.textTheme.bodyLarge?.fontFamily;
+  final fallbacks = [...?style?.fontFamilyFallback, ?family];
+  return (style ?? const TextStyle()).copyWith(
+    fontFamily: _monoFont,
+    fontFamilyFallback: fallbacks.isEmpty ? null : fallbacks,
+  );
+}
+
 /// Width of the label column in a detail row, so values line up vertically.
 const double _labelWidth = 132;
 
@@ -43,12 +58,6 @@ const double _compactRowWidth = 600;
 const double _controlShare = 0.42;
 const double _controlMinWidth = 200;
 const double _controlMaxWidth = 360;
-
-/// Height of the settings filter bar's search field.
-///
-/// The field draws its own box, so this is the control's layout height rather
-/// than a measurement of whichever decoration slot happens to be tallest.
-const double _filterFieldHeight = 36;
 
 /// Full plugin detail page reached from the plugin center list.
 ///
@@ -180,6 +189,9 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final valueStyle = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurface,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -197,10 +209,7 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: mono ? _monoFont : null,
-                color: scheme.onSurface,
-              ),
+              style: mono ? _monoOf(theme, valueStyle) : valueStyle,
             ),
           ),
         ],
@@ -412,7 +421,8 @@ class _MetadataSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final error = activation?.error;
     return SettingsSection(
       title: I18nKey.pluginsDetailOverview,
@@ -469,9 +479,9 @@ class _MetadataSection extends ConsumerWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '$error',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.error,
-                      fontFamily: _monoFont,
+                    style: _monoOf(
+                      theme,
+                      theme.textTheme.bodySmall?.copyWith(color: scheme.error),
                     ),
                   ),
                 ),
@@ -490,6 +500,7 @@ class _PermissionsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final declared = plugin.declaredPermissions;
     return SettingsSection(
       title: I18nKey.pluginsDetailPermissions,
@@ -502,10 +513,7 @@ class _PermissionsSection extends ConsumerWidget {
                   children: [
                     for (final resource in declared.keys.toList()..sort())
                       _InfoRow(
-                        label: Text(
-                          resource,
-                          style: const TextStyle(fontFamily: _monoFont),
-                        ),
+                        label: Text(resource, style: _monoOf(theme)),
                         value: (declared[resource]!.toList()..sort()).join(
                           ', ',
                         ),
@@ -575,6 +583,7 @@ class _MetricsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final metrics = ref.watch(pluginMetricsProvider).forPlugin(pluginId);
     return SettingsSection(
       title: I18nKey.pluginsDiagnostics,
@@ -613,6 +622,7 @@ class _MetricsSection extends ConsumerWidget {
                           'received': '${metrics.messagesReceived}',
                         },
                       ),
+                      mono: false,
                     ),
                     _InfoRow(
                       label: const Text('RPC p50 / p95'),
@@ -637,10 +647,11 @@ class _MetricsSection extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 8),
                         child: SelectableText(
                           '${metrics.lastError}\n${metrics.lastTraceback ?? ''}',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                            fontFamily: _monoFont,
-                            fontSize: 12,
+                          style: _monoOf(
+                            theme,
+                            theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.error,
+                            ),
                           ),
                         ),
                       ),
@@ -675,7 +686,6 @@ class _ConfigurationSection extends ConsumerStatefulWidget {
 
 class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
   final TextEditingController _search = TextEditingController();
-  final FocusNode _searchFocus = FocusNode();
 
   List<Map<String, dynamic>> _items = const [];
   var _loading = true;
@@ -700,7 +710,6 @@ class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
   @override
   void dispose() {
     _search.dispose();
-    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -825,95 +834,45 @@ class _ConfigurationSectionState extends ConsumerState<_ConfigurationSection> {
 
   /// The settings search box.
   ///
-  /// The magnifier and the clear button are plain [Row] children instead of
-  /// [InputDecoration] prefix/suffix icons: those slots take part in the
-  /// field's height, so a button that only exists while typing would resize
-  /// the box. With a collapsed decoration the row alone decides the layout,
-  /// and the box keeps one height in every state.
+  /// A plain themed [TextField]: fill, outline and focus ring come from the
+  /// input decoration theme, so the box follows whatever theme is active
+  /// instead of painting its own. The clear button keeps its decoration slot
+  /// in every state -- only its visibility flips -- so the box never resizes
+  /// while typing.
   Widget _searchField(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return ListenableBuilder(
-      listenable: _searchFocus,
-      // Only the border colour depends on focus, so the row is built once and
-      // reused while the box decoration is rebuilt.
-      builder: (context, child) => Container(
-        height: _filterFieldHeight,
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: context.innerCorners,
-        ),
-        // Painted over the fill instead of insetting the child: gaining focus
-        // must not nudge the text by the border width.
-        foregroundDecoration: BoxDecoration(
-          borderRadius: context.innerCorners,
-          border: Border.all(
-            color: _searchFocus.hasFocus ? scheme.primary : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: child,
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 8),
-          Icon(Icons.search, size: 18, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              controller: _search,
-              focusNode: _searchFocus,
-              style: theme.textTheme.bodySmall,
-              decoration: InputDecoration.collapsed(
-                hintText: translateForWidget(
-                  ref,
-                  I18nKey.pluginsDetailSearchSettings,
-                ),
-                hintStyle: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          if (_search.text.isNotEmpty)
-            TooltipAnchor(
+    return TextField(
+      controller: _search,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search),
+        hintText: translateForWidget(ref, I18nKey.pluginsDetailSearchSettings),
+        suffixIcon: IgnorePointer(
+          ignoring: _search.text.isEmpty,
+          child: AnimatedOpacity(
+            opacity: _search.text.isEmpty ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            child: TooltipAnchor(
               message: translateForWidget(ref, I18nKey.commonClose),
               child: IconButton(
-                icon: const Icon(Icons.close, size: 16),
+                icon: const Icon(Icons.close),
                 onPressed: () {
                   _search.clear();
                   setState(() {});
                 },
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 32,
-                  height: 32,
-                ),
-                style: IconButton.styleFrom(
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
               ),
             ),
-          const SizedBox(width: 8),
-        ],
+          ),
+        ),
       ),
+      onChanged: (_) => setState(() {}),
     );
   }
 
   Widget _filterBar(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    // No style of its own: shape, side and typography come from the theme's
+    // segmented button, so a plugin theme restyles the filter with the rest
+    // of the app.
     final filter = SegmentedButton<bool>(
       showSelectedIcon: false,
-      style: SegmentedButton.styleFrom(
-        visualDensity: VisualDensity.compact,
-        textStyle: theme.textTheme.labelSmall,
-        padding: const EdgeInsetsDirectional.symmetric(horizontal: 10),
-        minimumSize: const Size(0, 32),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        side: BorderSide(color: scheme.outlineVariant),
-      ),
       segments: [
         ButtonSegment<bool>(
           value: false,
@@ -1129,9 +1088,9 @@ class _SettingRow extends StatelessWidget {
         const SizedBox(height: 5),
         Text(
           _id,
-          style: theme.textTheme.labelSmall?.copyWith(
-            fontFamily: _monoFont,
-            color: scheme.outline,
+          style: _monoOf(
+            theme,
+            theme.textTheme.labelSmall?.copyWith(color: scheme.outline),
           ),
         ),
       ],
@@ -1215,12 +1174,18 @@ class _SettingRow extends StatelessWidget {
             // Trailing, so the value sits against its button instead of
             // drifting to the far end of a line of its own.
             textAlign: TextAlign.end,
-            style: theme.textTheme.bodySmall?.copyWith(
-              // "Not set" is prose, not a value: it keeps the UI font so the
-              // mono face's missing CJK glyphs cannot turn it into tofu.
-              fontFamily: empty ? null : _monoFont,
-              color: empty ? scheme.onSurfaceVariant : scheme.onSurface,
-            ),
+            // "Not set" is prose, not a value: it keeps the UI font so the
+            // mono face's missing CJK glyphs cannot turn it into tofu.
+            style: empty
+                ? theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  )
+                : _monoOf(
+                    theme,
+                    theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface,
+                    ),
+                  ),
           ),
         ),
         if (_modified && onReset != null) _resetButton(context, onReset!),
@@ -1338,6 +1303,12 @@ class _SettingRow extends StatelessWidget {
 
   /// A select box for a declared `enum`, matching the values the store will
   /// accept.
+  ///
+  /// A themed [DropdownButtonFormField]: the decoration comes from the input
+  /// decoration theme like every other field in the page. Initial rather than
+  /// a controlled value, because the form field applies a changed initial
+  /// value on rebuild -- a store round-trip (a reset, a reload) still repaints
+  /// the row's current value.
   Widget _enumControl(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -1349,47 +1320,28 @@ class _SettingRow extends StatelessWidget {
         break;
       }
     }
-    return Container(
-      constraints: const BoxConstraints(minHeight: 28),
-      padding: const EdgeInsetsDirectional.fromSTEB(10, 0, 4, 0),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: context.innerCorners,
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: DropdownButton<Object?>(
-        value: selected,
-        isDense: true,
-        isExpanded: true,
-        underline: const SizedBox.shrink(),
-        icon: Icon(
-          Icons.arrow_drop_down,
-          size: 18,
+    return DropdownButtonFormField<Object?>(
+      initialValue: selected,
+      isExpanded: true,
+      style: _monoOf(theme, theme.textTheme.bodySmall),
+      hint: Text(
+        translateInContext(context, I18nKey.pluginsDetailUnset),
+        style: theme.textTheme.bodySmall?.copyWith(
           color: scheme.onSurfaceVariant,
         ),
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontFamily: _monoFont,
-          color: scheme.onSurface,
-        ),
-        hint: Text(
-          translateInContext(context, I18nKey.pluginsDetailUnset),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        items: [
-          for (final candidate in _enumValues)
-            DropdownMenuItem<Object?>(
-              value: candidate,
-              child: Text(
-                _display(candidate),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-        ],
-        onChanged: onChanged,
       ),
+      items: [
+        for (final candidate in _enumValues)
+          DropdownMenuItem<Object?>(
+            value: candidate,
+            child: Text(
+              _display(candidate),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: onChanged,
     );
   }
 
@@ -1438,9 +1390,11 @@ class _SettingRow extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     _id,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontFamily: _monoFont,
-                      color: scheme.onSurfaceVariant,
+                    style: _monoOf(
+                      theme,
+                      theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                   if (_description.isNotEmpty) ...[
@@ -1462,10 +1416,6 @@ class _SettingRow extends StatelessWidget {
                       enableSuggestions: !_isPassword,
                       keyboardType: numeric ? TextInputType.number : null,
                       decoration: InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: context.innerCorners,
-                        ),
                         suffixIcon: _isPassword
                             ? TooltipAnchor(
                                 message: translateInContext(
@@ -1503,9 +1453,11 @@ class _SettingRow extends StatelessWidget {
                               : _display(_default),
                         },
                       ),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontFamily: _monoFont,
-                        color: scheme.onSurfaceVariant,
+                      style: _monoOf(
+                        theme,
+                        theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
@@ -1571,9 +1523,11 @@ class _SettingRow extends StatelessWidget {
                 children: [
                   Text(
                     _id,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontFamily: _monoFont,
-                      color: scheme.onSurfaceVariant,
+                    style: _monoOf(
+                      theme,
+                      theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1585,16 +1539,7 @@ class _SettingRow extends StatelessWidget {
                       expands: true,
                       maxLines: null,
                       textAlignVertical: TextAlignVertical.top,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontFamily: _monoFont,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        alignLabelWithHint: true,
-                        border: OutlineInputBorder(
-                          borderRadius: context.innerCorners,
-                        ),
-                      ),
+                      style: _monoOf(theme, theme.textTheme.bodySmall),
                     ),
                   ),
                 ],
@@ -1749,18 +1694,10 @@ class _SettingFieldState extends State<_SettingField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final border = OutlineInputBorder(
-      borderRadius: context.innerCorners,
-      borderSide: BorderSide(color: scheme.outlineVariant),
-    );
     return TextField(
       controller: _controller,
       focusNode: _focus,
-      style: theme.textTheme.bodySmall?.copyWith(
-        fontFamily: _monoFont,
-        color: scheme.onSurface,
-      ),
+      style: _monoOf(theme, theme.textTheme.bodySmall),
       obscureText: widget.obscure && !_revealed,
       autocorrect: false,
       enableSuggestions: !widget.obscure,
@@ -1776,28 +1713,14 @@ class _SettingFieldState extends State<_SettingField> {
       // A click elsewhere commits. Desktop fields do not drop focus on their
       // own, and a value that only lands on Enter reads as unsaved.
       onTapOutside: (_) => _focus.unfocus(),
+      // Fill, outline, focus ring and hint colour all come from the input
+      // decoration theme, so a plugin theme shapes this field the way it
+      // shapes every other field in the app.
       decoration: InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: scheme.surfaceContainerHighest,
         hintText: widget.hintText,
-        hintStyle: theme.textTheme.bodySmall?.copyWith(
-          color: scheme.onSurfaceVariant,
-        ),
-        contentPadding: const EdgeInsetsDirectional.fromSTEB(10, 9, 10, 9),
-        border: border,
-        enabledBorder: border,
-        focusedBorder: border.copyWith(
-          borderSide: BorderSide(color: scheme.primary, width: 1.5),
-        ),
         errorText: _error,
-        errorStyle: theme.textTheme.labelSmall?.copyWith(color: scheme.error),
         errorMaxLines: 3,
         suffixIcon: widget.obscure ? _revealButton(context) : null,
-        suffixIconConstraints: const BoxConstraints(
-          minWidth: 36,
-          minHeight: 32,
-        ),
       ),
     );
   }
