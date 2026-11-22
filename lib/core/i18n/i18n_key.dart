@@ -72,7 +72,15 @@ enum I18nKey {
   pluginsActionDisable('plugins.action.disable', '禁用'),
   pluginsActionEnable('plugins.action.enable', '启用'),
   pluginsActionDelete('plugins.action.delete', '删除'),
-  pluginsInstalling('plugins.message.installing', '正在安装插件...'),
+  pluginsInstalling('plugins.message.installing', '正在安装插件'),
+  pluginsInstallProgressNamed(
+    'plugins.message.installing_named',
+    '正在安装 {name}',
+  ),
+  pluginsInstallStageExtract('plugins.message.install_stage_extract', '解压安装包'),
+  pluginsInstallStageValidate('plugins.message.install_stage_validate', '校验插件'),
+  pluginsInstallStageApply('plugins.message.install_stage_apply', '写入文件'),
+  pluginsInstallStageStart('plugins.message.install_stage_start', '启动插件'),
   pluginsInstallSuccessfully('plugin.message.install_successfully', '插件安装成功'),
   pluginsUninstallSuccessfully(
     'plugin.message.uninstall_successfully',

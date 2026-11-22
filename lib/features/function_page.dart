@@ -783,6 +783,26 @@ class _WorkspaceShortcuts extends ConsumerWidget {
   }
 }
 
+String pluginInstallStageText(WidgetRef ref, PluginInstallStage stage) =>
+    switch (stage) {
+      PluginInstallStage.extract => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageExtract,
+      ),
+      PluginInstallStage.validate => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageValidate,
+      ),
+      PluginInstallStage.apply => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageApply,
+      ),
+      PluginInstallStage.start => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageStart,
+      ),
+    };
+
 class EditorToolsBar extends ConsumerWidget {
   const EditorToolsBar({super.key, this.showNavigationDrawerButton = false});
 
@@ -855,6 +875,10 @@ class EditorToolsBar extends ConsumerWidget {
               const SizedBox(width: 4),
               if (ref.watch(fileTransferProgressProvider).isActive) ...[
                 buildTransferState(context, ref),
+                const SizedBox(width: 4),
+              ],
+              if (ref.watch(pluginInstallProgressProvider).isActive) ...[
+                buildPluginInstallState(context, ref),
                 const SizedBox(width: 4),
               ],
               // Running operations from the registry
@@ -987,6 +1011,71 @@ class EditorToolsBar extends ConsumerWidget {
             const SizedBox(height: 3),
             LinearProgressIndicator(
               value: transfer.progress,
+              minHeight: 2,
+              color: color,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Persistent install indicator: unlike the transient result toasts it stays
+  // visible for the whole installation, showing the pipeline stage on a
+  // determinate bar.
+  Widget buildPluginInstallState(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final install = ref.watch(pluginInstallProgressProvider);
+    final stage = install.stage;
+    final title = install.pluginName == null
+        ? translateForWidget(ref, I18nKey.pluginsInstalling)
+        : translateForWidgetWithReplacements(
+            ref,
+            I18nKey.pluginsInstallProgressNamed,
+            {'name': install.pluginName!},
+          );
+    final stageText = stage == null
+        ? ''
+        : '(${pluginInstallStageText(ref, stage)})';
+    final label = '$title$stageText';
+    final color = install.failed ? scheme.error : scheme.primary;
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
+
+    return TooltipAnchor(
+      message: label,
+      child: SizedBox(
+        width: 160,
+        height: 32,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.extension_outlined,
+                  size: compact ? 14 : 16,
+                  color: color,
+                ),
+                SizedBox(width: compact ? 4 : 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: compact ? 12 : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            LinearProgressIndicator(
+              value: install.progress,
               minHeight: 2,
               color: color,
               backgroundColor: scheme.surfaceContainerHighest,

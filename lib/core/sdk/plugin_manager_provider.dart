@@ -990,10 +990,27 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   }
 
   /// Returns whether an installed plugin was updated.
+  ///
+  /// The whole operation is reported through [pluginInstallProgressProvider]
+  /// so a persistent status indicator can follow it, including failures.
   Future<bool> install(String packagePath) =>
-      _runExclusive(() => _install(packagePath));
+      _runExclusive(() => _installWithProgress(packagePath));
+
+  Future<bool> _installWithProgress(String packagePath) async {
+    final progress = ref.read(pluginInstallProgressProvider.notifier);
+    progress.begin();
+    try {
+      final result = await _install(packagePath);
+      progress.complete();
+      return result;
+    } catch (_) {
+      progress.fail();
+      rethrow;
+    }
+  }
 
   Future<bool> _install(String packagePath) async {
+    final progress = ref.read(pluginInstallProgressProvider.notifier);
     _requireMetadata();
     final root = await _supportDirectory();
     final updatesRoot = await Directory(
@@ -1010,6 +1027,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       ),
     );
     final manifest = await _extractPluginPackage(packagePath, staged);
+    progress.setPluginName(manifest.manifest!.name);
+    progress.enter(PluginInstallStage.validate);
     try {
       final normalizedManifest = manifest.manifest!;
       final newRoot = await Directory(
@@ -1087,6 +1106,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           await replacement.exists() ||
           removalPending;
 
+      progress.enter(PluginInstallStage.apply);
       final previousIntendedStatus = _intendedStatuses[manifest.id];
       var showingUpdateInstall = false;
       if (updatePending &&
@@ -1156,6 +1176,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           _syncHostContributions(next);
           state = next;
 
+          progress.enter(PluginInstallStage.start);
           if (updated.status == PluginStatus.usable) {
             if (updated.type == PluginType.data) {
               await runManager.runOnce(updated);
@@ -1210,6 +1231,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         _syncHostContributions(next);
         state = next;
 
+        progress.enter(PluginInstallStage.start);
         if (installed.type == PluginType.data) {
           await ref.read(pluginRunManagerProvider.notifier).runOnce(installed);
         } else if (installed.autoStart) {
@@ -1305,6 +1327,105 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     unawaited(ref.read(pluginRunManagerProvider.notifier).restart(plugin));
   }
 }
+
+/// Coarse stages of a plugin package installation. The pipeline has no
+/// byte-level progress source, so each stage fills one equal slice of the
+/// progress bar shown by the status bar.
+enum PluginInstallStage { extract, validate, apply, start }
+
+class PluginInstallProgressState {
+  const PluginInstallProgressState({
+    this.isActive = false,
+    this.pluginName,
+    this.stage,
+    this.failed = false,
+  });
+
+  final bool isActive;
+  final String? pluginName;
+  final PluginInstallStage? stage;
+  final bool failed;
+
+  /// Fraction of the pipeline the installation has reached, for the
+  /// determinate bar; `null` before the first stage is entered.
+  double? get progress {
+    final stage = this.stage;
+    if (stage == null) return null;
+    return (stage.index + 1) / PluginInstallStage.values.length;
+  }
+
+  PluginInstallProgressState copyWith({
+    bool? isActive,
+    String? pluginName,
+    PluginInstallStage? stage,
+    bool? failed,
+  }) {
+    return PluginInstallProgressState(
+      isActive: isActive ?? this.isActive,
+      pluginName: pluginName ?? this.pluginName,
+      stage: stage ?? this.stage,
+      failed: failed ?? this.failed,
+    );
+  }
+}
+
+class PluginInstallProgressNotifier
+    extends StateNotifier<PluginInstallProgressState> {
+  PluginInstallProgressNotifier() : super(const PluginInstallProgressState());
+
+  Timer? _clearTimer;
+
+  /// Marks an installation as running; the pipeline starts at extraction.
+  void begin() {
+    _clearTimer?.cancel();
+    state = const PluginInstallProgressState(
+      isActive: true,
+      stage: PluginInstallStage.extract,
+    );
+  }
+
+  void setPluginName(String name) {
+    if (!state.isActive) return;
+    state = state.copyWith(pluginName: name);
+  }
+
+  void enter(PluginInstallStage stage) {
+    if (!state.isActive) return;
+    state = state.copyWith(stage: stage);
+  }
+
+  void complete() {
+    state = state.copyWith(failed: false);
+    _scheduleClear();
+  }
+
+  void fail() {
+    state = state.copyWith(failed: true);
+    _scheduleClear(delay: const Duration(seconds: 5));
+  }
+
+  void clear() {
+    _clearTimer?.cancel();
+    state = const PluginInstallProgressState();
+  }
+
+  void _scheduleClear({Duration delay = const Duration(seconds: 2)}) {
+    _clearTimer?.cancel();
+    _clearTimer = Timer(delay, clear);
+  }
+
+  @override
+  void dispose() {
+    _clearTimer?.cancel();
+    super.dispose();
+  }
+}
+
+final pluginInstallProgressProvider =
+    StateNotifierProvider<
+      PluginInstallProgressNotifier,
+      PluginInstallProgressState
+    >((ref) => PluginInstallProgressNotifier());
 
 final StateNotifierProvider<PluginManagerNotifier, Map<String, Plugin>>
 pluginManagerProvider = StateNotifierProvider(PluginManagerNotifier.new);

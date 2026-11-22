@@ -245,11 +245,8 @@ class Plugins extends ConsumerWidget {
         if (!context.mounted) return;
       }
 
-      if (!context.mounted) return;
-      showIdeMessage(
-        context,
-        translateForWidget(ref, I18nKey.pluginsInstalling),
-      );
+      // Install progress is reported by the persistent status-bar indicator
+      // (pluginInstallProgressProvider); only the outcome surfaces here.
       await ref
           .read(pluginManagerProvider.notifier)
           .install(zipPath); // install 会返回一个bool表示是否为更新插件
