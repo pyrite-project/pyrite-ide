@@ -98,6 +98,14 @@ StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
 StateProvider<String?> lspPluginServerId = StateProvider<String?>(
   (ref) => null,
 );
+
+/// Snapshot of the manual launch settings, taken when the user hands the slot
+/// to a plugin-provided server and restored when they take it back.
+///
+/// The IDE owns this so plugins never have to remember and restore the user's
+/// own configuration: a plugin that starts only writes the launch it needs.
+final lspManualLaunch = StateProvider<String?>((ref) => null);
+
 StateProvider<String> lspVirtualEnvironment = StateProvider<String>(
   (ref) => "",
 );

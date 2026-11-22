@@ -266,6 +266,10 @@ class PersistedData {
 
   /// Plugin-provided language server in use, or null for the manual setup.
   final String? lspPluginServerId;
+
+  /// JSON snapshot of the manual launch settings, kept while a plugin server
+  /// owns the slot.
+  final String? lspManualLaunch;
   final String lspVirtualEnvironment;
   final String lspTypeCheckingMode;
   final bool disableWarning;
@@ -362,6 +366,7 @@ class PersistedData {
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
     this.lspPluginServerId,
+    this.lspManualLaunch,
     this.lspVirtualEnvironment = '',
     this.lspTypeCheckingMode = 'standard',
     this.disableWarning = false,

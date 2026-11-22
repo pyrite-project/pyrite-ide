@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,55 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 
 class LspSettings extends ConsumerWidget {
   const LspSettings({super.key});
+
+  /// Hands the language server slot to [value] (null = the manual setup).
+  ///
+  /// The IDE owns the handover: it snapshots the user's manual launch when a
+  /// plugin takes the slot and restores it when the slot comes back, and it
+  /// tells the plugin to start or stop through `lsp.server.status`. Plugins
+  /// never remember, restore or second-guess launch settings themselves.
+  void _selectPluginServer(WidgetRef ref, String? value) {
+    final previous = ref.read(lspPluginServerId);
+    if (previous == value) return;
+    if (previous == null && value != null) {
+      // Manual → plugin: keep what the user configured for the hand-back.
+      ref.read(lspManualLaunch.notifier).state = jsonEncode({
+        'type': ref.read(lspType).jsonName,
+        'executable': ref.read(lspStdioExecutable),
+        'args': ref.read(lspStdioArgs),
+        'websocketPath': ref.read(lspWebSocketPath),
+      });
+    } else if (previous != null && value == null) {
+      // Plugin → manual: restore the snapshot the plugin never touched.
+      final raw = ref.read(lspManualLaunch);
+      if (raw != null) {
+        try {
+          final snapshot = jsonDecode(raw) as Map<String, dynamic>;
+          ref.read(lspType.notifier).state =
+              LspType.fromJsonName(snapshot['type']?.toString() ?? '') ??
+              LspType.webSocket;
+          ref.read(lspStdioExecutable.notifier).state =
+              snapshot['executable']?.toString() ?? '';
+          ref.read(lspStdioArgs.notifier).state =
+              snapshot['args']?.toString() ?? '';
+          ref.read(lspWebSocketPath.notifier).state =
+              snapshot['websocketPath']?.toString() ?? '';
+        } on FormatException {
+          // An unreadable snapshot is dropped: the manual fields stay as they
+          // are instead of the settings page failing to render.
+        }
+        ref.read(lspManualLaunch.notifier).state = null;
+      }
+    }
+    ref.read(lspPluginServerId.notifier).state = value;
+    final bus = ref.read(pluginEventBusProvider);
+    if (previous != null) {
+      bus.emit('lsp.server.status', {'serverId': previous, 'running': false});
+    }
+    if (value != null) {
+      bus.emit('lsp.server.status', {'serverId': value, 'running': true});
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -62,10 +112,7 @@ class LspSettings extends ConsumerWidget {
             RadioGroup<String?>(
               groupValue: pluginServerId,
               onChanged: (value) {
-                ref.read(lspPluginServerId.notifier).state = value;
-                ref.read(pluginEventBusProvider).emit('lsp.server.selected', {
-                  'serverId': value ?? '',
-                });
+                _selectPluginServer(ref, value);
               },
               child: Column(
                 children: [

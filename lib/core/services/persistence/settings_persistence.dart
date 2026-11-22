@@ -28,6 +28,10 @@ class SettingsPersistedData {
 
   /// Plugin-provided language server in use, or null for the manual setup.
   final String? lspPluginServerId;
+
+  /// JSON snapshot of the manual launch settings, kept while a plugin server
+  /// owns the slot so handing it back restores the user's own configuration.
+  final String? lspManualLaunch;
   final String lspVirtualEnvironment;
   final String lspTypeCheckingMode;
   final bool disableWarning;
@@ -105,6 +109,7 @@ class SettingsPersistedData {
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
     this.lspPluginServerId,
+    this.lspManualLaunch,
     this.lspVirtualEnvironment = '',
     this.lspTypeCheckingMode = 'standard',
     required this.disableWarning,
@@ -175,6 +180,7 @@ class SettingsPersistedData {
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
     'lspPluginServerId': lspPluginServerId,
+    'lspManualLaunch': lspManualLaunch,
     'lspVirtualEnvironment': lspVirtualEnvironment,
     'lspTypeCheckingMode': lspTypeCheckingMode,
     'disableWarning': disableWarning,
@@ -250,6 +256,7 @@ class SettingsPersistedData {
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
     lspStdioArgs: json['lspStdioArgs'] as String? ?? '',
     lspPluginServerId: json['lspPluginServerId'] as String?,
+    lspManualLaunch: json['lspManualLaunch'] as String?,
     lspVirtualEnvironment:
         json['lspVirtualEnvironment'] as String? ??
         _legacyInterpreterVirtualEnvironment(

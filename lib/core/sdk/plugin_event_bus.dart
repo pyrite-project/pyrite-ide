@@ -140,9 +140,11 @@ class EventTopicRegistry {
       name: 'runtime.session.ended',
       requiredPermission: 'runtime:inspect',
     ),
-    // Language server selection (settings page → the plugin that owns it).
+    // Language server lifecycle (settings page -> the plugin that serves it).
+    // `replayLatest` matters: a plugin that starts after the selection was
+    // made still receives the current status and brings its server up.
     EventTopic(
-      name: 'lsp.server.selected',
+      name: 'lsp.server.status',
       requiredPermission: 'settings:read',
       replayLatest: true,
     ),

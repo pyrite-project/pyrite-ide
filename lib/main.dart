@@ -198,6 +198,7 @@ void _applyData(PersistedData data) {
   container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
   container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
   container.read(lspPluginServerId.notifier).state = data.lspPluginServerId;
+  container.read(lspManualLaunch.notifier).state = data.lspManualLaunch;
   container.read(lspVirtualEnvironment.notifier).state =
       data.lspVirtualEnvironment;
   container.read(lspTypeCheckingMode.notifier).state =
@@ -413,6 +414,7 @@ final List<StateProvider<Object?>> _persistedSettingsProviders = [
   lspStdioExecutable,
   lspStdioArgs,
   lspPluginServerId,
+  lspManualLaunch,
   lspVirtualEnvironment,
   lspTypeCheckingMode,
   disableWarning,
