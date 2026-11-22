@@ -442,7 +442,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
       endLine--;
     }
 
-    final blockStart = controller.getLineStartOffset(startLine);
+    final lineStarts = [
+      for (var line = startLine; line <= endLine; line++)
+        controller.getLineStartOffset(line),
+    ];
+    final blockStart = lineStarts.first;
     final oldLines = [
       for (var line = startLine; line <= endLine; line++)
         controller.getLineText(line),
@@ -450,34 +454,47 @@ class _EditCoreState extends ConsumerState<EditCore> {
     final result = toggleLineComments(oldLines, marker: marker);
     if (result == null) return;
 
-    int mapOffset(int offset) {
-      var remaining = offset - blockStart;
-      var index = 0;
-      while (index < oldLines.length - 1 &&
-          remaining > oldLines[index].length) {
-        remaining -= oldLines[index].length + 1;
-        index++;
-      }
-      var shift = 0;
-      for (var i = 0; i < index; i++) {
-        shift += result.deltas[i];
-      }
-      final newLength = oldLines[index].length + result.deltas[index];
-      var local = remaining + result.deltas[index];
-      if (local < 0) local = 0;
-      if (local > newLength) local = newLength;
-      return blockStart + shift + local;
+    // `getLineText` strips the whole line break, which is one character for LF
+    // and two for CRLF. Derive each break from the adjacent line starts rather
+    // than assuming '\n', so the replacement keeps every line's own ending and
+    // the offsets below stay in buffer coordinates.
+    final separators = <String>[
+      for (var i = 0; i < oldLines.length - 1; i++)
+        lineStarts[i + 1] - lineStarts[i] - oldLines[i].length == 2
+            ? '\r\n'
+            : '\n',
+    ];
+
+    final replacement = StringBuffer();
+    for (var i = 0; i < result.lines.length; i++) {
+      if (i > 0) replacement.write(separators[i - 1]);
+      replacement.write(result.lines[i]);
     }
 
-    var blockEnd = blockStart - 1;
-    for (final line in oldLines) {
-      blockEnd += line.length + 1;
-    }
-    controller.replaceRange(blockStart, blockEnd, result.lines.join('\n'));
+    // Replacing up to the end of the last line's text (not its break) leaves
+    // the final break untouched; only the breaks between selected lines are
+    // rebuilt, using the style each of them already had.
+    final blockEnd = lineStarts.last + oldLines.last.length;
+
+    controller.replaceRange(blockStart, blockEnd, replacement.toString());
     controller.setSelectionSilently(
       TextSelection(
-        baseOffset: mapOffset(selection.baseOffset),
-        extentOffset: mapOffset(selection.extentOffset),
+        baseOffset: mapCommentToggleOffset(
+          offset: selection.baseOffset,
+          blockStart: blockStart,
+          blockEnd: blockEnd,
+          oldLines: oldLines,
+          separators: separators,
+          deltas: result.deltas,
+        ),
+        extentOffset: mapCommentToggleOffset(
+          offset: selection.extentOffset,
+          blockStart: blockStart,
+          blockEnd: blockEnd,
+          oldLines: oldLines,
+          separators: separators,
+          deltas: result.deltas,
+        ),
       ),
     );
   }
@@ -1058,7 +1075,6 @@ class _EditCoreState extends ConsumerState<EditCore> {
             filePaths: [pending.localPath],
           );
       ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
-      _releaseDiffPreview(ref);
 
       ref
           .read(ideMessageProvider.notifier)
@@ -1078,6 +1094,11 @@ class _EditCoreState extends ConsumerState<EditCore> {
             ).replaceAll('{error}', error.toString()),
           );
     } finally {
+      // The preview is only a presentation of a transfer that is about to
+      // happen. Whatever the outcome, there is no diff left to show, and a
+      // failed write in particular must not leave the tab stuck in the
+      // read-only view with decorations for a change that never landed.
+      _releaseDiffPreview(ref);
       ref.read(pendingDownloadProviderMap[widget.file.path]!.notifier).state =
           null;
       if (context.mounted) context.go('/file');
@@ -1714,9 +1735,11 @@ Future<void> saveFile(
     }
   }
 
-  await ref.read(fileProvider.notifier).saveCurrentFile();
+  final saved = await ref.read(fileProvider.notifier).saveCurrentFile();
 
-  if (!quiet) {
+  // A refused save wrote nothing; telling the user it succeeded would hide
+  // the conflict they still have to resolve.
+  if (!quiet && saved) {
     ref
         .read(ideMessageProvider.notifier)
         .success(translateForWidget(ref, I18nKey.statusSavedCurrentFile));

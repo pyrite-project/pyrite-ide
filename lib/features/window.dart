@@ -252,22 +252,56 @@ class UseWindow with WindowListener {
     switch (choice) {
       case _ExitChoice.saveAll:
         final notifier = container.read(fileProvider.notifier);
+        final failures = <String>[];
         for (final tab in unsaved) {
-          // One unreadable file must not strand the rest of the saves, and it
-          // must not keep the window open either -- the buffer is already
-          // persisted for the next session.
+          // One unreadable file must not strand the rest of the saves.
+          final path = editorTabValueOf(tab)?.filePath ?? '';
           try {
-            await notifier.saveTab(tab);
+            if (!await notifier.saveTab(tab)) {
+              // Distinguish a read-only buffer from a cancelled overwrite
+              // prompt so the report says why the file was left unwritten.
+              final readOnly =
+                  editorTabValueOf(tab)?.editorController?.readOnly == true;
+              failures.add(
+                tr(I18nKey.appExitSaveFailedFile, {
+                  'path': path,
+                  'reason': tr(
+                    readOnly
+                        ? I18nKey.appExitSaveFailedReadOnly
+                        : I18nKey.appExitSaveFailedCancelled,
+                  ),
+                }),
+              );
+            }
           } catch (error) {
-            // The window still closes, so this line is the only trace that a
-            // file was left unwritten.
             AppLog.w(
               'window',
-              'saving a tab before close failed '
-                  'tab=${editorTabValueOf(tab)?.filePath ?? 'unknown'}',
+              'saving a tab before close failed tab=$path',
               error: error,
             );
+            failures.add(
+              tr(I18nKey.appExitSaveFailedFile, {
+                'path': path,
+                'reason': tr(I18nKey.appExitSaveFailedError),
+              }),
+            );
           }
+        }
+        // A refused save (the user cancelled an external-overwrite prompt, or
+        // the buffer cannot be written back) leaves the tab dirty; closing
+        // now would drop the edits the user asked to keep. Say which files were
+        // left behind instead of silently doing nothing.
+        if (failures.isNotEmpty) {
+          container
+              .read(ideMessageProvider.notifier)
+              .show(
+                '${tr(I18nKey.appExitSaveFailedTitle)}\n'
+                '${failures.join('\n')}',
+                type: IdeMessageType.error,
+                duration: const Duration(seconds: 12),
+                closeable: true,
+              );
+          return false;
         }
         container
             .read(ideMessageProvider.notifier)

@@ -858,7 +858,7 @@ void main() {
 
       editor.container
           .read(tabbedViewControllerProvider.notifier)
-          .afterFileSave(tab);
+          .afterFileSave(tab, '');
 
       expect(editorTabValueOf(tab)!.isSaved, isTrue);
     });

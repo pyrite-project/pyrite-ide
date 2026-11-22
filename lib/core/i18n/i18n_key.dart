@@ -1306,6 +1306,14 @@ enum I18nKey {
   dialogCancelUpload('dialog.action.cancel_upload', '取消上传'),
   dialogEditorContent('dialog.action.editor_content', '编辑器中内容'),
   dialogActualContent('dialog.action.actual_content', '实际内容'),
+  dialogActualContentReadOnly(
+    'dialog.action.actual_content_read_only',
+    '{path} 是只读文件，编辑器内容未改变',
+  ),
+  dialogActualContentSaveFailed(
+    'dialog.action.actual_content_save_failed',
+    '{path} 保存失败，编辑器内容未改变',
+  ),
   editorConfirmUpload('editor.pending.confirm_upload', '确认上传'),
   editorConfirmDownload('editor.pending.confirm_download', '确认下载'),
   editorUploadedToDevice('editor.message.uploaded_to_device', '已上传到设备：{path}'),
@@ -1405,6 +1413,10 @@ enum I18nKey {
   editorFileDeletedOnDisk(
     'editor.file.deleted_on_disk',
     '{path} 已被外部删除，保存将重新创建该文件',
+  ),
+  editorFileCannotReloadUndecodable(
+    'editor.file.cannot_reload_undecodable',
+    '{path} 的内容无法作为文本读取，已取消保存',
   ),
   editorFileSavedAs('file.message.saved_as', '已另存为：{path}'),
   editorCommentUnsupported('editor.comment.unsupported', '当前语言不支持注释切换'),
@@ -1636,6 +1648,11 @@ enum I18nKey {
   ),
   appExitUnsavedSaveAll('app.exit_unsaved.save_all', '全部保存'),
   appExitUnsavedDiscardAll('app.exit_unsaved.discard_all', '不保存直接退出'),
+  appExitSaveFailedTitle('app.exit_save_failed.title', '有文件未能保存，窗口将保持打开：'),
+  appExitSaveFailedReadOnly('app.exit_save_failed.read_only', '文件以只读方式打开'),
+  appExitSaveFailedCancelled('app.exit_save_failed.cancelled', '保存被取消'),
+  appExitSaveFailedError('app.exit_save_failed.error', '写入失败'),
+  appExitSaveFailedFile('app.exit_save_failed.file', '{path}：{reason}'),
   pluginsPermUi('plugins.permission.ui', '界面'),
   pluginsPermFile('plugins.permission.file', '文件'),
   pluginsPermBoard('plugins.permission.board', '开发板'),
@@ -1954,6 +1971,14 @@ enum I18nKey {
   devicesSyncNoteBoardNewer(
     'devices.sync.note.board_newer',
     '{reason}；板端更新时间较新',
+  ),
+  devicesSyncNoteLocalScanTruncated(
+    'devices.sync.note.local_scan_truncated',
+    '本地扫描已截断，无法确认本地是否已存在，已跳过下载',
+  ),
+  devicesSyncTruncatedNotice(
+    'devices.sync.truncated.notice',
+    '本地工作区文件超过扫描上限，本次比较不完整；无法确认的设备文件不会被下载，以免覆盖本地文件。',
   ),
   devicesSyncRunning('devices.sync.run.running', '正在同步本地工作区与设备…'),
   devicesSyncDone('devices.sync.run.done', '同步完成'),

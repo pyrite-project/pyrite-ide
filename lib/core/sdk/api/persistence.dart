@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 
@@ -45,8 +46,59 @@ class SdkPersistence {
     );
   }
 
-  Future<Directory> _ensureGroupDir(String dataPath, String group) async {
-    final dir = Directory('$dataPath/$group');
+  /// A group or key names exactly one path segment below the plugin's data
+  /// directory. Dots only join non-empty segments, so dots-only names and
+  /// trailing dots cannot alias the data directory or its parent on platforms
+  /// whose filesystems trim them; separators and drive prefixes are rejected
+  /// outright.
+  ///
+  /// Everything else is left to the plugin: names written by earlier builds
+  /// may hold any script or a space, and rejecting those would make data that
+  /// already exists on disk unreachable.
+  static final RegExp _controlChars = RegExp(r'[\x00-\x1f\x7f]');
+
+  static String? _segmentError(String field, String value) {
+    if (value.isEmpty) return '缺少 $field';
+    if (value.length > 128) return '$field 过长';
+    if (value.contains('/') || value.contains('\\') || value.contains('..')) {
+      return '$field 不能包含路径分隔符或 ".."';
+    }
+    if (value.replaceAll('.', '').trim().isEmpty) {
+      return '$field 不能只由点号组成';
+    }
+    if (_controlChars.hasMatch(value)) {
+      return '$field 不能包含控制字符';
+    }
+    if (value != value.trim() || value.endsWith('.')) {
+      return '$field 不能以空白字符开头或结尾，也不能以点号结尾';
+    }
+    if (value.split('.').any((segment) => segment.isEmpty)) {
+      return '$field 不能包含空路径段';
+    }
+    return null;
+  }
+
+  /// Every handler that turns plugin-provided names into a filesystem path
+  /// goes through this check first.
+  static String? _groupKeyError(String? group, String? key) {
+    if (group != null) {
+      final error = _segmentError('group', group);
+      if (error != null) return error;
+    }
+    if (key != null) {
+      final error = _segmentError('key', key);
+      if (error != null) return error;
+    }
+    return null;
+  }
+
+  static Directory _groupDirectory(String dataPath, String group) =>
+      Directory(path.join(dataPath, group));
+
+  static File _entryFile(String dataPath, String group, String key) =>
+      File(path.join(dataPath, group, '$key.json'));
+
+  Future<Directory> _ensureGroupDir(Directory dir) async {
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -64,12 +116,13 @@ class SdkPersistence {
     final group = payload['group']?.toString() ?? '';
     final key = payload['key']?.toString() ?? '';
 
-    if (group.isEmpty || key.isEmpty) {
-      respondError(envelope, respond, '缺少 group 或 key');
+    final invalid = _groupKeyError(group, key);
+    if (invalid != null) {
+      respondError(envelope, respond, invalid);
       return;
     }
 
-    final file = File('$dataPath/$group/$key.json');
+    final file = _entryFile(dataPath, group, key);
     if (!file.existsSync()) {
       respondOk(envelope, respond, data: null);
       return;
@@ -94,14 +147,15 @@ class SdkPersistence {
     final key = payload['key']?.toString() ?? '';
     final value = payload['value'];
 
-    if (group.isEmpty || key.isEmpty) {
-      respondError(envelope, respond, '缺少 group 或 key');
+    final invalid = _groupKeyError(group, key);
+    if (invalid != null) {
+      respondError(envelope, respond, invalid);
       return;
     }
 
     try {
-      final dir = await _ensureGroupDir(dataPath, group);
-      final file = File('${dir.path}/$key.json');
+      final dir = await _ensureGroupDir(_groupDirectory(dataPath, group));
+      final file = File(path.join(dir.path, '$key.json'));
       await file.writeAsString(jsonEncode(value));
       respondOk(envelope, respond);
     } catch (e) {
@@ -118,12 +172,13 @@ class SdkPersistence {
     final group = payload['group']?.toString() ?? '';
     final key = payload['key']?.toString() ?? '';
 
-    if (group.isEmpty || key.isEmpty) {
-      respondError(envelope, respond, '缺少 group 或 key');
+    final invalid = _groupKeyError(group, key);
+    if (invalid != null) {
+      respondError(envelope, respond, invalid);
       return;
     }
 
-    final file = File('$dataPath/$group/$key.json');
+    final file = _entryFile(dataPath, group, key);
     if (await file.exists()) {
       await file.delete();
     }
@@ -158,12 +213,13 @@ class SdkPersistence {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final group = payload['group']?.toString() ?? '';
 
-    if (group.isEmpty) {
-      respondError(envelope, respond, '缺少 group');
+    final invalid = _groupKeyError(group, null);
+    if (invalid != null) {
+      respondError(envelope, respond, invalid);
       return;
     }
 
-    final dir = Directory('$dataPath/$group');
+    final dir = _groupDirectory(dataPath, group);
     if (!await dir.exists()) {
       respondOk(envelope, respond, data: <String>[]);
       return;
@@ -187,12 +243,13 @@ class SdkPersistence {
     final payload = envelope['payload'] as Map<String, dynamic>? ?? {};
     final group = payload['group']?.toString() ?? '';
 
-    if (group.isEmpty) {
-      respondError(envelope, respond, '缺少 group');
+    final invalid = _groupKeyError(group, null);
+    if (invalid != null) {
+      respondError(envelope, respond, invalid);
       return;
     }
 
-    final dir = Directory('$dataPath/$group');
+    final dir = _groupDirectory(dataPath, group);
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }

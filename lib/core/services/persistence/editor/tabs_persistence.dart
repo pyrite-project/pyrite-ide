@@ -95,7 +95,11 @@ class TabsPersistence {
     }
   }
 
-  Future<void> save(TabsPersistedData data) async {
+  /// Returns whether the bytes reached disk.
+  ///
+  /// [encoded] lets the save scheduler reuse a payload it already serialized
+  /// to decide whether the store changed.
+  Future<bool> save(TabsPersistedData data, {String? encoded}) async {
     try {
       final file = await _file;
       // Write to a sibling temp file and rename into place. A crash or power
@@ -104,10 +108,15 @@ class TabsPersistence {
       // open tab *and* every unsaved buffer. Same pattern PluginPersistence
       // already uses.
       final temp = File('${file.path}.tmp');
-      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.writeAsString(
+        encoded ?? jsonEncode(data.toJson()),
+        flush: true,
+      );
       await temp.rename(file.path);
+      return true;
     } catch (e) {
       debugPrint('TabsPersistence: Failed to save: $e');
+      return false;
     }
   }
 }

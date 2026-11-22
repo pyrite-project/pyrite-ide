@@ -288,6 +288,108 @@ void main() {
       expect(await file.readAsString(), 'bar bar bar\n');
     });
 
+    test('replaces only the matches the results list shows', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a b');
+
+      // `\s*` also matches the empty string at every position, but the
+      // results list only renders the non-empty space between the two
+      // letters. Replacing the empty matches would insert text at positions
+      // nobody saw.
+      const options = SearchOptions(
+        pattern: r'\s*',
+        isRegExp: true,
+        replaceText: '_',
+      );
+      final results = await searchInDirectory(temp, options);
+      expect(results.single.matches.single.ranges, [(1, 2)]);
+
+      final replaced = await replaceAllInResults(results, options);
+
+      expect(replaced, 1);
+      expect(await file.readAsString(), 'a_b');
+    });
+
+    test(
+      'line-start whitespace regex does not rewrite empty matches',
+      () async {
+        final file = File(path.join(temp.path, 'a.txt'));
+        await file.writeAsString('  foo\nbar\n');
+
+        const options = SearchOptions(
+          pattern: r'^\s*',
+          isRegExp: true,
+          replaceText: '>',
+        );
+        final results = await searchInDirectory(temp, options);
+        // Only the leading run of spaces is non-empty; the empty matches at the
+        // later line starts are not listed.
+        expect(results.single.matchCount, 1);
+        expect(results.single.matches.single.ranges, [(0, 2)]);
+
+        final replaced = await replaceAllInResults(results, options);
+
+        expect(replaced, 1);
+        expect(await file.readAsString(), '>foo\nbar\n');
+      },
+    );
+
+    test('replaces displayed matches on CRLF files without line-ending '
+        'matches', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('foo\r\nbar\r\n');
+
+      // On the normalized text the result list has two matches, "foo" and
+      // "bar". The raw file also exposes each `\r` to this pattern, and those
+      // matches are not rows in the list, so they must not be replaced.
+      const options = SearchOptions(
+        pattern: r'\r|\S+',
+        isRegExp: true,
+        replaceText: 'X',
+      );
+      final results = await searchInDirectory(temp, options);
+      expect(results.single.matchCount, 2);
+
+      final replaced = await replaceAllInResults(results, options);
+
+      expect(replaced, 2);
+      expect(await file.readAsString(), 'X\r\nX\r\n');
+    });
+
+    test('keeps a CRLF separator inside an expanded group reference', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a\r\nb');
+
+      const options = SearchOptions(
+        pattern: r'a(\s*)b',
+        isRegExp: true,
+        replaceText: r'a<$1>b',
+      );
+      final replaced = await replaceAllInResults([
+        FileSearchResult(filePath: file.path, matches: const []),
+      ], options);
+
+      expect(replaced, 1);
+      expect(await file.readAsString(), 'a<\r\n>b');
+    });
+
+    test('keeps a CRLF separator inside the whole-match reference', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a\r\nb');
+
+      const options = SearchOptions(
+        pattern: r'a\s*b',
+        isRegExp: true,
+        replaceText: r'<$0>',
+      );
+      final replaced = await replaceAllInResults([
+        FileSearchResult(filePath: file.path, matches: const []),
+      ], options);
+
+      expect(replaced, 1);
+      expect(await file.readAsString(), '<a\r\nb>');
+    });
+
     test(
       'keeps an unusable group reference literal instead of failing',
       () async {
@@ -351,6 +453,49 @@ void main() {
 
       expect(ok, isTrue);
       expect(await file.readAsString(), 'foo\r\nbar\r\n');
+    });
+
+    test(
+      'targets the occurrence the results list shows on CRLF files',
+      () async {
+        final file = File(path.join(temp.path, 'a.txt'));
+        await file.writeAsString('foo\r\nbar\r\n');
+
+        // The result list is built from normalized text, where this pattern has
+        // exactly two matches: "foo" and "bar". On the raw file each `\r` is an
+        // extra match, so a raw ordinal would place ordinal 1 on the end of the
+        // previous line instead of on the "bar" row the user clicked.
+        const options = SearchOptions(
+          pattern: r'\r|\S+',
+          isRegExp: true,
+          replaceText: 'X',
+        );
+        final results = await searchInDirectory(temp, options);
+        expect(results.single.matches.map((m) => m.lineText), ['foo', 'bar']);
+
+        final ok = await replaceOneOccurrence(file.path, options, 1);
+
+        expect(ok, isTrue);
+        expect(await file.readAsString(), 'foo\r\nX\r\n');
+      },
+    );
+
+    test('keeps a CRLF separator inside a group reference', () async {
+      final file = File(path.join(temp.path, 'a.txt'));
+      await file.writeAsString('a\r\nb');
+
+      final ok = await replaceOneOccurrence(
+        file.path,
+        const SearchOptions(
+          pattern: r'a(\s*)b',
+          isRegExp: true,
+          replaceText: r'a<$1>b',
+        ),
+        0,
+      );
+
+      expect(ok, isTrue);
+      expect(await file.readAsString(), 'a<\r\n>b');
     });
 
     test('returns false when the occurrence does not exist', () async {

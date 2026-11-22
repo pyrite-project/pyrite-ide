@@ -573,7 +573,12 @@ class _MinimapViewState extends State<_MinimapView> {
 
     // One snapshot of every sampled line, taken up front. Highlighting below
     // is asynchronous, and reading the text again afterwards could pair a
-    // span with a different line than the one it was computed for.
+    // span with a different line than the one it was computed for. The version
+    // is captured with it for the same reason: it identifies the text the bars
+    // are built from, and reading it after the await would label an old-text
+    // recording with a newer version — making the no-op guard above skip the
+    // recompute that the edit itself scheduled.
+    final documentVersion = controller.documentVersion;
     final sampled = <int, String>{};
     for (var line = window.start; line < end; line += step) {
       sampled[line] = controller.getLineText(line);
@@ -652,7 +657,7 @@ class _MinimapViewState extends State<_MinimapView> {
       _lineCount = lineCount;
       _recordedStart = window.start;
       _recordedLineCount = window.count;
-      _recordedDocumentVersion = controller.documentVersion;
+      _recordedDocumentVersion = documentVersion;
       _dimPicture?.dispose();
       _brightPicture?.dispose();
       _dimPicture = pictures.$1;

@@ -2114,6 +2114,7 @@ class ProjectFiles extends ConsumerWidget {
       ],
       localRoot: plan.localRoot,
       boardRoot: plan.boardRoot,
+      truncated: plan.truncated,
     );
   }
 
@@ -2138,6 +2139,7 @@ class ProjectFiles extends ConsumerWidget {
       ],
       localRoot: plan.localRoot,
       boardRoot: plan.boardRoot,
+      truncated: plan.truncated,
     );
   }
 

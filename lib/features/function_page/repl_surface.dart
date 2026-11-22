@@ -22,7 +22,7 @@ import 'package:pyrite_ide/core/services/editor/repl_transcript_controller.dart'
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart'
-    show getLocalFile;
+    show BoardFileOps, getLocalFile;
 import 'package:pyrite_ide/core/services/file/board_provider.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/base_usb_serial.dart';
@@ -66,6 +66,17 @@ final replTranscriptControllerProvider = Provider<ReplTranscriptController>((
 /// Default scrollbar thickness, mirroring the private constant the framework's
 /// scrollbar uses when the theme does not set one.
 const double _fallbackScrollbarThickness = 8;
+
+/// The device path a traceback's [file] names.
+///
+/// MicroPython prints the path the interpreter ran the file from, which can be
+/// absolute (`/lib/x.py`, since `/lib` is on the default `sys.path` of boards
+/// such as the ESP32) or bare (`main.py`). Device paths are always rooted and
+/// use a single leading separator, so every spelling has to be mapped onto
+/// that one form before the device and the local mirror are asked about it.
+@visibleForTesting
+String boardPathForTracebackFile(String file) =>
+    BoardFileOps.normalizePath(file);
 
 class ReplSurface extends ConsumerStatefulWidget {
   const ReplSurface({
@@ -155,6 +166,10 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   Timer? _completionDebounce;
   Timer? _signatureDebounce;
   String _lastInputText = '';
+  String _observedInputText = '';
+  TextSelection _observedInputSelection = const TextSelection.collapsed(
+    offset: -1,
+  );
   final Map<String, List<String>> _runtimeCompletionCache = {};
   Rect? _caretRectInTarget;
   bool _completionOpensAbove = false;
@@ -174,6 +189,9 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     _signature.addListener(_syncSignatureOverlay);
     _completion = ReplCompletionController(provider: _provideCompletionItems);
     _completion.addListener(_syncCompletionOverlay);
+    _observedInputText = _input.text.text;
+    _observedInputSelection = _input.text.selection;
+    _input.text.addListener(_handleInputValueChanged);
     _transcript.addListener(_handleTranscriptUpdated);
     _scrollController.addListener(_keepFocusScrollPosition);
     _inputSink = _sendInput;
@@ -210,6 +228,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
       replRunFinishedSink = _previousRunFinishedSink;
     }
     _transcript.removeListener(_handleTranscriptUpdated);
+    _input.text.removeListener(_handleInputValueChanged);
     _scrollController.removeListener(_keepFocusScrollPosition);
     _focusScrollTimer?.cancel();
     _completion.removeListener(_syncCompletionOverlay);
@@ -568,7 +587,7 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
   /// file had no local path to resolve to and the click did nothing.
   Future<bool> _openBoardTracebackFrame(String file, int line) async {
     if (!_deviceAttached) return false;
-    final boardPath = '/${file.replaceAll('\\', '/').replaceFirst('^/', '')}';
+    final boardPath = boardPathForTracebackFile(file);
     final ops = ref.read(boardProvider).ops;
     try {
       if (!await ops.boardPathExistsAny(boardPath)) return false;
@@ -1276,6 +1295,28 @@ class _ReplSurfaceState extends ConsumerState<ReplSurface> {
     if (_input.mode == ReplInteractionMode.passthrough) return;
     _sendInput(value);
     _input.text.clear();
+  }
+
+  /// Dismisses the completion popup when the caret moves without the text
+  /// changing.
+  ///
+  /// Every item in the popup carries the token range it was requested for.
+  /// Arrow keys, Home/End, and clicks move the caret through
+  /// [EditableText.onChanged]'s blind spot — only `onChanged` sees edits, and
+  /// moving the caret edits nothing — so without this the popup would keep
+  /// offering items for a range that is no longer under the caret, and
+  /// accepting one would splice it into unrelated text. Dismissing also
+  /// invalidates a request still in flight, so a late result cannot reopen the
+  /// popup for the old caret position.
+  void _handleInputValueChanged() {
+    final value = _input.text.value;
+    final textChanged = value.text != _observedInputText;
+    final selectionChanged = value.selection != _observedInputSelection;
+    _observedInputText = value.text;
+    _observedInputSelection = value.selection;
+    if (textChanged || !selectionChanged) return;
+    if (!_completion.isOpen && !_completion.isLoading) return;
+    _completion.dismiss();
   }
 
   void _submitPassthroughInput() {

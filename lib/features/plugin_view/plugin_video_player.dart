@@ -186,27 +186,44 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
   Future<void> setLooping(bool looping) =>
       _controller?.setLooping(looping) ?? Future.value();
 
-  NavigatorState? _fullscreenNavigator;
+  Route<void>? _fullscreenRoute;
 
   Future<void> enterFullscreen() async {
     final controller = _controller;
     if (!mounted || controller == null || !_initialized) return;
     final navigator = Navigator.of(context);
-    _fullscreenNavigator = navigator;
-    await navigator.push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (context) => _FullscreenPlayer(
-          controller: controller,
-          onClosed: () => _fullscreenNavigator = null,
-        ),
+    final route = MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (context) => _FullscreenPlayer(
+        controller: controller,
+        onClosed: _forgetFullscreenRoute,
       ),
     );
+    _fullscreenRoute = route;
+    try {
+      await navigator.push(route);
+    } finally {
+      // A later fullscreen session may have replaced this one by the time the
+      // route finishes closing.
+      if (identical(_fullscreenRoute, route)) _fullscreenRoute = null;
+    }
   }
 
+  void _forgetFullscreenRoute() => _fullscreenRoute = null;
+
   void exitFullscreen() {
-    _fullscreenNavigator?.pop();
-    _fullscreenNavigator = null;
+    final route = _fullscreenRoute;
+    if (route == null) return;
+    final navigator = route.navigator;
+    // The user may have left fullscreen with the system back gesture. The
+    // route is then gone (or no longer on top), and popping here would close
+    // the plugin page underneath instead.
+    if (navigator == null || !route.isCurrent) {
+      _fullscreenRoute = null;
+      return;
+    }
+    _fullscreenRoute = null;
+    navigator.pop();
   }
 
   @override
@@ -344,31 +361,35 @@ class _FullscreenPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            Center(child: video.VideoPlayer(controller)),
-            Align(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: TooltipAnchor(
-                  message: 'Close',
-                  child: IconButton(
-                    color: Colors.white,
-                    icon: const Icon(Icons.fullscreen_exit),
-                    onPressed: () {
-                      onClosed?.call();
-                      Navigator.of(context).pop();
-                    },
+    return PopScope<void>(
+      // Covers every way the route can leave the stack, including the Android
+      // system back gesture, which never reaches the close button.
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) onClosed?.call();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Center(child: video.VideoPlayer(controller)),
+              Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: TooltipAnchor(
+                    message: 'Close',
+                    child: IconButton(
+                      color: Colors.white,
+                      icon: const Icon(Icons.fullscreen_exit),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

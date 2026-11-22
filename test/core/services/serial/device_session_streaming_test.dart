@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
@@ -189,4 +191,116 @@ void main() {
     expect(payloads.length, greaterThan(1));
     expect(payloads.every((bytes) => bytes.length <= 127), isTrue);
   });
+
+  test('an empty raw attempt returns and releases the lock instead of waiting '
+      'for a frame the device never sends', () async {
+    final queue = SerialByteQueue();
+    final mutex = ReplMutex();
+    final writes = <List<int>>[];
+
+    // An empty raw line makes MicroPython print OK and leave the raw REPL
+    // (PYEXEC_FORCED_EXIT) without the stdout/stderr EOT framing.
+    void writeBytes(List<int> bytes) {
+      writes.add(List<int>.from(bytes));
+      if (bytes.length == 1 && bytes.single == 0x04) {
+        queue.add(Uint8List.fromList(utf8.encode('OK')));
+      }
+    }
+
+    final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+    var started = 0;
+    final execution = mutex.runExclusive(
+      () => session.executeStreaming(
+        '',
+        timeout: const Duration(milliseconds: 200),
+        mode: ReplMode.rawRepl,
+        onStarted: () => started++,
+        onStdout: (_) {},
+        onStderr: (_) {},
+      ),
+    );
+
+    await execution.timeout(const Duration(seconds: 2));
+    expect(started, 1);
+    expect(writes, isEmpty);
+    expect(mutex.isLocked, isFalse);
+    expect(await mutex.runExclusive(() async => 'acquired'), 'acquired');
+  }, timeout: const Timeout(Duration(seconds: 5)));
+
+  test('raw streaming gives up when the device never frames stdout', () async {
+    final queue = SerialByteQueue();
+    final mutex = ReplMutex();
+
+    void writeBytes(List<int> bytes) {
+      if (bytes.length == 1 && bytes.single == 0x04) {
+        // The command is acknowledged but execution never terminates.
+        queue.add(Uint8List.fromList(utf8.encode('OK')));
+      }
+    }
+
+    final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+    final execution = mutex.runExclusive(
+      () => session.executeStreaming(
+        'print(1)',
+        timeout: const Duration(milliseconds: 150),
+        mode: ReplMode.rawRepl,
+        onStarted: () {},
+        onStdout: (_) {},
+        onStderr: (_) {},
+      ),
+    );
+
+    await expectLater(execution, throwsA(isA<TimeoutException>()));
+    expect(mutex.isLocked, isFalse);
+  }, timeout: const Timeout(Duration(seconds: 5)));
+
+  test('empty raw commands return without writing to the device', () async {
+    final queue = SerialByteQueue();
+    final writes = <List<int>>[];
+
+    void writeBytes(List<int> bytes) {
+      writes.add(List<int>.from(bytes));
+    }
+
+    final session = DeviceSession(queue: queue, writeBytes: writeBytes);
+    final output = await session
+        .executeCommand(
+          '  \r\n\t',
+          timeout: const Duration(milliseconds: 200),
+          mode: ReplMode.rawRepl,
+        )
+        .timeout(const Duration(seconds: 2));
+
+    expect(output, isEmpty);
+    expect(writes, isEmpty);
+  }, timeout: const Timeout(Duration(seconds: 5)));
+
+  testWidgets(
+    'an empty source completes without opening a device transaction',
+    (tester) async {
+      late WidgetRef capturedRef;
+      await tester.pumpWidget(
+        ProviderScope(
+          child: Consumer(
+            builder: (context, ref, child) {
+              capturedRef = ref;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      var started = false;
+      await runPythonOnDeviceStreaming(
+        capturedRef,
+        '  \n\t',
+        onStarted: () => started = true,
+        onStdout: (_) {},
+        onStderr: (_) {},
+      ).timeout(const Duration(seconds: 2));
+
+      expect(started, isTrue);
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
 }

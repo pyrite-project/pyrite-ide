@@ -92,6 +92,15 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// every time.
   final Map<String, FileDiskStamp> _declinedExternalChanges = {};
 
+  /// Disk bytes that cannot be decoded as text, keyed by file path.
+  ///
+  /// Reloading such a file cannot change the buffer, so asking the same
+  /// question on every focus change only repeats a refusal the user already
+  /// made. The stamp keeps new bytes eligible for a fresh prompt. A save for
+  /// the same bytes is refused with an explicit message instead of silently
+  /// doing nothing.
+  final Map<String, FileDiskStamp> _undecodableExternalChanges = {};
+
   /// Paths already reported as missing from disk.
   ///
   /// A deleted file stays deleted until someone recreates it, so without this
@@ -99,6 +108,18 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// the path reappears or the tab closes, so a second deletion is announced
   /// the second time rather than being swallowed by the first one's record.
   final Set<String> _notifiedMissingFiles = {};
+
+  /// Disk reads used when reconciling a tab with its file.
+  ///
+  /// Indirections rather than direct calls to [statFileStamp] and
+  /// [readDiskText] so a widget test can drive the save path without waiting
+  /// on real file I/O, which the fake-async zone widget tests run in cannot
+  /// complete on its own.
+  @visibleForTesting
+  Future<FileDiskStamp?> Function(File file) diskStampReader = statFileStamp;
+
+  @visibleForTesting
+  Future<String?> Function(File file) diskTextReader = readDiskText;
 
   TabbedViewControllerNotifier(this.ref)
     : super(_buildTabbedViewController(ref));
@@ -282,7 +303,12 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
   /// [isSaved] false so the modified dot comes back, [encoding] and
   /// [byteOrderMark] so a later save reproduces the file's bytes, and
   /// [initialCaretOffset] to put the caret back where it was.
-  Future openFile(
+  ///
+  /// Returns the tab that now shows the file, which can be an existing tab
+  /// matched by identity rather than by the exact path spelling the caller
+  /// supplied. Callers that need to act on the opened document must use this
+  /// result instead of looking the path up again.
+  Future<TabData?> openFile(
     BuildContext context, {
     File? file,
     bool isBoardFile = false,
@@ -315,7 +341,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
       if (open != null) {
         focusTab(open);
-        return;
+        return open;
       }
 
       // Fresh file: classify its bytes before anything reaches a tab. Binary
@@ -333,28 +359,28 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
         try {
           prepared = await prepareFileForEditing(file);
         } on FileSystemException {
-          return;
+          return null;
         }
         switch (prepared) {
           case BinaryFilePrepared():
-            if (!context.mounted) return;
+            if (!context.mounted) return null;
             final proceed = await showBinaryFileDialog(
               ref,
               context,
               filePath: file.path,
             );
-            if (!proceed) return;
+            if (!proceed) return null;
             text = prepared.text;
             openReadOnly = prepared.readOnly;
           case UndecodableFilePrepared():
-            if (!context.mounted) return;
+            if (!context.mounted) return null;
             final decoded = await showEncodingRetryDialog(
               ref,
               context,
               filePath: file.path,
               bytes: prepared.bytes,
             );
-            if (decoded == null) return;
+            if (decoded == null) return null;
             text = decoded.text;
             fileEncoding = decoded.encoding;
           default:
@@ -386,7 +412,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
       );
 
       if (newTab == null) {
-        return;
+        return null;
       }
 
       openTab(newTab);
@@ -400,7 +426,9 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           ref.read(tabletSelectedIndex.notifier).state = 3;
         }
       }
+      return newTab;
     }
+    return null;
   }
 
   /// Puts the caret back in a tab that was just reopened.
@@ -629,6 +657,10 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     if (declined != null) {
       _declinedExternalChanges[newPath] = declined;
     }
+    final undecodable = _undecodableExternalChanges.remove(oldPath);
+    if (undecodable != null) {
+      _undecodableExternalChanges[newPath] = undecodable;
+    }
     // A rename is not a deletion, and the new path is present by definition,
     // so any "reported missing" record belongs to the path that no longer
     // exists and must not follow the tab to its new name.
@@ -828,6 +860,13 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     return null;
   }
 
+  /// The open document tab backed by [filePath], in any group.
+  ///
+  /// Transfers compare one specific document with the device, and the tab
+  /// holding it is not necessarily the one the user has focused.
+  TabData? findFileTab(String filePath) =>
+      _findOpenTab((value) => value.filePath == filePath);
+
   /// Shows [tab] in whichever group holds it, and focuses that group.
   ///
   /// Returns false when no editor group holds [tab]. The group has to take
@@ -934,6 +973,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     _lastSavedText.remove(filePath);
     _diskStamps.remove(filePath);
     _declinedExternalChanges.remove(filePath);
+    _undecodableExternalChanges.remove(filePath);
     _notifiedMissingFiles.remove(filePath);
     ref.read(editorControllerMapProvider.notifier).removePath(filePath);
     value.editorController?.dispose();
@@ -1032,29 +1072,35 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     return _findOpenTab((value) => value.filePath == record.path) != null;
   }
 
-  /// Marks a tab clean after its buffer was written to the backing store.
+  /// Marks a tab after [savedText] was written to its backing store.
   ///
-  /// The text is read back here rather than trusted from the caller so the
-  /// diff baseline matches exactly what was persisted, including a save-time
-  /// format pass that may have rewritten the buffer between the write and this
-  /// call.
-  void afterFileSave(TabData tab) {
+  /// [savedText] is the text the caller actually wrote, not a fresh read of
+  /// the buffer: a write can take long enough -- a board file over serial, for
+  /// instance -- for the user to type into the tab while it is in flight, and
+  /// those keystrokes never reached the disk. Recording them as the baseline
+  /// would clear the modified dot for content that was never saved.
+  ///
+  /// The tab therefore only becomes clean when its buffer still matches
+  /// [savedText]; anything typed during the write stays dirty.
+  void afterFileSave(TabData tab, String savedText) {
     final value = tab.value;
     if (value is! TabDataValue) return;
-    final controller = value.editorController;
-    if (controller != null) {
-      _lastSavedText[value.filePath] = controller.text;
-    }
+    _lastSavedText[value.filePath] = savedText;
     // Our own write is not an external change; move the stamp forward so the
     // next check does not report the save as someone else's edit.
     unawaited(_recordDiskStamp(value.file ?? File(value.filePath)));
-    // Wherever the tab sits -- any group, or already closed -- the dot goes:
-    // the leading widget notifies the strip that shows it.
-    markFileTabSaved(tab);
+    final controller = value.editorController;
+    if (controller == null || value.type != 'file') {
+      // Nothing observable left to compare against; wherever the tab sits --
+      // any group, or already closed -- the dot goes.
+      markFileTabSaved(tab);
+      return;
+    }
+    applyDirtyState(tab, savedText: savedText, currentText: controller.text);
   }
 
   Future<void> _recordDiskStamp(File file) async {
-    final stamp = await statFileStamp(file);
+    final stamp = await diskStampReader(file);
     if (stamp == null) {
       _diskStamps.remove(file.path);
       return;
@@ -1096,9 +1142,11 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
 
   /// The save-path half of [checkExternalChanges].
   ///
-  /// Returns false when the user cancelled, in which case the caller must not
-  /// write. Reloading here means the caller writes the text it just read, so
-  /// the buffer and the file agree either way the user picks.
+  /// Returns true when the save may go ahead. False means the user cancelled
+  /// at the conflict prompt, or the difference cannot be resolved by writing,
+  /// so the caller must not write and must not report a save. Reloading here
+  /// means the caller writes the text it just read, so the buffer and the file
+  /// agree either way the user picks.
   Future<bool> confirmSaveOverwritesExternalChange(
     BuildContext context,
     TabData tab,
@@ -1114,35 +1162,36 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           value.isBoardFile == true) {
         return true;
       }
-      final decision = await _reconcileTabWithDisk(
-        context,
-        tab,
-        value,
-        onSaveConflict: true,
-      );
-      return decision != ExternalChangeAction.prompt;
+      return _reconcileTabWithDisk(context, tab, value, onSaveConflict: true);
     });
   }
 
-  /// Applies [planExternalChange] for one tab and reports what it did.
-  Future<ExternalChangeAction> _reconcileTabWithDisk(
+  /// Applies [planExternalChange] for one tab and reports whether the tab is
+  /// settled.
+  ///
+  /// A true result means the caller may save. A prompt the user resolved by
+  /// keeping the buffer is settled too: that answer means "this buffer wins",
+  /// and the write the save path is about to perform is exactly how it wins.
+  /// Reporting the prompt itself as unresolved would skip the very save the
+  /// user asked for while the UI claimed it happened.
+  Future<bool> _reconcileTabWithDisk(
     BuildContext context,
     TabData tab,
     TabDataValue value, {
     bool onSaveConflict = false,
   }) async {
     final file = value.file;
-    if (file == null) return ExternalChangeAction.none;
-    final currentStamp = await statFileStamp(file);
+    if (file == null) return true;
+    final currentStamp = await diskStampReader(file);
     final exists = currentStamp != null;
     final previousStamp = _diskStamps[value.filePath];
 
     // Cheap exit: nothing about this path moved since we last looked.
     if (exists && previousStamp != null && previousStamp.sameAs(currentStamp)) {
-      return ExternalChangeAction.none;
+      return true;
     }
 
-    final diskText = exists ? await readDiskText(file) : null;
+    final diskText = exists ? await diskTextReader(file) : null;
     final action = planExternalChange(
       exists: exists,
       previousStamp: previousStamp,
@@ -1155,15 +1204,20 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
     switch (action) {
       case ExternalChangeAction.none:
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
+        return true;
       case ExternalChangeAction.touchOnly:
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         _notifiedMissingFiles.remove(value.filePath);
         if (currentStamp != null) _diskStamps[value.filePath] = currentStamp;
+        return true;
       case ExternalChangeAction.deleted:
         _diskStamps.remove(value.filePath);
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         // The buffer stays editable. Locking it was meant to stop a save from
         // recreating a file someone deliberately removed, but the editor is in
         // no position to know that: a branch switch, a stash pop or a formatter
@@ -1190,14 +1244,25 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
                 closeable: true,
               );
         }
+        return true;
       case ExternalChangeAction.reload:
         _declinedExternalChanges.remove(value.filePath);
+        _undecodableExternalChanges.remove(value.filePath);
         _notifiedMissingFiles.remove(value.filePath);
         await _reloadTabFromDisk(tab, value, diskText!);
+        return true;
       case ExternalChangeAction.prompt:
-        if (!context.mounted) return action;
+        if (!context.mounted) return false;
         // Planning a prompt means the file is there, so the stamp is too.
         final stamp = currentStamp!;
+        // The same undecodable bytes were already explained: reloading them
+        // changes nothing, so do not reopen the prompt. A save is still
+        // refused, but out loud.
+        final undecodableStamp = _undecodableExternalChanges[value.filePath];
+        if (undecodableStamp != null && undecodableStamp.sameAs(stamp)) {
+          if (onSaveConflict) _showUndecodableRefusal(value.filePath);
+          return !onSaveConflict;
+        }
         final declinedStamp = _declinedExternalChanges[value.filePath];
         if (declinedStamp != null) {
           if (declinedStamp.sameAs(stamp)) {
@@ -1207,7 +1272,7 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
               // activation is nagging about a conflict they are aware of. A
               // save is the opposite case: it is about to overwrite the other
               // program's work, so it asks every time.
-              return action;
+              return true;
             }
           } else {
             // The file moved on since they declined, so what they were shown
@@ -1221,23 +1286,57 @@ class TabbedViewControllerNotifier extends StateNotifier<TabbedViewController> {
           filePath: value.filePath,
           onSaveConflict: onSaveConflict,
         );
-        if (resolution == ExternalChangeResolution.reload) {
-          _declinedExternalChanges.remove(value.filePath);
-          await _reloadTabFromDisk(tab, value, diskText);
-        } else if (resolution == ExternalChangeResolution.keepEditor) {
-          _declinedExternalChanges.remove(value.filePath);
-          // The user chose this buffer's version, so its content becomes the
-          // baseline: the next check must not raise the same conflict again
-          // for a difference we have already resolved.
-          _lastSavedText[value.filePath] = diskText ?? '';
-          _diskStamps[value.filePath] = stamp;
-        } else {
-          // Cancelled, or the dialog was dismissed. Remember the state so the
-          // focus check does not reopen it on the very next activation.
-          _declinedExternalChanges[value.filePath] = stamp;
+        switch (resolution) {
+          case ExternalChangeResolution.reload:
+            _declinedExternalChanges.remove(value.filePath);
+            if (diskText == null) {
+              // The new bytes cannot be decoded into the buffer, so there is
+              // nothing to reload. Writing now would replace content the user
+              // has never been shown. Remember the stamp so the next focus
+              // check does not ask the same unanswerable question again.
+              _undecodableExternalChanges[value.filePath] = stamp;
+              if (onSaveConflict) _showUndecodableRefusal(value.filePath);
+              return false;
+            }
+            _undecodableExternalChanges.remove(value.filePath);
+            await _reloadTabFromDisk(tab, value, diskText);
+            return true;
+          case ExternalChangeResolution.keepEditor:
+            _declinedExternalChanges.remove(value.filePath);
+            _undecodableExternalChanges.remove(value.filePath);
+            // The buffer wins, so whatever happens next must proceed. The disk
+            // text becomes the baseline until the pending write replaces it:
+            // that keeps the tab honestly dirty and stops the focus check from
+            // raising a difference the user has already resolved.
+            _lastSavedText[value.filePath] = diskText ?? '';
+            _diskStamps[value.filePath] = stamp;
+            return true;
+          case ExternalChangeResolution.cancel:
+          case null:
+            // Cancelled, or the dialog was dismissed. Remember the state so
+            // the focus check does not reopen it on the very next activation,
+            // and block the save: nothing was resolved and nothing was written.
+            _declinedExternalChanges[value.filePath] = stamp;
+            return false;
         }
     }
-    return action;
+  }
+
+  /// Tells the user why a save was refused after the disk bytes turned out to
+  /// be unreadable as text.
+  void _showUndecodableRefusal(String filePath) {
+    ref
+        .read(ideMessageProvider.notifier)
+        .show(
+          translateWithReplacements(
+            ref,
+            I18nKey.editorFileCannotReloadUndecodable,
+            {'path': filePath},
+          ),
+          type: IdeMessageType.warning,
+          duration: const Duration(seconds: 12),
+          closeable: true,
+        );
   }
 
   Future<void> _reloadTabFromDisk(

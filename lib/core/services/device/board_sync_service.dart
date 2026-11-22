@@ -32,6 +32,7 @@ Future<SyncTreeSnapshot> scanLocalWorkspace(
 
   final files = <String, SyncFileInfo>{};
   final directories = <String>{};
+  var truncated = false;
 
   await for (final entity in root.list(recursive: true, followLinks: false)) {
     final relative = normalizeSyncRelativePath(
@@ -39,7 +40,13 @@ Future<SyncTreeSnapshot> scanLocalWorkspace(
     );
     if (relative.isEmpty) continue;
     if (_isIgnoredSyncPath(relative, ignoredDirectories)) continue;
-    if (files.length >= maxFiles) break;
+    if (files.length >= maxFiles) {
+      // The snapshot must carry this: a path missing from a truncated scan
+      // cannot be treated as absent locally, or the next sync would download
+      // the board copy over a file the scan never saw.
+      truncated = true;
+      break;
+    }
 
     if (entity is Directory) {
       directories.add(relative);
@@ -65,6 +72,7 @@ Future<SyncTreeSnapshot> scanLocalWorkspace(
     files: files,
     directories: directories,
     root: rootPath,
+    truncated: truncated,
   );
 }
 
@@ -250,9 +258,25 @@ class BoardSyncExecutor {
   }) async {
     final selected = selectedPaths;
     final entries = plan.actionable
-        .where(
-          (entry) => selected == null || selected.contains(entry.relativePath),
-        )
+        .where((entry) {
+          if (selected != null && !selected.contains(entry.relativePath)) {
+            return false;
+          }
+          // Defence in depth: a truncated local scan cannot prove a board-only
+          // path is absent locally, so never let a stale plan download over
+          // it. The preview already marks these rows unselectable.
+          if (plan.truncated &&
+              entry.local == null &&
+              (entry.action == BoardSyncAction.downloadNew ||
+                  entry.action == BoardSyncAction.downloadChanged)) {
+            AppLog.w(
+              'sync',
+              'skipping ${entry.relativePath}: local scan was truncated',
+            );
+            return false;
+          }
+          return true;
+        })
         .toList(growable: false);
 
     progress.start(
