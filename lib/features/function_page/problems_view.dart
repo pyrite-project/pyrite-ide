@@ -88,7 +88,7 @@ class ProblemsView extends ConsumerWidget {
             : null;
         children.add(
           _ProblemTile(
-            message: diagnostic.message,
+            message: _firstNonEmptyLine(diagnostic.message),
             icon: isError ? Icons.error_outline : Icons.warning_amber_rounded,
             iconColor: isError ? colors.error : colors.warning,
             location: line == null
@@ -114,6 +114,16 @@ class ProblemsView extends ConsumerWidget {
     final start = diagnostic.range['start'];
     if (start is! Map) return 0;
     return (start['line'] as num?)?.toInt() ?? 0;
+  }
+
+  /// An LSP message can span multiple lines; the panel shows one row per
+  /// diagnostic, so the row displays the message's first non-empty line.
+  static String _firstNonEmptyLine(String message) {
+    for (final line in message.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
   }
 }
 
