@@ -98,7 +98,7 @@ class Plugins extends ConsumerWidget {
                       if (plugin.author.isNotEmpty) plugin.author,
                       typeText,
                       statusText,
-                    ].join(' · '),
+                    ].join(' | '),
                   ),
                   onTap: () => context.push(
                     Uri(

@@ -323,13 +323,13 @@ class _PluginHeader extends ConsumerWidget {
     );
   }
 
-  /// "author · version": the publisher line an extension page leads with.
+  /// "author version": the publisher line an extension page leads with.
   String get _publisherLine {
     final parts = <String>[
       if (plugin.author.isNotEmpty) plugin.author,
       plugin.version,
     ];
-    return parts.join('  ·  ');
+    return parts.join(' | ');
   }
 
   Widget _statusBadge(BuildContext context, WidgetRef ref) {
