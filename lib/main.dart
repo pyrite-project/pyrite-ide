@@ -277,7 +277,18 @@ void main() async {
   // Wait for Material Icons font to be fully loaded before first frame.
   // This prevents the "tofu" (question mark box) issue on desktop platforms.
   await Future.delayed(const Duration(milliseconds: 50));
-  VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
+  try {
+    VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
+  } catch (error) {
+    // media_kit loads the bundled libmpv here. On old Windows builds that
+    // loader can fail; video preview is a feature, not a reason to keep the
+    // whole IDE from starting.
+    AppLog.w(
+      'lifecycle',
+      'media_kit initialization failed, video playback is unavailable',
+      error: error,
+    );
+  }
   AppLog.d('lifecycle', 'WidgetsFlutterBinding initialized');
   await PlatformSpecific.initialize();
 
