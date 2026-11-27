@@ -9,6 +9,7 @@ import 'package:flutter_pty/flutter_pty.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:xterm/xterm.dart';
 
@@ -18,7 +19,7 @@ class DesktopTerminalSession {
     required this.title,
     required this.terminal,
     required this.controller,
-    required this.pty,
+    required this.process,
     required this.outputSubscription,
     required this.backgroundColor,
   });
@@ -27,7 +28,7 @@ class DesktopTerminalSession {
   final String title;
   final Terminal terminal;
   final TerminalController controller;
-  final Pty pty;
+  final DesktopTerminalProcess process;
   final StreamSubscription<String> outputSubscription;
   final ValueNotifier<Color?> backgroundColor;
 }
@@ -94,7 +95,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     final startDirectory = _resolveStartDirectory(defaultDir);
 
     try {
-      final session = _startSessionProcess(
+      final session = await _startSessionProcess(
         id: id,
         title: translate(
           ref,
@@ -132,7 +133,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     }
   }
 
-  DesktopTerminalSession _startSessionProcess({
+  Future<DesktopTerminalSession> _startSessionProcess({
     required int id,
     required String title,
     required Terminal terminal,
@@ -140,31 +141,32 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     required _ShellCommand shell,
     required ValueNotifier<Color?> backgroundColor,
     String? defaultDir,
-  }) {
-    final pty = Pty.start(
-      shell.executable,
-      arguments: shell.arguments,
+  }) async {
+    final process = await _startTerminalProcess(
+      shell: shell,
       workingDirectory: defaultDir ?? Directory.current.path,
-      environment: _terminalEnvironment(),
-      rows: 25,
-      columns: 80,
     );
     terminal.onOutput = (data) {
-      pty.write(Uint8List.fromList(utf8.encode(data)));
+      process.write(utf8.encode(data));
     };
     terminal.onResize = (int cols, int rows, int pw, int ph) {
-      pty.resize(rows, cols);
+      process.resize(rows, cols);
     };
     final subscription = decodeTerminalOutput(
-      pty.output,
+      process.output,
     ).listen(terminal.write);
-    pty.exitCode.then(
+    if (process is _PipeTerminalProcess) {
+      terminal.write(
+        '\r\n[${translate(ref, I18nKey.terminalPipeFallback)}]\r\n',
+      );
+    }
+    process.exitCode.then(
       (code) => _handleProcessExit(
         id: id,
         title: title,
         terminal: terminal,
         controller: controller,
-        pty: pty,
+        process: process,
         shell: shell,
         startDirectory: defaultDir ?? Directory.current.path,
         code: code,
@@ -176,10 +178,63 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
       title: title,
       terminal: terminal,
       controller: controller,
-      pty: pty,
+      process: process,
       outputSubscription: subscription,
       backgroundColor: backgroundColor,
     );
+  }
+
+  /// Set after the first launch attempt tells us whether the host exposes the
+  /// pseudoconsole API. Windows only ships ConPTY from version 1809 (build
+  /// 17763); on older builds `flutter_pty.dll` cannot even be loaded, so the
+  /// session falls back to plain pipes instead of failing outright.
+  bool? _conPtyAvailable;
+
+  Future<DesktopTerminalProcess> _startTerminalProcess({
+    required _ShellCommand shell,
+    required String workingDirectory,
+  }) async {
+    final environment = _terminalEnvironment();
+
+    if (!Platform.isWindows || _conPtyAvailable != false) {
+      try {
+        final pty = Pty.start(
+          shell.executable,
+          arguments: shell.arguments,
+          workingDirectory: workingDirectory,
+          environment: environment,
+          rows: 25,
+          columns: 80,
+        );
+        _conPtyAvailable = true;
+        return _ConPtyTerminalProcess(pty);
+      } catch (error) {
+        if (!Platform.isWindows) rethrow;
+        _conPtyAvailable = false;
+        AppLog.w(
+          'terminal',
+          'ConPTY unavailable, falling back to a pipe-backed shell',
+          error: error,
+        );
+        ref
+            .read(ideOutputLogProvider.notifier)
+            .add(
+              IdeOutputSource.terminal,
+              translate(ref, I18nKey.terminalPipeFallback),
+            );
+      }
+    }
+
+    // cmd.exe copes with redirected stdin/stdout, and the UTF-8 code page
+    // keeps its output decodable by the terminal widget.
+    final process = await Process.start(
+      'cmd.exe',
+      const ['/Q', '/K', 'chcp 65001>nul'],
+      workingDirectory: workingDirectory,
+      environment: environment,
+      runInShell: false,
+    );
+    return _PipeTerminalProcess(process);
   }
 
   Future<void> _handleProcessExit({
@@ -187,13 +242,13 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     required String title,
     required Terminal terminal,
     required TerminalController controller,
-    required Pty pty,
+    required DesktopTerminalProcess process,
     required _ShellCommand shell,
     required String startDirectory,
     required int code,
   }) async {
     final current = state.sessions.where((item) => item.id == id).firstOrNull;
-    if (current == null || current.pty != pty) return;
+    if (current == null || current.process != process) return;
 
     final hexCode = (code & 0xffffffff).toRadixString(16).padLeft(8, '0');
     final message = translate(
@@ -209,7 +264,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
     await current.outputSubscription.cancel();
     try {
-      final restarted = _startSessionProcess(
+      final restarted = await _startSessionProcess(
         id: id,
         title: title,
         terminal: terminal,
@@ -255,7 +310,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
     final session = state.sessions.where((item) => item.id == id).firstOrNull;
     if (session == null) return;
     await session.outputSubscription.cancel();
-    session.pty.kill();
+    session.process.kill();
     session.backgroundColor.dispose();
 
     final sessions = state.sessions.where((item) => item.id != id).toList();
@@ -268,7 +323,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
   Future<void> closeAll() async {
     for (final session in state.sessions) {
       await session.outputSubscription.cancel();
-      session.pty.kill();
+      session.process.kill();
       session.backgroundColor.dispose();
     }
     state = const DesktopTerminalState();
@@ -344,6 +399,104 @@ Stream<String> decodeTerminalOutput(Stream<List<int>> output) {
   // Use the decoder's bind API so Dart owns the incremental chunked conversion
   // and the input remains the PTY's Stream<List<int>> type.
   return const Utf8Decoder(allowMalformed: true).bind(output);
+}
+
+/// The narrow slice of a child process the terminal needs: bytes in, bytes
+/// out, an exit code, and a way to kill it.
+///
+/// ConPTY provides that plus window-size negotiation. On Windows builds that
+/// predate ConPTY (10.0.17763) the terminal falls back to plain pipes, which
+/// keep commands and output working but cannot resize the console.
+abstract class DesktopTerminalProcess {
+  Stream<List<int>> get output;
+
+  Future<int> get exitCode;
+
+  void write(List<int> data);
+
+  void resize(int rows, int cols);
+
+  void kill();
+}
+
+class _ConPtyTerminalProcess implements DesktopTerminalProcess {
+  _ConPtyTerminalProcess(this._pty);
+
+  final Pty _pty;
+
+  @override
+  Stream<List<int>> get output => _pty.output;
+
+  @override
+  Future<int> get exitCode => _pty.exitCode;
+
+  @override
+  void write(List<int> data) => _pty.write(Uint8List.fromList(data));
+
+  @override
+  void resize(int rows, int cols) => _pty.resize(rows, cols);
+
+  @override
+  void kill() => _pty.kill();
+}
+
+class _PipeTerminalProcess implements DesktopTerminalProcess {
+  _PipeTerminalProcess(this._process) {
+    var remaining = 2;
+    void onDone() {
+      if (--remaining == 0 && !_output.isClosed) _output.close();
+    }
+
+    _subscriptions = [
+      _process.stdout.listen(
+        _output.add,
+        onError: _output.addError,
+        onDone: onDone,
+      ),
+      _process.stderr.listen(
+        _output.add,
+        onError: _output.addError,
+        onDone: onDone,
+      ),
+    ];
+  }
+
+  final Process _process;
+  final StreamController<List<int>> _output = StreamController<List<int>>();
+  late final List<StreamSubscription<List<int>>> _subscriptions;
+  bool _closed = false;
+
+  @override
+  Stream<List<int>> get output => _output.stream;
+
+  @override
+  Future<int> get exitCode => _process.exitCode;
+
+  @override
+  void write(List<int> data) {
+    if (_closed) return;
+    try {
+      _process.stdin.add(data);
+    } catch (_) {
+      // The child can exit between a keystroke and this call; the exit itself
+      // is reported through [exitCode], so a lost write needs no recovery.
+    }
+  }
+
+  @override
+  void resize(int rows, int cols) {
+    // Pipes have no window size to negotiate.
+  }
+
+  @override
+  void kill() {
+    _closed = true;
+    _process.kill();
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    if (!_output.isClosed) _output.close();
+  }
 }
 
 final desktopTerminalProvider =

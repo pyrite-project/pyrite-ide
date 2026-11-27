@@ -1245,6 +1245,10 @@ enum I18nKey {
   terminalRestartedProcess('terminal.restarted_process', '已重新启动终端进程'),
   terminalRestarted('terminal.restarted', '重新启动 {title}: {executable}'),
   terminalRestartFailed('terminal.restart_failed', '重新启动终端失败: {error}'),
+  terminalPipeFallback(
+    'terminal.pipe_fallback',
+    '当前系统不支持 ConPTY（需 Windows 10 1809 及以上），终端已回退到 cmd.exe 管道模式：命令可用，但窗口尺寸同步与 Ctrl+C 不可用。',
+  ),
   dialogDeviceNotReadyTitle('dialog.device_not_ready.title', '设备未就绪'),
   dialogDeviceNotReadyOperation(
     'dialog.device_not_ready.operation',
