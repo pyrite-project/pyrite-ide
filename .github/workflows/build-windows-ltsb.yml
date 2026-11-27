@@ -4,10 +4,10 @@
 # `ltsb-` (or a manual dispatch), so the regular `v*` release pipeline and its
 # branches are untouched.
 #
-# Two artifacts are produced because the bundled CPython is the component with
-# the least certain support for 1607:
-#   * py3.14 - the default runtime (CPython states Windows 10 or newer)
-#   * py3.12 - the last line that still lists Windows 8.1 and newer
+# The build itself is the regular Windows release, with the default CPython
+# runtime; the only behavioural difference on 1607 is that the integrated
+# terminal is disabled (ConPTY requires 10.0.17763). Plugins, the Python host
+# and every other feature stay on the same code path as other platforms.
 name: Build Windows 10 1607 (experiment)
 
 on:
@@ -22,15 +22,9 @@ concurrency:
 
 jobs:
   build:
-    name: Windows 1607 with Python ${{ matrix.python }}
+    name: Windows 1607
     runs-on: windows-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.14", "3.12"]
-    env:
-      SERIOUS_PYTHON_VERSION: ${{ matrix.python }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,13 +65,12 @@ jobs:
         shell: pwsh
         run: |
           $release = "build\windows\x64\runner\Release"
-          $name = "pyride-win10-1607-py${{ matrix.python }}"
-          Compress-Archive -Path "$release\*" -DestinationPath "$name.zip"
+          Compress-Archive -Path "$release\*" -DestinationPath "pyride-win10-1607.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pyride-win10-1607-py${{ matrix.python }}
-          path: pyride-win10-1607-py${{ matrix.python }}.zip
+          name: pyride-win10-1607
+          path: pyride-win10-1607.zip
           if-no-files-found: error
           retention-days: 14
