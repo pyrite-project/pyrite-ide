@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/models/settings.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_adapter.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_context.dart';
 
 /// Copies a decoded JSON object into a `String → String` map, stringifying
@@ -84,7 +83,7 @@ class LspServerMatchRules {
 /// carries static options verbatim.
 ///
 /// Every key may be dotted to reach a nested option object, which is how a
-/// profile describes `pylsp`'s `plugins.jedi.extra_paths` without an adapter.
+/// profile describes `pylsp`'s `plugins.jedi.extra_paths`.
 class LspServerConfigurationSpec {
   const LspServerConfigurationSpec({
     this.mode = 'flat',
@@ -130,9 +129,9 @@ class LspServerConfigurationSpec {
   /// Writes [value] at [key], treating dots as nesting.
   ///
   /// A server whose options live deeper than one level — pylsp wants
-  /// `plugins.jedi.extra_paths` — would otherwise need a bespoke adapter.
-  /// Dots are only a path separator here; keys that really contain one are not
-  /// supported by any server this runs against.
+  /// `plugins.jedi.extra_paths` — would otherwise need IDE-side code for its
+  /// option shape. Dots are only a path separator here; keys that really
+  /// contain one are not supported by any server this runs against.
   static void _writeNested(
     Map<String, dynamic> target,
     String key,
@@ -190,9 +189,10 @@ class LspServerConfigurationSpec {
 
 /// One language-server support profile contributed by a data plugin.
 ///
-/// Unlike the built-in adapters this carries no code: matching rules, option
-/// keys, static extras, and environment templates fully describe the server,
-/// which keeps third-party contributions serializable and sandboxed.
+/// A profile carries no code: matching rules, option keys, static extras, and
+/// environment templates fully describe the server, which keeps third-party
+/// contributions serializable and sandboxed. The IDE describes no server on
+/// its own, so a launch no profile claims receives no configuration.
 class LspServerProfileEntry {
   const LspServerProfileEntry({
     required this.pluginId,
@@ -212,6 +212,50 @@ class LspServerProfileEntry {
   /// Environment templates with `{stubsPaths}`, `{pythonInterpreter}`, and
   /// `{workspacePath}` placeholders expanded per launch.
   final Map<String, String> environment;
+
+  /// Whether this profile describes [context].
+  bool matches(LspServerContext context) => match.matches(context);
+
+  /// The `initializationOptions` / `workspace/configuration` payload sent to
+  /// the server.
+  Map<String, dynamic> buildConfiguration(LspServerContext context) =>
+      configuration.build(context);
+
+  /// Extra process-environment entries layered on top of the common ones.
+  ///
+  /// An entry that expands to nothing is dropped rather than exported empty: a
+  /// profile can declare `MYPYPATH: {stubsPaths}` for the stubs case without
+  /// wiping a `MYPYPATH` the user already set when no stubs are configured.
+  Map<String, String> buildEnvironment(LspServerContext context) {
+    final environment = <String, String>{};
+    for (final template in this.environment.entries) {
+      final value = expandTemplate(template.value, context);
+      if (value.isEmpty) continue;
+      environment[template.key] = value;
+    }
+    return environment;
+  }
+
+  /// Fills the supported placeholders; unknown ones stay verbatim so a typo
+  /// is visible in the launched process instead of silently vanishing.
+  static String expandTemplate(String template, LspServerContext context) =>
+      template
+          .replaceAll(
+            '{stubsPaths}',
+            context.stubsPaths.join(Platform.isWindows ? ';' : ':'),
+          )
+          .replaceAll('{pythonInterpreter}', context.pythonInterpreter)
+          .replaceAll('{workspacePath}', context.workspacePath);
+
+  /// Whether stubs reach this server only through its process environment.
+  ///
+  /// A server never re-reads its environment, so stubs settings saved after
+  /// the launch cannot reach it: the workspace's files must be closed (or the
+  /// IDE restarted) to spawn the server again. Profiles that carry stubs in
+  /// the configuration payload instead hot-apply through
+  /// `workspace/didChangeConfiguration` and do not need a restart.
+  bool get deliversStubsViaEnvironment =>
+      environment.values.any((template) => template.contains('{stubsPaths}'));
 
   Map<String, dynamic> toJson() => {
     'plugin_id': pluginId,
@@ -238,61 +282,19 @@ class LspServerProfileEntry {
   }
 }
 
-/// Serves launches recognized by a plugin-contributed [LspServerProfileEntry].
-class LspServerProfileAdapter extends LspServerAdapter {
-  const LspServerProfileAdapter(this.entry);
-
-  final LspServerProfileEntry entry;
-
-  @override
-  String get id => entry.serverId;
-
-  @override
-  String get label => entry.label.isEmpty ? entry.serverId : entry.label;
-
-  @override
-  bool matches(LspServerContext context) => entry.match.matches(context);
-
-  @override
-  Map<String, dynamic> buildConfiguration(LspServerContext context) =>
-      entry.configuration.build(context);
-
-  /// Expands the profile's environment templates.
-  ///
-  /// An entry that expands to nothing is dropped rather than exported empty: a
-  /// profile can declare `MYPYPATH: {stubsPaths}` for the stubs case without
-  /// wiping a `MYPYPATH` the user already set when no stubs are configured.
-  @override
-  Map<String, String> buildEnvironment(
-    LspServerContext context,
-    Map<String, String> baseEnvironment,
-  ) {
-    final environment = <String, String>{};
-    for (final template in entry.environment.entries) {
-      final value = expandTemplate(template.value, context);
-      if (value.isEmpty) continue;
-      environment[template.key] = value;
-    }
-    return environment;
+/// First profile that claims [context], ordered by server id so conflicting
+/// contributions resolve deterministically.
+///
+/// Returns null when nothing matches: the IDE knows no server's option shape
+/// on its own, so an unclaimed launch is sent no configuration at all.
+LspServerProfileEntry? resolveLspServerProfile(
+  Iterable<LspServerProfileEntry> profiles,
+  LspServerContext context,
+) {
+  final ordered = profiles.toList()
+    ..sort((a, b) => a.serverId.compareTo(b.serverId));
+  for (final profile in ordered) {
+    if (profile.matches(context)) return profile;
   }
-
-  /// Fills the supported placeholders; unknown ones stay verbatim so a typo
-  /// is visible in the launched process instead of silently vanishing.
-  static String expandTemplate(String template, LspServerContext context) =>
-      template
-          .replaceAll(
-            '{stubsPaths}',
-            context.stubsPaths.join(Platform.isWindows ? ';' : ':'),
-          )
-          .replaceAll('{pythonInterpreter}', context.pythonInterpreter)
-          .replaceAll('{workspacePath}', context.workspacePath);
-
-  /// A profile that carries stubs through `{stubsPaths}` hands them to the
-  /// process environment, which the server reads once at launch — so the
-  /// settings page has to ask for a restart instead of assuming the new paths
-  /// reach a running server.
-  @override
-  bool get deliversStubsViaEnvironment => entry.environment.values.any(
-    (template) => template.contains('{stubsPaths}'),
-  );
+  return null;
 }

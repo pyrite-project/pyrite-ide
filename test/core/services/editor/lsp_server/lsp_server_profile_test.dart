@@ -2,8 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_context.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_registry.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_server/pylsp_lsp_server.dart';
 
 LspServerContext contextFor({
   LspType transport = LspType.stdio,
@@ -81,28 +79,26 @@ void main() {
     });
   });
 
-  group('LspServerProfileAdapter', () {
+  group('LspServerProfileEntry', () {
     test('builds a flat configuration for the declared keys', () {
-      final adapter = LspServerProfileAdapter(
-        profileEntry({
-          'label': 'MyLSP',
-          'match': {
-            'executables': ['mylsp'],
+      final profile = profileEntry({
+        'label': 'MyLSP',
+        'match': {
+          'executables': ['mylsp'],
+        },
+        'configuration': {
+          'stubs_paths_key': 'extraPaths',
+          'python_executable_key': 'python',
+          'type_checking_mode_key': 'typeCheckingMode',
+          'type_checking_mode_values': {
+            'off': 'off',
+            'basic': 'default',
+            'standard': 'default',
+            'strict': 'strict',
+            'all': 'all',
           },
-          'configuration': {
-            'stubs_paths_key': 'extraPaths',
-            'python_executable_key': 'python',
-            'type_checking_mode_key': 'typeCheckingMode',
-            'type_checking_mode_values': {
-              'off': 'off',
-              'basic': 'default',
-              'standard': 'default',
-              'strict': 'strict',
-              'all': 'all',
-            },
-          },
-        }),
-      );
+        },
+      });
       final context = LspServerContext(
         transport: LspType.stdio,
         stdioExecutable: 'mylsp',
@@ -113,9 +109,8 @@ void main() {
         typeCheckingMode: LspTypeCheckingMode.basic,
       );
 
-      expect(adapter.id, 'mylsp');
-      expect(adapter.label, 'MyLSP');
-      expect(adapter.buildConfiguration(context), {
+      expect(profile.label, 'MyLSP');
+      expect(profile.buildConfiguration(context), {
         'extraPaths': ['/stubs/rp2', '/stubs/shared'],
         'python': '/venv/bin/python',
         'typeCheckingMode': 'default',
@@ -123,41 +118,37 @@ void main() {
     });
 
     test('nests options under the declared section', () {
-      final adapter = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['mylsp'],
-          },
-          'configuration': {
-            'mode': 'sectioned',
-            'section': 'mylsp',
-            'extra': {'diagnosticMode': 'workspace'},
-          },
-        }),
-      );
+      final profile = profileEntry({
+        'match': {
+          'executables': ['mylsp'],
+        },
+        'configuration': {
+          'mode': 'sectioned',
+          'section': 'mylsp',
+          'extra': {'diagnosticMode': 'workspace'},
+        },
+      });
 
-      expect(adapter.buildConfiguration(contextFor(executable: 'mylsp')), {
+      expect(profile.buildConfiguration(contextFor(executable: 'mylsp')), {
         'mylsp': {'diagnosticMode': 'workspace'},
       });
     });
 
     test('treats dots in option keys as nesting', () {
       // pylsp reads its jedi settings two levels down; a profile has to be able
-      // to address that path without a bespoke adapter.
-      final adapter = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['pylsp'],
-          },
-          'configuration': {
-            'mode': 'sectioned',
-            'section': 'pylsp',
-            'stubs_paths_key': 'plugins.jedi.extra_paths',
-            'python_executable_key': 'plugins.jedi.environment',
-            'extra': {'plugins.jedi.prioritize_extra_paths': true},
-          },
-        }),
-      );
+      // to address that path without IDE-side code for its option shape.
+      final profile = profileEntry({
+        'match': {
+          'executables': ['pylsp'],
+        },
+        'configuration': {
+          'mode': 'sectioned',
+          'section': 'pylsp',
+          'stubs_paths_key': 'plugins.jedi.extra_paths',
+          'python_executable_key': 'plugins.jedi.environment',
+          'extra': {'plugins.jedi.prioritize_extra_paths': true},
+        },
+      });
       final context = LspServerContext(
         transport: LspType.stdio,
         stdioExecutable: 'python',
@@ -168,7 +159,7 @@ void main() {
         typeCheckingMode: LspTypeCheckingMode.standard,
       );
 
-      expect(adapter.buildConfiguration(context), {
+      expect(profile.buildConfiguration(context), {
         'pylsp': {
           'plugins': {
             'jedi': {
@@ -182,19 +173,17 @@ void main() {
     });
 
     test('expands environment templates per launch', () {
-      final adapter = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['mylsp'],
-          },
-          'configuration': const {},
-          'environment': {
-            'MYPYPATH': '{stubsPaths}',
-            'WORKSPACE': '{workspacePath}',
-            'INTERPRETER': '{pythonInterpreter}',
-          },
-        }),
-      );
+      final profile = profileEntry({
+        'match': {
+          'executables': ['mylsp'],
+        },
+        'configuration': const {},
+        'environment': {
+          'MYPYPATH': '{stubsPaths}',
+          'WORKSPACE': '{workspacePath}',
+          'INTERPRETER': '{pythonInterpreter}',
+        },
+      });
       final context = LspServerContext(
         transport: LspType.stdio,
         stdioExecutable: 'mylsp',
@@ -206,7 +195,7 @@ void main() {
         workspacePath: '/workspace',
       );
 
-      expect(adapter.buildEnvironment(context, const {}), {
+      expect(profile.buildEnvironment(context), {
         'MYPYPATH': '/stubs/rp2',
         'WORKSPACE': '/workspace',
         'INTERPRETER': '/venv/bin/python',
@@ -214,103 +203,83 @@ void main() {
     });
 
     test('keeps unknown placeholders visible in the value', () {
-      final adapter = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['mylsp'],
-          },
-          'configuration': const {},
-          'environment': {'FLAG': '{stubsPaths}/{unknown}'},
-        }),
-      );
+      final profile = profileEntry({
+        'match': {
+          'executables': ['mylsp'],
+        },
+        'configuration': const {},
+        'environment': {'FLAG': '{stubsPaths}/{unknown}'},
+      });
 
       expect(
-        adapter.buildEnvironment(
-          contextFor(executable: 'mylsp'),
-          const {},
-        )['FLAG'],
+        profile.buildEnvironment(contextFor(executable: 'mylsp'))['FLAG'],
         '/{unknown}',
       );
     });
-
-    test('falls back to the server id when no label is declared', () {
-      final adapter = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['mylsp'],
-          },
-          'configuration': const {},
-        }),
-      );
-
-      expect(adapter.label, 'mylsp');
-    });
   });
 
-  group('LspServerRegistry', () {
-    test('prefers a contributed profile over the built-in server', () {
-      final profile = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['zuban'],
-          },
-          'configuration': const {},
-        }),
-      );
-      final registry = LspServerRegistry(contributed: [profile]);
-
-      expect(registry.resolve(contextFor(executable: 'zuban')), same(profile));
-    });
-
-    test('has no built-in adapter for a specialized server', () {
-      // BasedPyright and Zuban used to ship as built-ins; their option shapes
-      // now come from the plugin that contributes the profile, so an unclaimed
-      // launch falls through to pylsp instead of a server-specific payload.
-      const registry = LspServerRegistry();
+  group('resolveLspServerProfile', () {
+    test('resolves the profile that claims the launch', () {
+      final profile = profileEntry({
+        'match': {
+          'executables': ['zuban'],
+        },
+        'configuration': const {},
+      });
 
       expect(
-        registry.resolve(contextFor(executable: 'python', args: '-m zuban')),
-        isA<PylspLspServerAdapter>(),
-      );
-      expect(
-        registry.resolve(contextFor(executable: 'basedpyright')),
-        isA<PylspLspServerAdapter>(),
+        resolveLspServerProfile([profile], contextFor(executable: 'zuban')),
+        same(profile),
       );
     });
 
-    test('resolves the fallback adapter for anything else', () {
-      const registry = LspServerRegistry();
+    test('resolves no profile for a launch nothing describes', () {
+      // The IDE carries no server's option shape itself: an unclaimed launch
+      // gets no configuration instead of another server's payload.
+      final profile = profileEntry({
+        'match': {
+          'executables': ['zuban'],
+        },
+        'configuration': const {},
+      });
 
       expect(
-        registry.resolve(contextFor(executable: 'pylsp')),
-        isA<PylspLspServerAdapter>(),
+        resolveLspServerProfile([profile], contextFor(executable: 'pylsp')),
+        isNull,
       );
       expect(
-        registry.resolve(contextFor(transport: LspType.webSocket)),
-        isA<PylspLspServerAdapter>(),
+        resolveLspServerProfile([
+          profile,
+        ], contextFor(transport: LspType.webSocket)),
+        isNull,
+      );
+      expect(
+        resolveLspServerProfile(const [], contextFor(executable: 'pylsp')),
+        isNull,
       );
     });
 
     test('resolves conflicting contributed profiles deterministically', () {
-      final later = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['mylsp'],
-          },
-          'configuration': const {},
-        }, serverId: 'zzz-lsp'),
-      );
-      final earlier = LspServerProfileAdapter(
-        profileEntry({
-          'match': {
-            'executables': ['mylsp'],
-          },
-          'configuration': const {},
-        }, serverId: 'aaa-lsp'),
-      );
-      final registry = LspServerRegistry(contributed: [later, earlier]);
+      final later = profileEntry({
+        'match': {
+          'executables': ['mylsp'],
+        },
+        'configuration': const {},
+      }, serverId: 'zzz-lsp');
+      final earlier = profileEntry({
+        'match': {
+          'executables': ['mylsp'],
+        },
+        'configuration': const {},
+      }, serverId: 'aaa-lsp');
 
-      expect(registry.resolve(contextFor(executable: 'mylsp')), same(earlier));
+      expect(
+        resolveLspServerProfile([
+          later,
+          earlier,
+        ], contextFor(executable: 'mylsp')),
+        same(earlier),
+      );
     });
   });
 

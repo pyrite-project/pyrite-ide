@@ -12,84 +12,79 @@ import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart'
 import 'package:pyrite_ide/core/services/settings.dart';
 
 void main() {
-  test('maps MicroPython stub paths into the pylsp jedi configuration', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container
-        .read(dataRegistryProvider)
-        .registerStubsProvider(
-          const StubsProviderEntry(
-            pluginId: 'stubs-fixture',
-            providerId: 'micropython',
-            kind: 'micropython',
-            version: '1.0.0',
-            profiles: [StubsProfileEntry(id: 'rp2', path: '/stubs/rp2')],
-          ),
-        );
-    container.read(microPythonStubsEnabled.notifier).state = true;
-    container.read(microPythonStubsLayers.notifier).state = const [
-      MicroPythonStubsLayer(provider: 'micropython', profile: 'rp2'),
-    ];
-    container.read(microPythonStubsExtraPaths.notifier).state = const [
-      '/stubs/shared',
-    ];
-
-    final config = container.read(
-      Provider((ref) => buildLspStubsConfig(ref.read)),
-    );
-    final pylsp =
-        config.workspaceConfiguration['pylsp'] as Map<String, dynamic>;
-
-    expect(config.paths, ['/stubs/rp2', '/stubs/shared']);
-    expect((pylsp['plugins'] as Map<String, dynamic>)['jedi'], {
-      'extra_paths': config.paths,
-      'prioritize_extra_paths': true,
-    });
-    expect(config.workspaceConfiguration.keys, ['pylsp']);
-    expect(config.initializationOptions, config.workspaceConfiguration);
-  });
-
   test(
-    'maps the selected virtual environment into the pylsp configuration',
+    'carries stub paths in PYTHONPATH when no profile claims the launch',
     () {
-      final root = Directory.systemTemp.createTempSync('pyrite-venv-');
-      addTearDown(() => root.deleteSync(recursive: true));
-      File('${root.path}${Platform.pathSeparator}pyvenv.cfg').createSync();
-      final scriptsDirectoryName = Platform.isWindows ? 'Scripts' : 'bin';
-      final executableName = Platform.isWindows ? 'python.exe' : 'python';
-      final scripts = Directory(
-        '${root.path}${Platform.pathSeparator}$scriptsDirectoryName',
-      )..createSync();
-      final interpreter = File(
-        '${scripts.path}${Platform.pathSeparator}$executableName',
-      )..createSync();
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      container.read(lspVirtualEnvironment.notifier).state = root.path;
+      container
+          .read(dataRegistryProvider)
+          .registerStubsProvider(
+            const StubsProviderEntry(
+              pluginId: 'stubs-fixture',
+              providerId: 'micropython',
+              kind: 'micropython',
+              version: '1.0.0',
+              profiles: [StubsProfileEntry(id: 'rp2', path: '/stubs/rp2')],
+            ),
+          );
+      container.read(microPythonStubsEnabled.notifier).state = true;
+      container.read(microPythonStubsLayers.notifier).state = const [
+        MicroPythonStubsLayer(provider: 'micropython', profile: 'rp2'),
+      ];
+      container.read(microPythonStubsExtraPaths.notifier).state = const [
+        '/stubs/shared',
+      ];
 
       final config = container.read(
         Provider((ref) => buildLspStubsConfig(ref.read)),
       );
 
-      expect(config.paths, isEmpty);
-      expect(config.virtualEnvironment, root.path);
-      expect(config.workspaceConfiguration, {
-        'pylsp': {
-          'plugins': {
-            'jedi': {'environment': interpreter.path},
-          },
-        },
-      });
+      expect(config.paths, ['/stubs/rp2', '/stubs/shared']);
+      expect(config.workspaceConfiguration, isEmpty);
+      expect(config.initializationOptions, isEmpty);
       final pathSeparator = Platform.isWindows ? ';' : ':';
-      final environmentPath = config.environment.entries
-          .firstWhere((entry) => entry.key.toLowerCase() == 'path')
-          .value;
-      expect(environmentPath, startsWith('${scripts.path}$pathSeparator'));
-      expect(config.environment['VIRTUAL_ENV'], root.path);
+      expect(
+        config.environment['PYTHONPATH']?.split(pathSeparator),
+        containsAll(config.paths),
+      );
     },
   );
 
-  test('sends no type checking options to the built-in pylsp server', () {
+  test('activates the selected virtual environment without a payload', () {
+    final root = Directory.systemTemp.createTempSync('pyrite-venv-');
+    addTearDown(() => root.deleteSync(recursive: true));
+    File('${root.path}${Platform.pathSeparator}pyvenv.cfg').createSync();
+    final scriptsDirectoryName = Platform.isWindows ? 'Scripts' : 'bin';
+    final executableName = Platform.isWindows ? 'python.exe' : 'python';
+    final scripts = Directory(
+      '${root.path}${Platform.pathSeparator}$scriptsDirectoryName',
+    )..createSync();
+    File(
+      '${scripts.path}${Platform.pathSeparator}$executableName',
+    ).createSync();
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspVirtualEnvironment.notifier).state = root.path;
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.paths, isEmpty);
+    expect(config.virtualEnvironment, root.path);
+    // The interpreter reaches the server through the activated environment,
+    // not through a configuration key the IDE would have to know.
+    expect(config.workspaceConfiguration, isEmpty);
+    final pathSeparator = Platform.isWindows ? ';' : ':';
+    final environmentPath = config.environment.entries
+        .firstWhere((entry) => entry.key.toLowerCase() == 'path')
+        .value;
+    expect(environmentPath, startsWith('${scripts.path}$pathSeparator'));
+    expect(config.environment['VIRTUAL_ENV'], root.path);
+  });
+
+  test('sends no configuration when no profile claims the launch', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -97,8 +92,8 @@ void main() {
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
-    // The IDE no longer knows a specific server's option shape: with no stubs
-    // and no virtual environment there is nothing for pylsp to be told.
+    // The IDE knows no server's option shape: with no stubs, no virtual
+    // environment and no contributed profile there is nothing to send.
     expect(config.workspaceConfiguration, isEmpty);
   });
 
@@ -134,21 +129,6 @@ void main() {
     );
 
     expect(config.workspaceConfiguration, {'typeCheckingMode': 'auto'});
-  });
-
-  test('passes the type checking level through for the built-in pylsp', () {
-    // pylsp takes no strictness option, so the selection stays out of its
-    // payload even after the user changes it.
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container.read(lspTypeCheckingMode.notifier).state =
-        LspTypeCheckingMode.off;
-
-    final config = container.read(
-      Provider((ref) => buildLspStubsConfig(ref.read)),
-    );
-
-    expect(config.workspaceConfiguration, isEmpty);
   });
 
   test('uses a data-plugin LSP server profile that matches the launch', () {
@@ -192,7 +172,7 @@ void main() {
     expect(config.environment['MYPYPATH'], '/stubs/shared');
   });
 
-  test('falls back to the built-in pylsp server when no profile matches', () {
+  test('sends nothing to a launch no profile claims', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container
@@ -216,8 +196,9 @@ void main() {
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
-    expect(config.workspaceConfiguration.containsKey('mylsp'), isFalse);
-    expect(config.workspaceConfiguration.containsKey('pylsp'), isTrue);
+    // Another server's profile must not be sent to this one, and the IDE has
+    // no fallback shape of its own to offer instead.
+    expect(config.workspaceConfiguration, isEmpty);
   });
 
   test('rejects a second plugin registering the same LSP server id', () {
@@ -400,10 +381,10 @@ void main() {
       Provider((ref) => resolveLspLaunch(ref.read)),
     );
 
-    expect(launch.adapter.deliversStubsViaEnvironment, isTrue);
+    expect(launch.profile!.deliversStubsViaEnvironment, isTrue);
   });
 
-  test('marks the configuration-delivered servers as hot-applicable', () {
+  test('resolves no profile for a server nothing describes', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(lspType.notifier).state = LspType.stdio;
@@ -413,7 +394,7 @@ void main() {
       Provider((ref) => resolveLspLaunch(ref.read)),
     );
 
-    expect(launch.adapter.deliversStubsViaEnvironment, isFalse);
+    expect(launch.profile, isNull);
   });
 
   test('does not ask to restart without an open language server', () {
@@ -455,7 +436,7 @@ void main() {
   );
 
   test(
-    'does not ask to restart while a configuration-delivered server is open',
+    'does not ask to restart when no profile feeds stubs by environment',
     () {
       final container = ProviderContainer();
       addTearDown(container.dispose);

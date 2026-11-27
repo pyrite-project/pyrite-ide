@@ -1,11 +1,11 @@
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
 
-/// Everything a language-server adapter sees when the IDE prepares one launch.
+/// Everything a server profile sees when the IDE prepares one launch.
 ///
 /// The common `buildLspStubsConfig` pipeline resolves these once (stubs layers,
-/// virtual environment, settings) and hands them to whichever adapter claims
-/// the launch, so adapters never read settings providers themselves.
+/// virtual environment, settings) and hands them to whichever profile claims
+/// the launch, so profiles never read settings providers themselves.
 class LspServerContext {
   const LspServerContext({
     required this.transport,

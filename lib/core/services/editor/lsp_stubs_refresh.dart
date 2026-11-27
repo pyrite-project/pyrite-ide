@@ -61,7 +61,7 @@ bool anyOpenLspNeedsRestartForStubs(
   final paths = openWorkspacePaths ?? _openLspWorkspacePaths(read);
   for (final workspacePath in paths) {
     final launch = resolveLspLaunch(read, workspacePath: workspacePath);
-    if (launch.adapter.deliversStubsViaEnvironment) return true;
+    if (launch.profile?.deliversStubsViaEnvironment ?? false) return true;
   }
   return false;
 }
