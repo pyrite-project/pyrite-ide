@@ -16,10 +16,6 @@ enum I18nKey {
   settingsFunctionPanelTitle('settings.function_panel.title', '功能面板'),
   settingsConsolePanelTitle('settings.console_panel.title', '控制台面板'),
   settingsFileSortTitle('settings.file_sort.title', '文件排序'),
-  settingsFileSortSubtitle(
-    'settings.file_sort.subtitle',
-    '本地与设备文件树同时生效；按类型时文件夹在前',
-  ),
   settingsFileSortByName('settings.file_sort.name', '按名称'),
   settingsFileSortByType('settings.file_sort.type', '按类型'),
   settingsWelcomeTitle('settings.welcome.title', '重新显示欢迎引导'),
@@ -845,15 +841,7 @@ enum I18nKey {
     '虚拟环境已更新',
   ),
   settingsLspPluginServerSection('settings.lsp.plugin_server.title', '语言服务器来源'),
-  settingsLspPluginServerDescription(
-    'settings.lsp.plugin_server.description',
-    '选择由插件提供的语言服务器；内置表示手动设置连接方式。',
-  ),
-  settingsLspPluginServerBuiltin('settings.lsp.plugin_server.builtin', '内置'),
-  settingsLspPluginServerManaged(
-    'settings.lsp.plugin_server.managed',
-    '连接方式由插件管理',
-  ),
+  settingsLspPluginServerManual('settings.lsp.plugin_server.manual', '手动'),
   settingsLspDiagnosticsSection('settings.lsp.diagnostics.title', '诊断显示'),
   settingsLspWarningDiagnostics(
     'settings.lsp.warning_diagnostics.title',

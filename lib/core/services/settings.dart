@@ -90,7 +90,7 @@ StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
 StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
 
 /// Plugin-provided language server the IDE should run, or null for the
-/// built-in manual configuration.
+/// manual setup.
 ///
 /// The value is a server id contributed over the data API (unique across
 /// plugins); the owning plugin turns it into a launch command and keeps the

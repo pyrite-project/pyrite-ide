@@ -90,7 +90,6 @@ class Settings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.sort),
               title: const UseText(I18nKey.settingsFileSortTitle),
-              subtitle: const UseText(I18nKey.settingsFileSortSubtitle),
               trailing: DropdownButton<FileSortMode>(
                 value: ref.watch(fileSortModeProvider),
                 items: const [

@@ -107,7 +107,6 @@ class LspSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsLspPluginServerSection,
-          description: I18nKey.settingsLspPluginServerDescription,
           children: [
             RadioGroup<String?>(
               groupValue: pluginServerId,
@@ -117,9 +116,7 @@ class LspSettings extends ConsumerWidget {
               child: Column(
                 children: [
                   RadioListTile<String?>(
-                    title: const UseText(
-                      I18nKey.settingsLspPluginServerBuiltin,
-                    ),
+                    title: const UseText(I18nKey.settingsLspPluginServerManual),
                     value: null,
                     controlAffinity: ListTileControlAffinity.trailing,
                   ),
