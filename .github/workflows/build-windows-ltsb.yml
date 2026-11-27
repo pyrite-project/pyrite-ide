@@ -1,0 +1,83 @@
+# Experimental build for Windows 10 Enterprise 2016 LTSB (10.0.14393 / 1607).
+#
+# Deliberately isolated from build.yml: it only runs for tags starting with
+# `ltsb-` (or a manual dispatch), so the regular `v*` release pipeline and its
+# branches are untouched.
+#
+# Two artifacts are produced because the bundled CPython is the component with
+# the least certain support for 1607:
+#   * py3.14 - the default runtime (CPython states Windows 10 or newer)
+#   * py3.12 - the last line that still lists Windows 8.1 and newer
+name: Build Windows 10 1607 (experiment)
+
+on:
+  push:
+    tags:
+      - "ltsb-*"
+  workflow_dispatch:
+
+concurrency:
+  group: win10-1607-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows 1607 with Python ${{ matrix.python }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.14", "3.12"]
+    env:
+      SERIOUS_PYTHON_VERSION: ${{ matrix.python }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.TOKEN }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: "3.44.4"
+          cache: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Package Python app
+        run: dart run serious_python:main package "assets/python_runtime_boot" --platform Windows --asset "assets/python_runtime_boot.zip" --verbose
+
+      - name: Build Windows release
+        run: flutter build windows --release --verbose
+
+      # The release folder does not ship the MSVC runtime, and a clean 1607 VM
+      # will not run the app without it. App-local copies are enough here.
+      - name: Bundle the MSVC runtime
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            Copy-Item -Path (Join-Path $env:SystemRoot "System32\$dll") -Destination $release -Force
+          }
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $name = "pyride-win10-1607-py${{ matrix.python }}"
+          Compress-Archive -Path "$release\*" -DestinationPath "$name.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyride-win10-1607-py${{ matrix.python }}
+          path: pyride-win10-1607-py${{ matrix.python }}.zip
+          if-no-files-found: error
+          retention-days: 14
