@@ -30,6 +30,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # flutter_pty is pinned to a commit on its own experiment branch;
+          # a shallow checkout would not contain that revision.
+          fetch-depth: 0
           token: ${{ secrets.TOKEN }}
 
       - name: Set up Flutter

@@ -1245,10 +1245,6 @@ enum I18nKey {
   terminalRestartedProcess('terminal.restarted_process', '已重新启动终端进程'),
   terminalRestarted('terminal.restarted', '重新启动 {title}: {executable}'),
   terminalRestartFailed('terminal.restart_failed', '重新启动终端失败: {error}'),
-  terminalUnsupportedWindowsVersion(
-    'terminal.unsupported_windows_version',
-    '当前 Windows 版本不支持终端（需要 Windows 10 1809 及以上）',
-  ),
   dialogDeviceNotReadyTitle('dialog.device_not_ready.title', '设备未就绪'),
   dialogDeviceNotReadyOperation(
     'dialog.device_not_ready.operation',

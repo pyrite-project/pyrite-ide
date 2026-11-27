@@ -462,7 +462,8 @@ Future<void> _showOutputLogContextMenu(
 class DesktopTerminalView extends ConsumerStatefulWidget {
   const DesktopTerminalView({super.key});
 
-  static bool get isSupported => desktopTerminalSupported;
+  static bool get isSupported =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
   ConsumerState<DesktopTerminalView> createState() =>
@@ -507,11 +508,7 @@ class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
         child: FilledButton.tonalIcon(
           onPressed: null,
           icon: const Icon(Icons.terminal_outlined),
-          label: UseText(
-            Platform.isWindows
-                ? I18nKey.terminalUnsupportedWindowsVersion
-                : I18nKey.bottomPanelAndroidTerminalUnsupported,
-          ),
+          label: const UseText(I18nKey.bottomPanelAndroidTerminalUnsupported),
         ),
       );
     }

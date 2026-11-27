@@ -12,32 +12,6 @@ import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:xterm/xterm.dart';
 
-/// ConPTY, the only pseudo terminal API on Windows, arrived in 10.0.17763.
-const int _conPtyMinimumBuild = 17763;
-
-final int? _windowsBuildNumber = () {
-  if (!Platform.isWindows) return null;
-  // Dart formats this as `"Windows 10 Enterprise 2016 LTSB" 10.0 (Build 14393)`.
-  final match = RegExp(
-    r'\(Build (\d+)\)',
-  ).firstMatch(Platform.operatingSystemVersion);
-  return match == null ? null : int.tryParse(match.group(1)!);
-}();
-
-/// Whether the integrated terminal can run on this system.
-///
-/// Windows builds before 10.0.17763 have no ConPTY and cannot even load the
-/// `flutter_pty` native library, so the terminal is disabled there instead of
-/// substituting a different, non-PTY shell. Every other desktop platform is
-/// unaffected.
-bool get desktopTerminalSupported {
-  if (Platform.isWindows) {
-    final build = _windowsBuildNumber;
-    return build == null || build >= _conPtyMinimumBuild;
-  }
-  return Platform.isLinux || Platform.isMacOS;
-}
-
 class DesktopTerminalSession {
   DesktopTerminalSession({
     required this.id,
@@ -97,7 +71,8 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
 
   int _nextId = 1;
 
-  bool get isSupported => desktopTerminalSupported;
+  bool get isSupported =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   Future<void> createSession({
     void Function(Terminal, ValueNotifier<Color?>)? configureTerminal,
@@ -105,12 +80,7 @@ class DesktopTerminalNotifier extends StateNotifier<DesktopTerminalState> {
   }) async {
     if (!isSupported) {
       state = state.copyWith(
-        error: translate(
-          ref,
-          Platform.isWindows
-              ? I18nKey.terminalUnsupportedWindowsVersion
-              : I18nKey.terminalUnsupportedPlatform,
-        ),
+        error: translate(ref, I18nKey.terminalUnsupportedPlatform),
       );
       return;
     }
