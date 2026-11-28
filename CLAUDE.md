@@ -96,7 +96,7 @@ The project uses Riverpod for state management. Providers are defined inline (no
 
 ### Editor & LSP
 
-The editor uses a tabbed interface with session persistence. Language server support is configurable through `lib/core/services/pylsp/` and integrates with MicroPython stubs layering system (stubs are data contributions from plugins).
+The editor uses a tabbed interface with session persistence. Language server support lives in `lib/core/services/editor/`: the IDE carries no built-in server, so each launch is described by a plugin-contributed profile in `lsp_server/lsp_server_profile.dart`. It integrates with the MicroPython stubs layering system (stubs are data contributions from plugins).
 
 ### Device Workflow
 

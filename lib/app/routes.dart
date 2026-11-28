@@ -1,22 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/plugins.dart';
-import 'package:pyrite_ide/pages/editor/main.dart';
-import 'package:pyrite_ide/pages/file/main.dart';
-import 'package:pyrite_ide/pages/git/main.dart' deferred as git_page;
+import 'package:pyrite_ide/features/function_page.dart';
+import 'package:pyrite_ide/pages/device_tools/device_tools_page.dart';
+import 'package:pyrite_ide/pages/editor/editor_page.dart';
+import 'package:pyrite_ide/pages/file/file_page.dart';
+import 'package:pyrite_ide/pages/git/git_page.dart' deferred as git_page;
 import 'package:pyrite_ide/pages/plugins/detail.dart';
-import 'package:pyrite_ide/pages/plugins/main.dart';
 import 'package:pyrite_ide/pages/plugins/monitor.dart';
+import 'package:pyrite_ide/pages/plugins/plugins_page.dart';
+import 'package:pyrite_ide/pages/search/search_page.dart';
 import 'package:pyrite_ide/pages/settings/about.dart';
 import 'package:pyrite_ide/pages/settings/editor.dart';
 import 'package:pyrite_ide/pages/settings/lsp.dart';
-import 'package:pyrite_ide/pages/settings/main.dart';
-import 'package:pyrite_ide/pages/settings/terminal.dart';
-import 'package:pyrite_ide/features/function_page.dart';
-import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/pages/settings/settings_page.dart';
 import 'package:pyrite_ide/pages/settings/style.dart';
-import 'package:pyrite_ide/pages/device_tools/main.dart';
+import 'package:pyrite_ide/pages/settings/terminal.dart';
 import 'package:pyrite_ide/pages/welcome/oobe.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 CustomTransitionPage topCustomTransitionPage({
@@ -78,6 +82,11 @@ GoRouter routes = GoRouter(
           ),
         ),
         GoRoute(
+          path: '/search',
+          pageBuilder: (context, state) =>
+              topCustomTransitionPage(child: const SearchPage(), state: state),
+        ),
+        GoRoute(
           path: '/tools',
           pageBuilder: (context, state) =>
               topCustomTransitionPage(child: const Tools(), state: state),
@@ -99,7 +108,9 @@ GoRouter routes = GoRouter(
               builder: (context, state) {
                 final id = state.uri.queryParameters['id'];
                 if (id == null || id.isEmpty) {
-                  return const Scaffold(body: Center(child: Text('插件不存在')));
+                  return Scaffold(
+                    body: Center(child: UseText(I18nKey.pluginsNotFound)),
+                  );
                 }
                 return PluginDetailPage(pluginId: id);
               },
@@ -120,7 +131,9 @@ GoRouter routes = GoRouter(
                 containerId == null ||
                 containerId.isEmpty) {
               return topCustomTransitionPage(
-                child: Scaffold(body: Center(child: Text('插件视图不可用'))),
+                child: Scaffold(
+                  body: Center(child: UseText(I18nKey.pluginsViewUnavailable)),
+                ),
                 state: state,
               );
             }
@@ -215,7 +228,13 @@ class _DeferredGitPageState extends State<_DeferredGitPage> {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('无法加载 Git 页面：${snapshot.error}'),
+              child: Text(
+                translateInContextWithReplacements(
+                  context,
+                  I18nKey.gitPageLoadFailed,
+                  {'error': '${snapshot.error}'},
+                ),
+              ),
             ),
           );
         }
@@ -231,6 +250,7 @@ class _DeferredGitPageState extends State<_DeferredGitPage> {
 
 // 地址别名
 const String file = '/file';
+const String search = '/search';
 const String tools = '/tools';
 const String git = '/git';
 const String plugins = '/plugins';
@@ -239,4 +259,12 @@ const String edit = '/editor';
 const String welcome = '/welcome';
 
 // 为 NavigationBar 提供
-const List<String> routesName = [file, tools, git, plugins, settings, edit];
+const List<String> routesName = [
+  file,
+  search,
+  tools,
+  git,
+  plugins,
+  settings,
+  edit,
+];

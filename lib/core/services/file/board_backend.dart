@@ -5,18 +5,24 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/services/device/file_hash.dart';
+import 'package:pyrite_ide/core/services/device/sync_ignore.dart';
+import 'package:pyrite_ide/core/services/device/transfer_control.dart';
 import 'package:pyrite_ide/core/services/file/file_ops.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/file/file_sort.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_byte_queue.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -48,13 +54,32 @@ class BoardFileEntry {
   final String name;
   final BoardFileEntryType type;
 
+  /// File size in bytes when the listing reported it. `null` for folders and
+  /// for backends/listings that do not carry metadata.
+  final int? size;
+
+  /// Raw `st_mtime` (seconds since the epoch) when reported.
+  ///
+  /// Many MicroPython ports return 0 or an RTC-relative value, so callers must
+  /// treat a non-positive value as "no timestamp" instead of 1970.
+  final int? modifiedSeconds;
+
   const BoardFileEntry({
     required this.path,
     required this.name,
     required this.type,
+    this.size,
+    this.modifiedSeconds,
   });
 
   bool get isFolder => type == BoardFileEntryType.folder;
+
+  /// Modification time, or `null` when the board did not report a usable one.
+  DateTime? get modified {
+    final seconds = modifiedSeconds;
+    if (seconds == null || seconds <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +88,10 @@ class BoardFileEntry {
 
 abstract class BoardFileBackend {
   Future<List<BoardFileEntry>> listDirectory({String path = '/'});
-  Future<List<BoardFileEntry>> listTree({String path = '/'});
+  Future<List<BoardFileEntry>> listTree({
+    String path = '/',
+    bool includeMetadata = false,
+  });
   Future<String> readTextFile(String path);
   Future<Uint8List> readFileBytes(
     String path, {
@@ -81,6 +109,20 @@ abstract class BoardFileBackend {
   Future<void> move(String oldPath, String newPath);
   Future<void> createFolder(String path);
   Future<void> pathExists(String path);
+
+  /// Free bytes available on the filesystem holding [path], or `null` when the
+  /// device cannot report it (no `os.statvfs`, zeroed tuple, ...).
+  ///
+  /// Returning `null` is a normal outcome, not an error: callers degrade to
+  /// skipping the space pre-flight instead of blocking the transfer.
+  Future<int?> freeSpaceBytes({String path = '/'});
+
+  /// CRC-32 checksums of the given board files, keyed by path as given.
+  ///
+  /// Files that are missing or unreadable are omitted. Throws when the device
+  /// cannot compute checksums at all; callers treat that as "cannot compare"
+  /// and transfer normally.
+  Future<Map<String, int>> hashFiles(Iterable<String> paths);
 }
 
 class BoardFileBackendException implements Exception {
@@ -171,13 +213,13 @@ _emit_ok(gc.mem_free())
       final value = _extractValue(raw);
       if (value is int) {
         _cachedFreeHeap = value;
-        debugPrint('[board-backend] device free heap: ${value}B');
+        AppLog.d('transfer', 'device free heap: ${value}B');
       } else if (value is num) {
         _cachedFreeHeap = value.toInt();
-        debugPrint('[board-backend] device free heap: ${value.toInt()}B');
+        AppLog.d('transfer', 'device free heap: ${value.toInt()}B');
       }
     } catch (e) {
-      debugPrint('[board-backend] heap probe failed: $e');
+      AppLog.d('transfer', 'heap probe failed: $e');
     }
   }
 
@@ -199,11 +241,11 @@ _emit_ok(gc.mem_free())
         return await action();
       } catch (e) {
         if (e is SerialCancelledException) {
-          debugPrint('[board-backend] user cancelled, not retrying');
+          AppLog.w('transfer', 'user cancelled, not retrying');
           rethrow;
         }
         if (attempt == maxRetries || e is BoardFileProtocolException) rethrow;
-        debugPrint('[board-backend] attempt ${attempt + 1} failed: $e');
+        AppLog.w('transfer', 'attempt ${attempt + 1} failed: $e');
         _cachedFreeHeap = null;
         await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
       }
@@ -236,7 +278,24 @@ _emit_ok(items)
   }
 
   @override
-  Future<List<BoardFileEntry>> listTree({String path = '/'}) async {
+  Future<List<BoardFileEntry>> listTree({
+    String path = '/',
+    bool includeMetadata = false,
+  }) async {
+    final metadataStatements = includeMetadata
+        ? '''
+    try:
+      _st = os.stat(item_path)
+      _size = _st[6]
+      _mtime = _st[8] if len(_st) > 8 else 0
+    except Exception:
+      _size = -1
+      _mtime = 0
+'''
+        : '''
+    _size = -1
+    _mtime = 0
+''';
     final value = await _runJsonValue(
       _wrapSimplePython('''
 base = ${boardFileTextExpression(path)}
@@ -250,10 +309,12 @@ def walk(base_path):
     mode = entry[1] if len(entry) > 1 else 0
     item_path = '/' + name if base_path == '/' else base_path + '/' + name
     is_dir = bool(mode & 0x4000) if mode else False
-    result.append({
+$metadataStatements    result.append({
       'path_b64': _encode_text(item_path),
       'name_b64': _encode_text(name),
       'type': 'folder' if is_dir else 'file',
+      'size': _size,
+      'mtime': _mtime,
     })
     if is_dir:
       result.extend(walk(item_path))
@@ -369,7 +430,11 @@ __pyrite_read_fp.close()
 del __pyrite_read_fp
 del __pyrite_read_path
 ''');
-        } catch (_) {}
+        } catch (error) {
+          // The read already has its bytes; a failed handle cleanup only
+          // matters when the board starts refusing the next open.
+          AppLog.d('board', 'closing board file handle failed', error: error);
+        }
       }
     });
     return result;
@@ -398,9 +463,14 @@ del __pyrite_read_path
     final preferredMode = ref.read(fileTransferModeProvider);
     final transferMode = resolveFileTransferMode(mode, preferredMode);
     await _probeFreeHeap();
-    debugPrint(
-      '[board-backend] writeFileBytes path=$path size=${bytes.length}B mode=$mode '
-      'transferMode=$transferMode chunkSize=$_safeWriteChunkSize freeHeap=$_cachedFreeHeap',
+    // Per-file detail: one INFO line per completed write (below, in the
+    // executor) is the record a reader wants; this is the context that only
+    // matters while debugging a slow or retried write.
+    AppLog.d(
+      'transfer',
+      'write $path ${AppLog.humanBytes(bytes.length)} mode=$mode '
+          'transferMode=$transferMode chunk=$_safeWriteChunkSize '
+          'freeHeap=$_cachedFreeHeap',
     );
 
     if (transferMode == FileTransferMode.chunked) {
@@ -416,9 +486,10 @@ del __pyrite_read_path
     final timeoutSeconds = 60 + (payload.length / 20000).ceil();
     final baudRate = ref.read(serialProvider).baudRate;
     final ackEvery = baudRate <= 57600 ? 1 : _rawWriteAckEvery;
-    debugPrint(
-      '[board-backend] rawUpload path: ackEvery=$ackEvery baud=$baudRate '
-      'timeout=${timeoutSeconds}s temp=$tempPath',
+    AppLog.d(
+      'transfer',
+      'rawUpload ackEvery=$ackEvery baud=$baudRate '
+          'timeout=${timeoutSeconds}s temp=$tempPath',
     );
 
     await _withRetry(
@@ -488,7 +559,14 @@ except OSError:
 _emit_ok(True)
 '''),
           );
-        } catch (_) {}
+        } catch (error) {
+          // A temp file left behind shows up later as "flash is full".
+          AppLog.w(
+            'board',
+            'removing the partial upload failed path=$tempPath',
+            error: error,
+          );
+        }
       }
     }
   }
@@ -597,7 +675,13 @@ try:
 except Exception:
   pass
 ''');
-            } catch (_) {}
+            } catch (error) {
+              AppLog.w(
+                'board',
+                'cleanup after a failed chunked write failed path=$targetPath',
+                error: error,
+              );
+            }
           }
         }
       }),
@@ -635,7 +719,7 @@ tmp = $temp
 original_size = $remaining
 remaining = original_size
 ack_every = $ackEvery
-ack_count = 0
+chunks_since_ack = 0
 chunk_size = $chunkSize
 
 _log('start size=' + str(original_size) + ' chunk=' + str(chunk_size) + ' ack=' + str(ack_every))
@@ -647,7 +731,6 @@ try:
       os.remove(tmp)
     except OSError:
       pass
-    _log('opening ' + tmp)
     f = open(tmp, 'wb')
   except Exception as exc:
     _log('ERROR open: ' + str(exc))
@@ -664,23 +747,32 @@ try:
   except Exception:
     pass
   try:
+    buf = bytearray(chunk_size)
+    buf_len = 0
     while remaining:
       line = usb.readline()
       if not line:
         raise Exception('unexpected end of transfer')
-      d = ubinascii.a2b_base64(line)
-      if not d or len(d) > chunk_size or len(d) > remaining:
+      try:
+        d = ubinascii.a2b_base64(line)
+      except Exception as exc:
+        raise Exception('invalid transfer line: len=' + str(len(line)) + ' ' + str(exc))
+      if not d or buf_len + len(d) > chunk_size or len(d) > remaining:
         raise Exception('invalid transfer chunk')
-      f.write(d)
+      buf[buf_len:buf_len + len(d)] = d
+      buf_len += len(d)
       remaining -= len(d)
-      ack_count += 1
-      if ack_every and ack_count % ack_every == 0:
+      if buf_len >= chunk_size or not remaining:
+        f.write(buf[:buf_len])
         f.flush()
-        sys.stdout.write('+')
-        try:
-          sys.stdout.flush()
-        except Exception:
-          pass
+        buf_len = 0
+        chunks_since_ack += 1
+        if ack_every and chunks_since_ack % ack_every == 0:
+          sys.stdout.write('+')
+          try:
+            sys.stdout.flush()
+          except Exception:
+            pass
     f.flush()
   finally:
     f.close()
@@ -821,6 +913,70 @@ _emit_ok(True)
     );
   }
 
+  /// Reads `os.statvfs` with the same field interpretation as
+  /// `DeviceStatusNotifier` (`f_bsize` = block size, `f_bavail` = free blocks).
+  ///
+  /// Several MicroPython ports either lack `statvfs` or report a zeroed tuple
+  /// on an unmounted filesystem, so every failure path returns `null` and the
+  /// caller skips the pre-flight check rather than refusing to upload.
+  @override
+  Future<int?> freeSpaceBytes({String path = '/'}) async {
+    final result = await queryFreeSpaceBytes(ref, path: path);
+    return result.freeBytes;
+  }
+
+  @override
+  Future<Map<String, int>> hashFiles(Iterable<String> paths) async {
+    final all = paths.toSet().toList();
+    final result = <String, int>{};
+    // One REPL transaction per batch keeps the device-side checksum dict
+    // small; embedded heaps cannot always hold a whole workspace at once.
+    const batchSize = 50;
+    for (var start = 0; start < all.length; start += batchSize) {
+      final batch = all.sublist(start, math.min(start + batchSize, all.length));
+      final value = await _runJsonValue(
+        _wrapSimplePython('''
+paths = [${batch.map(boardFileTextExpression).join(', ')}]
+
+def _crc32_of_file(file_path):
+  crc = 0
+  fp = open(file_path, 'rb')
+  try:
+    while True:
+      chunk = fp.read(1024)
+      if not chunk:
+        break
+      crc = ubinascii.crc32(chunk, crc)
+  finally:
+    fp.close()
+  return crc
+
+checksums = {}
+for _p in paths:
+  try:
+    checksums[_encode_text(_p)] = _crc32_of_file(_p)
+  except Exception:
+    pass
+_emit_ok(checksums)
+'''),
+        timeout: _longTimeout,
+      );
+      if (value is! Map) {
+        throw const BoardFileProtocolException(
+          'Checksum response is not a map',
+        );
+      }
+      for (final entry in value.entries) {
+        final checksum = entry.value;
+        if (checksum is num) {
+          result[decodeBoardFileText(entry.key.toString())] =
+              checksum.toInt() & 0xFFFFFFFF;
+        }
+      }
+    }
+    return result;
+  }
+
   Future<dynamic> _runJsonValue(
     String python, {
     Duration timeout = const Duration(seconds: 20),
@@ -843,10 +999,7 @@ _emit_ok(True)
       if (output.contains('MemoryError') ||
           output.contains('memory allocation failed')) {
         _cachedFreeHeap = 0;
-        debugPrint(
-          '[board-backend] MemoryError detected, '
-          'invalidating heap cache',
-        );
+        AppLog.w('transfer', 'MemoryError detected; invalidating heap cache');
       }
       throw BoardFileProtocolException(
         'Missing board file result marker. Output: ${output.length <= 240 ? output : '${output.substring(0, 240)}...'}',
@@ -863,9 +1016,9 @@ _emit_ok(True)
       if (error.contains('MemoryError') ||
           error.contains('memory allocation failed')) {
         _cachedFreeHeap = 0;
-        debugPrint(
-          '[board-backend] MemoryError in error response, '
-          'invalidating heap cache',
+        AppLog.w(
+          'transfer',
+          'MemoryError in error response; invalidating heap cache',
         );
       }
       throw BoardFileBackendException(error);
@@ -946,10 +1099,16 @@ except Exception as _pyrite_exc:
       final type = entry['type'] == 'folder'
           ? BoardFileEntryType.folder
           : BoardFileEntryType.file;
+      final rawSize = entry['size'];
+      final rawMtime = entry['mtime'];
+      final size = rawSize is num && rawSize >= 0 ? rawSize.toInt() : null;
+      final mtime = rawMtime is num && rawMtime > 0 ? rawMtime.toInt() : null;
       return BoardFileEntry(
         path: _entryText(entry, 'path'),
         name: _entryText(entry, 'name'),
         type: type,
+        size: type == BoardFileEntryType.folder ? null : size,
+        modifiedSeconds: type == BoardFileEntryType.folder ? null : mtime,
       );
     }).toList();
   }
@@ -1015,8 +1174,84 @@ except Exception as _pyrite_exc:
 // ---------------------------------------------------------------------------
 
 final boardFileBackendProvider = Provider<BoardFileBackend>(
-  (ref) => SerialBoardFileBackend(ref),
+  SerialBoardFileBackend.new,
 );
+
+// ---------------------------------------------------------------------------
+// Device free space (statvfs) — shared query used by the upload pre-flight
+// ---------------------------------------------------------------------------
+
+const _freeSpaceMarker = '__PYRITE_FREE_SPACE__';
+
+/// Result of one `os.statvfs` probe.
+///
+/// [reported] distinguishes "the device said it has N bytes free" from "the
+/// device cannot answer", because a pre-flight check must skip in the latter
+/// case instead of treating it as 0 bytes free.
+class DeviceFreeSpace {
+  const DeviceFreeSpace({required this.freeBytes, required this.reported});
+
+  /// Free bytes, or `null` when unknown.
+  final int? freeBytes;
+
+  /// Whether the device actually reported a usable value.
+  final bool reported;
+
+  static const DeviceFreeSpace unknown = DeviceFreeSpace(
+    freeBytes: null,
+    reported: false,
+  );
+}
+
+/// Queries the free space of the filesystem holding [path].
+///
+/// Mirrors `DeviceStatusNotifier`'s reading of `os.statvfs`: `f_frsize`/`f_bsize`
+/// as the block size and `f_bavail` as the free block count. Any error,
+/// missing `statvfs`, or zeroed tuple is reported as [DeviceFreeSpace.unknown]
+/// so callers can degrade gracefully.
+Future<DeviceFreeSpace> queryFreeSpaceBytes(
+  Ref ref, {
+  String path = '/',
+}) async {
+  try {
+    final output = await runPythonOnActiveDevice(
+      ref,
+      _freeSpaceScript(boardFileTextExpression(path)),
+      timeout: const Duration(seconds: 8),
+    );
+    for (final line in output.split('\n')) {
+      final trimmed = line.trim();
+      if (!trimmed.startsWith(_freeSpaceMarker)) continue;
+      final value = int.tryParse(trimmed.substring(_freeSpaceMarker.length));
+      if (value == null || value < 0) return DeviceFreeSpace.unknown;
+      return DeviceFreeSpace(freeBytes: value, reported: true);
+    }
+  } catch (error) {
+    AppLog.d('transfer', 'statvfs probe failed: $error');
+  }
+  return DeviceFreeSpace.unknown;
+}
+
+String _freeSpaceScript(String pathExpression) =>
+    '''
+try:
+  import uos as os
+except ImportError:
+  import os
+try:
+  _path = _decode_text($pathExpression)
+except Exception:
+  _path = '/'
+try:
+  _st = os.statvfs(_path)
+  _bsize = _st[1] if len(_st) > 1 and _st[1] > 0 else _st[0]
+  if not _bsize:
+    _bsize = 1
+  _free = _st[3] * _bsize
+except Exception:
+  _free = -1
+print('$_freeSpaceMarker' + str(_free))
+''';
 
 // ---------------------------------------------------------------------------
 // BoardFileOps — pure file I/O operations (no BuildContext)
@@ -1029,11 +1264,21 @@ class BoardFileOps {
 
   BoardFileOps(this.ref);
 
-  String normalizeBoardPath(String filePath) {
-    final normalized = boardPath.normalize(filePath.replaceAll('\\', '/'));
-    if (normalized == '.' || normalized.isEmpty) return '/';
-    return normalized.startsWith('/') ? normalized : '/$normalized';
+  /// Canonical spelling of a path on the device.
+  ///
+  /// The device filesystem is POSIX whatever host the IDE runs on, and every
+  /// board path is rooted. Callers do not always spell one that way: a
+  /// traceback can print `//lib/x.py` or a bare `main.py`, and an archive entry
+  /// can carry `./` or `..` segments. Collapsing all of them onto the same
+  /// rooted form is what lets device probes, file-tree paths and the local
+  /// mirror agree on which file they mean.
+  static String normalizePath(String filePath) {
+    final slashed = filePath.replaceAll('\\', '/');
+    final rooted = slashed.startsWith('/') ? slashed : '/$slashed';
+    return boardPath.normalize(rooted);
   }
+
+  String normalizeBoardPath(String filePath) => normalizePath(filePath);
 
   bool isBoardPathInside(String childPath, String parentPath) {
     final child = normalizeBoardPath(childPath);
@@ -1127,15 +1372,27 @@ class BoardFileOps {
     await ref.read(boardFileBackendProvider).createFolder(path);
   }
 
-  Future<List<BoardFileEntry>> lisFolderRecursive({String path = "/"}) async {
-    return ref.read(boardFileBackendProvider).listTree(path: path);
+  Future<List<BoardFileEntry>> lisFolderRecursive({
+    String path = "/",
+    bool includeMetadata = false,
+  }) async {
+    return ref
+        .read(boardFileBackendProvider)
+        .listTree(path: path, includeMetadata: includeMetadata);
   }
 
   Future<bool> boardFolderExists(String folderPath) async {
     try {
       await getFileList(path: folderPath);
       return true;
-    } catch (_) {
+    } catch (error) {
+      // "Missing" and "the board did not answer" are different problems, but
+      // this call can only report a bool — so the distinction goes to the log.
+      AppLog.d(
+        'board',
+        'folder probe failed, reporting absent path=$folderPath',
+        error: error,
+      );
       return false;
     }
   }
@@ -1144,7 +1401,12 @@ class BoardFileOps {
     try {
       await ref.read(boardFileBackendProvider).pathExists(targetPath);
       return true;
-    } catch (_) {
+    } catch (error) {
+      AppLog.d(
+        'board',
+        'path probe failed, reporting absent path=$targetPath',
+        error: error,
+      );
       return false;
     }
   }
@@ -1154,9 +1416,105 @@ class BoardFileOps {
     if (!exists) return;
     try {
       await deleteFolder(targetPath);
-    } catch (_) {
+    } catch (folderError) {
+      // Folder delete first, file delete second: if the fallback also fails
+      // the caller sees that error, but the first one explains why.
+      AppLog.d(
+        'board',
+        'folder delete failed, retrying as a file path=$targetPath',
+        error: folderError,
+      );
       await deleteFile(targetPath);
     }
+  }
+
+  /// Free bytes reported by the device for [path], or `null` when unavailable.
+  Future<int?> freeSpaceBytes({String path = '/'}) async {
+    return ref.read(boardFileBackendProvider).freeSpaceBytes(path: path);
+  }
+
+  /// CRC-32 checksums of board files, keyed by board path.
+  ///
+  /// Missing or unreadable files are omitted; an empty map also covers a
+  /// device that cannot compute checksums, so callers skip the optimization
+  /// and transfer instead of failing the transfer.
+  Future<Map<String, int>> boardFileHashes(Iterable<String> paths) async {
+    final all = paths.toList();
+    if (all.isEmpty) return const {};
+    try {
+      return await ref.read(boardFileBackendProvider).hashFiles(all);
+    } catch (error) {
+      AppLog.d('transfer', 'hash probe failed: $error');
+      return const {};
+    }
+  }
+
+  /// Runs the upload pre-flight for [requiredBytes].
+  ///
+  /// Returns the [SpaceBudgetResult] instead of throwing so batch callers can
+  /// accumulate sizes first and report one message. When the device cannot
+  /// report free space the result is [SpaceBudgetStatus.unknown] and the upload
+  /// proceeds: blocking on a missing `statvfs` would make several MicroPython
+  /// ports unusable.
+  Future<SpaceBudgetResult> preflightUploadSpace(int requiredBytes) async {
+    String translateBudget(
+      I18nKey key, [
+      Map<String, String> replacements = const {},
+    ]) => translateWithReplacements(ref, key, replacements);
+    try {
+      final free = await freeSpaceBytes();
+      return checkSpaceBudget(free, requiredBytes, translate: translateBudget);
+    } catch (error) {
+      AppLog.w('transfer', 'upload pre-flight skipped: $error');
+      return checkSpaceBudget(null, requiredBytes, translate: translateBudget);
+    }
+  }
+
+  /// Sums the byte sizes of the given local paths (files or directories).
+  ///
+  /// Directory sizes come from walking the tree, which is what the pre-flight
+  /// needs before a folder upload. Unreadable entries contribute 0 rather than
+  /// aborting the whole upload. When [ignore] is given, the files it covers are
+  /// left out of the sum: they are never transferred, so counting them would
+  /// reject a batch that actually fits.
+  Future<int> localTransferSize(
+    Iterable<String> localPaths, {
+    SyncIgnoreFilter? ignore,
+  }) async {
+    var total = 0;
+    for (final localPath in localPaths) {
+      final type = await io.FileSystemEntity.type(localPath);
+      if (type == io.FileSystemEntityType.directory) {
+        await for (final entity in io.Directory(
+          localPath,
+        ).list(recursive: true, followLinks: false)) {
+          if (entity is! io.File) continue;
+          if (ignore != null && ignore.isIgnored(entity.path)) continue;
+          try {
+            total += await entity.length();
+          } catch (error) {
+            // Skipping the size understates the transfer: the free-space
+            // preflight then passes when it should not.
+            AppLog.d(
+              'board',
+              'size of ${entity.path} unavailable, left out of the total',
+              error: error,
+            );
+          }
+        }
+      } else if (type == io.FileSystemEntityType.file) {
+        try {
+          total += await io.File(localPath).length();
+        } catch (error) {
+          AppLog.d(
+            'board',
+            'size of $localPath unavailable, left out of the total',
+            error: error,
+          );
+        }
+      }
+    }
+    return total;
   }
 }
 
@@ -1172,9 +1530,30 @@ class BoardTransfer {
 
   BoardTransfer(this.ref, this._ops);
 
-  Future<void> uploadFolder(String localPath, String remotePath) async {
+  /// Uploads a local directory tree to [remotePath].
+  ///
+  /// [cancel] is checked at every file boundary (never inside a write) so a
+  /// cancelled folder upload stops before the next file starts and leaves the
+  /// REPL in its normal prompt state: no CTRL-C or transaction abort is needed.
+  ///
+  /// Files whose board copy already holds the same bytes (same size and
+  /// CRC-32) are skipped; the return value is how many files were skipped so
+  /// batch callers can fold it into their own skipped counters.
+  ///
+  /// [ignore] is the workspace's `.pyrsyncignore` filter. Matching files are
+  /// never read, never written and their directories are never created, which
+  /// is what keeps a `build/` or `node_modules/` tree off the board. The
+  /// directory walk stops at an ignored directory instead of descending into
+  /// it, so the scan cost drops too.
+  Future<int> uploadFolder(
+    String localPath,
+    String remotePath, {
+    FileTransferCancelToken? cancel,
+    bool preflightSpace = true,
+    SyncIgnoreFilter? ignore,
+  }) async {
     final dir = io.Directory(localPath);
-    final entities = await dir.list(recursive: true).toList();
+    final entities = await _listUploadEntities(dir, ignore);
     final files = entities.whereType<io.File>().toList(growable: false);
     final createdDirs = <String>{};
     ref
@@ -1189,21 +1568,62 @@ class BoardTransfer {
           ),
         );
 
-    await _ensureBoardFolder(remotePath, createdDirs);
+    final alreadyUploaded = await _boardFilesAlreadyIdentical(
+      files,
+      localPath,
+      remotePath,
+    );
 
-    for (final entity in entities) {
-      final relativePath = path
-          .relative(entity.path, from: localPath)
-          .replaceAll('\\', '/');
-      final remoteEntityPath = _boardPath.join(remotePath, relativePath);
-
-      if (entity is io.Directory) {
-        debugPrint('[BoardWS] Creating remote dir: $remoteEntityPath');
-        await _ensureBoardFolder(remoteEntityPath, createdDirs);
+    if (preflightSpace) {
+      var totalBytes = 0;
+      for (final file in files) {
+        final relativePath = path
+            .relative(file.path, from: localPath)
+            .replaceAll('\\', '/');
+        if (alreadyUploaded.contains(
+          _boardTargetPath(remotePath, relativePath),
+        )) {
+          continue;
+        }
+        try {
+          totalBytes += await file.length();
+        } catch (error) {
+          AppLog.d(
+            'board',
+            'size of ${file.path} unavailable, left out of the upload total',
+            error: error,
+          );
+        }
+      }
+      final budget = await _ops.preflightUploadSpace(totalBytes);
+      if (budget.status == SpaceBudgetStatus.insufficient) {
+        ref.read(fileTransferProgressProvider.notifier).fail(budget.message);
+        throw InsufficientDeviceSpaceException(budget);
       }
     }
 
+    await _ensureBoardFolder(remotePath, createdDirs);
+
+    for (final entity in entities) {
+      if (entity is! io.Directory) continue;
+      final relativePath = path
+          .relative(entity.path, from: localPath)
+          .replaceAll('\\', '/');
+      await _ensureBoardFolder(
+        _boardPath.join(remotePath, relativePath),
+        createdDirs,
+      );
+    }
+
+    // Per-file progress lines were removed here: a project with a few hundred
+    // files produced a few hundred output-panel entries per sync, each one
+    // repainting the panel, and none of them said anything the summary at the
+    // end does not. Failures still log individually through the transfer ops.
+    final cycle = Stopwatch()..start();
+    var skipped = 0;
+    var uploadedBytes = 0;
     for (var i = 0; i < files.length; i++) {
+      throwIfTransferCancelled(cancel);
       final entity = files[i];
       final relativePath = path
           .relative(entity.path, from: localPath)
@@ -1211,19 +1631,132 @@ class BoardTransfer {
       final remoteEntityPath = _boardPath.join(remotePath, relativePath);
       final parentDir = _boardPath.dirname(remoteEntityPath);
       if (!createdDirs.contains(parentDir)) {
-        debugPrint('[BoardWS] Creating parent dir: $parentDir');
         await _ensureBoardFolder(parentDir, createdDirs);
       }
-      debugPrint('[BoardWS] Uploading file: $remoteEntityPath');
+      if (alreadyUploaded.contains(
+        _boardTargetPath(remotePath, relativePath),
+      )) {
+        skipped++;
+        continue;
+      }
+      final bytes = await entity.readAsBytes();
+      uploadedBytes += bytes.length;
       await _ops.writeFileBytesWithProgress(
         remoteEntityPath,
-        await entity.readAsBytes(),
+        bytes,
         currentFile: entity.path,
         index: i + 1,
         totalFiles: files.length,
       );
-      debugPrint('[BoardWS] Uploaded: $remoteEntityPath');
     }
+    AppLog.i(
+      'transfer',
+      'folder upload $localPath -> $remotePath '
+          'dirs=${createdDirs.length} files=${files.length} '
+          'uploaded=${files.length - skipped} skipped=$skipped '
+          'bytes=${AppLog.humanBytes(uploadedBytes)} '
+          'elapsed=${cycle.elapsedMilliseconds}ms',
+    );
+    return skipped;
+  }
+
+  String _boardTargetPath(String remotePath, String relativePath) =>
+      _ops.normalizeBoardPath(_boardPath.join(remotePath, relativePath));
+
+  /// Lists [root] depth-first, dropping everything [ignore] covers.
+  ///
+  /// `Directory.list(recursive: true)` cannot prune: it yields every entry
+  /// below a directory before the caller can decide, so a `node_modules/` or
+  /// `.git/` tree would still be walked in full. This walk checks each entry
+  /// before descending, which is what makes the ignore list cheap as well as
+  /// correct. Symlinks are not followed, matching `scanLocalWorkspace`.
+  Future<List<io.FileSystemEntity>> _listUploadEntities(
+    io.Directory root,
+    SyncIgnoreFilter? ignore,
+  ) async {
+    if (ignore == null) {
+      return root.list(recursive: true).toList();
+    }
+    final result = <io.FileSystemEntity>[];
+    final pending = <io.Directory>[root];
+    var ignored = 0;
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      await for (final entity in current.list(followLinks: false)) {
+        if (ignore.isIgnored(entity.path)) {
+          // Counting only: a build/ or node_modules/ tree used to print one
+          // line per ignored entry, which is the largest log burst this code
+          // produced and carries no information the count does not.
+          ignored++;
+          continue;
+        }
+        result.add(entity);
+        if (entity is io.Directory) pending.add(entity);
+      }
+    }
+    if (ignored > 0) {
+      AppLog.d('transfer', 'ignored $ignored entries while scanning upload');
+    }
+    return result;
+  }
+
+  /// Board paths whose content already equals the local file (same size and
+  /// CRC-32).
+  ///
+  /// Only same-size pairs are hashed, because identical content implies
+  /// identical length. An empty set means "cannot compare" (destination not
+  /// listed, checksums unsupported, ...) and the upload proceeds unchanged.
+  Future<Set<String>> _boardFilesAlreadyIdentical(
+    List<io.File> files,
+    String localPath,
+    String remotePath,
+  ) async {
+    final boardSizes = <String, int>{};
+    try {
+      for (final entry in await _ops.lisFolderRecursive(
+        path: remotePath,
+        includeMetadata: true,
+      )) {
+        if (!entry.isFolder && entry.size != null) {
+          boardSizes[entry.path] = entry.size!;
+        }
+      }
+    } catch (error) {
+      // The destination may not exist yet -- normal on a first upload. But a
+      // listing that fails for any other reason also lands here, and then
+      // every file is re-sent instead of being skipped, so keep the reason.
+      AppLog.d(
+        'transfer',
+        'cannot list $remotePath, nothing to compare against',
+        error: error,
+      );
+      return const {};
+    }
+    if (boardSizes.isEmpty) return const {};
+
+    final localChecksums = <String, int>{};
+    for (final file in files) {
+      final relativePath = path
+          .relative(file.path, from: localPath)
+          .replaceAll('\\', '/');
+      final boardPath = _boardTargetPath(remotePath, relativePath);
+      final boardSize = boardSizes[boardPath];
+      if (boardSize == null) continue;
+      try {
+        final bytes = await file.readAsBytes();
+        if (bytes.length != boardSize) continue;
+        localChecksums[boardPath] = crc32OfBytes(bytes);
+      } on io.FileSystemException {
+        // Unreadable locally; the upload itself will report it as before.
+      }
+    }
+    if (localChecksums.isEmpty) return const {};
+
+    final boardChecksums = await _ops.boardFileHashes(localChecksums.keys);
+    return {
+      for (final entry in localChecksums.entries)
+        if (boardChecksums[entry.key] == entry.value) entry.key,
+    };
   }
 
   Future<void> _ensureBoardFolder(
@@ -1245,7 +1778,7 @@ class BoardTransfer {
         await _ops.createFolder(current);
       } catch (error) {
         if (!await _ops.boardFolderExists(current)) {
-          debugPrint('[BoardWS] Failed to create dir: $current: $error');
+          AppLog.w('transfer', 'could not create dir $current: $error');
           rethrow;
         }
       }
@@ -1253,8 +1786,23 @@ class BoardTransfer {
     }
   }
 
-  Future<void> downloadFolder(String remotePath, String localPath) async {
-    final items = await _ops.lisFolderRecursive(path: remotePath);
+  /// Downloads a board directory tree to [localPath].
+  ///
+  /// [cancel] is checked before each file so cancelling stops the loop at a
+  /// clean boundary; the in-flight file is always completed first.
+  ///
+  /// Files whose local copy already holds the same bytes (same size and
+  /// CRC-32) are skipped; the return value is how many files were skipped so
+  /// batch callers can fold it into their own skipped counters.
+  Future<int> downloadFolder(
+    String remotePath,
+    String localPath, {
+    FileTransferCancelToken? cancel,
+  }) async {
+    final items = await _ops.lisFolderRecursive(
+      path: remotePath,
+      includeMetadata: true,
+    );
     final folders = items
         .where((item) => item.isFolder)
         .toList(growable: false);
@@ -1271,6 +1819,12 @@ class BoardTransfer {
           ),
         );
 
+    final alreadyDownloaded = await _localFilesAlreadyIdentical(
+      files,
+      remotePath,
+      localPath,
+    );
+
     final localDir = io.Directory(localPath);
     if (!await localDir.exists()) {
       await localDir.create(recursive: true);
@@ -1284,24 +1838,78 @@ class BoardTransfer {
       await io.Directory(localItemPath).create(recursive: true);
     }
 
+    var skipped = 0;
+    var downloadedBytes = 0;
+    final cycle = Stopwatch()..start();
     for (var i = 0; i < files.length; i++) {
+      throwIfTransferCancelled(cancel);
       final item = files[i];
       final relativePath = _boardPath
           .relative(item.path, from: remotePath)
           .replaceAll('\\', '/');
       final localItemPath = path.join(localPath, relativePath);
-      debugPrint('[BoardWS] Downloading: ${item.path}');
+      if (alreadyDownloaded.contains(localItemPath)) {
+        skipped++;
+        continue;
+      }
       final bytes = await _ops.getFileBytesWithProgress(
         item.path,
         currentFile: item.path,
         index: i + 1,
         totalFiles: files.length,
       );
+      downloadedBytes += bytes.length;
       final file = io.File(localItemPath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(bytes);
-      debugPrint('[BoardWS] Downloaded: $localItemPath');
     }
+    AppLog.i(
+      'transfer',
+      'folder download $remotePath -> $localPath '
+          'dirs=${folders.length} files=${files.length} '
+          'downloaded=${files.length - skipped} skipped=$skipped '
+          'bytes=${AppLog.humanBytes(downloadedBytes)} '
+          'elapsed=${cycle.elapsedMilliseconds}ms',
+    );
+    return skipped;
+  }
+
+  /// Local paths whose content already equals the board file (same size and
+  /// CRC-32), keyed by local target path so the download loop can skip them.
+  ///
+  /// Empty when nothing can be compared (no metadata, checksums unsupported).
+  Future<Set<String>> _localFilesAlreadyIdentical(
+    List<BoardFileEntry> files,
+    String remotePath,
+    String localPath,
+  ) async {
+    final localChecksums = <String, int>{};
+    final localPathsByBoardPath = <String, String>{};
+    for (final item in files) {
+      if (item.size == null) continue;
+      final relativePath = _boardPath
+          .relative(item.path, from: remotePath)
+          .replaceAll('\\', '/');
+      final localItemPath = path.join(localPath, relativePath);
+      try {
+        final file = io.File(localItemPath);
+        if (!await file.exists()) continue;
+        final bytes = await file.readAsBytes();
+        if (bytes.length != item.size) continue;
+        localChecksums[item.path] = crc32OfBytes(bytes);
+        localPathsByBoardPath[item.path] = localItemPath;
+      } on io.FileSystemException {
+        continue;
+      }
+    }
+    if (localChecksums.isEmpty) return const {};
+
+    final boardChecksums = await _ops.boardFileHashes(localChecksums.keys);
+    return {
+      for (final entry in localChecksums.entries)
+        if (boardChecksums[entry.key] == entry.value)
+          localPathsByBoardPath[entry.key]!,
+    };
   }
 }
 
@@ -1310,8 +1918,9 @@ class BoardTransfer {
 // ---------------------------------------------------------------------------
 
 Future<List<TreeNode<FileSystemItem>>> buildBoardFileListItems(
-  List<BoardFileEntry> entries,
-) async {
+  List<BoardFileEntry> entries, {
+  FileSortMode sortMode = FileSortMode.byName,
+}) async {
   final items = <TreeNode<FileSystemItem>>[];
   for (final entry in entries) {
     if (entry.isFolder) {
@@ -1326,6 +1935,15 @@ Future<List<TreeNode<FileSystemItem>>> buildBoardFileListItems(
       items.add(TreeNode(id: entry.path, data: FileItem(entry.name)));
     }
   }
+  items.sort(
+    (a, b) => compareFileTreeEntries(
+      firstIsFolder: a.data is FolderItem,
+      firstName: a.data.name,
+      secondIsFolder: b.data is FolderItem,
+      secondName: b.data.name,
+      mode: sortMode,
+    ),
+  );
   return items;
 }
 
@@ -1334,10 +1952,89 @@ Future<io.File> getLocalFile(String boardFilePath) async {
     (await getApplicationSupportDirectory()).path,
     "temporary_board_files",
   );
-  final relativePath = boardFilePath.split("/").skip(1).join("/");
+  final relativePath = boardMirrorRelativePath(boardFilePath);
   final file = io.File(path.join(supportDir, relativePath));
   await file.create(recursive: true, exclusive: false);
   return file;
+}
+
+/// Name of the directory that mirrors board files onto this machine.
+const String boardMirrorDirectoryName = 'temporary_board_files';
+
+/// Path of a board file inside the local mirror, relative to the mirror root.
+///
+/// The board path is normalised first so that a caller holding a doubled-slash
+/// or unrooted spelling still maps onto the same mirror file the file tree
+/// writes. The result never has a leading separator: `path.join` treats an
+/// absolute part as a new root, which would put the mirror outside the support
+/// directory.
+String boardMirrorRelativePath(String boardFilePath) =>
+    BoardFileOps.normalizePath(boardFilePath).split("/").skip(1).join("/");
+
+/// Removes mirrored board files that no persisted tab refers to.
+///
+/// Every downloaded or opened board file lands under
+/// `temporary_board_files/` and nothing ever removed one, so the directory
+/// grew with every session and kept stale copies of board files the user had
+/// long since replaced. Entries named by [keepRelativePaths] are preserved
+/// because restoring a board tab reopens exactly that mirror file; everything
+/// else was written by an earlier session and is re-downloadable on demand.
+///
+/// Returns the number of files and directories deleted, or 0 when the mirror
+/// does not exist or held nothing stale.
+Future<int> pruneBoardMirrorDirectory({
+  required Set<String> keepRelativePaths,
+  String? supportDirectoryPath,
+}) async {
+  final root =
+      supportDirectoryPath ?? (await getApplicationSupportDirectory()).path;
+  final mirror = io.Directory(path.join(root, boardMirrorDirectoryName));
+  if (!await mirror.exists()) return 0;
+
+  final rootPrefix = mirror.path.endsWith(io.Platform.pathSeparator)
+      ? mirror.path
+      : '${mirror.path}${io.Platform.pathSeparator}';
+  var removed = 0;
+
+  // Deepest-first so a directory is only considered once its children are
+  // gone, which is what lets the empty-prune below see the final state.
+  final entries = await mirror
+      .list(recursive: true, followLinks: false)
+      .toList();
+  entries.sort((a, b) => b.path.length.compareTo(a.path.length));
+
+  for (final entity in entries) {
+    final relative = entity.path.startsWith(rootPrefix)
+        ? entity.path.substring(rootPrefix.length)
+        : entity.path;
+    final normalized = relative.replaceAll(io.Platform.pathSeparator, '/');
+    if (entity is io.File && keepRelativePaths.contains(normalized)) {
+      continue;
+    }
+    if (entity is io.Directory &&
+        _mirrorDirectoryHasKeptFile(relative, keepRelativePaths)) {
+      continue;
+    }
+    try {
+      await entity.delete(recursive: true);
+      if (entity is io.File) removed++;
+    } on io.FileSystemException catch (error) {
+      // A file the editor still holds open can refuse deletion on Windows;
+      // leaving one entry behind is better than failing the whole cleanup.
+      AppLog.w('transfer', 'prune could not delete $entity: $error');
+    }
+  }
+  return removed;
+}
+
+bool _mirrorDirectoryHasKeptFile(
+  String relative,
+  Set<String> keepRelativePaths,
+) {
+  final prefix = relative.replaceAll(io.Platform.pathSeparator, '/');
+  return keepRelativePaths.any(
+    (kept) => kept == prefix || kept.startsWith('$prefix/'),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1389,9 +2086,9 @@ Future<void> ensureBoardFilesystemMountedOnce(Ref ref) async {
       timeout: const Duration(seconds: 5),
     );
     if (output.contains('FS_NOT_READY')) {
-      debugPrint('Board filesystem is not ready after mount attempt.');
+      AppLog.w('transfer', 'board filesystem is not ready after mount attempt');
     }
   } catch (error) {
-    debugPrint('Board filesystem mount check failed: $error');
+    AppLog.d('transfer', 'board filesystem mount check failed: $error');
   }
 }

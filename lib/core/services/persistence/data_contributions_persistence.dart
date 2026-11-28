@@ -36,16 +36,33 @@ class DataContributionsPersistence {
     }
   }
 
-  Future<void> save(List<DataContributionRecord> records) async {
+  /// Returns whether the bytes reached disk.
+  ///
+  /// [encoded] lets the save scheduler reuse a payload it already serialized
+  /// to decide whether the store changed.
+  Future<bool> save(
+    List<DataContributionRecord> records, {
+    String? encoded,
+  }) async {
     try {
       final file = await _file;
-      await file.writeAsString(
-        jsonEncode({
-          'records': records.map((record) => record.toJson()).toList(),
-        }),
+      // Temp file + rename, like TabsPersistence and PluginPersistence: a crash
+      // mid-write would otherwise leave truncated JSON here, and `load` turns a
+      // parse error into null, which silently drops every contributed theme,
+      // locale pack and stubs profile.
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(
+        encoded ??
+            jsonEncode({
+              'records': records.map((record) => record.toJson()).toList(),
+            }),
+        flush: true,
       );
+      await temp.rename(file.path);
+      return true;
     } catch (e) {
       debugPrint('DataContributionsPersistence: Failed to save: $e');
+      return false;
     }
   }
 }

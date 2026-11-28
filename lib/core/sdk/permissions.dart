@@ -100,6 +100,11 @@ abstract class Permissions {
     'sdk.editor.scroll_to_line': 'editor:write',
     'sdk.editor.cut': 'editor:write',
     'sdk.editor.paste': 'editor:write',
+    // Hijacking a key suppresses the editor's own handling of it, so a plugin
+    // can take over Tab and friends while it owns the screen. That is a
+    // stronger claim than editing text, hence its own action.
+    'sdk.editor.capture_keys': 'editor:keys',
+    'sdk.editor.release_keys': 'editor:keys',
 
     // editor document service (T13)
     'sdk.editor.active_document.get': 'editor:read',
@@ -138,6 +143,9 @@ abstract class Permissions {
     // serial (future)
     'sdk.serial.list_ports': 'serial:read',
     'sdk.serial.get_status': 'serial:read',
+    'sdk.serial.list_sessions': 'serial:read',
+    'sdk.serial.activate_session': 'serial:write',
+    'sdk.serial.close_session': 'serial:write',
     'sdk.serial.read': 'serial:read',
     'sdk.serial.connect': 'serial:write',
     'sdk.serial.disconnect': 'serial:write',
@@ -165,6 +173,11 @@ abstract class Permissions {
     'sdk.stubs.resolve_layers': 'data:read',
     'sdk.theme.revoke': 'data:write',
     'sdk.i18n.revoke': 'data:write',
+    'sdk.lsp.contribute': 'data:write',
+    'sdk.lsp.register_runtime': 'data:write',
+    'sdk.lsp.revoke': 'data:write',
+    'sdk.lsp.get': 'data:read',
+    'sdk.lsp.list': 'data:read',
 
     // dialog
     'sdk.dialog.open_folder': 'dialog:show',

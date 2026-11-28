@@ -34,7 +34,7 @@ class StyleSettings extends ConsumerWidget {
               ? pluginTheme?.mode == 'dark'
                     ? I18nKey.settingsStyleThemeModePluginLockedDark
                     : I18nKey.settingsStyleThemeModePluginLockedLight
-              : I18nKey.settingsStyleThemeModeDescription,
+              : null,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -101,7 +101,6 @@ class StyleSettings extends ConsumerWidget {
         if (!hasPluginTheme)
           SettingsSection(
             title: I18nKey.settingsStyleThemeColor,
-            description: I18nKey.settingsStyleThemeColorDescription,
             children: [
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -161,10 +160,8 @@ class StyleSettings extends ConsumerWidget {
                 children: [
                   RadioListTile<String?>(
                     title: const UseText(I18nKey.settingsStyleBuiltin),
-                    subtitle: const UseText(
-                      I18nKey.settingsStyleBuiltinSubtitle,
-                    ),
                     value: null,
+                    controlAffinity: ListTileControlAffinity.trailing,
                   ),
                   for (final theme in dataRegistry.allThemes)
                     RadioListTile<String?>(
@@ -177,6 +174,7 @@ class StyleSettings extends ConsumerWidget {
                         ].join(' '),
                       ),
                       value: theme.id,
+                      controlAffinity: ListTileControlAffinity.trailing,
                     ),
                 ],
               ),
@@ -185,7 +183,6 @@ class StyleSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: I18nKey.settingsStyleMenuStyle,
-          description: I18nKey.settingsStyleMenuStyleDescription,
           children: [
             SwitchListTile(
               secondary: const Icon(Icons.menu_open_outlined),

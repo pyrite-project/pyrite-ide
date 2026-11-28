@@ -151,7 +151,13 @@ bool _isMinimapSpace(int unit) => unit == 0x20 || unit == 0x09;
 /// Walks [span] depth first, recording every styled run of text with its offset
 /// from the start of the line. [inherited] is the color of the nearest styled
 /// ancestor, which a child without its own color resolves to.
-void _collectSpans(
+///
+/// Returns the offset just past the last character this span and its
+/// descendants cover, so a caller can lay the next sibling out after them. That
+/// return value is what keeps nesting correct: a child that has no text of its
+/// own but does have children occupies as much room as those children need, not
+/// zero.
+int _collectSpans(
   TextSpan span,
   Color? inherited,
   int offset,
@@ -169,13 +175,13 @@ void _collectSpans(
     childOffset = offset + text.length;
   }
   final children = span.children;
-  if (children == null) return;
+  if (children == null) return childOffset;
   for (final child in children) {
     // Siblings follow one another, so each one starts where the previous one
     // ended — without this every child of a span would report the same offset.
     if (child is TextSpan) {
-      _collectSpans(child, color, childOffset, out);
-      childOffset += child.text?.length ?? 0;
+      childOffset = _collectSpans(child, color, childOffset, out);
     }
   }
+  return childOffset;
 }

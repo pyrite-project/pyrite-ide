@@ -1,23 +1,27 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_stdio_args.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_workspace_path.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/workspace_lsp_config_pool.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/utils/display_path.dart';
 
 /// The language id sent to the language server for every document.
 ///
@@ -50,6 +54,99 @@ class EditorControllerMapNotifier
     ref.listen<bool>(lspShowInlayHints, (_, visible) {
       _updateInlayHintsVisibility(visible);
     });
+    // A launch change must reach the tabs that are already open, not just the
+    // next file opened: the settings page hands the language server slot to a
+    // plugin and the plugin writes transport/executable/arguments a moment
+    // later, so every one of these listens for the same migration.
+    ref.listen<String?>(lspPluginServerId, (_, _) => _scheduleLspMigration());
+    ref.listen<LspType>(lspType, (_, _) => _scheduleLspMigration());
+    ref.listen<String>(lspStdioExecutable, (_, _) => _scheduleLspMigration());
+    ref.listen<String>(lspStdioArgs, (_, _) => _scheduleLspMigration());
+    ref.listen<String>(lspWebSocketPath, (_, _) => _scheduleLspMigration());
+    ref.listen<bool>(useLsp, (_, _) => _scheduleLspMigration());
+  }
+
+  Timer? _lspMigrationTimer;
+  bool _lspMigrating = false;
+  bool _lspMigrationPending = false;
+
+  /// Debounces a launch-settings change into one migration of all open tabs.
+  ///
+  /// The plugin writes several settings in a row (transport, executable,
+  /// arguments), each of which evicts the pooled config; debouncing merges
+  /// that burst so the server is restarted once, with the final settings.
+  void _scheduleLspMigration() {
+    _lspMigrationTimer?.cancel();
+    _lspMigrationTimer = Timer(
+      const Duration(milliseconds: 600),
+      () => unawaited(_migrateEditorsToCurrentLsp()),
+    );
+  }
+
+  /// Re-points every open editor at the language server the current launch
+  /// settings describe.
+  ///
+  /// A pooled config freezes its transport and executable at spawn time, so a
+  /// settings change cannot be adopted by the running process: the pool is
+  /// drained (which disposes the old servers) and each tab re-attaches to a
+  /// config built from the new settings. When the new settings name no usable
+  /// server, the tab is detached — fully editable, but offline — instead of
+  /// being left holding a disposed config that fails every request.
+  Future<void> _migrateEditorsToCurrentLsp() async {
+    if (_lspMigrating) {
+      _lspMigrationPending = true;
+      return;
+    }
+    if (_lspRestartInFlight.isNotEmpty) {
+      // A crash restart is mid-flight; retry once it settled.
+      _scheduleLspMigration();
+      return;
+    }
+    _lspMigrating = true;
+    try {
+      final controllers = Map<String, CodeForgeController>.from(state);
+      _lspConfigPool.evictAll();
+      if (controllers.isEmpty) return;
+      for (final entry in controllers.entries) {
+        final controller = entry.value;
+        if (state[entry.key] != controller) continue; // closed meanwhile
+        final enabled =
+            ref.read(useLsp) &&
+            (path.extension(entry.key) == '.py' || ref.read(lspAlwaysStart));
+        if (!enabled) {
+          controller.detachLsp();
+          continue;
+        }
+        final workspacePath = lspWorkspacePathForFile(
+          File(entry.key),
+          ref.read(fileProvider),
+        );
+        final acquired = await _lspConfigPool.acquire(workspacePath);
+        final newConfig = acquired.config;
+        if (newConfig == null) {
+          controller.detachLsp();
+          continue;
+        }
+        if (acquired.created) {
+          unawaited(_sendWorkspaceConfiguration(newConfig));
+        }
+        await controller.reattachLsp(newConfig);
+      }
+    } catch (error) {
+      debugPrint('LSP migration failed: $error');
+    } finally {
+      _lspMigrating = false;
+      if (_lspMigrationPending) {
+        _lspMigrationPending = false;
+        _scheduleLspMigration();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _lspMigrationTimer?.cancel();
+    super.dispose();
   }
 
   /// Pushes the current capability settings into every running language server
@@ -70,6 +167,21 @@ class EditorControllerMapNotifier
     }
   }
 
+  /// Evicts every pooled workspace config so the next file open spawns a
+  /// language server from the current launch settings.
+  ///
+  /// Live servers are disposed on purpose: the transport, executable,
+  /// arguments and the plugin server in use describe the *launch*, which a
+  /// running process cannot adopt — keeping the old one would keep answering
+  /// with whatever server the settings used to point at.
+  void evictLspConfigs() {
+    _lspConfigPool.evictAll();
+    // Draining the pool leaves every open tab holding a disposed config;
+    // schedule the migration so they land on a server built from the new
+    // settings instead of failing requests until they are reopened.
+    _scheduleLspMigration();
+  }
+
   /// One language server per workspace root, shared by every open file under
   /// it.
   ///
@@ -88,6 +200,7 @@ class EditorControllerMapNotifier
       WorkspaceLspConfigPool<LspConfig>(
         create: _createWorkspaceLspConfig,
         onEvict: (config) => config.dispose(),
+        isAlive: (config) => config.isUsable,
       );
 
   Future<CodeForgeController?> createNewEditorController(
@@ -103,22 +216,27 @@ class EditorControllerMapNotifier
     var openedReadOnly = openReadOnly;
     var tooLarge = false;
     if (initialText == null) {
+      final List<int> bytes;
       try {
-        tooLarge = await file.length() > maxEditableFileLength;
-        openedReadOnly = openedReadOnly || tooLarge;
-        text = await file.readAsString();
+        bytes = await file.readAsBytes();
       } on FileSystemException {
         return null;
+      }
+      tooLarge = bytes.length > maxEditableFileLength;
+      openedReadOnly = openedReadOnly || tooLarge;
+      try {
+        text = utf8.decode(bytes);
       } on FormatException {
         // Binary or non-UTF-8 content reaching the headless path (session
         // restore has no context for dialogs): keep the buffer usable with a
         // malformed-tolerant decode and block editing so garbage is never
         // written back over the file.
+        //
+        // The bytes are decoded here rather than through `readAsString`,
+        // which reports a decoding failure as a FileSystemException and so
+        // cannot be told apart from an unreadable file.
         openedReadOnly = true;
-        text = utf8.decode(
-          await file.readAsBytes(),
-          allowMalformed: true,
-        );
+        text = utf8.decode(bytes, allowMalformed: true);
       }
     }
     final projectPath = lspWorkspacePathForFile(file, ref.read(fileProvider));
@@ -133,7 +251,7 @@ class EditorControllerMapNotifier
       }
     }
 
-    CodeForgeController controller = PyriteCodeForgeController(
+    final CodeForgeController controller = PyriteCodeForgeController(
       lspConfig: lspConfig,
     );
     // Bind the path before the buffer. The editor widget only assigns
@@ -143,10 +261,23 @@ class EditorControllerMapNotifier
     // happens here, before `text` replaces it with the intended content; this
     // mirrors the preview pane in lsp_location_dialog, which pre-sets
     // `openedFile` for the same reason.
-    controller.openedFile = file.path;
-    controller.text = text;
+    try {
+      controller.openedFile = file.path;
+      controller.text = text;
+    } catch (_) {
+      // The controller never reaches the tab map, so the language-server seat
+      // acquired above has no owner left to release it. Dropping it here keeps
+      // a failed open from pinning the workspace's server for the rest of the
+      // session.
+      controller.dispose();
+      _lspConfigPool.release(lspConfig);
+      rethrow;
+    }
+    // A path the setter could not read strictly falls back to a read-only
+    // tolerant decode; the buffer decoded by the caller and its read-only
+    // decision take precedence.
+    controller.readOnly = openedReadOnly;
     if (openedReadOnly) {
-      controller.readOnly = true;
       // Only the size case gets a notice here: a binary file opened through
       // the interactive flow already saw its own dialog, and the headless
       // restore path surfaces its state through the read-only editor itself.
@@ -157,7 +288,7 @@ class EditorControllerMapNotifier
               translate(
                 ref,
                 I18nKey.editorFileTooLargeReadOnly,
-              ).replaceAll('{path}', file.path),
+              ).replaceAll('{path}', displayPathName(file.path)),
               type: IdeMessageType.warning,
               duration: const Duration(seconds: 12),
               closeable: true,
@@ -202,7 +333,7 @@ class EditorControllerMapNotifier
           );
     }
     if (type == LspType.webSocket) {
-      return LspSocketConfig(
+      final config = LspSocketConfig(
         workspacePath: workspacePath,
         languageId: defaultLspLanguageId,
         serverUrl: "ws://${ref.read(lspWebSocketPath)}",
@@ -212,14 +343,15 @@ class EditorControllerMapNotifier
         disableWarning: ref.read(disableWarning),
         disableError: ref.read(disableError),
       );
+      config.onUnexpectedExit = () => _onLspServerCrash(workspacePath, config);
+      return config;
     }
     if (type == LspType.stdio) {
       final executable = ref.read(lspStdioExecutable).trim();
       if (executable.isEmpty) return null;
-      final argsStr = ref.read(lspStdioArgs).trim();
-      final args = argsStr.split(' ').where((s) => s.isNotEmpty).toList();
+      final args = splitLspStdioArgs(ref.read(lspStdioArgs));
       try {
-        return await LspStdioConfig.start(
+        final config = await LspStdioConfig.start(
           executable: executable,
           args: args,
           workspacePath: workspacePath,
@@ -231,6 +363,9 @@ class EditorControllerMapNotifier
           disableWarning: ref.read(disableWarning),
           disableError: ref.read(disableError),
         );
+        config.onUnexpectedExit = () =>
+            _onLspServerCrash(workspacePath, config);
+        return config;
       } catch (e) {
         debugPrint('LSP stdio start failed: $e');
         ref
@@ -255,6 +390,101 @@ class EditorControllerMapNotifier
       } else {
         controller.hideInlayHints();
       }
+    }
+  }
+
+  /// Restart bookkeeping for crashed language servers, keyed by workspace.
+  final Set<String> _lspRestartInFlight = {};
+  final Map<String, List<DateTime>> _lspCrashTimes = {};
+
+  /// Called when a server dies without the client stopping it — a crashed
+  /// stdio process or a dropped WebSocket connection. Schedules one restart
+  /// per workspace; repeated crashes inside a minute give up for good, so a
+  /// deterministically crashing server cannot turn into a restart loop.
+  void _onLspServerCrash(String workspacePath, LspConfig deadConfig) {
+    if (_lspRestartInFlight.contains(workspacePath)) return;
+    _lspRestartInFlight.add(workspacePath);
+    unawaited(_restartLspAfterCrash(workspacePath, deadConfig));
+  }
+
+  Future<void> _restartLspAfterCrash(
+    String workspacePath,
+    LspConfig deadConfig,
+  ) async {
+    try {
+      final now = DateTime.now();
+      final crashes = _lspCrashTimes.putIfAbsent(workspacePath, () => []);
+      crashes.removeWhere(
+        (time) => now.difference(time) > const Duration(minutes: 1),
+      );
+      crashes.add(now);
+      if (crashes.length > 3) {
+        // A server that keeps dying (zuban panicking on the same hover, for
+        // example) must not turn into a restart loop; hand the decision back
+        // to the user with one explicit notice.
+        _lspCrashTimes.remove(workspacePath);
+        _lspConfigPool.evict(workspacePath);
+        final note = translate(ref, I18nKey.editorLspCrashLoopStopped);
+        ref.read(ideOutputLogProvider.notifier).add(IdeOutputSource.ide, note);
+        ref
+            .read(ideMessageProvider.notifier)
+            .show(
+              note,
+              type: IdeMessageType.warning,
+              duration: const Duration(seconds: 12),
+              closeable: true,
+            );
+        return;
+      }
+
+      // 1s, 2s, 4s… capped, so a workspace that recovers still restarts fast.
+      final backoff = Duration(seconds: 1 << (crashes.length - 1).clamp(0, 5));
+      await Future<void>.delayed(backoff);
+      if (!ref.read(useLsp)) return;
+      final affected = [
+        for (final entry in state.entries)
+          if (identical(entry.value.lspConfig, deadConfig)) entry.key,
+      ];
+      if (affected.isEmpty) return;
+      for (final filePath in affected) {
+        final controller = state[filePath];
+        if (controller == null ||
+            !identical(controller.lspConfig, deadConfig)) {
+          continue;
+        }
+        _lspConfigPool.release(deadConfig);
+        final acquired = await _lspConfigPool.acquire(workspacePath);
+        final newConfig = acquired.config;
+        if (newConfig == null) {
+          ref
+              .read(ideOutputLogProvider.notifier)
+              .add(
+                IdeOutputSource.ide,
+                translate(
+                  ref,
+                  I18nKey.lspStartFailedOutput,
+                ).replaceAll('{error}', 'restart'),
+              );
+          continue;
+        }
+        if (acquired.created) {
+          unawaited(_sendWorkspaceConfiguration(newConfig));
+        }
+        await controller.reattachLsp(newConfig);
+      }
+      ref
+          .read(ideOutputLogProvider.notifier)
+          .add(
+            IdeOutputSource.ide,
+            translate(
+              ref,
+              I18nKey.editorLspCrashRestarted,
+            ).replaceAll('{count}', crashes.length.toString()),
+          );
+    } catch (error) {
+      debugPrint('LSP crash restart failed: $error');
+    } finally {
+      _lspRestartInFlight.remove(workspacePath);
     }
   }
 
@@ -325,67 +555,50 @@ class EditorControllerMapNotifier
     state = Map<String, CodeForgeController>.from(state)..remove(filePath);
   }
 
+  /// The value of the tab the editor is acting on.
+  ///
+  /// Null for tabs that are not documents -- a console surface dragged into the
+  /// editor strip, or the welcome page -- which is what keeps the shared
+  /// editing commands from reading document members off them.
+  TabDataValue? get selectedEditorValue =>
+      editorTabValueOf(ref.read(activeEditorControllerProvider).selectedTab);
+
   void redo() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedUndoRedoController()?.redo();
     }
   }
 
   void undo() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedUndoRedoController()?.undo();
     }
   }
 
   void cut() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedController()?.cut();
     }
   }
 
   void copy() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedController()?.copy();
     }
   }
 
   void paste() {
-    if (ref.read(tabbedViewControllerProvider).selectedTab != null &&
-        ref.read(tabbedViewControllerProvider).selectedTab!.value.type ==
-            "file") {
+    if (selectedEditorValue?.type == "file") {
       getSelectedController()?.paste();
     }
   }
 
   CodeForgeController? getSelectedController() {
-    return ref
-        .read(tabbedViewControllerProvider)
-        .selectedTab
-        ?.value
-        .editorController;
+    return selectedEditorValue?.editorController;
   }
 
   UndoRedoController? getSelectedUndoRedoController() {
-    debugPrint(
-      ref
-          .read(tabbedViewControllerProvider)
-          .selectedTab
-          ?.value
-          .undoRedoController,
-    );
-    return ref
-        .read(tabbedViewControllerProvider)
-        .selectedTab
-        ?.value
-        .undoRedoController;
+    return selectedEditorValue?.undoRedoController;
   }
 }
 
@@ -394,7 +607,7 @@ final StateNotifierProvider<
   Map<String, CodeForgeController>
 >
 editorControllerMapProvider = StateNotifierProvider(
-  (ref) => EditorControllerMapNotifier(ref),
+  EditorControllerMapNotifier.new,
 );
 
 /// Snapshots the LSP capability settings as the client capabilities to negotiate.

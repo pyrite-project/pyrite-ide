@@ -43,7 +43,7 @@ PyriteIDE 将本地项目、MicroPython 开发板与日常开发工具整合进�
 
 | 平台 | 发布产物 | 主要能力 |
 | --- | --- | --- |
-| Windows | ZIP | 桌面终端、USB 串口、完整工作区 |
+| Windows (Windows10 1607及更新版本) | ZIP | 桌面终端、USB 串口、完整工作区 |
 | macOS | App ZIP | 桌面终端、USB 串口、完整工作区 |
 | Linux | tar.gz | 桌面终端、USB 串口、完整工作区 |
 | Android | 分 ABI APK | 移动布局、USB 串口、开发板文件 |
@@ -53,7 +53,14 @@ PyriteIDE 将本地项目、MicroPython 开发板与日常开发工具整合进�
 Linux 平台需提前安装 libmpv-dev 和 mpv：
 
 ```bash
+# Debian/Ubuntu系
 sudo apt install libmpv-dev mpv
+# Arch系
+sudo pacman -S mpv
+# Fedora
+sudo dnf install mpv
+# openSUSE
+sudo zypper install mpv
 ```
 
 ## 快速开始
@@ -93,7 +100,14 @@ dart run serious_python:main package "assets/python_runtime_boot" --platform Lin
 Linux 平台需提前安装 libmpv-dev 和 mpv：
 
 ```bash
+# Debian/Ubuntu系
 sudo apt install libmpv-dev mpv
+# Arch系
+sudo pacman -S mpv
+# Fedora
+sudo dnf install mpv
+# openSUSE
+sudo zypper install mpv
 ```
 
 运行命令开始编译：
@@ -114,7 +128,7 @@ PyriteIDE 插件以 PYRIX 分发，并通过 `plugin.toml` 声明类型、平台
 | `service` | 后台任务、设备监听与同步服务 |
 | `data` | 主题、语言包与 MicroPython Stubs |
 
-插件运行时、生命周期、SDK API、权限模型和打包方式见插件开发文档，具体内容正在撰写，请关注通知 。
+插件运行时、生命周期、SDK API、权限模型、组件树与打包方式见 [插件开发文档](PLUGIN_DEVELOPMENT.md)。
 
 ## 参与开发
 
@@ -123,6 +137,7 @@ PyriteIDE 插件以 PYRIX 分发，并通过 `plugin.toml` 声明类型、平台
 ```bash
 dart format .
 flutter analyze --no-fatal-infos lib test
+flutter test
 ```
 
 项目中没有引入 Riverpod 注解或路由生成器，推荐使用传统写法：

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:code_forge/code_forge.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_snippet.dart';
 
@@ -90,7 +91,11 @@ class ReplLspCompletionSource {
     if (_activeConfig != null && _activeConfig != config && _documentOpen) {
       try {
         await _activeConfig!.closeDocument(_documentPath!);
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[lib/core/services/editor/repl_lsp_completion_source.dart] ignored error: $error',
+        );
+      }
       _documentOpen = false;
     }
     _activeConfig = config;

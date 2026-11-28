@@ -4,10 +4,10 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/editor/terminal.dart';
 import 'package:pyrite_ide/core/services/file/board_backend.dart';
 import 'package:pyrite_ide/core/services/periodic_task/provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 class UsbSerialState {
@@ -56,7 +56,7 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
           .registerTask(
             name: "port_message_update",
             interval: const Duration(seconds: 3),
-            callback: () => performUpdate(),
+            callback: performUpdate,
           );
     });
   }
@@ -170,7 +170,11 @@ abstract class BaseUsbSerialNotifier<T extends UsbSerialState>
     for (final cb in ref.read(serialDataCallbacksProvider)) {
       try {
         cb(data);
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[lib/core/services/serial/base_usb_serial.dart] ignored error: $error',
+        );
+      }
     }
   }
 

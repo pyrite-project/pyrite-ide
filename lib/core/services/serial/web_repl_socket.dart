@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 class WebReplSocket {
   WebReplSocket._(this._socket, this._iterator);
 
@@ -247,10 +249,14 @@ class WebReplSocket {
     _closed = true;
     try {
       await _iterator.cancel();
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('[webrepl] cancelling the socket stream failed: $error');
+    }
     try {
       await _socket.close();
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('[webrepl] closing the socket failed: $error');
+    }
     if (!_controller.isClosed) await _controller.close();
   }
 }

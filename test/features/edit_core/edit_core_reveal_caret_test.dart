@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/editor/code_forge_controller.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/features/edit_core/main.dart';
+import 'package:pyrite_ide/features/edit_core/edit_core.dart';
 
 /// The app's real [EditCore] subtree driven exactly like the status bar's
 /// line/column readout: an external button calling

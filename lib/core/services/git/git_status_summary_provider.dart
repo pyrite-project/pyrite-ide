@@ -3,12 +3,20 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 final gitStatusSummaryProvider = Provider<GitStatusSummary?>((ref) {
   final workspacePath = ref.watch(localWorkspaceProvider)?.path;
-  return GitStatusSummary.inspect(workspacePath);
+  return GitStatusSummary.inspect(
+    workspacePath,
+    // inspect() walks a real repository synchronously; only the label needs
+    // the active locale, so translation is injected instead of threading a
+    // Ref through the walk.
+    fallbackBranchLabel: translate(ref, I18nKey.gitStatusSummaryFallback),
+  );
 });
 
 class GitStatusSummary {
@@ -17,9 +25,15 @@ class GitStatusSummary {
   final String rootPath;
   final String branchLabel;
 
-  static GitStatusSummary? inspect(String? workspacePath) {
+  static GitStatusSummary? inspect(
+    String? workspacePath, {
+    String? fallbackBranchLabel,
+  }) {
+    final label =
+        fallbackBranchLabel ?? I18nKey.gitStatusSummaryFallback.fallback;
     try {
-      GitDebugLog.log(
+      AppLog.d(
+        'git',
         'GitStatusSummary.inspect start workspace=$workspacePath',
       );
       if (workspacePath == null || workspacePath.isEmpty) return null;
@@ -27,35 +41,37 @@ class GitStatusSummary {
       final startPath = Directory(normalizedPath).existsSync()
           ? normalizedPath
           : p.dirname(normalizedPath);
-      GitDebugLog.log('GitStatusSummary.discover start startPath=$startPath');
+      AppLog.d('git', 'GitStatusSummary.discover start startPath=$startPath');
       final gitDir = Repository.discover(startPath: startPath);
-      GitDebugLog.log('GitStatusSummary.discover end gitDir=$gitDir');
-      GitDebugLog.log('GitStatusSummary.open start gitDir=$gitDir');
+      AppLog.d('git', 'GitStatusSummary.discover end gitDir=$gitDir');
+      AppLog.d('git', 'GitStatusSummary.open start gitDir=$gitDir');
       final repo = Repository.open(gitDir);
 
       try {
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitStatusSummary.open end path=${repo.path} workdir=${repo.workdir}',
         );
         final summary = GitStatusSummary(
           rootPath: _rootPath(repo, gitDir),
-          branchLabel: _branchLabel(repo),
+          branchLabel: _branchLabel(repo, label),
         );
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitStatusSummary.inspect end root=${summary.rootPath} '
-          'branch=${summary.branchLabel}',
+              'branch=${summary.branchLabel}',
         );
         return summary;
       } finally {
-        GitDebugLog.log('GitStatusSummary.free start gitDir=$gitDir');
+        AppLog.d('git', 'GitStatusSummary.free start gitDir=$gitDir');
         repo.free();
-        GitDebugLog.log('GitStatusSummary.free end gitDir=$gitDir');
+        AppLog.d('git', 'GitStatusSummary.free end gitDir=$gitDir');
       }
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitStatusSummary.inspect failed workspace=$workspacePath',
         error: error,
-        stackTrace: stackTrace,
       );
       return null;
     }
@@ -67,9 +83,9 @@ class GitStatusSummary {
     return p.normalize(workdir);
   }
 
-  static String _branchLabel(Repository repo) {
+  static String _branchLabel(Repository repo, String fallbackBranchLabel) {
     try {
-      if (repo.isEmpty) return 'Git 仓库';
+      if (repo.isEmpty) return fallbackBranchLabel;
       final head = repo.head;
       try {
         if (head.isBranch) return head.shorthand;
@@ -78,7 +94,7 @@ class GitStatusSummary {
         head.free();
       }
     } catch (_) {
-      return 'Git 仓库';
+      return fallbackBranchLabel;
     }
   }
 }

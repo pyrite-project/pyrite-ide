@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart' as video;
 
+import '../../shared/md3_widgets.dart';
+
 /// Host-owned native video player for the `Video` plugin component.
 ///
 /// Replaces the former RFW-coupled media widget: playback is driven directly by
@@ -184,27 +186,44 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
   Future<void> setLooping(bool looping) =>
       _controller?.setLooping(looping) ?? Future.value();
 
-  NavigatorState? _fullscreenNavigator;
+  Route<void>? _fullscreenRoute;
 
   Future<void> enterFullscreen() async {
     final controller = _controller;
     if (!mounted || controller == null || !_initialized) return;
     final navigator = Navigator.of(context);
-    _fullscreenNavigator = navigator;
-    await navigator.push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (context) => _FullscreenPlayer(
-          controller: controller,
-          onClosed: () => _fullscreenNavigator = null,
-        ),
+    final route = MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (context) => _FullscreenPlayer(
+        controller: controller,
+        onClosed: _forgetFullscreenRoute,
       ),
     );
+    _fullscreenRoute = route;
+    try {
+      await navigator.push(route);
+    } finally {
+      // A later fullscreen session may have replaced this one by the time the
+      // route finishes closing.
+      if (identical(_fullscreenRoute, route)) _fullscreenRoute = null;
+    }
   }
 
+  void _forgetFullscreenRoute() => _fullscreenRoute = null;
+
   void exitFullscreen() {
-    _fullscreenNavigator?.pop();
-    _fullscreenNavigator = null;
+    final route = _fullscreenRoute;
+    if (route == null) return;
+    final navigator = route.navigator;
+    // The user may have left fullscreen with the system back gesture. The
+    // route is then gone (or no longer on top), and popping here would close
+    // the plugin page underneath instead.
+    if (navigator == null || !route.isCurrent) {
+      _fullscreenRoute = null;
+      return;
+    }
+    _fullscreenRoute = null;
+    navigator.pop();
   }
 
   @override
@@ -280,15 +299,21 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
           builder: (context, value, child) {
             return Row(
               children: <Widget>[
-                IconButton(
-                  tooltip: value.isPlaying ? 'Pause' : 'Play',
-                  color: Colors.white,
-                  icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
-                  onPressed: () {
-                    unawaited(
-                      value.isPlaying ? controller.pause() : controller.play(),
-                    );
-                  },
+                TooltipAnchor(
+                  message: value.isPlaying ? 'Pause' : 'Play',
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: Icon(
+                      value.isPlaying ? Icons.pause : Icons.play_arrow,
+                    ),
+                    onPressed: () {
+                      unawaited(
+                        value.isPlaying
+                            ? controller.pause()
+                            : controller.play(),
+                      );
+                    },
+                  ),
                 ),
                 Expanded(
                   child: video.VideoProgressIndicator(
@@ -297,17 +322,19 @@ class PluginVideoPlayerState extends State<PluginVideoPlayer> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
-                IconButton(
-                  tooltip: value.volume == 0 ? 'Unmute' : 'Mute',
-                  color: Colors.white,
-                  icon: Icon(
-                    value.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                TooltipAnchor(
+                  message: value.volume == 0 ? 'Unmute' : 'Mute',
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: Icon(
+                      value.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                    ),
+                    onPressed: () {
+                      unawaited(
+                        controller.setVolume(value.volume == 0 ? 1.0 : 0.0),
+                      );
+                    },
                   ),
-                  onPressed: () {
-                    unawaited(
-                      controller.setVolume(value.volume == 0 ? 1.0 : 0.0),
-                    );
-                  },
                 ),
               ],
             );
@@ -334,29 +361,35 @@ class _FullscreenPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            Center(child: video.VideoPlayer(controller)),
-            Align(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: IconButton(
-                  tooltip: 'Close',
-                  color: Colors.white,
-                  icon: const Icon(Icons.fullscreen_exit),
-                  onPressed: () {
-                    onClosed?.call();
-                    Navigator.of(context).pop();
-                  },
+    return PopScope<void>(
+      // Covers every way the route can leave the stack, including the Android
+      // system back gesture, which never reaches the close button.
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) onClosed?.call();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Center(child: video.VideoPlayer(controller)),
+              Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: TooltipAnchor(
+                    message: 'Close',
+                    child: IconButton(
+                      color: Colors.white,
+                      icon: const Icon(Icons.fullscreen_exit),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

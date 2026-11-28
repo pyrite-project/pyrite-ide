@@ -3,9 +3,11 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/editor/file_open_codec.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 import 'package:pyrite_ide/core/services/file/file_rename.dart';
+import 'package:pyrite_ide/core/services/file/file_sort.dart';
 import 'package:super_tree/super_tree.dart';
 
 // ---------------------------------------------------------------------------
@@ -50,8 +52,9 @@ String getPattern() {
 }
 
 Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
-  Stream<FileSystemEntity> datas,
-) async {
+  Stream<FileSystemEntity> datas, {
+  FileSortMode sortMode = FileSortMode.byName,
+}) async {
   final entities = <FileSystemEntity>[];
   final items = <TreeNode<FileSystemItem>>[];
   final pattern = getPattern();
@@ -91,12 +94,29 @@ Future<List<TreeNode<FileSystemItem>>> buildFileListItems(
     }
   }
 
+  items.sort(
+    (a, b) => compareFileTreeEntries(
+      firstIsFolder: a.data is FolderItem,
+      firstName: a.data.name,
+      secondIsFolder: b.data is FolderItem,
+      secondName: b.data.name,
+      mode: sortMode,
+    ),
+  );
   return items;
 }
 
 // ---------------------------------------------------------------------------
 // Git ignore support
 // ---------------------------------------------------------------------------
+
+/// Whether [filePath] is a git ignore file.
+///
+/// Editing one of these changes which rows of the local pane are hidden, so a
+/// save has to re-read the tree even though the save itself added no file.
+bool isGitIgnoreFilePath(String filePath) {
+  return path.basename(filePath) == '.gitignore';
+}
 
 Future<Set<String>> gitIgnoredPaths(Iterable<String> entityPaths) async {
   final normalizedPaths = entityPaths.map(path.normalize).toList();
@@ -154,10 +174,10 @@ Future<File?> sysGetFile() async {
 }
 
 Future<File?> sysCreateFile() async {
-  FileSaveLocation? path0 = await getSaveLocation();
+  final FileSaveLocation? path0 = await getSaveLocation();
   File? file;
   if (path0 != null) {
-    String path = path0.path;
+    final String path = path0.path;
     file = File(path);
     await file.create();
   } else {
@@ -176,7 +196,7 @@ Future<String?> sysSaveAs(
   String? encoding,
   bool byteOrderMark = false,
 }) async {
-  FileSaveLocation? path0 = await getSaveLocation();
+  final FileSaveLocation? path0 = await getSaveLocation();
   if (path0 == null) return null;
   final file = File(path0.path);
   await file.create();
@@ -226,9 +246,13 @@ Future<void> _ensureRenameTargetAvailable(
     targetPath,
     followLinks: false,
   );
-  if (targetType != FileSystemEntityType.notFound) {
-    throw FileRenameTargetExistsException(targetPath);
-  }
+  if (targetType == FileSystemEntityType.notFound) return;
+  // On a case-insensitive filesystem — Windows, and the default macOS volume —
+  // a case-only rename finds the source itself at the target path. That is not
+  // a collision: the user is respelling one file, and treating it as a
+  // collision made renaming `Foo.py` to `foo.py` impossible.
+  if (await FileSystemEntity.identical(sourcePath, targetPath)) return;
+  throw FileRenameTargetExistsException(targetPath);
 }
 
 Future<void> deleteDir(String path) async {

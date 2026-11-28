@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/sdk/api/runtime_api.dart';
 import 'package:pyrite_ide/core/sdk/device_runtime_backend.dart';
 import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
 import 'package:pyrite_ide/core/sdk/runtime_inspection.dart';
-import 'package:pyrite_ide/core/models/board_manager.dart';
 import 'package:pyrite_ide/core/services/serial/device_executor.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
@@ -28,7 +28,7 @@ class DeviceRuntimeHost implements RuntimeHost {
     );
     _subscription = _ref.listen<SerialProviderState>(
       serialProvider,
-      (previous, next) => _onSerialChanged(previous, next),
+      _onSerialChanged,
       fireImmediately: true,
     );
     _runningSubscription = _ref.listen<List<RunningOperation>>(

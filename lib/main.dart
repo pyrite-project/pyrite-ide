@@ -1,35 +1,32 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
+
 import 'package:code_forge/code_forge.dart' show RustLib;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:pyrite_ide/app/app.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/flutter/error_log_dedupe.dart';
+import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
+import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
+import 'package:pyrite_ide/core/sdk/environment_provider.dart';
+import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
+import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/periodic_task/periodic_task.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_manager.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
-import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
-import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
-import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/core/flutter/pyrite_widgets_binding.dart';
-import 'package:pyrite_ide/core/models/settings.dart';
-import 'package:pyrite_ide/core/models/terminal_appearance.dart';
-import 'package:pyrite_ide/core/services/periodic_task/main.dart';
-import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/python_runtime_host.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/features/window.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
 
@@ -42,6 +39,29 @@ String? getPythonPath() {
 }
 
 late final PersistenceManager persistenceManager;
+
+/// Port the previous session was talking to.
+///
+/// Kept here rather than as a provider: nothing renders it, and the only use is
+/// reconnecting once the serial layer is ready. Attempting that reconnect is
+/// opt-in through the saved auto-reconnect switch, so a user who does not want
+/// the IDE claiming a port on launch is not surprised by it.
+String _lastActivePortPath = '';
+
+/// Reopens the port the previous session used, once the app is running.
+///
+/// Deferred to a post-frame callback because the device-scoped caches it
+/// clears (board tree, status panel) are provider-owned and must not be mutated
+/// while the first frame is still being built.
+Future<void> _resumeLastSerialPort() async {
+  final path = _lastActivePortPath;
+  if (path.isEmpty) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (container.read(serialProvider).isConnected) return;
+    unawaited(container.read(serialProvider.notifier).connectPort(path));
+  });
+}
+
 Timer? _saveTimer;
 Timer? _debounceTimer;
 Timer? _pluginSaveTimer;
@@ -58,6 +78,20 @@ void _appendIdeOutputLater(String text) {
   });
 }
 
+/// Folds the same error when it is reported again and again, frame after frame.
+///
+/// Some framework failures (a semantics assertion, for instance) fire twice per
+/// frame, so writing each stack trace turns the output panel into an unreadable
+/// wall and hides every other message. The first report is kept verbatim and
+/// the rest are tallied into a single line once the flood stops; nothing is
+/// hidden, only repeated less often.
+final ErrorLogDedupe _errorLogDedupe = ErrorLogDedupe(
+  emitSummary: (text) {
+    _appendIdeOutputLater(text);
+    AppLog.w('flutter', text);
+  },
+);
+
 void _installIdeOutputLogger() {
   if (_defaultDebugPrint != null) return;
   _defaultDebugPrint = debugPrint;
@@ -70,162 +104,52 @@ void _installIdeOutputLogger() {
 
   FlutterError.onError = (FlutterErrorDetails details) {
     final message = details.exceptionAsString();
+    // Matched on the message alone: the stack of a repeated framework error is
+    // identical, and the message is what the tally line shows to the reader.
+    if (!_errorLogDedupe.admit(signature: message)) return;
     final stack = details.stack?.toString();
-    GitDebugLog.log(
-      'FlutterError library=${details.library ?? ''} '
-      'context=${details.context?.toString() ?? ''}',
+    // Goes to the log file as well as the output panel: a framework error is
+    // the most common "it broke and I have no idea why" report, and the panel
+    // is gone after a restart.
+    AppLog.e(
+      'flutter',
+      'uncaught FlutterError '
+          'library=${details.library ?? '-'} '
+          'context=${details.context?.toString() ?? '-'}',
       error: details.exception,
-      stackTrace: details.stack,
+      stack: details.stack,
     );
     _appendIdeOutputLater('$message${stack == null ? '' : '\n$stack'}');
     FlutterError.presentError(details);
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
-    GitDebugLog.log(
-      'PlatformDispatcher.onError',
+    // Frame-after-frame repeats of the same failure are tallied into one line
+    // by the dedupe gate; the first report still reaches the log file.
+    if (!_errorLogDedupe.admit(signature: 'uncaught|$error')) return true;
+    AppLog.e(
+      'uncaught',
+      'unhandled async error type=${error.runtimeType}',
       error: error,
-      stackTrace: stack,
+      stack: stack,
     );
     _appendIdeOutputLater('Unhandled exception: $error\n$stack');
-    return false;
+    // Returning true marks the error handled so a single uncaught async
+    // exception cannot terminate the whole IDE in release; the log and the
+    // output panel above keep it diagnosable.
+    return true;
   };
 }
 
 void _applyData(PersistedData data) {
-  switch (data.themeMode) {
-    case 'light':
-      container.read(themeMode.notifier).state = ThemeMode.light;
-    case 'dark':
-      container.read(themeMode.notifier).state = ThemeMode.dark;
-    default:
-      container.read(themeMode.notifier).state = ThemeMode.system;
+  persistenceManager.applyTo(container, data);
+  _lastActivePortPath = data.serialActivePortPath;
+  // Reconnect last session's port only when the user asked for automatic
+  // reconnection; claiming a port uninvited would also fight any other tool
+  // the user has open on it.
+  if (data.serialAutoReconnect && _lastActivePortPath.isNotEmpty) {
+    unawaited(_resumeLastSerialPort());
   }
-
-  if (data.themeColorValue != null) {
-    container.read(themeColor.notifier).state = Color(data.themeColorValue!);
-  }
-  container.read(themeStyle.notifier).state = ThemeStyle.fromValue(
-    data.themeStyle,
-  );
-  container.read(editorThemeKey.notifier).state = data.editorThemeKey;
-  container.read(activePluginThemeId.notifier).state = data.activePluginThemeId;
-  container.read(welcomeCompletedProvider.notifier).state =
-      data.welcomeCompleted;
-  container.read(activeLocaleProvider.notifier).state = data.activeLocale;
-  container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
-  container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
-  container.read(editorFontSize.notifier).state = data.editorFontSize;
-  container.read(editorWordWrap.notifier).state = data.editorWordWrap;
-  container.read(editorLineNumber.notifier).state = data.editorLineNumber;
-  container.read(editorCodeFolding.notifier).state = data.editorCodeFolding;
-  container.read(editorGuideLines.notifier).state = data.editorGuideLines;
-  container.read(editorLocalSuggestions.notifier).state =
-      data.editorLocalSuggestions;
-  container.read(editorKeyboardSuggestions.notifier).state =
-      data.editorKeyboardSuggestions;
-  container.read(editorUseSpaceAsTab.notifier).state = data.editorUseSpaceAsTab;
-  container.read(editorTabSize.notifier).state = data.editorTabSize;
-  container.read(editorGutterDivider.notifier).state = data.editorGutterDivider;
-  container.read(editorSmoothCursor.notifier).state = data.editorSmoothCursor;
-  container.read(editorFormatOnSave.notifier).state = data.editorFormatOnSave;
-  container.read(useLsp.notifier).state = data.useLsp;
-  container.read(lspType.notifier).state =
-      LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
-  container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
-  container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
-  container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
-  container.read(lspVirtualEnvironment.notifier).state =
-      data.lspVirtualEnvironment;
-  container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
-      BasedPyrightTypeCheckingMode.fromJsonName(
-        data.lspBasedPyrightTypeCheckingMode,
-      ) ??
-      BasedPyrightTypeCheckingMode.standard;
-  container.read(disableWarning.notifier).state = data.disableWarning;
-  container.read(disableError.notifier).state = data.disableError;
-  container.read(lspSemanticHighlighting.notifier).state =
-      data.lspSemanticHighlighting;
-  container.read(lspCodeCompletion.notifier).state = data.lspCodeCompletion;
-  container.read(lspHoverInfo.notifier).state = data.lspHoverInfo;
-  container.read(lspCodeAction.notifier).state = data.lspCodeAction;
-  container.read(lspSignatureHelp.notifier).state = data.lspSignatureHelp;
-  container.read(lspDocumentColor.notifier).state = data.lspDocumentColor;
-  container.read(lspDocumentHighlight.notifier).state =
-      data.lspDocumentHighlight;
-  container.read(lspCodeFolding.notifier).state = data.lspCodeFolding;
-  container.read(lspShowInlayHints.notifier).state = data.lspShowInlayHints;
-  container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
-  container.read(lspRename.notifier).state = data.lspRename;
-  container.read(lspAlwaysStart.notifier).state = data.lspAlwaysStart;
-  container.read(desktopSelectedIndex.notifier).state =
-      data.desktopSelectedIndex;
-  container.read(mobileSelectedIndex.notifier).state = data.mobileSelectedIndex;
-  container.read(tabletSelectedIndex.notifier).state = data.tabletSelectedIndex;
-  container.read(functionPageShow.notifier).state = data.functionPageShow;
-  container.read(consolePageShow.notifier).state = data.consolePageShow;
-  container.read(expansionPageShow.notifier).state = data.expansionPageShow;
-  container.read(enableSignalDetection.notifier).state =
-      data.enableSignalDetection;
-  container.read(ensureBoardFilesystemOnConnect.notifier).state =
-      data.ensureBoardFilesystemOnConnect;
-  container.read(serialDefaultBaudRate.notifier).state =
-      data.serialDefaultBaudRate;
-  container.read(serialAutoReconnect.notifier).state = data.serialAutoReconnect;
-  container.read(replModeProvider.notifier).state =
-      ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
-  container.read(fileTransferModeProvider.notifier).state =
-      FileTransferMode.values.asNameMap()[data.fileTransferMode] ??
-      FileTransferMode.chunked;
-  container.read(hardwareResetStrategyProvider.notifier).state =
-      HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
-      HardwareResetStrategy.disabled;
-  container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
-  container.read(terminalFontSize.notifier).state = data.terminalFontSize;
-  container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
-  container.read(terminalLigatures.notifier).state = data.terminalLigatures;
-  container.read(terminalAppearance.notifier).state =
-      TerminalAppearance.values.asNameMap()[data.terminalAppearance] ??
-      TerminalAppearance.dark;
-  container.read(terminalMinimumContrast.notifier).state =
-      data.terminalMinimumContrast;
-  container.read(terminalCustomForeground.notifier).state =
-      data.terminalCustomForeground;
-  container.read(terminalCustomBackground.notifier).state =
-      data.terminalCustomBackground;
-  container
-      .read(terminalCustomPalette.notifier)
-      .state = data.terminalCustomPalette.length == 16
-      ? data.terminalCustomPalette
-      : kDefaultTerminalCustomPalette;
-  container.read(useMaterialContextMenu.notifier).state =
-      data.useMaterialContextMenu;
-  container
-      .read(serialProvider.notifier)
-      .setBaudRate(data.serialDefaultBaudRate);
-  container
-      .read(serialProvider.notifier)
-      .setAutoReconnect(data.serialAutoReconnect);
-  container.read(uploadConfirmStyleProvider.notifier).state =
-      data.uploadConfirmStyle;
-  container.read(confirmShortcutProvider.notifier).state = data.confirmShortcut;
-  container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
-  container.read(webReplHost.notifier).state = data.webReplHost;
-  container.read(webReplPort.notifier).state = data.webReplPort;
-  container.read(webReplPassword.notifier).state = data.webReplPassword;
-  container.read(microPythonStubsEnabled.notifier).state =
-      data.microPythonStubsEnabled;
-  container.read(microPythonStubsAutoDetectLayers.notifier).state =
-      data.microPythonStubsAutoDetectLayers;
-  container.read(microPythonStubsLayers.notifier).state =
-      data.microPythonStubsLayers;
-  container.read(microPythonStubsExtraPaths.notifier).state =
-      data.microPythonStubsExtraPaths;
-  container.read(dataContributionsProvider.notifier).state =
-      data.dataContributions;
-  container
-      .read(dataRegistryProvider)
-      .restoreContributions(data.dataContributions);
 }
 
 // Starts dirty so the first periodic tick persists the freshly restored
@@ -262,91 +186,55 @@ void _startAutoSave() {
     if (!_persistDirty) return;
     unawaited(_savePersistedDataNow());
   });
-  container.read(tabbedViewControllerProvider.notifier).onUnsavedChange = () {
-    _triggerSave();
-  };
-  container.read(pluginManagerProvider.notifier).setOnChanged(() {
-    _triggerPluginSave();
-  });
-  for (final provider in _persistedSettingsProviders) {
+  container.read(tabbedViewControllerProvider.notifier).onUnsavedChange =
+      _triggerSave;
+  container
+      .read(pluginManagerProvider.notifier)
+      .setOnChanged(_triggerPluginSave);
+  for (final provider in persistedSettingProviders) {
     _settingsSubscriptions.add(
       container.listen<Object?>(provider, (_, _) => _triggerSave()),
     );
   }
+  _watchEditorArea();
+}
+
+/// Saves the session whenever what it records about the editor area changes.
+///
+/// Tabs join and leave groups through their own controllers -- the close
+/// button, a drag, the SDK -- so the layout state alone would miss most of it.
+/// [EditorLayoutNotifier.changes] reports every change in any group, and a
+/// save is only scheduled when the persisted shape actually differs, so a
+/// title refresh or re-selecting the selected tab writes nothing.
+void _watchEditorArea() {
+  var last = persistedEditorAreaKey(container);
+  container.read(editorLayoutProvider.notifier).changes.addListener(() {
+    final next = persistedEditorAreaKey(container);
+    if (next == last) return;
+    last = next;
+    _triggerSave();
+  });
+}
+
+/// Moves console surfaces out of the editor area when the window narrows to
+/// the mobile layout.
+///
+/// Grouping is a desktop and tablet feature: on mobile the terminal lives in
+/// its bottom popup, so a surface dragged into an editor group has to return
+/// to the panel for the popup to show it.
+void _gatherConsoleOnMobileLayout() {
+  final environment = container.read(environmentNotifierProvider);
+  var layoutMode = environment.snapshot.layoutMode;
+  environment.addListener(() {
+    final next = environment.snapshot.layoutMode;
+    if (next == layoutMode) return;
+    layoutMode = next;
+    if (next == LayoutMode.mobile) evacuateConsoleTabsToPanel(container);
+  });
 }
 
 /// Retained so the settings subscriptions outlive [_startAutoSave]'s scope.
 final List<ProviderSubscription<Object?>> _settingsSubscriptions = [];
-
-/// The settings providers whose values reach `settings.json`.
-///
-/// Dirtying a tab was the only thing that used to mark the persisted state
-/// stale, so a value changed on a settings page was written out only if some
-/// file happened to be edited in the same session. Subscribing to the settings
-/// themselves makes a setting change enough on its own. Keep this list in step
-/// with the providers read by `PersistenceManager.saveFromContainer`.
-final List<StateProvider<Object?>> _persistedSettingsProviders = [
-  editorTextFontProvider,
-  editorFontSize,
-  editorWordWrap,
-  editorLineNumber,
-  editorCodeFolding,
-  editorGuideLines,
-  editorLocalSuggestions,
-  editorKeyboardSuggestions,
-  editorUseSpaceAsTab,
-  editorTabSize,
-  editorGutterDivider,
-  editorSmoothCursor,
-  editorMinimap,
-  editorFormatOnSave,
-  useLsp,
-  lspType,
-  lspWebSocketPath,
-  lspStdioExecutable,
-  lspStdioArgs,
-  lspVirtualEnvironment,
-  lspBasedPyrightTypeCheckingMode,
-  disableWarning,
-  disableError,
-  lspSemanticHighlighting,
-  lspCodeCompletion,
-  lspHoverInfo,
-  lspCodeAction,
-  lspSignatureHelp,
-  lspDocumentColor,
-  lspDocumentHighlight,
-  lspCodeFolding,
-  lspShowInlayHints,
-  lspGoToDefinition,
-  lspRename,
-  lspAlwaysStart,
-  chineseToUnicodeConversion,
-  enableSignalDetection,
-  ensureBoardFilesystemOnConnect,
-  serialDefaultBaudRate,
-  serialAutoReconnect,
-  terminalFontFamily,
-  terminalFontSize,
-  terminalLineHeight,
-  terminalLigatures,
-  terminalAppearance,
-  terminalMinimumContrast,
-  terminalCustomForeground,
-  terminalCustomBackground,
-  terminalCustomPalette,
-  useMaterialContextMenu,
-  uploadConfirmStyleProvider,
-  confirmShortcutProvider,
-  cancelShortcutProvider,
-  webReplHost,
-  webReplPort,
-  webReplPassword,
-  microPythonStubsEnabled,
-  microPythonStubsAutoDetectLayers,
-  microPythonStubsLayers,
-  microPythonStubsExtraPaths,
-];
 
 Future<void> _startRuntimeAndPlugins() async {
   final runtimeHost = container.read(pythonRuntimeHostProvider);
@@ -382,19 +270,27 @@ Future<void> _startRuntimeAndPlugins() async {
 
 // PyriteIDE: Hello World.
 void main() async {
-  GitDebugLog.startSession();
-  GitDebugLog.log('main start');
+  final bootCycle = Stopwatch()..start();
+  AppLog.d('lifecycle', 'main start');
   PyriteWidgetsBinding.ensureInitialized();
 
   // Wait for Material Icons font to be fully loaded before first frame.
   // This prevents the "tofu" (question mark box) issue on desktop platforms.
   await Future.delayed(const Duration(milliseconds: 50));
-  VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
-  GitDebugLog.log('WidgetsFlutterBinding initialized');
-  await GitDebugLog.timeAsync(
-    'git2dart PlatformSpecific.initialize',
-    PlatformSpecific.initialize,
-  );
+  try {
+    VideoPlayerMediaKit.ensureInitialized(windows: true, linux: true);
+  } catch (error) {
+    // media_kit loads the bundled libmpv here. On old Windows builds that
+    // loader can fail; video preview is a feature, not a reason to keep the
+    // whole IDE from starting.
+    AppLog.w(
+      'lifecycle',
+      'media_kit initialization failed, video playback is unavailable',
+      error: error,
+    );
+  }
+  AppLog.d('lifecycle', 'WidgetsFlutterBinding initialized');
+  await PlatformSpecific.initialize();
 
   persistenceManager = PersistenceManager();
   final PersistedData data = await persistenceManager.loadAll();
@@ -418,7 +314,25 @@ void main() async {
 
   container = ProviderContainer();
   _installIdeOutputLogger();
-  GitDebugLog.log('ProviderContainer and global error logging installed');
+  AppLog.d('lifecycle', 'ProviderContainer and global error logging installed');
+
+  // One banner per launch: a report that says "it is slow to start" or "the
+  // board reconnected by itself" has nothing to correlate otherwise, and a run
+  // that ends without an error still leaves evidence it happened.
+  AppLog.session('lifecycle', {
+    'os': '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+    'dart': Platform.version.split(' ').first,
+    'mode': kReleaseMode
+        ? 'release'
+        : kProfileMode
+        ? 'profile'
+        : 'debug',
+    'locale': Platform.localeName,
+    'cpus': Platform.numberOfProcessors,
+    'plugins': persistedPlugins?.length ?? 0,
+    'pluginMetadata': pluginMetadataLoaded ? 'ok' : 'failed',
+    'bootMs': bootCycle.elapsedMilliseconds,
+  });
 
   _applyData(data);
 
@@ -443,7 +357,20 @@ void main() async {
   await RustLib.init();
   await PlatformSpecific.initialize();
 
-  if (data.tabs.isNotEmpty) {
+  // The tree is what carries more than one group. Without it the flat list is
+  // the only reliable source: restoring the groups alone would drop every
+  // group past the first, since the tree is what builds their controllers.
+  if (data.tabLayout != null && data.tabGroups.isNotEmpty) {
+    // A session saved with a split editor area: every group comes back, and the
+    // tree puts them where the user left them.
+    await container
+        .read(tabbedViewControllerProvider.notifier)
+        .restoreEditorGroups(
+          data.tabGroups,
+          data.tabLayout,
+          primaryIndex: data.tabPrimaryGroupIndex,
+        );
+  } else if (data.tabs.isNotEmpty) {
     await container
         .read(tabbedViewControllerProvider.notifier)
         .restoreTabs(
@@ -453,10 +380,34 @@ void main() async {
         );
   }
 
+  // The board mirror only ever holds scratch copies of board files. Anything
+  // no restored tab points at was written by an earlier session, and deleting
+  // it here keeps the directory from growing with every download.
+  unawaited(
+    pruneBoardMirrorDirectory(
+      keepRelativePaths: {
+        for (final tab in data.tabs)
+          if (tab.boardFilePath != null &&
+              tab.boardFilePath!.isNotEmpty &&
+              tab.isBoardFile)
+            boardMirrorRelativePath(tab.boardFilePath!),
+      },
+    ).then(
+      (removed) {
+        if (removed > 0) {
+          AppLog.d('board', 'pruned $removed stale board mirror entries');
+        }
+      },
+      onError: (Object error) {
+        AppLog.d('board', 'board mirror prune failed', error: error);
+      },
+    ),
+  );
+
   appWindow.bind(container);
   appWindow.init();
 
-  GitDebugLog.log('runApp start');
+  AppLog.d('lifecycle', 'runApp start');
   runApp(
     UncontrolledProviderScope(
       container: container,
@@ -465,6 +416,7 @@ void main() async {
   );
 
   _startAutoSave();
+  _gatherConsoleOnMobileLayout();
 
   // Let Flutter paint the first frame before native CPython initialization.
   // Startup plugins still wait for the runtime snapshot inside the helper.

@@ -184,9 +184,36 @@ class ViewModel {
     return PatchResult.ok(_revision);
   }
 
+  /// The address the host stores for [node].
+  ///
+  /// Component nodes keep their identity in `props.id`, so older SDK versions
+  /// (and hand-written fixtures) address them there instead of at the top
+  /// level. A wrapped component keeps the wrapper's top-level id.
+  String? _nodeId(Map<String, dynamic> node) {
+    final id = node['id'];
+    if (id is String && id.isNotEmpty) return id;
+    final props = node['props'];
+    if (props is Map) {
+      final propId = props['id'];
+      if (propId is String && propId.isNotEmpty) return propId;
+    }
+    return null;
+  }
+
+  String? _wrappedComponentId(Map<String, dynamic> node) {
+    final component = node['component'];
+    if (component is! Map) return null;
+    final props = component['props'];
+    if (props is! Map) return null;
+    final id = props['id'];
+    return id is String && id.isNotEmpty ? id : null;
+  }
+
   /// Applies one op to [working], returning an error string on failure.
   String? _applyOp(List<Map<String, dynamic>> working, PatchOp op) {
-    int indexOf(String id) => working.indexWhere((n) => n['id'] == id);
+    int indexOf(String id) => working.indexWhere(
+      (n) => _nodeId(n) == id || _wrappedComponentId(n) == id,
+    );
     switch (op.kind) {
       case PatchOpKind.insert:
         if (indexOf(op.id) != -1) return 'insert of existing id ${op.id}';
@@ -205,7 +232,18 @@ class ViewModel {
         final at = indexOf(op.id);
         if (at == -1) return 'update of missing id ${op.id}';
         if (op.data == null) return 'update ${op.id} missing data';
-        working[at] = {...working[at], ...op.data!, 'id': op.id};
+        final data = Map<String, dynamic>.from(op.data!);
+        final oldProps = working[at]['props'];
+        final newProps = data['props'];
+        if (oldProps is Map && newProps is Map) {
+          // Merge props so a partial update cannot drop `id`, `children`, or
+          // event markers that the plugin did not repeat.
+          data['props'] = {...oldProps, ...newProps};
+        }
+        // Keep the address the node already has. Addressing a wrapped
+        // component by its inner props.id must not rename the wrapper.
+        final address = _nodeId(working[at]) ?? op.id;
+        working[at] = {...working[at], ...data, 'id': address};
         return null;
       case PatchOpKind.remove:
         final at = indexOf(op.id);

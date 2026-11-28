@@ -65,9 +65,18 @@ class NativePluginViewRegistry {
 
   final RendererRegistry renderers;
   final Map<String, NativeViewBuilder> _builders = {};
+  bool _buildSucceeded = false;
 
   bool isKnown(String token) => _builders.containsKey(token);
   Iterable<String> get tokens => _builders.keys;
+
+  /// Whether the last [build] actually rendered the plugin's tree.
+  ///
+  /// Error boundaries (unknown renderer, node validation failure, loading)
+  /// and failed component builds inside a renderer leave this false so the
+  /// surface does not prune component state for a build that produced no
+  /// usable tree.
+  bool get buildSucceeded => _buildSucceeded;
 
   void register(String token, NativeViewBuilder builder) {
     _builders[token] = builder;
@@ -76,6 +85,7 @@ class NativePluginViewRegistry {
   /// Builds the view for [token], falling back to an error boundary for an
   /// unknown renderer or model nodes that lack the fields it needs.
   Widget build(BuildContext context, String token, NativeViewContext view) {
+    _buildSucceeded = false;
     final builder = _builders[token];
     if (builder == null) {
       return ComponentErrorBoundary(
@@ -105,7 +115,16 @@ class NativePluginViewRegistry {
         ),
       );
     }
-    return builder(context, view);
+    final result = builder(context, view);
+    // Renderers build through the shared ComponentBuilder. A validation
+    // failure there returns an error boundary instead of throwing, so the
+    // renderer still returns normally. Treat any failed component build as a
+    // failed renderer build; otherwise the surface prunes the last good tree's
+    // keys, controllers, and overrides.
+    _buildSucceeded =
+        view.builder.buildAttempts == 0 ||
+        (view.builder.buildSucceeded && !view.builder.sawBuildFailure);
+    return result;
   }
 
   /// Renderers are expressed as component trees so they inherit the component

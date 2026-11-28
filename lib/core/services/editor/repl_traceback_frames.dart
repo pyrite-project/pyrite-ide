@@ -18,6 +18,14 @@ library;
 /// One jumpable traceback frame.
 typedef TracebackFrame = ({String file, int line});
 
+/// The 0-based editor line that [frame] points at.
+///
+/// Python numbers source lines from 1, while the editor's line and column APIs
+/// count from 0, so the raw [TracebackFrame.line] lands the caret one line
+/// below the frame. Converting here keeps the convention change in one place
+/// rather than at each call site that happens to open the editor.
+int editorLineFor(TracebackFrame frame) => frame.line - 1;
+
 /// Matches one traceback frame line.
 ///
 /// The leading whitespace is required rather than optional: CPython and
@@ -62,23 +70,28 @@ typedef TracebackFrameRange = ({TracebackFrame frame, int start, int end});
 
 /// Same frames as [parseTracebackFrames], with their offsets into [output].
 ///
-/// Re-derives the offsets by locating each parsed frame again rather than
-/// returning them from the scan: the frame is identified by its file name and
-/// line number, which are unique within one traceback, and doing it this way
-/// keeps the two functions from having to agree about a shared record shape.
+/// Scans in one pass rather than searching for each parsed frame by name: the
+/// same traceback repeats whenever the same code fails twice, and a per-frame
+/// `indexOf` would map every repeat back onto the first occurrence — leaving
+/// the later copies unhighlighted and untappable.
 List<TracebackFrameRange> tracebackFrameRanges(String output) {
   final ranges = <TracebackFrameRange>[];
-  for (final frame in parseTracebackFrames(output)) {
-    final needle = '"${frame.file}", line ${frame.line}';
-    final index = output.indexOf(needle);
-    if (index < 0) continue;
-    final end = index + needle.length;
-    // Walk back over the `File ` prefix. Bounded by the line start so a stray
-    // `File ` earlier in a message cannot pull the range across lines.
-    var start = output.lastIndexOf('File ', index);
-    final lineStart = output.lastIndexOf('\n', index);
-    if (start < 0 || (lineStart >= 0 && start < lineStart)) start = index;
-    ranges.add((frame: frame, start: start, end: end));
+  for (final match in _framePattern.allMatches(output)) {
+    final file = match.group(1)!.trim();
+    if (file.isEmpty) continue;
+    // The angle-bracket forms are CPython's spelling for "no source file".
+    if (file.startsWith('<') && file.endsWith('>')) continue;
+    final line = int.tryParse(match.group(2)!);
+    if (line == null || line <= 0) continue;
+
+    // The match starts at the indentation, so walk forward over the `File `
+    // prefix to cover the whole reference as one hit target.
+    var start = match.start;
+    while (start < match.end &&
+        (output[start] == ' ' || output[start] == '\t')) {
+      start++;
+    }
+    ranges.add((frame: (file: file, line: line), start: start, end: match.end));
   }
   return ranges;
 }

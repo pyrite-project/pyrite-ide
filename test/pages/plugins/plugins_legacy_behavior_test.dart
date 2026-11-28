@@ -18,7 +18,7 @@ import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_view_surface.dart';
 import 'package:pyrite_ide/pages/plugins/detail.dart';
-import 'package:pyrite_ide/pages/plugins/main.dart';
+import 'package:pyrite_ide/pages/plugins/plugins_page.dart';
 
 const _plugin = Plugin(
   id: 'minimal-legacy-plugin',

@@ -1,7 +1,8 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/sdk/api/sdk_response.dart';
 import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
 
@@ -67,36 +68,6 @@ class SdkDialog {
     runManager.registerHandler(SdkDialogCommands.openFiles, _handleOpenFiles);
   }
 
-  void _respondOk(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond, {
-    dynamic data,
-  }) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.ok',
-      'payload': {'data': data},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  void _respondError(
-    Map<String, dynamic> envelope,
-    void Function(Map<String, dynamic>) respond,
-    String message,
-  ) {
-    respond({
-      'version': '0.0',
-      'id': '',
-      'type': 'sdk.response.error',
-      'payload': {'message': message},
-      'reply_to': envelope['id'],
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
   // ── File selection ──
 
   Future<void> _handleOpenFolder(
@@ -116,9 +87,9 @@ class SdkDialog {
       final selectedPath = await ref
           .read(sdkDialogFilePickerProvider)
           .pickFolder(title: title, initialDirectory: initialDirectory);
-      _respondOk(envelope, respond, data: selectedPath);
+      respondOk(envelope, respond, data: selectedPath);
     } catch (error) {
-      _respondError(envelope, respond, 'Cannot open file picker: $error');
+      respondError(envelope, respond, 'Cannot open file picker: $error');
     }
   }
 
@@ -144,9 +115,9 @@ class SdkDialog {
             allowMultiple: false,
           );
       final selectedPath = selectedFiles?.whereType<String>().firstOrNull;
-      _respondOk(envelope, respond, data: selectedPath);
+      respondOk(envelope, respond, data: selectedPath);
     } catch (error) {
-      _respondError(envelope, respond, 'Cannot open file picker: $error');
+      respondError(envelope, respond, 'Cannot open file picker: $error');
     }
   }
 
@@ -172,9 +143,9 @@ class SdkDialog {
             allowMultiple: true,
           );
       final selectedPaths = selectedFiles?.whereType<String>().toList();
-      _respondOk(envelope, respond, data: selectedPaths);
+      respondOk(envelope, respond, data: selectedPaths);
     } catch (error) {
-      _respondError(envelope, respond, 'Cannot open file picker: $error');
+      respondError(envelope, respond, 'Cannot open file picker: $error');
     }
   }
 

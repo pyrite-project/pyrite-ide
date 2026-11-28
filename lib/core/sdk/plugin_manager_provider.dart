@@ -3,16 +3,16 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
-import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
+import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
+import 'package:pyrite_ide/core/sdk/plugin_package_paths.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager_provider.dart';
 import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
 import 'package:pyrite_ide/core/services/persistence/plugin_persistence.dart';
 
@@ -57,7 +57,11 @@ Future<void> _deleteDirectory(Directory directory) async {
   try {
     if (await directory.exists()) await directory.delete(recursive: true);
   } catch (error) {
-    debugPrint('PluginManager: Failed to clean ${directory.path}: $error');
+    AppLog.w(
+      'plugin',
+      'PluginManager: Failed to clean ${directory.path}',
+      error: error,
+    );
   }
 }
 
@@ -279,8 +283,10 @@ Future<Set<String>> _recoverNewBackups(
       }
     } catch (error) {
       failed.add(pluginId);
-      debugPrint(
-        'PluginManager: Failed to recover replacement $pluginId: $error',
+      AppLog.w(
+        'plugin',
+        'PluginManager: Failed to recover replacement $pluginId',
+        error: error,
       );
     }
   }
@@ -311,9 +317,10 @@ Future<Set<String>> _recoverUnmarkedNewPackages(
       }
     } catch (error) {
       failed.add(pluginId);
-      debugPrint(
-        'PluginManager: Failed to recover unmarked replacement '
-        '$pluginId: $error',
+      AppLog.w(
+        'plugin',
+        'PluginManager: Failed to recover unmarked replacement $pluginId',
+        error: error,
       );
     }
   }
@@ -399,13 +406,19 @@ Future<_ActiveRecoveryResult> _recoverActiveBackups(
     } on PluginManifestException catch (error) {
       failed.add(pluginId);
       manifestErrors[pluginId] = error.code;
-      debugPrint(
+      AppLog.w(
+        'plugin',
         'PluginManager: Failed to recover $pluginId '
-        '[${error.code}]: ${error.message}',
+            '[${error.code}]: ${error.message}',
+        error: error,
       );
     } catch (error) {
       failed.add(pluginId);
-      debugPrint('PluginManager: Failed to recover $pluginId: $error');
+      AppLog.w(
+        'plugin',
+        'PluginManager: Failed to recover $pluginId',
+        error: error,
+      );
     }
   }
   return _ActiveRecoveryResult(failed, manifestErrors);
@@ -764,7 +777,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           blocked.remove(pluginId);
         } catch (error) {
           blocked.add(pluginId);
-          debugPrint('PluginManager: Failed to remove $pluginId: $error');
+          AppLog.w(
+            'plugin',
+            'PluginManager: Failed to remove $pluginId',
+            error: error,
+          );
         }
       }
     }
@@ -798,8 +815,10 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
             state = next;
             await marker.delete();
           } catch (error) {
-            debugPrint(
-              'PluginManager: Failed to finish replacement $pluginId: $error',
+            AppLog.w(
+              'plugin',
+              'PluginManager: Failed to finish replacement $pluginId',
+              error: error,
             );
           }
           continue;
@@ -808,15 +827,20 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         try {
           manifest = PluginTomlParser.parseFromDirectory(replacement);
         } on PluginManifestException catch (error) {
-          debugPrint(
+          AppLog.w(
+            'plugin',
             'PluginManager: Invalid replacement package $pluginId '
-            '[${error.code}]: ${error.message}',
+                '[${error.code}]: ${error.message}',
+            error: error,
           );
           continue;
         }
         final entryPoint = File(path.join(replacement.path, '__main__.py'));
         if (manifest.id != pluginId || !await entryPoint.exists()) {
-          debugPrint('PluginManager: Invalid replacement package $pluginId');
+          AppLog.w(
+            'plugin',
+            'PluginManager: Invalid replacement package $pluginId',
+          );
           continue;
         }
         try {
@@ -828,9 +852,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
                 .whereType<PluginManifestV2>(),
           );
         } on PluginManifestException catch (error) {
-          debugPrint(
+          AppLog.w(
+            'plugin',
             'PluginManager: Conflicting replacement package $pluginId '
-            '[${error.code}]: ${error.message}',
+                '[${error.code}]: ${error.message}',
+            error: error,
           );
           continue;
         }
@@ -863,9 +889,10 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
                     ? rollbackError.code
                     : PluginManifestErrorCode.invalidSchema,
               );
-              debugPrint(
-                'PluginManager: Failed to read active metadata for '
-                '$pluginId: $rollbackError',
+              AppLog.w(
+                'plugin',
+                'PluginManager: Failed to read active metadata for $pluginId',
+                error: rollbackError,
               );
             }
             final rollbackState = {...state, pluginId: rollbackPlugin};
@@ -873,13 +900,18 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
             try {
               await _save(rollbackState.values);
             } catch (rollbackError) {
-              debugPrint(
-                'PluginManager: Failed to restore metadata for '
-                '$pluginId: $rollbackError',
+              AppLog.e(
+                'plugin',
+                'PluginManager: Failed to restore metadata for $pluginId',
+                error: rollbackError,
               );
             }
           }
-          debugPrint('PluginManager: Failed to apply $pluginId: $error');
+          AppLog.e(
+            'plugin',
+            'PluginManager: Failed to apply $pluginId',
+            error: error,
+          );
         }
       }
     }
@@ -990,10 +1022,27 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   }
 
   /// Returns whether an installed plugin was updated.
+  ///
+  /// The whole operation is reported through [pluginInstallProgressProvider]
+  /// so a persistent status indicator can follow it, including failures.
   Future<bool> install(String packagePath) =>
-      _runExclusive(() => _install(packagePath));
+      _runExclusive(() => _installWithProgress(packagePath));
+
+  Future<bool> _installWithProgress(String packagePath) async {
+    final progress = ref.read(pluginInstallProgressProvider.notifier);
+    progress.begin();
+    try {
+      final result = await _install(packagePath);
+      progress.complete();
+      return result;
+    } catch (_) {
+      progress.fail();
+      rethrow;
+    }
+  }
 
   Future<bool> _install(String packagePath) async {
+    final progress = ref.read(pluginInstallProgressProvider.notifier);
     _requireMetadata();
     final root = await _supportDirectory();
     final updatesRoot = await Directory(
@@ -1010,6 +1059,8 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       ),
     );
     final manifest = await _extractPluginPackage(packagePath, staged);
+    progress.setPluginName(manifest.manifest!.name);
+    progress.enter(PluginInstallStage.validate);
     try {
       final normalizedManifest = manifest.manifest!;
       final newRoot = await Directory(
@@ -1087,6 +1138,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           await replacement.exists() ||
           removalPending;
 
+      progress.enter(PluginInstallStage.apply);
       final previousIntendedStatus = _intendedStatuses[manifest.id];
       var showingUpdateInstall = false;
       if (updatePending &&
@@ -1156,6 +1208,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
           _syncHostContributions(next);
           state = next;
 
+          progress.enter(PluginInstallStage.start);
           if (updated.status == PluginStatus.usable) {
             if (updated.type == PluginType.data) {
               await runManager.runOnce(updated);
@@ -1210,6 +1263,7 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
         _syncHostContributions(next);
         state = next;
 
+        progress.enter(PluginInstallStage.start);
         if (installed.type == PluginType.data) {
           await ref.read(pluginRunManagerProvider.notifier).runOnce(installed);
         } else if (installed.autoStart) {
@@ -1286,7 +1340,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
       if (await updateMarker.exists()) await updateMarker.delete();
       await _save(next.values);
     } catch (error) {
-      debugPrint('PluginManager: Uninstall queued for $pluginId: $error');
+      AppLog.w(
+        'plugin',
+        'PluginManager: Uninstall queued for $pluginId',
+        error: error,
+      );
     }
   }
 
@@ -1297,7 +1355,11 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
     try {
       await _save(state.values);
     } catch (error) {
-      debugPrint('PluginManager: Failed to persist plugins: $error');
+      AppLog.e(
+        'plugin',
+        'PluginManager: Failed to persist plugins',
+        error: error,
+      );
     }
   }
 
@@ -1306,7 +1368,104 @@ class PluginManagerNotifier extends StateNotifier<Map<String, Plugin>> {
   }
 }
 
+/// Coarse stages of a plugin package installation. The pipeline has no
+/// byte-level progress source, so each stage fills one equal slice of the
+/// progress bar shown by the status bar.
+enum PluginInstallStage { extract, validate, apply, start }
+
+class PluginInstallProgressState {
+  const PluginInstallProgressState({
+    this.isActive = false,
+    this.pluginName,
+    this.stage,
+    this.failed = false,
+  });
+
+  final bool isActive;
+  final String? pluginName;
+  final PluginInstallStage? stage;
+  final bool failed;
+
+  /// Fraction of the pipeline the installation has reached, for the
+  /// determinate bar; `null` before the first stage is entered.
+  double? get progress {
+    final stage = this.stage;
+    if (stage == null) return null;
+    return (stage.index + 1) / PluginInstallStage.values.length;
+  }
+
+  PluginInstallProgressState copyWith({
+    bool? isActive,
+    String? pluginName,
+    PluginInstallStage? stage,
+    bool? failed,
+  }) {
+    return PluginInstallProgressState(
+      isActive: isActive ?? this.isActive,
+      pluginName: pluginName ?? this.pluginName,
+      stage: stage ?? this.stage,
+      failed: failed ?? this.failed,
+    );
+  }
+}
+
+class PluginInstallProgressNotifier
+    extends StateNotifier<PluginInstallProgressState> {
+  PluginInstallProgressNotifier() : super(const PluginInstallProgressState());
+
+  Timer? _clearTimer;
+
+  /// Marks an installation as running; the pipeline starts at extraction.
+  void begin() {
+    _clearTimer?.cancel();
+    state = const PluginInstallProgressState(
+      isActive: true,
+      stage: PluginInstallStage.extract,
+    );
+  }
+
+  void setPluginName(String name) {
+    if (!state.isActive) return;
+    state = state.copyWith(pluginName: name);
+  }
+
+  void enter(PluginInstallStage stage) {
+    if (!state.isActive) return;
+    state = state.copyWith(stage: stage);
+  }
+
+  void complete() {
+    state = state.copyWith(failed: false);
+    _scheduleClear();
+  }
+
+  void fail() {
+    state = state.copyWith(failed: true);
+    _scheduleClear(delay: const Duration(seconds: 5));
+  }
+
+  void clear() {
+    _clearTimer?.cancel();
+    state = const PluginInstallProgressState();
+  }
+
+  void _scheduleClear({Duration delay = const Duration(seconds: 2)}) {
+    _clearTimer?.cancel();
+    _clearTimer = Timer(delay, clear);
+  }
+
+  @override
+  void dispose() {
+    _clearTimer?.cancel();
+    super.dispose();
+  }
+}
+
+final pluginInstallProgressProvider =
+    StateNotifierProvider<
+      PluginInstallProgressNotifier,
+      PluginInstallProgressState
+    >((ref) => PluginInstallProgressNotifier());
+
 final StateNotifierProvider<PluginManagerNotifier, Map<String, Plugin>>
-pluginManagerProvider = StateNotifierProvider(
-  (ref) => PluginManagerNotifier(ref),
-);
+pluginManagerProvider = StateNotifierProvider(PluginManagerNotifier.new);

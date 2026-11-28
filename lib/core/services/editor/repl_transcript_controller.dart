@@ -5,12 +5,37 @@ import 'package:flutter/foundation.dart';
 /// The device protocol is handled before this layer. This buffer only turns
 /// terminal-like text controls into a stable document that Flutter can lay out
 /// and select without a second terminal grid.
+///
+/// The buffer keeps at most [maxLines] lines. A program that prints in a loop
+/// would otherwise grow this list — and the `text` built from it — without
+/// bound for as long as it runs, turning a long `while True: print(...)`
+/// session into a memory leak the user never asked for. Dropping the oldest
+/// lines is what a terminal does with its scrollback: the visible tail stays
+/// correct and the head is expendable.
 class ReplTranscriptController extends ChangeNotifier {
+  ReplTranscriptController({this.maxLines = defaultMaxLines})
+    : assert(maxLines > 0);
+
+  /// Lines retained in the transcript before the oldest are dropped.
+  ///
+  /// 5000 lines is far more than a user scrolls through by hand and small
+  /// enough that the joined string stays cheap to build.
+  static const int defaultMaxLines = 5000;
+
+  final int maxLines;
+
   final List<String> _lines = <String>[''];
   int _ansiState = 0;
   bool _pendingCarriageReturn = false;
   String? _carriageReturnOriginalLine;
   bool _changed = false;
+  int _droppedLines = 0;
+
+  /// How many lines were dropped from the head since the last [clear].
+  ///
+  /// Callers that map a transcript offset back onto device output — the
+  /// traceback link taps do this — need to know the document shifted.
+  int get droppedLines => _droppedLines;
 
   String get text => _lines.join('\n');
 
@@ -23,6 +48,7 @@ class ReplTranscriptController extends ChangeNotifier {
     for (final rune in data.runes) {
       _appendRune(rune);
     }
+    _trimToLimit();
     if (_changed) {
       _changed = false;
       notifyListeners();
@@ -36,7 +62,20 @@ class ReplTranscriptController extends ChangeNotifier {
     _ansiState = 0;
     _pendingCarriageReturn = false;
     _carriageReturnOriginalLine = null;
+    _droppedLines = 0;
     notifyListeners();
+  }
+
+  /// Drops the oldest lines once the buffer is over [maxLines].
+  ///
+  /// At least one line is kept: the last entry is the live line being typed,
+  /// and removing it would make the next append write to a line that no
+  /// longer exists.
+  void _trimToLimit() {
+    final excess = _lines.length - maxLines;
+    if (excess <= 0) return;
+    _lines.removeRange(0, excess);
+    _droppedLines += excess;
   }
 
   void _appendRune(int rune) {

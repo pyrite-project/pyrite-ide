@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
@@ -13,9 +14,9 @@ const Map<String, String> editorTextFonts = {
   "custom": "custom",
 };
 
-String getFontDisplayName(String name) {
+String getFontDisplayName(String name, {I18nTranslate? translate}) {
   if (name == "custom") {
-    return I18nKey.settingsFontCustom.fallback;
+    return (translate ?? fallbackTranslate)(I18nKey.settingsFontCustom);
   }
   return name;
 }
@@ -27,7 +28,7 @@ final StateProvider<String> editorTextFontProvider = StateProvider<String>(
 final ByteData _null = ByteData(0);
 
 Future<ByteData> loadFontData() async {
-  File? file = await local.sysGetFile();
+  final File? file = await local.sysGetFile();
   if (file != null) {
     final bytes = await file.readAsBytes();
     return ByteData.sublistView(bytes);
@@ -37,8 +38,8 @@ Future<ByteData> loadFontData() async {
 }
 
 void customizationEditorTextFont() async {
-  Future<ByteData> data = loadFontData();
-  ByteData data0 = await data;
+  final Future<ByteData> data = loadFontData();
+  final ByteData data0 = await data;
 
   if (data0 != _null) {
     final FontLoader font = FontLoader("custom");
@@ -49,8 +50,8 @@ void customizationEditorTextFont() async {
 }
 
 void customizationTerminalTextFont() async {
-  Future<ByteData> data = loadFontData();
-  ByteData data0 = await data;
+  final Future<ByteData> data = loadFontData();
+  final ByteData data0 = await data;
 
   if (data0 != _null) {
     final FontLoader font = FontLoader("custom");
@@ -87,13 +88,29 @@ StateProvider<String> lspWebSocketPath = StateProvider<String>(
 );
 StateProvider<String> lspStdioExecutable = StateProvider<String>((ref) => "");
 StateProvider<String> lspStdioArgs = StateProvider<String>((ref) => "");
+
+/// Plugin-provided language server the IDE should run, or null for the
+/// manual setup.
+///
+/// The value is a server id contributed over the data API (unique across
+/// plugins); the owning plugin turns it into a launch command and keeps the
+/// server's configuration profile.
+StateProvider<String?> lspPluginServerId = StateProvider<String?>(
+  (ref) => null,
+);
+
+/// Snapshot of the manual launch settings, taken when the user hands the slot
+/// to a plugin-provided server and restored when they take it back.
+///
+/// The IDE owns this so plugins never have to remember and restore the user's
+/// own configuration: a plugin that starts only writes the launch it needs.
+final lspManualLaunch = StateProvider<String?>((ref) => null);
+
 StateProvider<String> lspVirtualEnvironment = StateProvider<String>(
   (ref) => "",
 );
-StateProvider<BasedPyrightTypeCheckingMode> lspBasedPyrightTypeCheckingMode =
-    StateProvider<BasedPyrightTypeCheckingMode>(
-      (ref) => BasedPyrightTypeCheckingMode.standard,
-    );
+StateProvider<LspTypeCheckingMode> lspTypeCheckingMode =
+    StateProvider<LspTypeCheckingMode>((ref) => LspTypeCheckingMode.standard);
 StateProvider<bool> disableWarning = StateProvider<bool>((ref) => false);
 StateProvider<bool> disableError = StateProvider<bool>((ref) => false);
 StateProvider<bool> lspSemanticHighlighting = StateProvider<bool>(
@@ -138,8 +155,27 @@ StateProvider<bool> chineseToUnicodeConversion = StateProvider<bool>(
   (ref) => true,
 );
 
+/// Ordering of sibling entries in both file trees.
+///
+/// One setting for the local workspace and the board: the two panes sit side
+/// by side, and having them disagree about where a file is would defeat the
+/// point of the mirrored view.
+StateProvider<FileSortMode> fileSortModeProvider = StateProvider<FileSortMode>(
+  (ref) => FileSortMode.byName,
+);
+
 StateProvider<bool> enableSignalDetection = StateProvider<bool>((ref) => true);
 StateProvider<bool> ensureBoardFilesystemOnConnect = StateProvider<bool>(
+  (ref) => false,
+);
+
+/// Run a device file from its own directory.
+///
+/// When on, a run first switches the device's working directory to the
+/// directory holding the file being run, so the script's relative imports and
+/// data paths resolve without the script knowing where the IDE launches it
+/// from. Off keeps the firmware default (the device root after a soft reset).
+StateProvider<bool> deviceRunChdirToScriptDir = StateProvider<bool>(
   (ref) => false,
 );
 StateProvider<int> serialDefaultBaudRate = StateProvider<int>((ref) => 115200);
@@ -153,6 +189,7 @@ StateProvider<bool> terminalLigatures = StateProvider<bool>((ref) => true);
 
 StateProvider<TerminalAppearance> terminalAppearance =
     StateProvider<TerminalAppearance>((ref) => TerminalAppearance.dark);
+
 StateProvider<bool> terminalMinimumContrast = StateProvider<bool>(
   (ref) => false,
 );
@@ -166,25 +203,12 @@ StateProvider<List<int>> terminalCustomPalette = StateProvider<List<int>>(
   (ref) => kDefaultTerminalCustomPalette,
 );
 
-StateProvider<bool> useMaterialContextMenu = StateProvider<bool>(
-  (ref) => false,
-);
+StateProvider<bool> useMaterialContextMenu = StateProvider<bool>((ref) => true);
 
 const Map<String, String> uploadConfirmStyles = {
   "toolbar": "toolbar",
   "dialog": "dialog",
 };
-
-String getUploadConfirmStyleDisplayName(String key) {
-  switch (key) {
-    case "toolbar":
-      return I18nKey.settingsUploadConfirmToolbar.fallback;
-    case "dialog":
-      return I18nKey.settingsUploadConfirmDialog.fallback;
-    default:
-      return key;
-  }
-}
 
 StateProvider<String> uploadConfirmStyleProvider = StateProvider<String>(
   (ref) => "toolbar",

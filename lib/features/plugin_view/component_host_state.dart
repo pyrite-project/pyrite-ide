@@ -25,6 +25,38 @@ class ComponentHostState implements ComponentMethodHostEntry {
   final Map<String, FocusNode> _focus = {};
   final Map<String, Timer> _debounces = {};
   final Map<String, Object?> _localValues = {};
+
+  /// The plugin prop that mirrors each editable component's value.
+  ///
+  /// Radio variants drive the selection through `groupValue`; the other input
+  /// components use `value`.
+  final Map<String, String> _localValueKeys = {};
+
+  /// The plugin value each editable component reported in the last build.
+  ///
+  /// It becomes the baseline for the next local edit, so a snapshot that still
+  /// carries this value is known to predate the edit.
+  final Map<String, Object?> _pluginValues = {};
+
+  /// The plugin value that was current when each local edit started.
+  final Map<String, Object?> _editBases = {};
+
+  /// Recently emitted values per component, oldest first.
+  ///
+  /// An echo of any earlier emitted value can arrive after the user typed
+  /// further; treating only the most recent one as an echo would let a delayed
+  /// snapshot discard the newer local input. Bounded so a long editing session
+  /// cannot grow the list without limit.
+  final Map<String, List<Object?>> _emittedHistory = {};
+  static const int _emittedHistoryLimit = 16;
+
+  /// Monotonic edit counter per component.
+  ///
+  /// A debounce timer captures the generation it was scheduled for; if a
+  /// plugin snapshot clears the local value in the meantime, the stale
+  /// keystroke must not be pushed to the plugin.
+  final Map<String, int> _editGenerations = {};
+
   final Map<String, TreeIndex> _trees = {};
   final Map<String, String> _componentTypes = {};
   final Map<String, Map<String, dynamic>> _componentProps = {};
@@ -50,6 +82,12 @@ class ComponentHostState implements ComponentMethodHostEntry {
       _componentKeys.remove(id);
       _stateKeys.remove(id);
       _stateKeyTypes.remove(id);
+      _localValueKeys.remove(id);
+      // A local value can outlive its component so a draft survives a tree
+      // rebuild; its edit baseline keeps protecting it, so only the last
+      // observed plugin value is dropped here.
+      _pluginValues.remove(id);
+      _emittedHistory.remove(id);
       final controller = _controllers.remove(id);
       if (controller is ChangeNotifier) controller.dispose();
     }
@@ -58,8 +96,38 @@ class ComponentHostState implements ComponentMethodHostEntry {
   Map<String, dynamic> effectiveProps(Map<String, dynamic> props) {
     final id = props['id']?.toString();
     if (id == null || id.isEmpty) return props;
+    _reconcileLocalValue(id, props);
     final overrides = _propOverrides[id];
     return overrides == null ? props : {...props, ...overrides};
+  }
+
+  /// Lets a plugin snapshot take an edited value back from the host.
+  ///
+  /// [displayValue] keeps returning the local value while the user edits. The
+  /// plugin regains control when its snapshot carries the local value itself
+  /// (it caught up), when it renders a value other than the one it had when
+  /// the edit started (a reset or a different record), or when the component
+  /// disappears. A snapshot that still carries the value from before the edit
+  /// is stale, so the local value wins and frequent snapshots cannot interrupt
+  /// the user. The same applies to the echo of an earlier, already emitted
+  /// value when the user has typed past it.
+  void _reconcileLocalValue(String id, Map<String, dynamic> props) {
+    final key = _localValueKeys[id];
+    if (key == null || !_localValues.containsKey(id)) return;
+    final pluginValue = props[key];
+    if (pluginValue == _localValues[id]) {
+      // Both sides agree, so dropping the override does not move the control.
+      acknowledge(id, pluginValue);
+      return;
+    }
+    final emitted = _emittedHistory[id];
+    if (emitted != null && emitted.contains(pluginValue)) {
+      return;
+    }
+    if (_editBases.containsKey(id) && pluginValue == _editBases[id]) {
+      return;
+    }
+    _clearLocalValue(id);
   }
 
   GlobalKey componentKey(String id) =>
@@ -86,8 +154,26 @@ class ComponentHostState implements ComponentMethodHostEntry {
     _seenComponents.add(id);
     _componentTypes[id] = type;
     _componentProps[id] = props;
+    final valueKey = _localValueKey(type);
+    if (valueKey != null) {
+      _localValueKeys[id] = valueKey;
+      _pluginValues[id] = props[valueKey];
+    }
     if (handler != null) _methodHandlers[id] = handler;
   }
+
+  /// The prop that carries a component's host-editable value, if it has one.
+  static String? _localValueKey(String type) => switch (type) {
+    'TextField' ||
+    'NumberField' ||
+    'Select' ||
+    'Checkbox' ||
+    'Switch' ||
+    'Slider' => 'value',
+    // Radio variants expose the selection, but the host does not keep a local
+    // value for them; the plugin always renders the selected group value.
+    _ => null,
+  };
 
   void setOverride(String id, String name, Object? value) {
     (_propOverrides[id] ??= {})[name] = value;
@@ -177,26 +263,65 @@ class ComponentHostState implements ComponentMethodHostEntry {
   bool hasFocus(String id) => _focus[id]?.hasFocus ?? false;
 
   void recordEdit(String id, Object? value, void Function(Object? value) emit) {
-    _localValues[id] = value;
+    _recordLocalValue(id, value);
+    final generation = _editGenerations[id];
     _debounces[id]?.cancel();
     _debounces[id] = Timer(debounce, () {
       _debounces.remove(id);
+      // The plugin may have taken the value back while the timer was waiting.
+      // Emitting then would push a keystroke the host already discarded.
+      if (_editGenerations[id] != generation) return;
+      if (_localValues.containsKey(id)) _rememberEmitted(id, value);
       emit(value);
     });
   }
 
   void flush(String id, Object? value, void Function(Object? value) emit) {
     _debounces.remove(id)?.cancel();
-    _localValues[id] = value;
+    _recordLocalValue(id, value);
+    _rememberEmitted(id, value);
     emit(value);
+  }
+
+  /// Adds [value] to the component's bounded echo history.
+  void _rememberEmitted(String id, Object? value) {
+    final history = _emittedHistory.putIfAbsent(id, () => <Object?>[]);
+    if (history.isNotEmpty && history.last == value) return;
+    history.add(value);
+    if (history.length > _emittedHistoryLimit) history.removeAt(0);
+  }
+
+  /// Records [value] as the host-local value for [id].
+  ///
+  /// The plugin value from the last build is captured as the edit's baseline;
+  /// [_reconcileLocalValue] compares later snapshots against it. The first
+  /// value of an ongoing edit keeps its baseline.
+  void _recordLocalValue(String id, Object? value) {
+    _localValues[id] = value;
+    _editBases.putIfAbsent(id, () => _pluginValues[id]);
+    _editGenerations[id] = (_editGenerations[id] ?? 0) + 1;
+  }
+
+  void _clearLocalValue(String id) {
+    _localValues.remove(id);
+    _editBases.remove(id);
+    // The echo history survives: a delayed snapshot of a value this control
+    // emitted earlier is still an echo, not a new plugin value.
+    // Bump the generation instead of removing it: a timer scheduled before
+    // the clear still holds the old number and will now skip its emit.
+    _editGenerations[id] = (_editGenerations[id] ?? 0) + 1;
   }
 
   Object? displayValue(String id, Object? pluginValue) =>
       _localValues.containsKey(id) ? _localValues[id] : pluginValue;
 
+  /// Drops a host-local value once a plugin snapshot reports the same value.
+  ///
+  /// The control keeps showing that value because both sides agree; dropping
+  /// the override only means the next plugin snapshot can replace it.
   void acknowledge(String id, Object? pluginValue) {
     if (_localValues.containsKey(id) && _localValues[id] == pluginValue) {
-      _localValues.remove(id);
+      _clearLocalValue(id);
     }
   }
 
@@ -269,11 +394,11 @@ class ComponentHostState implements ComponentMethodHostEntry {
           text: text,
           selection: TextSelection.collapsed(offset: text.length),
         );
-        _localValues[id] = text;
+        _recordLocalValue(id, text);
         return true;
       case 'clear':
         controller.clear();
-        _localValues[id] = '';
+        _recordLocalValue(id, '');
         return true;
       case 'select_all':
         controller.selection = TextSelection(
@@ -308,7 +433,7 @@ class ComponentHostState implements ComponentMethodHostEntry {
             offset: start + replacement.length,
           ),
         );
-        _localValues[id] = text;
+        _recordLocalValue(id, text);
         return true;
       case 'request_focus':
         focusNode(id).requestFocus();
@@ -343,7 +468,7 @@ class ComponentHostState implements ComponentMethodHostEntry {
         );
       }
       controller.text = value.toString();
-      _localValues[id] = value;
+      _recordLocalValue(id, value);
       return true;
     }
     if (method == 'increment' || method == 'decrement') {
@@ -355,7 +480,7 @@ class ComponentHostState implements ComponentMethodHostEntry {
       if (min != null && value < min) value = min;
       if (max != null && value > max) value = max;
       controller.text = value.toString();
-      _localValues[id] = value;
+      _recordLocalValue(id, value);
       return value;
     }
     return _invokeText(controller, id, method, arguments);
@@ -420,6 +545,11 @@ class ComponentHostState implements ComponentMethodHostEntry {
     _text.clear();
     _focus.clear();
     _localValues.clear();
+    _localValueKeys.clear();
+    _pluginValues.clear();
+    _editBases.clear();
+    _emittedHistory.clear();
+    _editGenerations.clear();
     _trees.clear();
     _componentTypes.clear();
     _componentProps.clear();

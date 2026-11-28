@@ -1,10 +1,10 @@
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
-import 'package:path/path.dart' as path;
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
 
@@ -27,9 +27,15 @@ class ProblemsView extends ConsumerWidget {
       context,
     ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant);
 
-    // Errors first, then warnings; within one file, document order.
-    final files = problems.toList()..sort((a, b) => a.path.compareTo(b.path));
-    if (files.every((file) => file.diagnostics.isEmpty)) {
+    // Errors first, then warnings; within one file, document order. The panel
+    // only ever draws the severities [_isListedDiagnostic] admits, so a file
+    // whose diagnostics are all info or hints contributes no rows -- and must
+    // not keep the empty state away either. One predicate decides both.
+    final files = [
+      for (final file in problems)
+        if (file.diagnostics.any(_isListedDiagnostic)) file,
+    ]..sort((a, b) => a.path.compareTo(b.path));
+    if (files.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -49,9 +55,8 @@ class ProblemsView extends ConsumerWidget {
     for (final file in files) {
       final relevant = [
         for (final diagnostic in file.diagnostics)
-          if (diagnostic.severity == 1 || diagnostic.severity == 2) diagnostic,
+          if (_isListedDiagnostic(diagnostic)) diagnostic,
       ];
-      if (relevant.isEmpty) continue;
       final displayPath = file.path.replaceAll('\\', '/');
       final name = path.basename(displayPath);
       final directory = path.dirname(displayPath);
@@ -88,7 +93,7 @@ class ProblemsView extends ConsumerWidget {
             : null;
         children.add(
           _ProblemTile(
-            message: diagnostic.message,
+            message: _firstNonEmptyLine(diagnostic.message),
             icon: isError ? Icons.error_outline : Icons.warning_amber_rounded,
             iconColor: isError ? colors.error : colors.warning,
             location: line == null
@@ -115,7 +120,25 @@ class ProblemsView extends ConsumerWidget {
     if (start is! Map) return 0;
     return (start['line'] as num?)?.toInt() ?? 0;
   }
+
+  /// An LSP message can span multiple lines; the panel shows one row per
+  /// diagnostic, so the row displays the message's first non-empty line.
+  static String _firstNonEmptyLine(String message) {
+    for (final line in message.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
 }
+
+/// Whether the panel shows [diagnostic].
+///
+/// Rows share the status bar's severity filter: errors and warnings, with the
+/// remaining severities left to the editor's own squiggles. The empty state
+/// reads the same predicate, so "no rows" and "empty panel" can never disagree.
+bool _isListedDiagnostic(LspErrors diagnostic) =>
+    diagnostic.severity == 1 || diagnostic.severity == 2;
 
 class _ProblemFileHeader extends StatelessWidget {
   const _ProblemFileHeader({

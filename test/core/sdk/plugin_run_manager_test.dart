@@ -116,6 +116,24 @@ void _configureHandshake(_FakePluginTransport transport) {
   };
 }
 
+Future<Map<String, dynamic>> _responseFor(
+  _FakePluginTransport transport,
+  String requestId,
+) async {
+  for (var attempt = 0; attempt < 400; attempt++) {
+    for (final message in transport.sent) {
+      final envelope = jsonDecode(utf8.decode(message)) as Map<String, dynamic>;
+      if (envelope['replyTo'] == requestId &&
+          (envelope['type'] == SdkCommands.responseOk ||
+              envelope['type'] == SdkCommands.responseError)) {
+        return envelope;
+      }
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  throw TimeoutException('No response for $requestId');
+}
+
 void main() {
   test('fake transport exchanges handshake messages and closes once', () async {
     final transport = _FakePluginTransport();
@@ -339,6 +357,89 @@ void main() {
         ),
         isTrue,
       );
+    } finally {
+      await manager.stop();
+    }
+  });
+
+  test('synchronous handler failure answers with a response error', () async {
+    final transport = _FakePluginTransport();
+    _configureHandshake(transport);
+    final manager = PluginRunManager(
+      transport: transport,
+      assetsPath: '.',
+      pluginId: 'sync-failure-plugin',
+    );
+    manager.registerHandler(
+      'sdk.fixture.sync-failure',
+      (envelope, respond) => throw StateError('synchronous boom'),
+      publiclyAccessible: true,
+    );
+
+    try {
+      await manager.connect();
+      transport.emit(
+        makeEnvelope(
+          type: 'sdk.fixture.sync-failure',
+          requestId: 'sync-failure-request',
+          pluginId: manager.pluginId,
+          sessionId: manager.sessionId,
+          generation: manager.generation,
+          sequence: 3,
+        ),
+      );
+
+      final response = await _responseFor(transport, 'sync-failure-request');
+      expect(response['type'], SdkCommands.responseError);
+      expect(response['replyTo'], 'sync-failure-request');
+      expect(response['payload']['message'], contains('synchronous boom'));
+      await pumpEventQueue();
+    } finally {
+      await manager.stop();
+    }
+  });
+
+  test('asynchronous handler failure answers with a response error', () async {
+    final transport = _FakePluginTransport();
+    _configureHandshake(transport);
+    final manager = PluginRunManager(
+      transport: transport,
+      assetsPath: '.',
+      pluginId: 'async-failure-plugin',
+    );
+
+    Future<void> failingHandler(
+      Map<String, dynamic> envelope,
+      void Function(Map<String, dynamic>) respond,
+    ) async {
+      await Future<void>.delayed(Duration.zero);
+      throw StateError('asynchronous boom');
+    }
+
+    manager.registerHandler(
+      'sdk.fixture.async-failure',
+      failingHandler,
+      publiclyAccessible: true,
+    );
+
+    try {
+      await manager.connect();
+      transport.emit(
+        makeEnvelope(
+          type: 'sdk.fixture.async-failure',
+          requestId: 'async-failure-request',
+          pluginId: manager.pluginId,
+          sessionId: manager.sessionId,
+          generation: manager.generation,
+          sequence: 3,
+        ),
+      );
+
+      final response = await _responseFor(transport, 'async-failure-request');
+      expect(response['type'], SdkCommands.responseError);
+      expect(response['replyTo'], 'async-failure-request');
+      expect(response['payload']['message'], contains('asynchronous boom'));
+      await pumpEventQueue();
     } finally {
       await manager.stop();
     }

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
 
 void main() {
@@ -15,7 +14,7 @@ void main() {
       expect(entry, isNotNull);
       expect(entry!.line, 3);
       expect(entry.character, 7);
-      expect(entry.path, canonicalLocalPath(r'w:\work\main.py'));
+      expect(entry.path, _localPath('/w:/work/main.py', r'W:\work\main.py'));
     });
 
     test('reads an implementation-style location map', () {
@@ -26,7 +25,7 @@ void main() {
         },
       });
       expect(entry, isNotNull);
-      expect(entry!.path, canonicalLocalPath(r'w:\work\impl.py'));
+      expect(entry!.path, _localPath('/w:/work/impl.py', r'W:\work\impl.py'));
     });
 
     test('canonicalizes the drive letter of a lowercase-drive URI', () {
@@ -56,3 +55,8 @@ void main() {
     });
   });
 }
+
+/// The path a `file:///w:/...` URI resolves to on this platform: a drive path
+/// on Windows, a plain absolute path everywhere else.
+String _localPath(String posix, String windows) =>
+    path.Style.platform == path.Style.windows ? windows : posix;

@@ -25,8 +25,15 @@ class SettingsPersistedData {
   final String lspWebSocketPath;
   final String lspStdioExecutable;
   final String lspStdioArgs;
+
+  /// Plugin-provided language server in use, or null for the manual setup.
+  final String? lspPluginServerId;
+
+  /// JSON snapshot of the manual launch settings, kept while a plugin server
+  /// owns the slot so handing it back restores the user's own configuration.
+  final String? lspManualLaunch;
   final String lspVirtualEnvironment;
-  final String lspBasedPyrightTypeCheckingMode;
+  final String lspTypeCheckingMode;
   final bool disableWarning;
   final bool disableError;
   final bool lspSemanticHighlighting;
@@ -44,8 +51,16 @@ class SettingsPersistedData {
   final bool chineseToUnicodeConversion;
   final bool enableSignalDetection;
   final bool ensureBoardFilesystemOnConnect;
+  final bool deviceRunChdirToScriptDir;
   final int serialDefaultBaudRate;
   final bool serialAutoReconnect;
+
+  /// Port the IDE was talking to when it last closed.
+  ///
+  /// Persisted so a user with several boards does not have to pick the same
+  /// port again on every launch. Empty means "no previous device", which is
+  /// the state a fresh install starts in.
+  final String serialActivePortPath;
   final String terminalFontFamily;
   final double terminalFontSize;
   final double terminalLineHeight;
@@ -57,6 +72,9 @@ class SettingsPersistedData {
   final List<int> terminalCustomPalette;
   final bool useMaterialContextMenu;
   final String uploadConfirmStyle;
+
+  /// Ordering of both file trees: `name` or `type`.
+  final String fileSortMode;
   final String confirmShortcut;
   final String cancelShortcut;
   final String webReplHost;
@@ -90,8 +108,10 @@ class SettingsPersistedData {
     required this.lspWebSocketPath,
     this.lspStdioExecutable = '',
     this.lspStdioArgs = '',
+    this.lspPluginServerId,
+    this.lspManualLaunch,
     this.lspVirtualEnvironment = '',
-    this.lspBasedPyrightTypeCheckingMode = 'standard',
+    this.lspTypeCheckingMode = 'standard',
     required this.disableWarning,
     required this.disableError,
     this.lspSemanticHighlighting = true,
@@ -109,8 +129,10 @@ class SettingsPersistedData {
     this.chineseToUnicodeConversion = true,
     this.enableSignalDetection = true,
     this.ensureBoardFilesystemOnConnect = false,
+    this.deviceRunChdirToScriptDir = false,
     this.serialDefaultBaudRate = 115200,
     this.serialAutoReconnect = false,
+    this.serialActivePortPath = '',
     this.terminalFontFamily = 'JetBrains Maple Mono',
     this.terminalFontSize = 13,
     this.terminalLineHeight = 1.2,
@@ -120,8 +142,9 @@ class SettingsPersistedData {
     this.terminalCustomForeground = kDefaultTerminalCustomForeground,
     this.terminalCustomBackground = kDefaultTerminalCustomBackground,
     this.terminalCustomPalette = kDefaultTerminalCustomPalette,
-    this.useMaterialContextMenu = false,
+    this.useMaterialContextMenu = true,
     this.uploadConfirmStyle = 'toolbar',
+    this.fileSortMode = 'name',
     this.confirmShortcut = 'Ctrl+Enter',
     this.cancelShortcut = 'Esc',
     this.webReplHost = '',
@@ -156,8 +179,10 @@ class SettingsPersistedData {
     'lspWebSocketPath': lspWebSocketPath,
     'lspStdioExecutable': lspStdioExecutable,
     'lspStdioArgs': lspStdioArgs,
+    'lspPluginServerId': lspPluginServerId,
+    'lspManualLaunch': lspManualLaunch,
     'lspVirtualEnvironment': lspVirtualEnvironment,
-    'lspBasedPyrightTypeCheckingMode': lspBasedPyrightTypeCheckingMode,
+    'lspTypeCheckingMode': lspTypeCheckingMode,
     'disableWarning': disableWarning,
     'disableError': disableError,
     'lspSemanticHighlighting': lspSemanticHighlighting,
@@ -175,8 +200,10 @@ class SettingsPersistedData {
     'chineseToUnicodeConversion': chineseToUnicodeConversion,
     'enableSignalDetection': enableSignalDetection,
     'ensureBoardFilesystemOnConnect': ensureBoardFilesystemOnConnect,
+    'deviceRunChdirToScriptDir': deviceRunChdirToScriptDir,
     'serialDefaultBaudRate': serialDefaultBaudRate,
     'serialAutoReconnect': serialAutoReconnect,
+    'serialActivePortPath': serialActivePortPath,
     'terminalFontFamily': terminalFontFamily,
     'terminalFontSize': terminalFontSize,
     'terminalLineHeight': terminalLineHeight,
@@ -188,6 +215,7 @@ class SettingsPersistedData {
     'terminalCustomPalette': terminalCustomPalette,
     'useMaterialContextMenu': useMaterialContextMenu,
     'uploadConfirmStyle': uploadConfirmStyle,
+    'fileSortMode': fileSortMode,
     'confirmShortcut': confirmShortcut,
     'cancelShortcut': cancelShortcut,
     'webReplHost': webReplHost,
@@ -227,13 +255,20 @@ class SettingsPersistedData {
     lspWebSocketPath: json['lspWebSocketPath'] as String? ?? '127.0.0.1:2026',
     lspStdioExecutable: json['lspStdioExecutable'] as String? ?? '',
     lspStdioArgs: json['lspStdioArgs'] as String? ?? '',
+    lspPluginServerId: json['lspPluginServerId'] as String?,
+    lspManualLaunch: json['lspManualLaunch'] as String?,
     lspVirtualEnvironment:
         json['lspVirtualEnvironment'] as String? ??
         _legacyInterpreterVirtualEnvironment(
           json['lspPythonInterpreter'] as String? ?? '',
         ),
-    lspBasedPyrightTypeCheckingMode:
-        json['lspBasedPyrightTypeCheckingMode'] as String? ?? 'standard',
+    // The setting was published as a BasedPyright-specific one before language
+    // servers moved to plugins; keep reading the old key so an upgrade does not
+    // silently reset the level the user picked.
+    lspTypeCheckingMode:
+        json['lspTypeCheckingMode'] as String? ??
+        json['lspBasedPyrightTypeCheckingMode'] as String? ??
+        'standard',
     disableWarning: json['disableWarning'] as bool? ?? false,
     disableError: json['disableError'] as bool? ?? false,
     lspSemanticHighlighting: json['lspSemanticHighlighting'] as bool? ?? true,
@@ -253,8 +288,11 @@ class SettingsPersistedData {
     enableSignalDetection: json['enableSignalDetection'] as bool? ?? true,
     ensureBoardFilesystemOnConnect:
         json['ensureBoardFilesystemOnConnect'] as bool? ?? false,
+    deviceRunChdirToScriptDir:
+        json['deviceRunChdirToScriptDir'] as bool? ?? false,
     serialDefaultBaudRate: json['serialDefaultBaudRate'] as int? ?? 115200,
     serialAutoReconnect: json['serialAutoReconnect'] as bool? ?? false,
+    serialActivePortPath: json['serialActivePortPath'] as String? ?? '',
     terminalFontFamily:
         json['terminalFontFamily'] as String? ?? 'JetBrains Maple Mono',
     terminalFontSize: (json['terminalFontSize'] as num?)?.toDouble() ?? 13,
@@ -274,8 +312,9 @@ class SettingsPersistedData {
             .map((value) => value.toInt())
             .toList() ??
         kDefaultTerminalCustomPalette,
-    useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? false,
+    useMaterialContextMenu: json['useMaterialContextMenu'] as bool? ?? true,
     uploadConfirmStyle: json['uploadConfirmStyle'] as String? ?? 'toolbar',
+    fileSortMode: json['fileSortMode'] as String? ?? 'name',
     confirmShortcut: json['confirmShortcut'] as String? ?? 'Ctrl+Enter',
     cancelShortcut: json['cancelShortcut'] as String? ?? 'Esc',
     webReplHost: json['webReplHost'] as String? ?? '',
@@ -333,17 +372,26 @@ class SettingsPersistence {
     }
   }
 
-  Future<void> save(SettingsPersistedData data) async {
+  /// Returns whether the bytes reached disk.
+  ///
+  /// [encoded] lets the save scheduler reuse a payload it already serialized
+  /// to decide whether the store changed.
+  Future<bool> save(SettingsPersistedData data, {String? encoded}) async {
     try {
       final file = await _file;
       // Temp file + rename, matching TabsPersistence and PluginPersistence.
       // A partial write here used to produce truncated JSON that `load` then
       // swallowed into `null`, silently resetting every user setting.
       final temp = File('${file.path}.tmp');
-      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      await temp.writeAsString(
+        encoded ?? jsonEncode(data.toJson()),
+        flush: true,
+      );
       await temp.rename(file.path);
+      return true;
     } catch (e) {
       debugPrint('SettingsPersistence: Failed to save: $e');
+      return false;
     }
   }
 }

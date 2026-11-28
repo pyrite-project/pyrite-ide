@@ -31,4 +31,4 @@ class SdkEnv {
   }
 }
 
-final sdkEnvProvider = Provider((ref) => SdkEnv(ref));
+final sdkEnvProvider = Provider(SdkEnv.new);

@@ -86,6 +86,12 @@ class PluginThemeData {
   final Color? terminalBackground;
   final List<Color>? terminalAnsi;
 
+  // Editor typography. When the plugin theme is active these override the
+  // user's editor font settings; null keeps the user's settings.
+  final String? editorFontFamily;
+  final double? editorFontSize;
+  final double? editorLineHeight;
+
   final Map<String, TextStyle> _editorLightStyles;
   final Map<String, TextStyle> _editorDarkStyles;
 
@@ -242,6 +248,9 @@ class PluginThemeData {
     this.terminalForeground,
     this.terminalBackground,
     this.terminalAnsi,
+    this.editorFontFamily,
+    this.editorFontSize,
+    this.editorLineHeight,
     Map<String, TextStyle>? editorLightStyles,
     Map<String, TextStyle>? editorDarkStyles,
     this.defaultRadius,
@@ -300,10 +309,20 @@ class PluginThemeData {
   }) : _editorLightStyles = editorLightStyles ?? const {},
        _editorDarkStyles = editorDarkStyles ?? const {};
 
-  Map<String, TextStyle> editorStyles(Brightness brightness) =>
-      brightness == Brightness.dark
-      ? {..._editorLightStyles, ..._editorDarkStyles}
-      : _editorLightStyles;
+  Map<String, TextStyle> editorStyles(Brightness brightness) {
+    if (brightness != Brightness.dark || _editorDarkStyles.isEmpty) {
+      return _editorLightStyles;
+    }
+    // Dark entries carry only the fields they override, so a dark color-only
+    // tweak keeps the light theme's fontStyle/fontWeight instead of wiping it.
+    final merged = Map<String, TextStyle>.from(_editorLightStyles);
+    for (final entry in _editorDarkStyles.entries) {
+      merged[entry.key] = (merged[entry.key] ?? const TextStyle()).merge(
+        entry.value,
+      );
+    }
+    return merged;
+  }
 
   bool get hasEditorStyles =>
       _editorLightStyles.isNotEmpty || _editorDarkStyles.isNotEmpty;
@@ -339,6 +358,11 @@ class PluginThemeData {
     return colors;
   }
 
+  /// Editor-level keys under `editor.` that configure the editor surface
+  /// itself (typography) rather than a token scope. They are parsed
+  /// separately in [fromMap] so they can never collide with a scope name.
+  static const _editorSettingTokens = {'fontFamily', 'fontSize', 'lineHeight'};
+
   static Map<String, TextStyle> _parseEditorStyles(
     Map<String, dynamic> data,
     String prefix,
@@ -347,11 +371,153 @@ class PluginThemeData {
     for (final entry in data.entries) {
       if (!entry.key.startsWith(prefix)) continue;
       final token = entry.key.substring(prefix.length);
-      if (token.isEmpty) continue;
-      final color = _parseColor(entry.value);
-      if (color != null) styles[token] = TextStyle(color: color);
+      if (token.isEmpty || _editorSettingTokens.contains(token)) continue;
+      final style = _parseEditorStyleValue(entry.value);
+      if (style != null) styles[token] = style;
     }
     return styles;
+  }
+
+  /// A token's value is either a color (`editor.keyword = "#e65100"`) or a
+  /// style object carrying any subset of the supported TextStyle fields
+  /// (`editor.keyword = {"color": ..., "fontWeight": "bold"}`).
+  static TextStyle? _parseEditorStyleValue(dynamic value) {
+    if (value is Map) {
+      return _parseEditorStyleMap(value);
+    }
+    final color = _parseColor(value);
+    if (color == null) return null;
+    return TextStyle(color: color);
+  }
+
+  static FontStyle? _parseFontStyle(dynamic value) {
+    switch (value?.toString().toLowerCase()) {
+      case 'normal':
+        return FontStyle.normal;
+      case 'italic':
+        return FontStyle.italic;
+      default:
+        return null;
+    }
+  }
+
+  static FontWeight? _parseFontWeight(dynamic value) {
+    if (value is num) {
+      final weight = value.toInt();
+      if (weight < 100 || weight > 900 || weight % 100 != 0) return null;
+      return FontWeight.values[(weight ~/ 100) - 1];
+    }
+    switch (value?.toString().toLowerCase()) {
+      case 'normal':
+        return FontWeight.normal;
+      case 'bold':
+        return FontWeight.bold;
+      default:
+        final match = RegExp(
+          r'^w?([1-9])00$',
+        ).firstMatch(value?.toString() ?? '');
+        if (match == null) return null;
+        return FontWeight.values[int.parse(match.group(1)!) - 1];
+    }
+  }
+
+  static TextDecoration? _parseTextDecoration(dynamic value) {
+    final parts = value
+        ?.toString()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty);
+    if (parts == null) return null;
+    final decoded = <TextDecoration>[];
+    for (final part in parts) {
+      switch (part) {
+        case 'none':
+          return TextDecoration.none;
+        case 'underline':
+          decoded.add(TextDecoration.underline);
+        case 'overline':
+          decoded.add(TextDecoration.overline);
+        case 'line-through':
+        case 'linethrough':
+          decoded.add(TextDecoration.lineThrough);
+        default:
+          return null;
+      }
+    }
+    if (decoded.isEmpty) return null;
+    return decoded.length == 1 ? decoded.first : TextDecoration.combine(decoded);
+  }
+
+  static TextDecorationStyle? _parseTextDecorationStyle(dynamic value) {
+    switch (value?.toString().toLowerCase()) {
+      case 'solid':
+        return TextDecorationStyle.solid;
+      case 'double':
+        return TextDecorationStyle.double;
+      case 'dotted':
+        return TextDecorationStyle.dotted;
+      case 'dashed':
+        return TextDecorationStyle.dashed;
+      case 'wavy':
+        return TextDecorationStyle.wavy;
+      default:
+        return null;
+    }
+  }
+
+  /// Builds the partial TextStyle a plugin requested. Every field it left
+  /// unset stays null so [TextStyle.merge] inherits the base theme's value.
+  static TextStyle? _parseEditorStyleMap(dynamic value) {
+    final color = _parseColor(value['color'] ?? value['foreground']);
+    final backgroundColor = _parseColor(
+      value['backgroundColor'] ?? value['background'],
+    );
+    final decorationColor = _parseColor(value['decorationColor']);
+    final fontStyle = _parseFontStyle(value['fontStyle']);
+    final fontWeight = _parseFontWeight(value['fontWeight']);
+    final fontSize = _parseDouble(value['fontSize']);
+    final letterSpacing = _parseDouble(value['letterSpacing']);
+    final wordSpacing = _parseDouble(value['wordSpacing']);
+    final height = _parseDouble(value['height']);
+    final decoration = _parseTextDecoration(value['decoration']);
+    final decorationStyle = _parseTextDecorationStyle(value['decorationStyle']);
+    final fontFamily = value['fontFamily']?.toString();
+    final fontFamilyFallback = _parseStringList(value['fontFamilyFallback']);
+    if (color == null &&
+        backgroundColor == null &&
+        decorationColor == null &&
+        fontStyle == null &&
+        fontWeight == null &&
+        fontSize == null &&
+        letterSpacing == null &&
+        wordSpacing == null &&
+        height == null &&
+        decoration == null &&
+        decorationStyle == null &&
+        fontFamily == null &&
+        fontFamilyFallback == null) {
+      return null;
+    }
+    return TextStyle(
+      color: color,
+      backgroundColor: backgroundColor,
+      fontStyle: fontStyle,
+      fontWeight: fontWeight,
+      fontSize: fontSize,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      height: height,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+    );
+  }
+
+  static double? _parsePositiveDouble(dynamic value) {
+    final parsed = _parseDouble(value);
+    return parsed != null && parsed > 0 ? parsed : null;
   }
 
   static String? validateTerminalData(Map<String, dynamic> data) {
@@ -363,6 +529,106 @@ class PluginThemeData {
     if (data.containsKey('terminal.ansi') &&
         _parseTerminalAnsi(data['terminal.ansi']) == null) {
       return 'terminal.ansi must contain exactly 16 valid colors';
+    }
+    return null;
+  }
+
+  /// Validates every `editor.*` / `dark.editor.*` entry so plugin authors get
+  /// an error at contribute time instead of a silently ignored style.
+  static String? validateEditorStyles(Map<String, dynamic> data) {
+    const prefixes = ['editor.', 'dark.editor.'];
+    const styleFields = {
+      'color',
+      'foreground',
+      'backgroundColor',
+      'background',
+      'fontStyle',
+      'fontWeight',
+      'fontSize',
+      'letterSpacing',
+      'wordSpacing',
+      'height',
+      'decoration',
+      'decorationColor',
+      'decorationStyle',
+      'fontFamily',
+      'fontFamilyFallback',
+    };
+    for (final entry in data.entries) {
+      for (final prefix in prefixes) {
+        if (!entry.key.startsWith(prefix)) continue;
+        final token = entry.key.substring(prefix.length);
+        if (token.isEmpty) continue;
+        final value = entry.value;
+        // An explicit null means "unset" and is always legal.
+        if (value == null) continue;
+        if (_editorSettingTokens.contains(token)) {
+          final ok = token == 'fontFamily'
+              ? value is String
+              : (_parsePositiveDouble(value) != null);
+          if (!ok) {
+            return '$entry.key must be '
+                '${token == 'fontFamily' ? 'a font family name' : 'a positive number'}';
+          }
+          continue;
+        }
+        if (value is Map) {
+          for (final field in value.entries) {
+            if (!styleFields.contains(field.key)) {
+              return '${entry.key}: unknown style field "${field.key}"';
+            }
+            final error = _validateEditorStyleField(field.key, field.value);
+            if (error != null) return '${entry.key}: $error';
+          }
+          continue;
+        }
+        if (_parseColor(value) == null) {
+          return '$entry.key must be a color or a style object';
+        }
+      }
+    }
+    return null;
+  }
+
+  static String? _validateEditorStyleField(String field, dynamic value) {
+    // An explicit null field means "unset".
+    if (value == null) return null;
+    switch (field) {
+      case 'color':
+      case 'foreground':
+      case 'backgroundColor':
+      case 'background':
+      case 'decorationColor':
+        if (_parseColor(value) == null) {
+          return '"$field" must be an ARGB integer or #RRGGBB/#AARRGGBB color';
+        }
+      case 'fontStyle':
+        if (_parseFontStyle(value) == null) {
+          return '"$field" must be "normal" or "italic"';
+        }
+      case 'fontWeight':
+        if (_parseFontWeight(value) == null) {
+          return '"$field" must be "normal", "bold" or a w100-w900 weight';
+        }
+      case 'fontSize':
+      case 'letterSpacing':
+      case 'wordSpacing':
+      case 'height':
+        if (_parseDouble(value) == null) return '"$field" must be a number';
+      case 'decoration':
+        if (_parseTextDecoration(value) == null) {
+          return '"$field" must be none, underline, overline or line-through';
+        }
+      case 'decorationStyle':
+        if (_parseTextDecorationStyle(value) == null) {
+          return '"$field" must be solid, double, dotted, dashed or wavy';
+        }
+      case 'fontFamily':
+        if (value is! String) return '"$field" must be a string';
+      case 'fontFamilyFallback':
+        if (_parseStringList(value) == null) {
+          return '"$field" must be a list of strings';
+        }
     }
     return null;
   }
@@ -517,6 +783,9 @@ class PluginThemeData {
       terminalForeground: _parseColor(data['terminal.foreground']),
       terminalBackground: _parseColor(data['terminal.background']),
       terminalAnsi: _parseTerminalAnsi(data['terminal.ansi']),
+      editorFontFamily: data['editor.fontFamily']?.toString(),
+      editorFontSize: _parsePositiveDouble(data['editor.fontSize']),
+      editorLineHeight: _parsePositiveDouble(data['editor.lineHeight']),
       editorLightStyles: _parseEditorStyles(data, 'editor.'),
       editorDarkStyles: _parseEditorStyles(data, 'dark.editor.'),
       // Sub-themes

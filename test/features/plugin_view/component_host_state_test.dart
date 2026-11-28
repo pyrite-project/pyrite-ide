@@ -99,6 +99,105 @@ void main() {
     );
   });
 
+  test('a changed plugin value takes an editable control back', () {
+    host.effectiveProps({'id': 'query', 'value': 'alpha'});
+    host.registerComponent('query', 'TextField', {
+      'id': 'query',
+      'value': 'alpha',
+    });
+    host.recordEdit('query', 'beta', (_) {});
+    expect(host.displayValue('query', 'alpha'), 'beta');
+
+    // The plugin has not reacted yet: the user's input stays.
+    host.effectiveProps({'id': 'query', 'value': 'alpha'});
+    host.registerComponent('query', 'TextField', {
+      'id': 'query',
+      'value': 'alpha',
+    });
+    expect(host.displayValue('query', 'alpha'), 'beta');
+
+    // The plugin renders a different value: it owns the control again.
+    host.effectiveProps({'id': 'query', 'value': 'gamma'});
+    expect(host.displayValue('query', 'gamma'), 'gamma');
+  });
+
+  test(
+    'a plugin echo acknowledges the edit so a later snapshot can reset it',
+    () {
+      host.effectiveProps({'id': 'flag', 'value': false});
+      host.registerComponent('flag', 'Checkbox', {
+        'id': 'flag',
+        'value': false,
+      });
+      host.flush('flag', true, (_) {});
+      expect(host.displayValue('flag', false), isTrue);
+
+      // The plugin renders the toggled value: both sides agree, so the local
+      // override is dropped without changing what is on screen.
+      host.effectiveProps({'id': 'flag', 'value': true});
+      expect(host.displayValue('flag', true), isTrue);
+
+      // A later snapshot is free to reset the control.
+      host.effectiveProps({'id': 'flag', 'value': false});
+      expect(host.displayValue('flag', false), isFalse);
+    },
+  );
+
+  test('a debounced edit is not emitted after the plugin takes the value '
+      'back', () async {
+    final debounced = ComponentHostState(
+      instance: _instance,
+      debounce: const Duration(milliseconds: 20),
+    );
+    addTearDown(debounced.dispose);
+    debounced.effectiveProps({'id': 'query', 'value': 'alpha'});
+    debounced.registerComponent('query', 'TextField', {
+      'id': 'query',
+      'value': 'alpha',
+    });
+    final emitted = <Object?>[];
+    debounced.recordEdit('query', 'typed', emitted.add);
+
+    // A snapshot with a different value wins reconciliation before the timer
+    // fires, so the host drops the pending keystroke.
+    debounced.effectiveProps({'id': 'query', 'value': 'reset'});
+    expect(debounced.displayValue('query', 'reset'), 'reset');
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(emitted, isEmpty);
+  });
+
+  test('an echo of an earlier emitted value keeps newer local input', () {
+    host.effectiveProps({'id': 'query', 'value': ''});
+    host.registerComponent('query', 'TextField', {'id': 'query', 'value': ''});
+    host.flush('query', 'a', (_) {});
+    host.recordEdit('query', 'ab', (_) {});
+
+    // The plugin echoes the value emitted before the latest keystroke.
+    host.effectiveProps({'id': 'query', 'value': 'a'});
+    expect(host.displayValue('query', 'a'), 'ab');
+
+    // A genuinely new plugin value still wins.
+    host.effectiveProps({'id': 'query', 'value': 'z'});
+    expect(host.displayValue('query', 'z'), 'z');
+  });
+
+  test('an echo of any recently emitted value keeps newer local input', () {
+    host.effectiveProps({'id': 'query', 'value': ''});
+    host.registerComponent('query', 'TextField', {'id': 'query', 'value': ''});
+    host.flush('query', 'a', (_) {});
+    host.flush('query', 'ab', (_) {});
+    host.recordEdit('query', 'abc', (_) {});
+
+    // The plugin echoes the value emitted two keystrokes ago. It is still an
+    // echo of this control's own output, so it must not win over "abc".
+    host.effectiveProps({'id': 'query', 'value': 'a'});
+    expect(host.displayValue('query', 'a'), 'abc');
+
+    // Settle the pending debounce without leaving a timer behind.
+    host.flush('query', 'abc', (_) {});
+  });
+
   test('unknown components and methods use stable errors', () async {
     await expectLater(
       host.invokeComponentMethod('missing', 'open', const {}),

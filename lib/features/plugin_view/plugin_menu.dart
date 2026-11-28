@@ -5,6 +5,8 @@ import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
 import 'package:super_context_menu/super_context_menu.dart' as scm;
 
+import '../../shared/md3_widgets.dart';
+
 typedef PluginMenuEventSink = void Function(Map<String, dynamic> payload);
 
 class PluginMenuBarController {
@@ -99,11 +101,17 @@ class PluginMenuButton extends StatelessWidget {
           );
         }
         if (iconOnly || (icon != null && (label == null || label!.isEmpty))) {
-          return IconButton(
-            icon: Icon(pluginIcon(icon ?? 'material:more_vert'), size: 18),
-            tooltip: tooltip ?? label,
-            visualDensity: VisualDensity.compact,
-            onPressed: enabled ? toggle : null,
+          // The menu is an `OverlayPortal` of its own, so its traversal-parent
+          // identifier competes with the tooltip's for a single node.
+          // `TooltipAnchor` keeps a container node outside the tooltip, which
+          // keeps the two apart. See flutter/flutter#182444.
+          return TooltipAnchor(
+            message: tooltip ?? label,
+            child: IconButton(
+              icon: Icon(pluginIcon(icon ?? 'material:more_vert'), size: 18),
+              visualDensity: VisualDensity.compact,
+              onPressed: enabled ? toggle : null,
+            ),
           );
         }
         final text = Text(label ?? '');

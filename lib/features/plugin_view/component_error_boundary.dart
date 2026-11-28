@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:pyrite_ide/core/sdk/component_schema.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/sdk/component_schema.dart';
 
 /// Renders schema problems inline instead of letting a malformed component tree
 /// take down the surrounding IDE page.

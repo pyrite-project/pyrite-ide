@@ -8,18 +8,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/constants/editor_themes.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
+import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/core/services/app.dart';
 import 'package:pyrite_ide/features/edit_core/editor_language.dart';
 import 'package:pyrite_ide/features/edit_core/editor_minimap.dart';
 
 /// Resolves the active editor theme (built-in or plugin-contributed) the same
-/// way the main editor does, including the de-italicized comment treatment.
-Map<String, TextStyle> resolveActiveThemeForSurface(
-  BuildContext context,
-  WidgetRef ref,
-) {
+/// way every editor surface does, together with the plugin theme's typography
+/// overrides. A null typography field keeps the user's editor font settings.
+({Map<String, TextStyle> theme, double? fontSize, String? fontFamily, double? lineHeight})
+resolveActiveThemeForSurface(BuildContext context, WidgetRef ref) {
   final themeKey = ref.watch(editorThemeKey);
   final entry = findEditorThemeByKey(themeKey) ?? editorThemes.first;
   final brightness = Theme.of(context).brightness;
@@ -40,17 +40,12 @@ Map<String, TextStyle> resolveActiveThemeForSurface(
     ),
     surface,
   );
-  // re_highlight themes render comments in italics; keep each theme's own
-  // comment color but drop the italic face instead of overriding the color.
-  final commentStyle = resolvedTheme["comment"];
-  if (commentStyle != null &&
-      commentStyle.fontStyle == FontStyle.italic &&
-      !pluginEditorThemeActive) {
-    resolvedTheme["comment"] = commentStyle.copyWith(
-      fontStyle: FontStyle.normal,
-    );
-  }
-  return resolvedTheme;
+  return (
+    theme: resolvedTheme,
+    fontSize: pluginTheme?.editorFontSize,
+    fontFamily: pluginTheme?.editorFontFamily,
+    lineHeight: pluginTheme?.editorLineHeight,
+  );
 }
 
 ({Color foreground, Color background}) editorSurfaceColors(
@@ -95,16 +90,21 @@ HoverDetailsStyle buildThemedCodeForgeHoverDetailsStyle({
   );
 }
 
-/// Composite key describing every input that requires rebuilding the
-/// [CodeForge] element when it changes: built-in theme, active plugin theme,
-/// resolved plugin styles identity, brightness, and surface color.
+/// Composite key describing every input that feeds the resolved editor
+/// surface styles: built-in theme, active plugin theme, resolved plugin
+/// styles identity, brightness, surface color, and the color-scheme roles the
+/// derived styles pick from.
 ///
-/// Pass it as [buildThemedCodeForge]'s `rebuildKey` so theme switches recreate
-/// the editor exactly like before the shared builder was extracted.
+/// It is the cache key for [resolveEditorSurfaceBundle]. A change resolves a
+/// fresh bundle which the editors then apply **in place** through
+/// `CodeForge.didUpdateWidget` — the editor element is not recreated on a
+/// theme switch any more, so the scroll position, undo stack and find state
+/// survive.
 String activeEditorRebuildKey(BuildContext context, WidgetRef ref) {
   final themeKey = ref.watch(editorThemeKey);
   final brightness = Theme.of(context).brightness;
   final surface = Theme.of(context).scaffoldBackgroundColor;
+  final scheme = Theme.of(context).colorScheme;
   final activeThemeId = ref.watch(activePluginThemeId);
   final registry = ref.watch(dataRegistryProvider);
   final pluginTheme = activeThemeId == null
@@ -113,7 +113,87 @@ String activeEditorRebuildKey(BuildContext context, WidgetRef ref) {
   final editorStyles = pluginTheme?.editorStyles(brightness);
   final pluginEditorThemeActive = pluginTheme?.hasEditorStyles ?? false;
   return '${pluginEditorThemeActive ? '' : themeKey}_${activeThemeId ?? ''}_'
-      '${editorStyles}_${brightness.name}_${surface.toARGB32()}';
+      '${editorStyles}_${brightness.name}_${surface.toARGB32()}_'
+      '${pluginTheme?.editorFontSize}_${pluginTheme?.editorFontFamily}_'
+      '${pluginTheme?.editorLineHeight}_'
+      '${scheme.primary.toARGB32()}_${scheme.error.toARGB32()}_'
+      '${scheme.onSurfaceVariant.toARGB32()}';
+}
+
+/// Everything [buildThemedCodeForge] derives from the active theme, resolved
+/// once and reused while the inputs stay unchanged.
+typedef EditorSurfaceBundle =
+    ({
+      Map<String, TextStyle> theme,
+      double fontSize,
+      String? fontFamily,
+      double? lineHeight,
+      HoverDetailsStyle hoverDetailsStyle,
+      CodeSelectionStyle selectionStyle,
+      MatchHighlightStyle matchHighlightStyle,
+      DiagnosticColorsStyle diagnosticColors,
+    });
+
+({String key, EditorSurfaceBundle bundle})? _editorSurfaceBundleCache;
+
+/// Resolves the active editor surface theme with identity-stable objects.
+///
+/// While nothing changed, a rebuild hands the very same style objects to
+/// [CodeForge] again, so its `identical` checks in `didUpdateWidget` skip the
+/// work; when the theme switches, the fresh bundle flows through the editor's
+/// in-place update path instead of a widget recreation.
+EditorSurfaceBundle resolveEditorSurfaceBundle(
+  BuildContext context,
+  WidgetRef ref,
+) {
+  final scheme = Theme.of(context).colorScheme;
+  final fontSizeFallback = ref.watch(editorFontSize);
+  final fontFamilySetting = ref.watch(editorTextFontProvider);
+  final outerCorners = context.outerCorners;
+  final key = '${activeEditorRebuildKey(context, ref)}'
+      '_${scheme.primary.toARGB32()}'
+      '_${scheme.error.toARGB32()}'
+      '_${scheme.onSurfaceVariant.toARGB32()}'
+      '_$fontSizeFallback'
+      '_$fontFamilySetting'
+      '_${outerCorners.topLeft.x}';
+
+  final cached = _editorSurfaceBundleCache;
+  if (cached != null && cached.key == key) return cached.bundle;
+
+  final resolved = resolveActiveThemeForSurface(context, ref);
+  final resolvedTheme = resolved.theme;
+  final colors = editorSurfaceColors(context, resolvedTheme);
+  final fontFamily =
+      resolved.fontFamily ?? editorTextFonts[fontFamilySetting];
+  final bundle = (
+    theme: resolvedTheme,
+    fontSize: resolved.fontSize ?? fontSizeFallback,
+    fontFamily: fontFamily,
+    lineHeight: resolved.lineHeight,
+    hoverDetailsStyle: buildThemedCodeForgeHoverDetailsStyle(
+      foreground: colors.foreground,
+      background: colors.background,
+      primary: scheme.primary,
+      fontSize: resolved.fontSize ?? fontSizeFallback,
+      fontFamily: fontFamily,
+      borderRadius: outerCorners,
+    ),
+    selectionStyle: CodeSelectionStyle(
+      selectionColor: AppSelection.text(scheme),
+    ),
+    matchHighlightStyle: MatchHighlightStyle(
+      currentMatchStyle: TextStyle(
+        backgroundColor: scheme.primary.withAlpha(90),
+      ),
+      otherMatchStyle: TextStyle(
+        backgroundColor: colors.foreground.withAlpha(45),
+      ),
+    ),
+    diagnosticColors: buildDiagnosticColors(context),
+  );
+  _editorSurfaceBundleCache = (key: key, bundle: bundle);
+  return bundle;
 }
 
 /// Builds a [CodeForge] wired exactly like the main editor: same theme
@@ -157,11 +237,12 @@ Widget buildThemedCodeForge(
   VoidCallback? onFindReferences,
   VoidCallback? onGoToImplementation,
 }) {
-  final resolvedTheme = resolveActiveThemeForSurface(context, ref);
+  final bundle = resolveEditorSurfaceBundle(context, ref);
+  final resolvedTheme = bundle.theme;
   final colors = editorSurfaceColors(context, resolvedTheme);
-  final fontSize = ref.watch(editorFontSize);
-  final fontFamily = editorTextFonts[ref.watch(editorTextFontProvider)];
-  final primary = Theme.of(context).colorScheme.primary;
+  final double fontSize = bundle.fontSize;
+  final fontFamily = bundle.fontFamily;
+  final lineHeight = bundle.lineHeight;
   // Grammar follows the file's extension. `languageId` is deliberately *not*
   // sourced from here: semantic tokens come from the LSP server, whose language
   // id is configured in LSP settings and already reaches the widget through the
@@ -185,10 +266,14 @@ Widget buildThemedCodeForge(
     // runs with, so a bar shows the colors of the code it stands for.
     editorTheme: resolvedTheme,
     language: language.mode,
-    baseTextStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
+    baseTextStyle: TextStyle(
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      height: lineHeight,
+    ),
     // Matches the engine default multiplier (fontSize * 1.2) until the
     // renderer publishes the real line height onto the controller.
-    estimatedLineHeight: fontSize * 1.2,
+    estimatedLineHeight: fontSize * (lineHeight ?? 1.2),
     child: CodeForge(
       key: ValueKey(rebuildKey ?? filePath ?? ''),
       filePath: filePath,
@@ -197,31 +282,26 @@ Widget buildThemedCodeForge(
       customContextMenuItems: customContextMenuItems,
       onModifierTap: onModifierTap,
       finderBuilder: finderBuilder,
-      diagnosticColors: buildDiagnosticColors(context),
-      hoverDetailsStyle: buildThemedCodeForgeHoverDetailsStyle(
-        foreground: colors.foreground,
-        background: colors.background,
-        primary: primary,
-        fontSize: fontSize,
-        fontFamily: fontFamily,
-        borderRadius: overlayBorderRadius ?? context.outerCorners,
-      ),
+      // The style objects come from the cached bundle, so they are
+      // identity-stable while the theme is unchanged: CodeForge compares
+      // them with `identical` in didUpdateWidget and updates in place on a
+      // real theme switch.
+      diagnosticColors: bundle.diagnosticColors,
+      hoverDetailsStyle: bundle.hoverDetailsStyle,
       language: language.mode,
       controller: controller,
       undoController: undoController,
       readOnly: readOnly,
       overlayBorderRadius: overlayBorderRadius ?? context.outerCorners,
-      matchHighlightStyle: MatchHighlightStyle(
-        // Derived from the active theme instead of fixed hues: the accent marks
-        // the current match and the foreground color (guaranteed to contrast
-        // with the editor background) marks the other matches, so both stay
-        // legible on light and dark surfaces.
-        currentMatchStyle: TextStyle(backgroundColor: primary.withAlpha(90)),
-        otherMatchStyle: TextStyle(
-          backgroundColor: colors.foreground.withAlpha(45),
-        ),
+      matchHighlightStyle: bundle.matchHighlightStyle,
+      // The editor paints its own selection, so it cannot inherit the theme's
+      // `textSelectionTheme`; it is handed the same app-wide tint explicitly.
+      selectionStyle: bundle.selectionStyle,
+      textStyle: TextStyle(
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        height: lineHeight,
       ),
-      textStyle: TextStyle(fontSize: fontSize, fontFamily: fontFamily),
       lineWrap: ref.watch(editorWordWrap),
       enableFolding: ref.watch(editorCodeFolding),
       enableGuideLines: ref.watch(editorGuideLines),

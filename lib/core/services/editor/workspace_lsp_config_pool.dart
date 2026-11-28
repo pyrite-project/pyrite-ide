@@ -15,11 +15,21 @@ class WorkspaceLspConfigPool<T> {
   WorkspaceLspConfigPool({
     required Future<T?> Function(String workspacePath) create,
     void Function(T config)? onEvict,
+    bool Function(T config)? isAlive,
   }) : _create = create,
-       _onEvict = onEvict;
+       _onEvict = onEvict,
+       _isAlive = isAlive;
 
   final Future<T?> Function(String workspacePath) _create;
   final void Function(T config)? _onEvict;
+
+  /// Reports whether a pooled config can still serve requests.
+  ///
+  /// A language server process that exited (crash, protocol violation, bad
+  /// launch) can never initialize, so its config is evicted on the next
+  /// [acquire] instead of being handed to every later editor until the
+  /// workspace's last tab closes.
+  final bool Function(T config)? _isAlive;
 
   final Map<String, T> _configs = {};
   final Map<String, int> _users = {};
@@ -44,8 +54,15 @@ class WorkspaceLspConfigPool<T> {
   Future<({T? config, bool created})> acquire(String workspacePath) async {
     final existing = _configs[workspacePath];
     if (existing != null) {
-      _users[workspacePath] = (_users[workspacePath] ?? 0) + 1;
-      return (config: existing, created: false);
+      if (_isAlive?.call(existing) ?? true) {
+        _users[workspacePath] = (_users[workspacePath] ?? 0) + 1;
+        return (config: existing, created: false);
+      }
+      // The server behind the config is gone; evict it and fall through to
+      // the bootstrap below, which starts a fresh one.
+      _configs.remove(workspacePath);
+      _users.remove(workspacePath);
+      _onEvict?.call(existing);
     }
     final pending = _bootstraps[workspacePath];
     if (pending != null) {
@@ -57,8 +74,16 @@ class WorkspaceLspConfigPool<T> {
     }
     final bootstrap = _create(workspacePath);
     _bootstraps[workspacePath] = bootstrap;
-    final config = await bootstrap;
-    _bootstraps.remove(workspacePath);
+    final T? config;
+    try {
+      config = await bootstrap;
+    } finally {
+      // The in-flight entry has to go even when the start threw: leaving a
+      // failed future in the map makes every later acquire for this workspace
+      // await the same failure, so the server could never be started again for
+      // the rest of the session.
+      _bootstraps.remove(workspacePath);
+    }
     if (config == null) {
       // A failed start leaves no pooled entry, so the next file opens can
       // retry — potentially with different settings.
@@ -67,6 +92,31 @@ class WorkspaceLspConfigPool<T> {
     _configs[workspacePath] = config;
     _users[workspacePath] = 1;
     return (config: config, created: true);
+  }
+
+  /// Evicts every pooled config, handing each one to [onEvict].
+  ///
+  /// Used when launch settings change (transport, executable, arguments, the
+  /// plugin server in use): a running server was started from the old launch
+  /// and cannot be re-targeted, so the next file open must start a fresh one.
+  void evictAll() {
+    for (final config in _configs.values) {
+      _onEvict?.call(config);
+    }
+    _configs.clear();
+    _users.clear();
+  }
+
+  /// Evicts only the config pooled under [workspacePath], if any.
+  ///
+  /// Used by the crash-restart flow when it gives up (repeated crashes) and
+  /// must not leave a dead config in the pool for the next acquire to trip
+  /// over.
+  void evict(String workspacePath) {
+    final config = _configs.remove(workspacePath);
+    if (config == null) return;
+    _users.remove(workspacePath);
+    _onEvict?.call(config);
   }
 
   /// Drops one user's claim on [config]; a `null` or unknown config is a

@@ -1,34 +1,189 @@
+import 'dart:convert';
+
 import 'package:code_forge/code_forge.dart';
+import 'package:flutter/material.dart' show Color, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
+import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/outline_tab.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
 import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/data_contributions_persistence.dart';
-import 'package:pyrite_ide/core/services/persistence/settings_persistence.dart';
-import 'package:pyrite_ide/core/services/persistence/function_page_persistence.dart';
-import 'package:pyrite_ide/core/services/persistence/file/project_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/editor/tabs_persistence.dart';
+import 'package:pyrite_ide/core/services/persistence/file/project_persistence.dart';
+import 'package:pyrite_ide/core/services/persistence/function_page_persistence.dart';
 import 'package:pyrite_ide/core/services/persistence/persistence_models.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
-import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_transfer_mode_provider.dart';
+import 'package:pyrite_ide/core/services/persistence/settings_persistence.dart';
 import 'package:pyrite_ide/core/services/serial/hardware_reset_provider.dart';
+import 'package:pyrite_ide/core/services/serial/repl_mode_provider.dart';
+import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
+import 'package:tabbed_view/tabbed_view.dart'
+    show TabData, TabbedViewController;
+
+/// The project directory recorded in settings.
+final ProviderListenable<String?> persistedProjectPathProvider = fileProvider
+    .select((directory) => directory?.path);
+
+/// The serial port recorded in settings.
+///
+/// The selector keeps live connection state out of the comparison: the port
+/// list is rescanned on a timer every few seconds and replacing it must not
+/// look like a settings change that schedules another save.
+final ProviderListenable<String?> persistedSerialPortProvider = serialProvider
+    .select((state) => state.selectedPortName);
+
+/// Every provider [PersistenceManager.saveFromContainer] reads for a setting.
+///
+/// The open tabs and their layout are persisted too, but they change through
+/// their own controllers and have dedicated change watchers; they are
+/// deliberately absent here. `main` subscribes to this list to dirty the
+/// session whenever a setting changes, so a setting the save path writes but
+/// this list omits would only reach disk if some unrelated change happened to
+/// dirty the session first.
+final List<ProviderListenable<Object?>> persistedSettingProviders = [
+  themeMode,
+  themeStyle,
+  themeColor,
+  editorThemeKey,
+  activePluginThemeId,
+  welcomeCompletedProvider,
+  activeLocaleProvider,
+  alwaysOnTopProvider,
+  windowPlacementProvider,
+  editorTextFontProvider,
+  editorFontSize,
+  editorWordWrap,
+  editorLineNumber,
+  editorCodeFolding,
+  editorGuideLines,
+  editorLocalSuggestions,
+  editorKeyboardSuggestions,
+  editorUseSpaceAsTab,
+  editorTabSize,
+  editorGutterDivider,
+  editorSmoothCursor,
+  editorMinimap,
+  editorFormatOnSave,
+  useLsp,
+  lspType,
+  lspWebSocketPath,
+  lspStdioExecutable,
+  lspStdioArgs,
+  lspPluginServerId,
+  lspManualLaunch,
+  lspVirtualEnvironment,
+  lspTypeCheckingMode,
+  disableWarning,
+  disableError,
+  lspSemanticHighlighting,
+  lspCodeCompletion,
+  lspHoverInfo,
+  lspCodeAction,
+  lspSignatureHelp,
+  lspDocumentColor,
+  lspDocumentHighlight,
+  lspCodeFolding,
+  lspShowInlayHints,
+  lspGoToDefinition,
+  lspRename,
+  lspAlwaysStart,
+  chineseToUnicodeConversion,
+  enableSignalDetection,
+  ensureBoardFilesystemOnConnect,
+  deviceRunChdirToScriptDir,
+  serialDefaultBaudRate,
+  serialAutoReconnect,
+  persistedSerialPortProvider,
+  terminalFontFamily,
+  terminalFontSize,
+  terminalLineHeight,
+  terminalLigatures,
+  terminalAppearance,
+  terminalMinimumContrast,
+  terminalCustomForeground,
+  terminalCustomBackground,
+  terminalCustomPalette,
+  useMaterialContextMenu,
+  uploadConfirmStyleProvider,
+  fileSortModeProvider,
+  confirmShortcutProvider,
+  cancelShortcutProvider,
+  webReplHost,
+  webReplPort,
+  webReplPassword,
+  microPythonStubsEnabled,
+  microPythonStubsAutoDetectLayers,
+  microPythonStubsLayers,
+  microPythonStubsExtraPaths,
+  replModeProvider,
+  fileTransferModeProvider,
+  hardwareResetStrategyProvider,
+  desktopSelectedIndex,
+  mobileSelectedIndex,
+  tabletSelectedIndex,
+  functionPageShow,
+  consolePageShow,
+  consoleDockSideProvider,
+  persistedProjectPathProvider,
+  dataContributionsProvider,
+];
 
 class PersistenceManager {
-  final AppPersistence appPersistence = AppPersistence();
-  final DataContributionsPersistence dataContributionsPersistence =
-      DataContributionsPersistence();
-  final SettingsPersistence settingsPersistence = SettingsPersistence();
-  final FunctionPagePersistence functionPagePersistence =
-      FunctionPagePersistence();
-  final ProjectPersistence projectPersistence = ProjectPersistence();
-  final TabsPersistence tabsPersistence = TabsPersistence();
+  PersistenceManager({
+    AppPersistence? appPersistence,
+    DataContributionsPersistence? dataContributionsPersistence,
+    SettingsPersistence? settingsPersistence,
+    FunctionPagePersistence? functionPagePersistence,
+    ProjectPersistence? projectPersistence,
+    TabsPersistence? tabsPersistence,
+  }) : appPersistence = appPersistence ?? AppPersistence(),
+       dataContributionsPersistence =
+           dataContributionsPersistence ?? DataContributionsPersistence(),
+       settingsPersistence = settingsPersistence ?? SettingsPersistence(),
+       functionPagePersistence =
+           functionPagePersistence ?? FunctionPagePersistence(),
+       projectPersistence = projectPersistence ?? ProjectPersistence(),
+       tabsPersistence = tabsPersistence ?? TabsPersistence();
+
+  final AppPersistence appPersistence;
+  final DataContributionsPersistence dataContributionsPersistence;
+  final SettingsPersistence settingsPersistence;
+  final FunctionPagePersistence functionPagePersistence;
+  final ProjectPersistence projectPersistence;
+  final TabsPersistence tabsPersistence;
+
+  /// Serialized payload last written for each store.
+  ///
+  /// Saves are scheduled by provider changes, and navigation providers are in
+  /// that set: a page or panel switch would otherwise rewrite every JSON store
+  /// (including serializing every unsaved buffer) a second later. Comparing
+  /// the payload skips a store whose content did not move.
+  final Map<String, String> _savedPayloads = {};
+
+  /// Writes [data] through [write] unless its serialized form is unchanged.
+  Future<void> _saveStore<T>(
+    String store,
+    T data,
+    Object? Function(T data) toJson,
+    Future<bool> Function(T data, String encoded) write,
+  ) async {
+    final payload = jsonEncode(toJson(data));
+    if (_savedPayloads[store] == payload) return;
+    // Only remember a payload that actually reached disk, so a failed write is
+    // retried by the next schedule instead of being skipped forever.
+    if (await write(data, payload)) _savedPayloads[store] = payload;
+  }
 
   Future<PersistedData> loadAll() async {
     final app = await appPersistence.load();
@@ -47,6 +202,7 @@ class PersistenceManager {
       welcomeCompleted: app?.welcomeCompleted ?? false,
       activeLocale: app?.activeLocale ?? defaultLocale,
       alwaysOnTop: app?.alwaysOnTop ?? false,
+      windowPlacement: app?.windowPlacement,
       editorTextFont: settings?.editorTextFont ?? 'JetBrains Mono',
       editorFontSize: settings?.editorFontSize ?? 15,
       editorWordWrap: settings?.editorWordWrap ?? false,
@@ -66,9 +222,10 @@ class PersistenceManager {
       lspWebSocketPath: settings?.lspWebSocketPath ?? '127.0.0.1:2026',
       lspStdioExecutable: settings?.lspStdioExecutable ?? '',
       lspStdioArgs: settings?.lspStdioArgs ?? '',
+      lspPluginServerId: settings?.lspPluginServerId,
+      lspManualLaunch: settings?.lspManualLaunch,
       lspVirtualEnvironment: settings?.lspVirtualEnvironment ?? '',
-      lspBasedPyrightTypeCheckingMode:
-          settings?.lspBasedPyrightTypeCheckingMode ?? 'standard',
+      lspTypeCheckingMode: settings?.lspTypeCheckingMode ?? 'standard',
       disableWarning: settings?.disableWarning ?? false,
       disableError: settings?.disableError ?? false,
       lspSemanticHighlighting: settings?.lspSemanticHighlighting ?? true,
@@ -88,17 +245,22 @@ class PersistenceManager {
       tabletSelectedIndex: functionPage?.tabletSelectedIndex ?? 0,
       functionPageShow: functionPage?.functionPageShow ?? true,
       consolePageShow: functionPage?.consolePageShow ?? true,
-      expansionPageShow: functionPage?.expansionPageShow ?? true,
+      consoleDockSide: functionPage?.consoleDockSide ?? 'bottom',
       projectPath: project?.projectPath,
       tabs: tabsData?.tabs ?? [],
+      tabGroups: tabsData?.groups ?? const [],
+      tabLayout: tabsData?.layout,
+      tabPrimaryGroupIndex: tabsData?.primaryGroupIndex ?? 0,
       selectedTabIndex: tabsData?.selectedTabIndex ?? 0,
       selectedTabPath: tabsData?.selectedTabPath,
       chineseToUnicodeConversion: settings?.chineseToUnicodeConversion ?? true,
       enableSignalDetection: settings?.enableSignalDetection ?? true,
       ensureBoardFilesystemOnConnect:
           settings?.ensureBoardFilesystemOnConnect ?? false,
+      deviceRunChdirToScriptDir: settings?.deviceRunChdirToScriptDir ?? false,
       serialDefaultBaudRate: settings?.serialDefaultBaudRate ?? 115200,
       serialAutoReconnect: settings?.serialAutoReconnect ?? false,
+      serialActivePortPath: settings?.serialActivePortPath ?? '',
       terminalFontFamily:
           settings?.terminalFontFamily ?? 'JetBrains Maple Mono',
       terminalFontSize: settings?.terminalFontSize ?? 13,
@@ -114,8 +276,9 @@ class PersistenceManager {
           kDefaultTerminalCustomBackground,
       terminalCustomPalette:
           settings?.terminalCustomPalette ?? kDefaultTerminalCustomPalette,
-      useMaterialContextMenu: settings?.useMaterialContextMenu ?? false,
+      useMaterialContextMenu: settings?.useMaterialContextMenu ?? true,
       uploadConfirmStyle: settings?.uploadConfirmStyle ?? 'toolbar',
+      fileSortMode: settings?.fileSortMode ?? 'name',
       confirmShortcut: settings?.confirmShortcut ?? 'Ctrl+Enter',
       cancelShortcut: settings?.cancelShortcut ?? 'Esc',
       webReplHost: settings?.webReplHost ?? '',
@@ -134,9 +297,167 @@ class PersistenceManager {
     );
   }
 
+  /// Applies the settings a previous session left behind to [container].
+  ///
+  /// Taking the container as a parameter keeps the restore path testable
+  /// without the app's global container; production passes that container.
+  void applyTo(ProviderContainer container, PersistedData data) {
+    switch (data.themeMode) {
+      case 'light':
+        container.read(themeMode.notifier).state = ThemeMode.light;
+      case 'dark':
+        container.read(themeMode.notifier).state = ThemeMode.dark;
+      default:
+        container.read(themeMode.notifier).state = ThemeMode.system;
+    }
+
+    if (data.themeColorValue != null) {
+      container.read(themeColor.notifier).state = Color(data.themeColorValue!);
+    }
+    container.read(themeStyle.notifier).state = ThemeStyle.fromValue(
+      data.themeStyle,
+    );
+    container.read(editorThemeKey.notifier).state = data.editorThemeKey;
+    container.read(activePluginThemeId.notifier).state =
+        data.activePluginThemeId;
+    container.read(welcomeCompletedProvider.notifier).state =
+        data.welcomeCompleted;
+    container.read(activeLocaleProvider.notifier).state = data.activeLocale;
+    container.read(alwaysOnTopProvider.notifier).state = data.alwaysOnTop;
+    container.read(windowPlacementProvider.notifier).state =
+        data.windowPlacement;
+    container.read(editorTextFontProvider.notifier).state = data.editorTextFont;
+    container.read(editorFontSize.notifier).state = data.editorFontSize;
+    container.read(editorWordWrap.notifier).state = data.editorWordWrap;
+    container.read(editorLineNumber.notifier).state = data.editorLineNumber;
+    container.read(editorCodeFolding.notifier).state = data.editorCodeFolding;
+    container.read(editorGuideLines.notifier).state = data.editorGuideLines;
+    container.read(editorLocalSuggestions.notifier).state =
+        data.editorLocalSuggestions;
+    container.read(editorKeyboardSuggestions.notifier).state =
+        data.editorKeyboardSuggestions;
+    container.read(editorUseSpaceAsTab.notifier).state =
+        data.editorUseSpaceAsTab;
+    container.read(editorTabSize.notifier).state = data.editorTabSize;
+    container.read(editorGutterDivider.notifier).state =
+        data.editorGutterDivider;
+    container.read(editorSmoothCursor.notifier).state = data.editorSmoothCursor;
+    container.read(editorMinimap.notifier).state = data.editorMinimap;
+    container.read(editorFormatOnSave.notifier).state = data.editorFormatOnSave;
+    container.read(useLsp.notifier).state = data.useLsp;
+    container.read(lspType.notifier).state =
+        LspType.fromJsonName(data.lspType) ?? LspType.webSocket;
+    container.read(lspWebSocketPath.notifier).state = data.lspWebSocketPath;
+    container.read(lspStdioExecutable.notifier).state = data.lspStdioExecutable;
+    container.read(lspStdioArgs.notifier).state = data.lspStdioArgs;
+    container.read(lspPluginServerId.notifier).state = data.lspPluginServerId;
+    container.read(lspManualLaunch.notifier).state = data.lspManualLaunch;
+    container.read(lspVirtualEnvironment.notifier).state =
+        data.lspVirtualEnvironment;
+    container.read(lspTypeCheckingMode.notifier).state =
+        LspTypeCheckingMode.fromJsonName(data.lspTypeCheckingMode) ??
+        LspTypeCheckingMode.standard;
+    container.read(disableWarning.notifier).state = data.disableWarning;
+    container.read(disableError.notifier).state = data.disableError;
+    container.read(lspSemanticHighlighting.notifier).state =
+        data.lspSemanticHighlighting;
+    container.read(lspCodeCompletion.notifier).state = data.lspCodeCompletion;
+    container.read(lspHoverInfo.notifier).state = data.lspHoverInfo;
+    container.read(lspCodeAction.notifier).state = data.lspCodeAction;
+    container.read(lspSignatureHelp.notifier).state = data.lspSignatureHelp;
+    container.read(lspDocumentColor.notifier).state = data.lspDocumentColor;
+    container.read(lspDocumentHighlight.notifier).state =
+        data.lspDocumentHighlight;
+    container.read(lspCodeFolding.notifier).state = data.lspCodeFolding;
+    container.read(lspShowInlayHints.notifier).state = data.lspShowInlayHints;
+    container.read(lspGoToDefinition.notifier).state = data.lspGoToDefinition;
+    container.read(lspRename.notifier).state = data.lspRename;
+    container.read(lspAlwaysStart.notifier).state = data.lspAlwaysStart;
+    container.read(chineseToUnicodeConversion.notifier).state =
+        data.chineseToUnicodeConversion;
+    container.read(desktopSelectedIndex.notifier).state =
+        data.desktopSelectedIndex;
+    container.read(mobileSelectedIndex.notifier).state =
+        data.mobileSelectedIndex;
+    container.read(tabletSelectedIndex.notifier).state =
+        data.tabletSelectedIndex;
+    container.read(functionPageShow.notifier).state = data.functionPageShow;
+    container.read(consolePageShow.notifier).state = data.consolePageShow;
+    container.read(consoleDockSideProvider.notifier).state =
+        PaneEdge.values.asNameMap()[data.consoleDockSide] ?? PaneEdge.bottom;
+    container.read(enableSignalDetection.notifier).state =
+        data.enableSignalDetection;
+    container.read(ensureBoardFilesystemOnConnect.notifier).state =
+        data.ensureBoardFilesystemOnConnect;
+    container.read(deviceRunChdirToScriptDir.notifier).state =
+        data.deviceRunChdirToScriptDir;
+    container.read(serialDefaultBaudRate.notifier).state =
+        data.serialDefaultBaudRate;
+    container.read(serialAutoReconnect.notifier).state =
+        data.serialAutoReconnect;
+    container.read(replModeProvider.notifier).state =
+        ReplMode.values.asNameMap()[data.replMode] ?? ReplMode.rawRepl;
+    container.read(fileTransferModeProvider.notifier).state =
+        FileTransferMode.values.asNameMap()[data.fileTransferMode] ??
+        FileTransferMode.chunked;
+    container.read(hardwareResetStrategyProvider.notifier).state =
+        HardwareResetStrategy.values.asNameMap()[data.hardwareResetStrategy] ??
+        HardwareResetStrategy.disabled;
+    container.read(terminalFontFamily.notifier).state = data.terminalFontFamily;
+    container.read(terminalFontSize.notifier).state = data.terminalFontSize;
+    container.read(terminalLineHeight.notifier).state = data.terminalLineHeight;
+    container.read(terminalLigatures.notifier).state = data.terminalLigatures;
+    container.read(terminalAppearance.notifier).state =
+        TerminalAppearance.values.asNameMap()[data.terminalAppearance] ??
+        TerminalAppearance.dark;
+    container.read(terminalMinimumContrast.notifier).state =
+        data.terminalMinimumContrast;
+    container.read(terminalCustomForeground.notifier).state =
+        data.terminalCustomForeground;
+    container.read(terminalCustomBackground.notifier).state =
+        data.terminalCustomBackground;
+    container
+        .read(terminalCustomPalette.notifier)
+        .state = data.terminalCustomPalette.length == 16
+        ? data.terminalCustomPalette
+        : kDefaultTerminalCustomPalette;
+    container.read(useMaterialContextMenu.notifier).state =
+        data.useMaterialContextMenu;
+    container
+        .read(serialProvider.notifier)
+        .setBaudRate(data.serialDefaultBaudRate);
+    container
+        .read(serialProvider.notifier)
+        .setAutoReconnect(data.serialAutoReconnect);
+    container.read(uploadConfirmStyleProvider.notifier).state =
+        data.uploadConfirmStyle;
+    container.read(fileSortModeProvider.notifier).state =
+        FileSortMode.fromJsonName(data.fileSortMode);
+    container.read(confirmShortcutProvider.notifier).state =
+        data.confirmShortcut;
+    container.read(cancelShortcutProvider.notifier).state = data.cancelShortcut;
+    container.read(webReplHost.notifier).state = data.webReplHost;
+    container.read(webReplPort.notifier).state = data.webReplPort;
+    container.read(webReplPassword.notifier).state = data.webReplPassword;
+    container.read(microPythonStubsEnabled.notifier).state =
+        data.microPythonStubsEnabled;
+    container.read(microPythonStubsAutoDetectLayers.notifier).state =
+        data.microPythonStubsAutoDetectLayers;
+    container.read(microPythonStubsLayers.notifier).state =
+        data.microPythonStubsLayers;
+    container.read(microPythonStubsExtraPaths.notifier).state =
+        data.microPythonStubsExtraPaths;
+    container.read(dataContributionsProvider.notifier).state =
+        data.dataContributions;
+    container
+        .read(dataRegistryProvider)
+        .restoreContributions(data.dataContributions);
+  }
+
   Future<void> saveFromContainer(ProviderContainer container) async {
     await Future.wait([
-      appPersistence.save(
+      _saveStore<AppPersistedData>(
+        'app',
         AppPersistedData(
           themeMode: container.read(themeMode).name,
           themeStyle: container.read(themeStyle).value,
@@ -146,9 +467,13 @@ class PersistenceManager {
           welcomeCompleted: container.read(welcomeCompletedProvider),
           activeLocale: container.read(activeLocaleProvider),
           alwaysOnTop: container.read(alwaysOnTopProvider),
+          windowPlacement: container.read(windowPlacementProvider),
         ),
+        (data) => data.toJson(),
+        (data, encoded) => appPersistence.save(data, encoded: encoded),
       ),
-      settingsPersistence.save(
+      _saveStore<SettingsPersistedData>(
+        'settings',
         SettingsPersistedData(
           editorTextFont: container.read(editorTextFontProvider),
           editorFontSize: container.read(editorFontSize),
@@ -169,10 +494,10 @@ class PersistenceManager {
           lspWebSocketPath: container.read(lspWebSocketPath),
           lspStdioExecutable: container.read(lspStdioExecutable),
           lspStdioArgs: container.read(lspStdioArgs),
+          lspPluginServerId: container.read(lspPluginServerId),
+          lspManualLaunch: container.read(lspManualLaunch),
           lspVirtualEnvironment: container.read(lspVirtualEnvironment),
-          lspBasedPyrightTypeCheckingMode: container
-              .read(lspBasedPyrightTypeCheckingMode)
-              .jsonName,
+          lspTypeCheckingMode: container.read(lspTypeCheckingMode).jsonName,
           disableWarning: container.read(disableWarning),
           disableError: container.read(disableError),
           lspSemanticHighlighting: container.read(lspSemanticHighlighting),
@@ -194,8 +519,11 @@ class PersistenceManager {
           ensureBoardFilesystemOnConnect: container.read(
             ensureBoardFilesystemOnConnect,
           ),
+          deviceRunChdirToScriptDir: container.read(deviceRunChdirToScriptDir),
           serialDefaultBaudRate: container.read(serialDefaultBaudRate),
           serialAutoReconnect: container.read(serialAutoReconnect),
+          serialActivePortPath:
+              container.read(persistedSerialPortProvider) ?? '',
           terminalFontFamily: container.read(terminalFontFamily),
           terminalFontSize: container.read(terminalFontSize),
           terminalLineHeight: container.read(terminalLineHeight),
@@ -207,6 +535,7 @@ class PersistenceManager {
           terminalCustomPalette: container.read(terminalCustomPalette),
           useMaterialContextMenu: container.read(useMaterialContextMenu),
           uploadConfirmStyle: container.read(uploadConfirmStyleProvider),
+          fileSortMode: container.read(fileSortModeProvider).jsonName,
           confirmShortcut: container.read(confirmShortcutProvider),
           cancelShortcut: container.read(cancelShortcutProvider),
           webReplHost: container.read(webReplHost),
@@ -226,70 +555,161 @@ class PersistenceManager {
               .read(hardwareResetStrategyProvider)
               .name,
         ),
+        (data) => data.toJson(),
+        (data, encoded) => settingsPersistence.save(data, encoded: encoded),
       ),
-      functionPagePersistence.save(
+      _saveStore<FunctionPagePersistedData>(
+        'functionPage',
         FunctionPagePersistedData(
           desktopSelectedIndex: container.read(desktopSelectedIndex),
           mobileSelectedIndex: container.read(mobileSelectedIndex),
           tabletSelectedIndex: container.read(tabletSelectedIndex),
           functionPageShow: container.read(functionPageShow),
           consolePageShow: container.read(consolePageShow),
-          expansionPageShow: container.read(expansionPageShow),
+          consoleDockSide: container.read(consoleDockSideProvider).name,
         ),
+        (data) => data.toJson(),
+        (data, encoded) => functionPagePersistence.save(data, encoded: encoded),
       ),
       _saveProject(container),
       _saveTabs(container),
-      dataContributionsPersistence.save(
+      _saveStore<List<DataContributionRecord>>(
+        'dataContributions',
         container.read(dataContributionsProvider),
+        (records) => {
+          'records': [for (final r in records) r.toJson()],
+        },
+        (records, encoded) =>
+            dataContributionsPersistence.save(records, encoded: encoded),
       ),
     ]);
   }
 
   Future<void> _saveProject(ProviderContainer container) async {
-    final dir = container.read(fileProvider);
-    await projectPersistence.save(ProjectPersistedData(projectPath: dir?.path));
+    final projectPath = container.read(persistedProjectPathProvider);
+    await _saveStore<ProjectPersistedData>(
+      'project',
+      ProjectPersistedData(projectPath: projectPath),
+      (data) => data.toJson(),
+      (data, encoded) => projectPersistence.save(data, encoded: encoded),
+    );
   }
 
   Future<void> _saveTabs(ProviderContainer container) async {
-    final tabController = container.read(tabbedViewControllerProvider);
-    final List<PersistedTab> tabs = [];
-    String? selectedTabPath;
-    for (final tab in tabController.tabs) {
-      final value = tab.value;
-      if (value is TabDataValue && value.type == "file") {
-        tabs.add(
-          PersistedTab(
-            filePath: value.filePath,
-            isBoardFile: value.isBoardFile ?? false,
-            boardFilePath: value.boardFilePath,
-            isSaved: value.isSaved,
-            unsavedContent: (!value.isSaved && value.editorController != null)
-                ? value.editorController!.text
-                : null,
-            cursorOffset: value.editorController?.selection.extentOffset,
-            scrollLine: value.editorController?.firstVisibleLine,
-            foldedRanges: _persistFoldedRanges(value.editorController),
-          ),
-        );
-      }
+    final primary = container.read(tabbedViewControllerProvider);
+    final layout = container.read(editorLayoutProvider);
+    if (layout is SplitLayout) {
+      // The tree is persisted as it stands, so any number of nested groups
+      // reopens exactly as it was left -- including which of them is the
+      // primary one.
+      final persisted = persistEditorLayout(
+        layout,
+        primary: primary,
+        convert: _persistGroup,
+      );
+      await _saveStore<TabsPersistedData>(
+        'tabs',
+        TabsPersistedData(
+          tabs: const [],
+          selectedTabIndex: 0,
+          groups: persisted.groups,
+          layout: persisted.node,
+          primaryGroupIndex: persisted.primaryIndex,
+        ),
+        (data) => data.toJson(),
+        (data, encoded) => tabsPersistence.save(data, encoded: encoded),
+      );
+      return;
     }
-    final selectedIndex = tabController.selectedIndex;
-    if (selectedIndex != null &&
-        selectedIndex >= 0 &&
-        selectedIndex < tabController.tabs.length) {
-      final selectedValue = tabController.tabs[selectedIndex].value;
-      if (selectedValue is TabDataValue) {
-        selectedTabPath = selectedValue.filePath;
-      }
-    }
-    await tabsPersistence.save(
+    // A single group needs no tree: the flat list restores it, and it is the
+    // only place its tabs are written, so no buffer is serialized twice.
+    final group = _persistGroup(primary);
+    await _saveStore<TabsPersistedData>(
+      'tabs',
       TabsPersistedData(
-        tabs: tabs,
-        selectedTabIndex: selectedIndex ?? 0,
-        selectedTabPath: selectedTabPath,
+        tabs: group.tabs,
+        selectedTabIndex: primary.selectedIndex ?? 0,
+        selectedTabPath: group.selectedTabPath,
       ),
+      (data) => data.toJson(),
+      (data, encoded) => tabsPersistence.save(data, encoded: encoded),
     );
   }
+
+  PersistedEditorGroup _persistGroup(TabbedViewController group) {
+    return PersistedEditorGroup(
+      tabs: [
+        for (final tab in group.tabs)
+          if (tab.value is OutlineTabValue)
+            // Outline tabs persist as markers so a saved outline keeps its
+            // position inside its group, wherever the tab was dragged to.
+            PersistedTab(filePath: '', isOutline: true)
+          else if (editorTabValueOf(tab) case final value?
+              when value.type == 'file')
+            _persistTab(value),
+      ],
+      selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
+    );
+  }
+
+  PersistedTab _persistTab(TabDataValue value) {
+    return PersistedTab(
+      filePath: value.filePath,
+      isBoardFile: value.isBoardFile ?? false,
+      boardFilePath: value.boardFilePath,
+      isSaved: value.isSaved,
+      unsavedContent: (!value.isSaved && value.editorController != null)
+          ? value.editorController!.text
+          : null,
+      cursorOffset: value.editorController?.selection.extentOffset,
+      scrollLine: value.editorController?.firstVisibleLine,
+      foldedRanges: _persistFoldedRanges(value.editorController),
+    );
+  }
+}
+
+/// A fingerprint of what [PersistenceManager] writes for the editor area,
+/// leaving out the buffers themselves.
+///
+/// Cheap enough to compute on every tab notification, so the session is only
+/// saved when this changes: re-selecting the selected tab or a title refresh
+/// writes nothing, while opening, closing, moving or selecting a tab, saving
+/// one or reshaping the groups does.
+String persistedEditorAreaKey(ProviderContainer container) {
+  final persisted = persistEditorLayout(
+    container.read(editorLayoutProvider),
+    primary: container.read(tabbedViewControllerProvider),
+    convert: (group) => PersistedEditorGroup(
+      tabs: [for (final tab in group.tabs) ?_persistedTabShape(tab)],
+      selectedTabPath: editorTabValueOf(group.selectedTab)?.filePath,
+    ),
+  );
+  return jsonEncode({
+    'groups': [for (final group in persisted.groups) group.toJson()],
+    'layout': persisted.node.toJson(),
+    'primary': persisted.primaryIndex,
+  });
+}
+
+/// The part of one tab that [_persistGroup] writes, minus its buffer.
+///
+/// The list has to mirror the one [_persistGroup] produces, outline markers
+/// included: opening or closing an outline tab changes what a save records, so
+/// it has to change the key that decides whether a save happens at all. A key
+/// that ignored outline tabs left the new layout unwritten until some unrelated
+/// edit dirtied the session.
+PersistedTab? _persistedTabShape(TabData tab) {
+  if (tab.value is OutlineTabValue) {
+    return PersistedTab(filePath: '', isOutline: true);
+  }
+  final value = editorTabValueOf(tab);
+  if (value == null || value.type != 'file') return null;
+  return PersistedTab(
+    filePath: value.filePath,
+    isBoardFile: value.isBoardFile ?? false,
+    boardFilePath: value.boardFilePath,
+    isSaved: value.isSaved,
+  );
 }
 
 List<PersistedFoldRange> _persistFoldedRanges(CodeForgeController? controller) {

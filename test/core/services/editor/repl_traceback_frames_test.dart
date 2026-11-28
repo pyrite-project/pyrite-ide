@@ -99,6 +99,28 @@ void main() {
           'Traceback (most recent call last):\r\n  File "<stdin>", line 1\r\n';
       expect(tracebackFrameRanges(output), isEmpty);
     });
+
+    test('gives a repeated frame its own range, not the first one', () {
+      // Running the same failing code twice is the common case, and a per-frame
+      // search by name collapsed both copies onto the first occurrence, so the
+      // second was neither highlighted nor tappable.
+      const output =
+          'Traceback (most recent call last):\r\n'
+          '  File "main.py", line 12, in handler\r\n'
+          'NameError: x\r\n'
+          'Traceback (most recent call last):\r\n'
+          '  File "main.py", line 12, in handler\r\n'
+          'NameError: x\r\n';
+      final ranges = tracebackFrameRanges(output);
+      expect(ranges, hasLength(2));
+      expect(ranges[0].start, isNot(ranges[1].start));
+      for (final range in ranges) {
+        expect(
+          output.substring(range.start, range.end),
+          'File "main.py", line 12',
+        );
+      }
+    });
   });
 
   group('containsTraceback', () {
@@ -108,6 +130,20 @@ void main() {
 
     test('does not fire on a bare File line', () {
       expect(containsTraceback('File "a.py", line 1'), isFalse);
+    });
+  });
+
+  group('editorLineFor', () {
+    test('shifts a Python line down to the editor 0-based line', () {
+      expect(
+        editorLineFor((file: 'main.py', line: 12)),
+        11,
+        reason: 'Python counts from 1, the editor counts from 0',
+      );
+    });
+
+    test('maps the first line to index 0', () {
+      expect(editorLineFor((file: 'main.py', line: 1)), 0);
     });
   });
 }

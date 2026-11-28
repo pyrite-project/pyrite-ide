@@ -10,13 +10,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
 import 'package:pyrite_ide/core/services/file/canonical_path.dart';
 import 'package:pyrite_ide/features/edit_core/themed_code_forge.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
 
 /// One jumpable place in a file: a file path plus an optional LSP
 /// line/character position inside it.
@@ -92,13 +93,20 @@ Future<void> revealLspLocation(
   int? character,
 ) async {
   if (line == null || character == null) return;
-  await ref
-      .read(tabbedViewControllerProvider.notifier)
-      .openFile(context, file: File(path));
+  final targetPath = canonicalLocalPath(path);
+  final tabs = ref.read(tabbedViewControllerProvider.notifier);
+  // The opened tab is returned rather than looked up again: `openFile` also
+  // resolves a tab by filesystem identity, so the stored spelling can differ
+  // from [targetPath] (a symlink, or a different drive-letter casing) and an
+  // exact-path lookup would miss it.
+  final openedTab = await tabs.openFile(context, file: File(targetPath));
   if (!context.mounted) return;
-  final targetController =
-      ref.read(tabbedViewControllerProvider).selectedTab?.value.editorController
-          as CodeForgeController?;
+  // `openFile` returns null when the file cannot be read, when the
+  // binary/encoding prompt is dismissed, or when the picker is cancelled. The
+  // tab is the proof the jump target exists: the active tab is merely whatever
+  // the user was looking at, and moving its caret would edit an unrelated
+  // file.
+  final targetController = editorTabValueOf(openedTab)?.editorController;
   if (targetController == null) return;
   final offset = (targetController.getLineStartOffset(line) + character).clamp(
     0,
@@ -155,12 +163,21 @@ class LspLocationDialog extends ConsumerStatefulWidget {
     required this.entries,
     required this.onOpen,
     this.emptyKey = I18nKey.editorReferencesEmpty,
+    this.contentLoader,
   });
 
   final String Function(WidgetRef ref) titleBuilder;
   final List<LspLocationEntry> entries;
   final Future<void> Function(LspLocationEntry entry) onOpen;
   final I18nKey emptyKey;
+
+  /// Overrides where the preview gets an entry's text from.
+  ///
+  /// Production leaves this null and reads the live buffer or the disk. Tests
+  /// pass a loader whose futures they complete in a chosen order, which is the
+  /// only way to reproduce a fast selection switch deterministically.
+  @visibleForTesting
+  final Future<String?> Function(String path)? contentLoader;
 
   @override
   ConsumerState<LspLocationDialog> createState() => _LspLocationDialogState();
@@ -174,6 +191,12 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
   var _loadingContent = false;
   String? _failedPath;
   String? _previewPath;
+
+  /// Bumped by every selection. A load captures its value and only publishes
+  /// when it is still current, so a slow read for an entry the user already
+  /// clicked away from cannot replace the newest preview or reset its
+  /// loading/failure state.
+  var _selectionGeneration = 0;
 
   @override
   void initState() {
@@ -274,14 +297,17 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
   Future<void> _select(int index) async {
     if (index < 0 || index >= widget.entries.length) return;
     final entry = widget.entries[index];
+    final generation = ++_selectionGeneration;
     setState(() {
       _selectedIndex = index;
       _loadingContent = true;
       _previewPath = entry.path;
     });
     _syncLspSource();
-    final content = await _loadContent(entry.path);
-    if (!mounted) return;
+    final content =
+        await (widget.contentLoader?.call(entry.path) ??
+            _loadContent(entry.path));
+    if (!mounted || generation != _selectionGeneration) return;
     if (content == null) {
       setState(() {
         _loadingContent = false;
@@ -314,7 +340,11 @@ class _LspLocationDialogState extends ConsumerState<LspLocationDialog> {
           color: Theme.of(context).colorScheme.primary.withAlpha(45),
         ),
       );
-    } catch (_) {}
+    } catch (error) {
+      debugPrint(
+        '[lib/features/edit_core/lsp_location_dialog.dart] ignored error: $error',
+      );
+    }
     var offset = _previewController.getLineStartOffset(targetLine);
     offset = (offset + (entry.character ?? 0))
         .clamp(0, _previewController.text.length)

@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,16 +9,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pyrite_ide/app/routes.dart';
 import 'package:pyrite_ide/core/constants/basic.dart';
 import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/sdk/environment_broadcaster.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/features/macos_menu.dart';
 import 'package:responsive_framework/responsive_framework.dart';
-import 'package:dynamic_color/dynamic_color.dart';
 
 class PyriteIDE extends ConsumerWidget {
   const PyriteIDE({super.key});
@@ -106,7 +108,7 @@ class PyriteIDE extends ConsumerWidget {
       );
 
       if (Platform.isAndroid) {
-        SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
+        final SystemUiOverlayStyle systemUiOverlayStyle = SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           systemNavigationBarColor: scheme.surfaceContainer,
         );
@@ -148,7 +150,18 @@ class PyriteIDE extends ConsumerWidget {
           );
     }
 
+    // Resolved from the theme actually in use, so a plugin theme's scheme wins
+    // over the built-in one for both tokens below.
+    final scheme = baseTheme.colorScheme;
     return _applyDensityTokens(baseTheme, tokens).copyWith(
+      // One text-selection tint for every editable and selectable surface.
+      // `Theme` forwards this into `DefaultSelectionStyle`, which is what
+      // `SelectionArea`, `SelectableText` and `EditableText` read when they are
+      // given no explicit color of their own. Surfaces that paint themselves
+      // (the editor, the terminal) take the same value from `AppSelection`.
+      textSelectionTheme: TextSelectionThemeData(
+        selectionColor: AppSelection.text(scheme),
+      ),
       extensions: <ThemeExtension<dynamic>>[
         // Single source of truth for corner radii, shared by the built-in theme
         // and by plugin-provided themes.
@@ -381,7 +394,10 @@ class PyriteIDE extends ConsumerWidget {
           },
         );
 
-        if (Platform.isMacOS || defaultTargetPlatform == TargetPlatform.macOS) {
+        // The platform-provided menu items exist only where the target
+        // platform is macOS; a macOS host running another target -- the test
+        // environment -- has none of them.
+        if (defaultTargetPlatform == TargetPlatform.macOS) {
           return MacOSMenu(app: app);
         }
         return app;

@@ -1,28 +1,41 @@
 import 'dart:async';
 import 'dart:io';
+
+import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/constants/theme_density.dart';
+import 'package:pyrite_ide/core/constants/window.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
+import 'package:pyrite_ide/core/models/window_placement.dart';
 import 'package:pyrite_ide/core/sdk/activation_manager.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
 import 'package:pyrite_ide/core/services/editor/editor_controller_provider.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
 import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/expansion_page.dart';
-import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/persistence/app_persistence.dart';
+import 'package:pyrite_ide/core/services/window_placement.dart';
+import 'package:pyrite_ide/features/command_palette/command_palette.dart';
+import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
+import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
 import 'package:pyrite_ide/shared/tabbed_view/unsaved_tab_guard.dart';
-import 'package:tabbed_view/src/tab_data.dart';
+import 'package:screen_retriever/screen_retriever.dart';
+import 'package:tabbed_view/tabbed_view.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:code_forge/code_forge.dart' show editorModifierKeys;
 
 class UseWindow with WindowListener {
   ProviderContainer? _container;
@@ -31,6 +44,19 @@ class UseWindow with WindowListener {
   /// Guards the unsaved-changes prompt against a second close request
   /// arriving while the first one is still showing its dialog.
   bool _confirmingUnsaved = false;
+
+  /// Smallest window the shell accepts.
+  ///
+  /// Set to the smallest phone target rather than a desktop comfort floor: the
+  /// app has a phone layout, and being able to resize a desktop window down to
+  /// 320x480 is how that layout gets exercised without a device.
+  static const Size _minimumWindowSize = Size(320, 480);
+
+  /// The normal (unmaximized) bounds, kept even while the window is maximized
+  /// so restoring a maximized session does not later restore to the maximized
+  /// size as its "normal" size.
+  Rect? _lastNormalBounds;
+  Timer? _placementCaptureTimer;
 
   void init() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -46,10 +72,56 @@ class UseWindow with WindowListener {
       // actually recovers a modifier held across an Alt+Tab on Windows.
       editorModifierKeys.windowFocusProbe = windowManager.isFocused;
       windowManager.addListener(this);
-      windowManager.waitUntilReadyToShow(windowOptions, () async {
+      final restored = await _restoredPlacement();
+      try {
+        await windowManager.setMinimumSize(_minimumWindowSize);
+      } catch (error) {
+        debugPrint('[window] could not set minimum size: $error');
+      }
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        if (restored != null) {
+          try {
+            await windowManager.setBounds(restored.bounds);
+            _lastNormalBounds = restored.bounds;
+          } catch (error) {
+            debugPrint('[window] could not restore bounds: $error');
+          }
+        }
         await windowManager.show();
         await windowManager.focus();
+        if (restored?.maximized == true) {
+          try {
+            await windowManager.maximize();
+          } catch (error) {
+            debugPrint('[window] could not restore maximized state: $error');
+          }
+        }
       });
+    }
+  }
+
+  /// Validates the persisted placement against the displays that exist now.
+  ///
+  /// A monitor that was disconnected since the last run must not leave the
+  /// window off-screen, and a bad file must not prevent the app from opening.
+  Future<WindowPlacement?> _restoredPlacement() async {
+    final stored = _container?.read(windowPlacementProvider);
+    if (stored == null) return null;
+    try {
+      final displays = await screenRetriever.getAllDisplays();
+      final areas = <Rect>[
+        for (final display in displays)
+          Rect.fromLTWH(
+            (display.visiblePosition ?? Offset.zero).dx,
+            (display.visiblePosition ?? Offset.zero).dy,
+            (display.visibleSize ?? display.size).width,
+            (display.visibleSize ?? display.size).height,
+          ),
+      ];
+      return stored.clampToVisibleAreas(areas);
+    } catch (error) {
+      debugPrint('[window] could not read displays, centering: $error');
+      return null;
     }
   }
 
@@ -75,17 +147,33 @@ class UseWindow with WindowListener {
       );
     }
     if (!mayClose) return;
+    // A shutdown is the last moment the log can record that plugins and
+    // terminals were asked to stop, and how long that took.
+    AppLog.i('lifecycle', 'closing window; stopping plugins and terminals');
     _closing = true;
+    _placementCaptureTimer?.cancel();
+    await _captureWindowPlacement(force: true);
+    await _persistWindowPlacement();
 
     try {
       await Future.wait([
         _closeDesktopTerminals(),
         _stopPlugins(),
       ]).timeout(const Duration(seconds: 2));
-    } catch (_) {
+    } catch (error) {
+      AppLog.w(
+        'lifecycle',
+        'shutdown cleanup did not finish in time',
+        error: error,
+      );
     } finally {
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
+      // The buffered tail of this session is the part worth keeping: it holds
+      // whatever went wrong during shutdown. exit() does not run the flush
+      // timer.
+      AppLog.i('lifecycle', 'window destroyed; flushing log');
+      AppLog.flushSync();
       exit(0);
     }
   }
@@ -164,13 +252,56 @@ class UseWindow with WindowListener {
     switch (choice) {
       case _ExitChoice.saveAll:
         final notifier = container.read(fileProvider.notifier);
+        final failures = <String>[];
         for (final tab in unsaved) {
-          // One unreadable file must not strand the rest of the saves, and it
-          // must not keep the window open either -- the buffer is already
-          // persisted for the next session.
+          // One unreadable file must not strand the rest of the saves.
+          final path = editorTabValueOf(tab)?.filePath ?? '';
           try {
-            await notifier.saveTab(tab);
-          } catch (_) {}
+            if (!await notifier.saveTab(tab)) {
+              // Distinguish a read-only buffer from a cancelled overwrite
+              // prompt so the report says why the file was left unwritten.
+              final readOnly =
+                  editorTabValueOf(tab)?.editorController?.readOnly == true;
+              failures.add(
+                tr(I18nKey.appExitSaveFailedFile, {
+                  'path': path,
+                  'reason': tr(
+                    readOnly
+                        ? I18nKey.appExitSaveFailedReadOnly
+                        : I18nKey.appExitSaveFailedCancelled,
+                  ),
+                }),
+              );
+            }
+          } catch (error) {
+            AppLog.w(
+              'window',
+              'saving a tab before close failed tab=$path',
+              error: error,
+            );
+            failures.add(
+              tr(I18nKey.appExitSaveFailedFile, {
+                'path': path,
+                'reason': tr(I18nKey.appExitSaveFailedError),
+              }),
+            );
+          }
+        }
+        // A refused save (the user cancelled an external-overwrite prompt, or
+        // the buffer cannot be written back) leaves the tab dirty; closing
+        // now would drop the edits the user asked to keep. Say which files were
+        // left behind instead of silently doing nothing.
+        if (failures.isNotEmpty) {
+          container
+              .read(ideMessageProvider.notifier)
+              .show(
+                '${tr(I18nKey.appExitSaveFailedTitle)}\n'
+                '${failures.join('\n')}',
+                type: IdeMessageType.error,
+                duration: const Duration(seconds: 12),
+                closeable: true,
+              );
+          return false;
         }
         container
             .read(ideMessageProvider.notifier)
@@ -186,8 +317,8 @@ class UseWindow with WindowListener {
 
   List<TabData> _collectUnsavedTabs(ProviderContainer container) {
     final tabs = <TabData>[
-      ...container.read(tabbedViewControllerProvider).tabs,
-      ...container.read(expansionViewController).tabs,
+      for (final controller in allEditorControllers(container))
+        ...controller.tabs,
     ];
     return tabs.where(isTabUnsaved).toList();
   }
@@ -224,13 +355,98 @@ class UseWindow with WindowListener {
     editorModifierKeys.onWindowBlur();
   }
 
+  @override
+  void onWindowResize() => _schedulePlacementCapture();
+
+  @override
+  void onWindowResized() => _schedulePlacementCapture();
+
+  @override
+  void onWindowMove() => _schedulePlacementCapture();
+
+  @override
+  void onWindowMoved() => _schedulePlacementCapture();
+
+  @override
+  void onWindowMaximize() {
+    final container = _container;
+    if (container == null) return;
+    final bounds =
+        container.read(windowPlacementProvider)?.bounds ?? _lastNormalBounds;
+    if (bounds == null) return;
+    container.read(windowPlacementProvider.notifier).state = WindowPlacement(
+      bounds: bounds,
+      maximized: true,
+    );
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    final container = _container;
+    if (container == null) return;
+    final current = container.read(windowPlacementProvider);
+    if (current != null) {
+      container.read(windowPlacementProvider.notifier).state = WindowPlacement(
+        bounds: current.bounds,
+        maximized: false,
+      );
+    }
+    _schedulePlacementCapture();
+  }
+
+  /// Debounces the resize/move burst a window drag produces.
+  void _schedulePlacementCapture() {
+    if (_closing) return;
+    _placementCaptureTimer?.cancel();
+    _placementCaptureTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(_captureWindowPlacement());
+    });
+  }
+
+  /// Records the current normal bounds in memory.
+  ///
+  /// While maximized the window manager reports the maximized rectangle, which
+  /// must not replace the normal bounds the user would return to.
+  Future<void> _captureWindowPlacement({bool force = false}) async {
+    final container = _container;
+    if (container == null) return;
+    try {
+      if (!force && await windowManager.isMaximized()) return;
+      final bounds = await windowManager.getBounds();
+      if (bounds.width < 200 || bounds.height < 200) return;
+      if (await windowManager.isMaximized()) return;
+      _lastNormalBounds = bounds;
+      container.read(windowPlacementProvider.notifier).state = WindowPlacement(
+        bounds: bounds,
+        maximized: false,
+      );
+    } catch (error) {
+      debugPrint('[window] could not capture bounds: $error');
+    }
+  }
+
+  /// Writes the placement into `app.json` without rewriting unrelated data.
+  Future<void> _persistWindowPlacement() async {
+    final placement = _container?.read(windowPlacementProvider);
+    if (placement == null) return;
+    try {
+      await AppPersistence().patch({'window': placement.toJson()});
+    } catch (error) {
+      debugPrint('[window] could not persist bounds: $error');
+    }
+  }
+
   Future<void> _closeDesktopTerminals() async {
     try {
       await _container
           ?.read(desktopTerminalProvider.notifier)
           .closeAll()
           .timeout(const Duration(seconds: 1));
-    } catch (_) {}
+    } catch (error) {
+      // A terminal that does not close leaves a shell process behind, which is
+      // the usual reason a rebuild fails with "file in use".
+      AppLog.w('lifecycle', 'closing desktop terminals failed', error: error);
+    }
   }
 
   Future<void> _stopPlugins() async {
@@ -241,7 +457,9 @@ class UseWindow with WindowListener {
           ?.read(activationManagerProvider.notifier)
           .deactivateAllForShutdown()
           .timeout(const Duration(seconds: 2));
-    } catch (_) {}
+    } catch (error) {
+      AppLog.w('lifecycle', 'deactivating plugins failed', error: error);
+    }
   }
 }
 
@@ -346,6 +564,33 @@ class AppActionBar extends ConsumerWidget {
               leadingIconData: Icons.save_as,
               shortcut: platformShortcut(LogicalKeyboardKey.keyS, shift: true),
             ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuReopenClosedTab,
+              () => reopenClosedEditorTab(context, ref),
+              leadingIconData: Icons.restore,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyT, shift: true),
+            ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuCommandPalette,
+              () => showCommandPalette(context, hooks: editorPaletteHooks()),
+              leadingIconData: Icons.terminal,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyP, shift: true),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuQuickOpen,
+              () => showCommandPalette(
+                context,
+                mode: PaletteLaunchMode.files,
+                hooks: editorPaletteHooks(),
+              ),
+              leadingIconData: Icons.search,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyP),
+            ),
           ],
           child: const UseText(I18nKey.menuFile),
         ),
@@ -417,17 +662,44 @@ class AppActionBar extends ConsumerWidget {
               ),
               child: const UseText(I18nKey.menuConsolePanel),
             ),
+            // Always reachable, unlike the console tab's own menu: once every
+            // surface was dragged out, the panel and its strip are gone.
             MenuItemButton(
-              onPressed: () {},
-              leadingIcon: Icon(Icons.expand),
-              trailingIcon: Checkbox(
-                value: ref.watch(expansionPageShow),
-                onChanged: (value) =>
-                    ref.read(expansionPageShow.notifier).state = !ref.read(
-                      expansionPageShow,
-                    ),
+              onPressed: () =>
+                  resetTerminalLayout(ProviderScope.containerOf(context)),
+              leadingIcon: const Icon(Icons.settings_backup_restore),
+              child: const UseText(I18nKey.consoleResetLayout),
+            ),
+            PopupMenuDivider(),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuSplitRight,
+              () => splitActiveEditor(ref, PaneEdge.right),
+              leadingIconData: Icons.vertical_split,
+              shortcut: platformShortcut(LogicalKeyboardKey.backslash),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuSplitDown,
+              () => splitActiveEditor(ref, PaneEdge.bottom),
+              leadingIconData: Icons.horizontal_split,
+              shortcut: platformShortcut(
+                LogicalKeyboardKey.backslash,
+                shift: true,
               ),
-              child: const UseText(I18nKey.menuExpansionPanel),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuCloseGroup,
+              () => closeActiveEditorGroup(context, ref),
+              leadingIconData: Icons.close_fullscreen,
+              shortcut: platformShortcut(LogicalKeyboardKey.keyW, alt: true),
+            ),
+            buildMenuItemButton(
+              context,
+              I18nKey.menuResetEditorLayout,
+              () => resetEditorLayout(ref),
+              leadingIconData: Icons.restart_alt,
             ),
           ],
           child: const UseText(I18nKey.menuView),
@@ -462,12 +734,14 @@ class AppActionBar extends ConsumerWidget {
   SingleActivator platformShortcut(
     LogicalKeyboardKey key, {
     bool shift = false,
+    bool alt = false,
   }) {
     return SingleActivator(
       key,
       control: !Platform.isMacOS,
       meta: Platform.isMacOS,
       shift: shift,
+      alt: alt,
     );
   }
 }
@@ -493,7 +767,7 @@ class WindowActionBar extends ConsumerWidget {
         ),
         IconButton(
           icon: Icon(Icons.minimize, size: 18),
-          onPressed: () => windowManager.minimize(),
+          onPressed: windowManager.minimize,
         ),
         FutureBuilder<bool>(
           future: windowManager.isMaximized(),
@@ -518,7 +792,7 @@ class WindowActionBar extends ConsumerWidget {
             context,
           ).colorScheme.error.withValues(alpha: 0.3),
           icon: Icon(Icons.close, size: 20),
-          onPressed: () => windowManager.close(),
+          onPressed: windowManager.close,
         ),
       ],
     );

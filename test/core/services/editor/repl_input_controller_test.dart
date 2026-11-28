@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/editor/repl_completion_controller.dart';
 import 'package:pyrite_ide/core/services/editor/repl_history_store.dart';
 import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
@@ -94,6 +94,80 @@ void main() {
 
       expect(controller.text.text, 'value = print + 1');
       expect(controller.text.selection.baseOffset, 13);
+    });
+
+    test('applies a completion to the text it was requested for', () {
+      controller.text.value = const TextEditingValue(
+        text: 'pri',
+        selection: TextSelection.collapsed(offset: 3),
+      );
+      // The popup was requested for "pri"; the user typed one more character
+      // before accepting the item.
+      controller.text.value = const TextEditingValue(
+        text: 'prin',
+        selection: TextSelection.collapsed(offset: 4),
+      );
+
+      controller.applyCompletion(
+        const ReplCompletionItem(
+          label: 'print',
+          insertText: 'print',
+          replaceStart: 0,
+          replaceEnd: 3,
+          kind: ReplCompletionKind.builtin,
+          source: ReplCompletionSource.staticCatalog,
+        ),
+      );
+
+      expect(controller.text.text, 'print');
+      expect(controller.text.selection.baseOffset, 5);
+    });
+
+    test('does not apply a completion after the caret leaves the token', () {
+      controller.text.value = const TextEditingValue(
+        text: 'pri',
+        selection: TextSelection.collapsed(offset: 3),
+      );
+      controller.text.selection = const TextSelection.collapsed(offset: 1);
+
+      controller.applyCompletion(
+        const ReplCompletionItem(
+          label: 'print',
+          insertText: 'print',
+          replaceStart: 0,
+          replaceEnd: 3,
+          kind: ReplCompletionKind.builtin,
+          source: ReplCompletionSource.staticCatalog,
+        ),
+      );
+
+      expect(controller.text.text, 'pri');
+      expect(controller.text.selection.baseOffset, 1);
+    });
+
+    test('drops a completion the typed text no longer matches', () {
+      controller.text.value = const TextEditingValue(
+        text: 'pri',
+        selection: TextSelection.collapsed(offset: 3),
+      );
+      controller.text.value = const TextEditingValue(
+        text: 'prix',
+        selection: TextSelection.collapsed(offset: 4),
+      );
+
+      controller.applyCompletion(
+        const ReplCompletionItem(
+          label: 'print',
+          insertText: 'print',
+          replaceStart: 0,
+          replaceEnd: 3,
+          kind: ReplCompletionKind.builtin,
+          source: ReplCompletionSource.staticCatalog,
+        ),
+      );
+
+      expect(controller.text.text, 'prix');
+      expect(controller.text.selection.baseOffset, 4);
     });
 
     test('submits compound input only after an empty line', () {

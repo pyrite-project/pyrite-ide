@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/services/shortcut_utils.dart';
 
 void main() {

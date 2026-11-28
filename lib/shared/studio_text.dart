@@ -42,7 +42,7 @@ class TextDisplayLarge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.displayLarge!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.displayLarge!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -57,7 +57,7 @@ class TextDisplayMedium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.displayMedium!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.displayMedium!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -72,7 +72,7 @@ class TextTitleLarge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.titleLarge!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.titleLarge!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -87,7 +87,7 @@ class TextTitleMedium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.titleMedium!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.titleMedium!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -102,7 +102,7 @@ class TextTitleSmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.titleSmall!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.titleSmall!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -117,7 +117,7 @@ class TextBodyLarge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.bodyLarge!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.bodyLarge!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -132,7 +132,7 @@ class TextBodyMedium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.bodyMedium!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.bodyMedium!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -147,7 +147,7 @@ class TextBodySmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.bodySmall!.copyWith(
+    final TextStyle style = Theme.of(context).textTheme.bodySmall!.copyWith(
       color: color ?? Theme.of(context).colorScheme.onSurface,
       fontFamily: "HarmonyOS Sans SC",
     );
@@ -162,10 +162,11 @@ class TextHeadlineMedium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle? style = Theme.of(context).textTheme.headlineMedium!.copyWith(
-      color: color ?? Theme.of(context).colorScheme.onSurface,
-      fontFamily: "HarmonyOS Sans SC",
-    );
+    final TextStyle style = Theme.of(context).textTheme.headlineMedium!
+        .copyWith(
+          color: color ?? Theme.of(context).colorScheme.onSurface,
+          fontFamily: "HarmonyOS Sans SC",
+        );
     return Text(data, style: style);
   }
 }

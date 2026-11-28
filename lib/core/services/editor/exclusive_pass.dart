@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 /// Runs async passes one at a time.
 ///
 /// Used where several independent triggers can ask for the same work while an
@@ -29,7 +31,11 @@ class ExclusivePass {
       // A pass that threw must not wedge everything queued behind it.
       try {
         await previous;
-      } catch (_) {}
+      } catch (error) {
+        debugPrint(
+          '[lib/core/services/editor/exclusive_pass.dart] ignored error: $error',
+        );
+      }
       try {
         completer.complete(await action());
       } catch (error, stack) {

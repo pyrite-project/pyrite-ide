@@ -2,7 +2,6 @@
 name = "Minimal Legacy Plugin"
 id = "minimal-legacy-plugin"
 version = "1.0.0"
-python_version = "3.14"
 author = "PyriteIDE"
 description = "T00 legacy plugin lifecycle fixture"
 type = "ui"

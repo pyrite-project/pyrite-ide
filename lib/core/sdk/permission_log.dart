@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
 
 enum PermissionDecision { allowed, denied, unknown }
 
@@ -85,7 +86,7 @@ class PermissionLogService extends ChangeNotifier {
         list.map((e) => PermissionLogEntry.fromJson(e as Map<String, dynamic>)),
       );
     } catch (e) {
-      debugPrint('PermissionLogService: Failed to load: $e');
+      AppLog.w('permission', 'PermissionLogService: Failed to load', error: e);
     }
   }
 
@@ -120,7 +121,7 @@ class PermissionLogService extends ChangeNotifier {
         jsonEncode({'logs': _entries.map((e) => e.toJson()).toList()}),
       );
     } catch (e) {
-      debugPrint('PermissionLogService: Failed to flush: $e');
+      AppLog.w('permission', 'PermissionLogService: Failed to flush', error: e);
     }
   }
 

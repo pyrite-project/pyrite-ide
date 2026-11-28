@@ -75,24 +75,40 @@ void main() {
     expect(data.lspVirtualEnvironment, '/workspace/.venv');
   });
 
-  test(
-    'BasedPyright type checking mode round-trips with a compatible default',
-    () {
-      expect(
-        SettingsPersistedData.fromJson(
-          const {},
-        ).lspBasedPyrightTypeCheckingMode,
-        'standard',
-      );
+  test('type checking mode round-trips with a compatible default', () {
+    expect(
+      SettingsPersistedData.fromJson(const {}).lspTypeCheckingMode,
+      'standard',
+    );
 
-      final data = SettingsPersistedData.fromJson({
-        'lspBasedPyrightTypeCheckingMode': 'strict',
-      });
+    final data = SettingsPersistedData.fromJson({
+      'lspTypeCheckingMode': 'strict',
+    });
 
-      expect(data.lspBasedPyrightTypeCheckingMode, 'strict');
-      expect(data.toJson()['lspBasedPyrightTypeCheckingMode'], 'strict');
-    },
-  );
+    expect(data.lspTypeCheckingMode, 'strict');
+    expect(data.toJson()['lspTypeCheckingMode'], 'strict');
+  });
+
+  test('the plugin-provided language server round-trips', () {
+    // Null means the built-in manual setup; a server id names the plugin that
+    // owns the language server.
+    expect(SettingsPersistedData.fromJson(const {}).lspPluginServerId, isNull);
+
+    final data = SettingsPersistedData.fromJson({'lspPluginServerId': 'zuban'});
+
+    expect(data.lspPluginServerId, 'zuban');
+    expect(data.toJson()['lspPluginServerId'], 'zuban');
+  });
+
+  test('keeps a type checking mode stored under the old key', () {
+    // The setting was published as BasedPyright-specific before language
+    // servers moved to plugins; an upgrade must not reset the level.
+    final data = SettingsPersistedData.fromJson({
+      'lspBasedPyrightTypeCheckingMode': 'strict',
+    });
+
+    expect(data.lspTypeCheckingMode, 'strict');
+  });
 
   test('inlay hint display setting round-trips with a compatible default', () {
     expect(SettingsPersistedData.fromJson(const {}).lspShowInlayHints, isTrue);
@@ -101,6 +117,20 @@ void main() {
 
     expect(data.lspShowInlayHints, isFalse);
     expect(data.toJson()['lspShowInlayHints'], isFalse);
+  });
+
+  test('run-in-script-directory setting round-trips, defaulting to off', () {
+    expect(
+      SettingsPersistedData.fromJson(const {}).deviceRunChdirToScriptDir,
+      isFalse,
+    );
+
+    final data = SettingsPersistedData.fromJson({
+      'deviceRunChdirToScriptDir': true,
+    });
+
+    expect(data.deviceRunChdirToScriptDir, isTrue);
+    expect(data.toJson()['deviceRunChdirToScriptDir'], isTrue);
   });
 
   test('every LSP capability defaults to on', () {

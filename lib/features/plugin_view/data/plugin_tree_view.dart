@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:pyrite_ide/core/sdk/tree_index.dart';
 import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
 
+import '../../../shared/md3_widgets.dart';
+
 /// Virtualized tree for plugin views, driven by [TreeIndex].
 ///
 /// Only the visible window is built, so a tree can describe far more logical
@@ -351,7 +353,7 @@ class PluginTreeViewState extends State<PluginTreeView> {
                     ),
               ),
               if (model.childrenState == ChildrenState.error)
-                Tooltip(
+                TooltipAnchor(
                   message: 'Failed to load children; click to retry',
                   child: InkWell(
                     onTap: () {

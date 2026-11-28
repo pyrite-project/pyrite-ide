@@ -61,4 +61,45 @@ void main() {
       contains('fixture.py'),
     );
   });
+
+  test('translateFromLocaleSnapshot uses the active locale pack', () {
+    final tr = translateFromLocaleSnapshot(
+      locale: 'en',
+      packs: {
+        'en': {
+          I18nKey.gitErrorNotARepository.key: 'Not a Git repository: {path}',
+        },
+        defaultLocale: {I18nKey.gitErrorNotARepository.key: '当前工作区不是 Git 仓库。'},
+      },
+    );
+
+    expect(
+      tr(I18nKey.gitErrorNotARepository, {'path': '/tmp/demo'}),
+      'Not a Git repository: /tmp/demo',
+    );
+  });
+
+  test('translateFromLocaleSnapshot falls back to default pack, then key', () {
+    final tr = translateFromLocaleSnapshot(locale: 'fr', packs: const {});
+    expect(
+      tr(I18nKey.gitErrorNotARepository),
+      I18nKey.gitErrorNotARepository.fallback,
+    );
+
+    final trWithDefaultPack = translateFromLocaleSnapshot(
+      locale: 'fr',
+      packs: {
+        defaultLocale: {
+          I18nKey.gitIsolateTimeout.key: 'Git 操作超时（{seconds} 秒）：{label}',
+        },
+      },
+    );
+    expect(
+      trWithDefaultPack(I18nKey.gitIsolateTimeout, {
+        'seconds': '20',
+        'label': 'loadSnapshot',
+      }),
+      'Git 操作超时（20 秒）：loadSnapshot',
+    );
+  });
 }

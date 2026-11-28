@@ -3,14 +3,36 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/file/local_backend.dart';
-import 'package:pyrite_ide/core/services/git/git_debug_log.dart';
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
 import 'package:pyrite_ide/core/services/git/git_models.dart';
 import 'package:pyrite_ide/core/services/git/git_repository_service.dart';
 import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
+import 'package:pyrite_ide/core/services/logging/app_log.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
 
 final gitRepositoryServiceProvider = Provider<GitRepositoryService>((ref) {
-  return GitRepositoryService();
+  // 服务实例（含 _tr 闭包）会作为 isolate 消息发送，translate 只能捕获纯数据
+  // 快照：translateFor(ref) 会让消息经由 ref 带上整个 ProviderContainer，
+  // 报 "object is unsendable"。locale / 注册表变化时重建服务以刷新快照。
+  final locale = ref.watch(activeLocaleProvider);
+  final registry = ref.watch(dataRegistryProvider);
+  return GitRepositoryService(
+    translate: translateFromLocaleSnapshot(
+      locale: locale,
+      packs: {
+        for (final name in {locale, defaultLocale})
+          name:
+              registry
+                  .getLocale(name)
+                  ?.map((key, value) => MapEntry(key, '$value')) ??
+              const {},
+      },
+    ),
+  );
 });
 
 final gitProvider = StateNotifierProvider<GitNotifier, GitViewState>((ref) {
@@ -19,9 +41,9 @@ final gitProvider = StateNotifierProvider<GitNotifier, GitViewState>((ref) {
 
 class GitNotifier extends StateNotifier<GitViewState> {
   GitNotifier(this.ref) : super(const GitViewState()) {
-    GitDebugLog.log('GitNotifier created');
+    AppLog.d('git', 'GitNotifier created');
     ref.listen(localWorkspaceProvider, (_, next) {
-      GitDebugLog.log('localWorkspaceProvider changed path=${next?.path}');
+      AppLog.d('git', 'localWorkspaceProvider changed path=${next?.path}');
       refresh(workspacePath: next?.path);
     });
     Future.microtask(() {
@@ -34,18 +56,38 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Timer? _refreshDebounce;
   String? _watchedRootPath;
 
+  /// busy 期间收到的刷新请求。
+  ///
+  /// 旧实现会在 busy 时递归重排 timer，结果既没有真正刷新、又让 timer 永远
+  /// 在转；这里改成“记一个挂起标记，空闲后补一次”，保证事件不丢也不循环。
+  bool _pendingWatchedRefresh = false;
+
   GitRepositoryService get _service => ref.read(gitRepositoryServiceProvider);
+
+  /// Renders [key] in the active locale.
+  ///
+  /// `lastMessage` and `error` stay plain strings: the page reads them once and
+  /// shows them, so translating at the point of assignment is enough and keeps
+  /// the state model unchanged.
+  String _msg(I18nKey key) => translate(ref, key);
+
+  /// Same, with `{placeholder}` values.
+  String _msgWith(I18nKey key, Map<String, String> values) =>
+      translateWithReplacements(ref, key, values);
 
   Future<void> refresh({String? workspacePath}) async {
     if (state.isBusy) {
-      GitDebugLog.log('GitNotifier.refresh skipped because state.isBusy=true');
+      // 不再直接丢弃：记下挂起刷新，当前操作结束（isBusy=false）后补一次。
+      _pendingWatchedRefresh = true;
+      AppLog.d('git', 'GitNotifier.refresh deferred because state.isBusy=true');
       return;
     }
     final path = workspacePath ?? ref.read(localWorkspaceProvider)?.path;
-    if (GitDebugLog.enabled) {
-      GitDebugLog.log(
+    if (AppLog.debugEnabled) {
+      AppLog.d(
+        'git',
         'GitNotifier.refresh requested workspacePath=$path '
-        'currentSnapshot=${_snapshotSummary(state.snapshot)}',
+            'currentSnapshot=${_snapshotSummary(state.snapshot)}',
       );
     }
     await _run(
@@ -60,7 +102,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> initRepository() async {
     final path = state.workspacePath ?? ref.read(localWorkspaceProvider)?.path;
     if (path == null || path.isEmpty) {
-      state = state.copyWith(error: '请先打开一个本地文件夹。');
+      state = state.copyWith(error: _msg(I18nKey.gitMessageOpenFolderFirst));
       return;
     }
 
@@ -68,7 +110,10 @@ class GitNotifier extends StateNotifier<GitViewState> {
       () async {
         await _service.initRepository(path);
         await _loadAndApplySnapshot(path);
-        state = state.copyWith(lastMessage: '已初始化 Git 仓库', clearError: true);
+        state = state.copyWith(
+          lastMessage: _msg(I18nKey.gitMessageRepositoryInitialized),
+          clearError: true,
+        );
       },
       success: null,
       refreshAfter: false,
@@ -92,26 +137,17 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }
 
   Future<void> blameSelected() async {
-    final rootPath = await _rootPath();
     final selectedPath = state.selectedPath;
-    if (rootPath == null || selectedPath == null) return;
-    await _run(
-      () async {
-        final blame = await _service.blame(rootPath, selectedPath);
-        state = state.copyWith(
-          blame: blame,
-          lastMessage: '已读取 $selectedPath 的 blame',
-        );
-      },
-      success: null,
-      refreshAfter: false,
-    );
+    if (selectedPath == null) return;
+    await showBlame(selectedPath);
   }
 
   Future<void> stage(String path) async {
     await _runRoot(
       (root) async => _service.stage(root, [path]),
-      success: '已暂存 $path',
+      success: _msgWith(I18nKey.gitMessageStaged, {
+        'path': displayPathName(path),
+      }),
       selectPathAfterRefresh: path,
       selectStagedAfterRefresh: true,
     );
@@ -120,7 +156,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> unstage(String path) async {
     await _runRoot(
       (root) async => _service.unstage(root, [path]),
-      success: '已取消暂存 $path',
+      success: _msgWith(I18nKey.gitMessageUnstaged, {
+        'path': displayPathName(path),
+      }),
       selectPathAfterRefresh: path,
       selectStagedAfterRefresh: false,
     );
@@ -129,7 +167,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> discardChanges(GitStatusEntry entry) async {
     await _runRoot(
       (root) async => _service.discardChanges(root, entry),
-      success: '已放弃 ${entry.path} 的工作区更改',
+      success: _msgWith(I18nKey.gitMessageDiscarded, {
+        'path': displayPathName(entry.path),
+      }),
     );
   }
 
@@ -141,7 +181,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (paths == null || paths.isEmpty) return;
     await _runRoot(
       (root) async => _service.stage(root, paths),
-      success: '已暂存全部更改',
+      success: _msg(I18nKey.gitMessageStagedAll),
     );
   }
 
@@ -153,21 +193,21 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (paths == null || paths.isEmpty) return;
     await _runRoot(
       (root) async => _service.unstage(root, paths),
-      success: '已取消暂存全部更改',
+      success: _msg(I18nKey.gitMessageUnstagedAll),
     );
   }
 
   Future<void> commit(GitCommitInput input) async {
     await _runRoot(
       (root) async => _service.commit(root, input),
-      success: '提交完成',
+      success: _msg(I18nKey.gitMessageCommitted),
     );
   }
 
   Future<void> createBranch(String name) async {
     await _runRoot(
       (root) async => _service.createBranch(root, name),
-      success: '已创建分支 $name',
+      success: _msgWith(I18nKey.gitMessageBranchCreated, {'name': name}),
     );
   }
 
@@ -179,7 +219,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
       name,
       remote: remote,
       action: (root) => _service.checkoutBranch(root, name, remote: remote),
-      success: '已切换到 $name',
+      success: _msgWith(I18nKey.gitMessageBranchCheckedOut, {'name': name}),
     );
   }
 
@@ -189,7 +229,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }) async {
     await _runRoot(
       (root) => _service.checkoutBranchWithStash(root, name, remote: remote),
-      success: '已储藏更改并切换到 $name',
+      success: _msgWith(I18nKey.gitMessageBranchStashedAndCheckedOut, {
+        'name': name,
+      }),
     );
   }
 
@@ -199,14 +241,18 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }) async {
     await _runRoot(
       (root) => _service.checkoutBranchWithMerge(root, name, remote: remote),
-      success: '已切换到 $name，并尝试迁移更改',
+      success: _msgWith(I18nKey.gitMessageBranchMigratedAndCheckedOut, {
+        'name': name,
+      }),
     );
   }
 
   Future<void> forceCheckoutBranch(String name, {bool remote = false}) async {
     await _runRoot(
       (root) => _service.forceCheckoutBranch(root, name, remote: remote),
-      success: '已强制切换到 $name',
+      success: _msgWith(I18nKey.gitMessageBranchForceCheckedOut, {
+        'name': name,
+      }),
     );
   }
 
@@ -222,28 +268,32 @@ class GitNotifier extends StateNotifier<GitViewState> {
         paths,
         remote: remote,
       ),
-      success: '已放弃冲突文件并切换到 $name',
+      success: _msgWith(I18nKey.gitMessageBranchDiscardedAndCheckedOut, {
+        'name': name,
+      }),
     );
   }
 
   Future<void> stash(GitCommitInput input) async {
     await _runRoot(
       (root) async => _service.stash(root, input),
-      success: '已储藏更改',
+      success: _msg(I18nKey.gitMessageStashCreated),
     );
   }
 
   Future<void> applyStash(int index, {bool pop = false}) async {
     await _runRoot(
       (root) async => _service.applyStash(root, index, pop: pop),
-      success: pop ? '已弹出 stash #$index' : '已应用 stash #$index',
+      success: pop
+          ? _msgWith(I18nKey.gitMessageStashPopped, {'index': '$index'})
+          : _msgWith(I18nKey.gitMessageStashApplied, {'index': '$index'}),
     );
   }
 
   Future<void> dropStash(int index) async {
     await _runRoot(
       (root) async => _service.dropStash(root, index),
-      success: '已删除 stash #$index',
+      success: _msgWith(I18nKey.gitMessageStashDropped, {'index': '$index'}),
     );
   }
 
@@ -271,91 +321,263 @@ class GitNotifier extends StateNotifier<GitViewState> {
   Future<void> addRemote(String name, String url) async {
     await _runRoot(
       (root) async => _service.addRemote(root, name, url),
-      success: '已添加远端 $name',
+      success: _msgWith(I18nKey.gitMessageRemoteAdded, {'name': name}),
     );
   }
 
   Future<void> merge(String targetSpec) async {
     await _runRoot(
       (root) async => _service.merge(root, targetSpec),
-      success: '已开始合并 $targetSpec',
+      success: _msgWith(I18nKey.gitMessageMergeStarted, {'target': targetSpec}),
     );
   }
 
   Future<void> rebase(String targetSpec, GitCommitInput input) async {
     await _runRoot(
       (root) async => _service.rebase(root, targetSpec, input),
-      success: '已执行 rebase 到 $targetSpec',
+      success: _msgWith(I18nKey.gitMessageRebaseStarted, {
+        'target': targetSpec,
+      }),
     );
   }
 
   Future<void> continueRebase(GitCommitInput input) async {
     await _runRoot(
       (root) async => _service.continueRebase(root, input),
-      success: '已继续 rebase',
+      success: _msg(I18nKey.gitMessageRebaseContinued),
     );
   }
 
   Future<void> abortRebase() async {
     await _runRoot(
       (root) async => _service.abortRebase(root),
-      success: '已中止 rebase',
+      success: _msg(I18nKey.gitMessageRebaseAborted),
     );
   }
 
   Future<void> cherryPick(String targetSpec) async {
     await _runRoot(
       (root) async => _service.cherryPick(root, targetSpec),
-      success: '已 cherry-pick $targetSpec',
+      success: _msgWith(I18nKey.gitMessageCherryPicked, {'target': targetSpec}),
     );
   }
 
   Future<void> markResolved(String path) async {
     await _runRoot(
       (root) async => _service.markResolved(root, path),
-      success: '已标记 $path 为已解决',
+      success: _msgWith(I18nKey.gitMessageMarkedResolved, {
+        'path': displayPathName(path),
+      }),
     );
   }
 
   Future<void> acceptConflictSide(String path, GitConflictSide side) async {
     await _runRoot(
       (root) async => _service.acceptConflictSide(root, path, side),
-      success: '已应用冲突解决结果',
+      success: _msg(I18nKey.gitMessageConflictResolvedApplied),
     );
   }
 
-  Future<void> createTag(String name) async {
+  Future<void> createTag(String name, {String message = ''}) async {
     await _runRoot(
-      (root) async => _service.createTag(root, name),
-      success: '已创建标签 $name',
+      (root) async => _service.createTag(root, name, message: message),
+      success: message.trim().isEmpty
+          ? _msgWith(I18nKey.gitMessageTagCreated, {'name': name})
+          : _msgWith(I18nKey.gitMessageTagCreatedAnnotated, {'name': name}),
     );
+  }
+
+  Future<void> deleteTag(String name, {String? remoteName}) async {
+    await _runRoot(
+      (root) async => _service.deleteTag(
+        root,
+        name,
+        remoteName: remoteName,
+        draft: state.credentials,
+      ),
+      success: remoteName == null || remoteName.isEmpty
+          ? _msgWith(I18nKey.gitMessageTagDeleted, {'name': name})
+          : _msgWith(I18nKey.gitMessageTagDeletedLocalAndRemote, {
+              'remote': remoteName,
+              'name': name,
+            }),
+    );
+  }
+
+  /// 查询分支在本地/远端的删除目标。
+  ///
+  /// 页面需要提前知道“是否存在同名远端分支”，才能在删除本地后单独询问是否
+  /// 一并删除远端；失败时把错误写回 state 并返回 null。
+  Future<GitBranchDeletionTarget?> inspectBranchDeletionTarget(
+    String name,
+  ) async {
+    final rootPath = await _rootPath();
+    if (rootPath == null) {
+      state = state.copyWith(error: _msg(I18nKey.gitErrorNotARepository));
+      return null;
+    }
+    try {
+      return await _service.inspectBranchDeletionTarget(rootPath, name);
+    } catch (error) {
+      AppLog.d(
+        'git',
+        'GitNotifier.inspectBranchDeletionTarget error name=$name',
+        error: error,
+      );
+      state = state.copyWith(error: error.toString());
+      return null;
+    }
+  }
+
+  Future<void> deleteBranch(
+    GitBranchInfo branch, {
+    bool includeRemote = false,
+    bool force = false,
+  }) async {
+    if (branch.isRemote) {
+      final separator = branch.name.indexOf('/');
+      if (separator <= 0) {
+        state = state.copyWith(
+          error: _msgWith(I18nKey.gitErrorCannotResolveRemoteBranch, {
+            'name': branch.name,
+          }),
+        );
+        return;
+      }
+      await _runRoot(
+        (root) async => _service.deleteRemoteBranch(
+          root,
+          branch.name.substring(0, separator),
+          branch.name.substring(separator + 1),
+          state.credentials,
+        ),
+        success: _msgWith(I18nKey.gitMessageRemoteBranchDeleted, {
+          'branch': branch.name,
+        }),
+      );
+      return;
+    }
+
+    final currentRoot = await _rootPath();
+    if (currentRoot == null) {
+      state = state.copyWith(error: _msg(I18nKey.gitErrorNotARepository));
+      return;
+    }
+    final target = await _service.inspectBranchDeletionTarget(
+      currentRoot,
+      branch.name,
+    );
+    await _runRoot(
+      (root) async {
+        await _service.deleteBranch(root, branch.name, force: force);
+        if (includeRemote && target.hasRemote) {
+          return _service.deleteRemoteBranch(
+            root,
+            target.remoteName,
+            branch.name,
+            state.credentials,
+          );
+        }
+        return null;
+      },
+      success: includeRemote && target.hasRemote
+          ? _msgWith(I18nKey.gitMessageBranchDeletedWithRemote, {
+              'name': target.remoteBranchName,
+            })
+          : _msgWith(I18nKey.gitMessageBranchDeleted, {'name': branch.name}),
+    );
+  }
+
+  Future<void> renameBranch(
+    GitBranchInfo branch,
+    String newName, {
+    bool force = false,
+  }) async {
+    await _runRoot(
+      (root) async =>
+          _service.renameBranch(root, branch.name, newName, force: force),
+      success: _msgWith(I18nKey.gitMessageBranchRenamed, {'name': newName}),
+    );
+  }
+
+  Future<void> setRemoteUrl(String name, String url) async {
+    await _runRoot(
+      (root) async => _service.setRemoteUrl(root, name, url),
+      success: _msgWith(I18nKey.gitMessageRemoteUrlUpdated, {'name': name}),
+    );
+  }
+
+  Future<void> renameRemote(String oldName, String newName) async {
+    await _runRoot(
+      (root) async => _service.renameRemote(root, oldName, newName),
+      success: _msgWith(I18nKey.gitMessageRemoteRenamed, {
+        'from': oldName,
+        'to': newName,
+      }),
+    );
+  }
+
+  Future<void> deleteRemote(String name) async {
+    await _runRoot(
+      (root) async => _service.deleteRemote(root, name),
+      success: _msgWith(I18nKey.gitMessageRemoteDeleted, {'name': name}),
+    );
+  }
+
+  /// 打开某个文件的 blame，并记录当前 blame 文件路径。
+  Future<void> showBlame(String path) async {
+    final rootPath = await _rootPath();
+    if (rootPath == null) return;
+    await _run(
+      () async {
+        final blame = await _service.blame(rootPath, path);
+        state = state.copyWith(
+          blame: blame,
+          blamePath: path,
+          lastMessage: blame.isEmpty
+              ? _msgWith(I18nKey.gitMessageBlameEmpty, {
+                  'path': displayPathName(path),
+                })
+              : _msgWith(I18nKey.gitMessageBlameLoaded, {
+                  'path': displayPathName(path),
+                  'count': '${blame.length}',
+                }),
+        );
+      },
+      success: null,
+      refreshAfter: false,
+    );
+  }
+
+  void clearBlame() {
+    state = state.copyWith(blame: const [], clearBlamePath: true);
   }
 
   Future<void> createWorktree(String name, String path) async {
     await _runRoot(
       (root) async => _service.createWorktree(root, name, path),
-      success: '已创建 worktree $name',
+      success: _msgWith(I18nKey.gitMessageWorktreeCreated, {'name': name}),
     );
   }
 
   Future<void> pruneWorktree(String name) async {
     await _runRoot(
       (root) async => _service.pruneWorktree(root, name),
-      success: '已清理 worktree $name',
+      success: _msgWith(I18nKey.gitMessageWorktreePruned, {'name': name}),
     );
   }
 
   Future<void> updateSubmodule(String name) async {
     await _runRoot(
       (root) async => _service.updateSubmodule(root, name, state.credentials),
-      success: '已更新 submodule $name',
+      success: _msgWith(I18nKey.gitMessageSubmoduleUpdated, {'name': name}),
     );
   }
 
   Future<void> writeCommitGraph() async {
     await _runRoot(
       (root) async => _service.writeCommitGraph(root),
-      success: '已写入 commit graph 索引',
+      success: _msg(I18nKey.gitMessageCommitGraphWritten),
     );
   }
 
@@ -372,7 +594,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }) async {
     final rootPath = await _rootPath();
     if (rootPath == null) {
-      state = state.copyWith(error: '当前工作区不是 Git 仓库。');
+      state = state.copyWith(error: _msg(I18nKey.gitErrorNotARepository));
       return;
     }
     await _run(
@@ -403,7 +625,7 @@ class GitNotifier extends StateNotifier<GitViewState> {
   }) async {
     final rootPath = await _rootPath();
     if (rootPath == null) {
-      state = state.copyWith(error: '当前工作区不是 Git 仓库。');
+      state = state.copyWith(error: _msg(I18nKey.gitErrorNotARepository));
       return null;
     }
 
@@ -418,6 +640,9 @@ class GitNotifier extends StateNotifier<GitViewState> {
       await _loadAndApplySnapshot(
         state.workspacePath ?? ref.read(localWorkspaceProvider)?.path,
       );
+      // Switching branches swaps the files the pane lists, so it is re-read
+      // before the caller gets control back.
+      ref.read(localFileItemsProvider.notifier).requestReload();
       return null;
     } on GitCheckoutBlockedException catch (error) {
       state = state.copyWith(clearError: true);
@@ -427,16 +652,17 @@ class GitNotifier extends StateNotifier<GitViewState> {
         paths: error.paths,
         message: error.message,
       );
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
+    } catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier.checkoutBranch error name=$name remote=$remote',
         error: error,
-        stackTrace: stackTrace,
       );
       state = state.copyWith(error: error.toString());
       return null;
     } finally {
       state = state.copyWith(isBusy: false);
+      _flushPendingRefresh();
     }
   }
 
@@ -462,15 +688,16 @@ class GitNotifier extends StateNotifier<GitViewState> {
         );
       }
       await afterRefresh?.call();
-    } catch (error, stackTrace) {
-      GitDebugLog.log(
-        'GitNotifier._run error',
-        error: error,
-        stackTrace: stackTrace,
-      );
+      // A git operation rewrites the working tree — a checkout brings files in
+      // and out, a pull moves them, a discarded `.gitignore` restyles the whole
+      // pane — so the file pane is re-read here, once, for every operation.
+      ref.read(localFileItemsProvider.notifier).requestReload();
+    } catch (error) {
+      AppLog.d('git', 'GitNotifier._run error', error: error);
       state = state.copyWith(error: error.toString());
     } finally {
       state = state.copyWith(isBusy: false);
+      _flushPendingRefresh();
     }
   }
 
@@ -493,26 +720,34 @@ class GitNotifier extends StateNotifier<GitViewState> {
       selectedStaged: selectedStaged,
       selectedPatch: patch,
       blame: const [],
+      clearBlamePath: true,
       lastMessage:
           lastMessage ??
           (history.isEmpty
-              ? '已选择 $path'
-              : '已选择 $path，找到 ${history.length} 条文件历史'),
+              ? _msgWith(I18nKey.gitMessagePathSelected, {
+                  'path': displayPathName(path),
+                })
+              : _msgWith(I18nKey.gitMessagePathHistoryFound, {
+                  'path': displayPathName(path),
+                  'count': '${history.length}',
+                })),
       clearError: true,
     );
   }
 
   Future<void> _loadAndApplySnapshot(String? workspacePath) async {
     final stopwatch = Stopwatch()..start();
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitNotifier._loadAndApplySnapshot start workspacePath=$workspacePath '
-      'selectedPath=${state.selectedPath}',
+          'selectedPath=${state.selectedPath}',
     );
     final snapshot = await _service.loadSnapshot(workspacePath);
-    if (GitDebugLog.enabled) {
-      GitDebugLog.log(
+    if (AppLog.debugEnabled) {
+      AppLog.d(
+        'git',
         'GitNotifier._loadAndApplySnapshot service returned '
-        '${stopwatch.elapsedMilliseconds}ms ${_snapshotSummary(snapshot)}',
+            '${stopwatch.elapsedMilliseconds}ms ${_snapshotSummary(snapshot)}',
       );
     }
     ref.invalidate(gitStatusSummaryProvider);
@@ -539,9 +774,10 @@ class GitNotifier extends StateNotifier<GitViewState> {
         clearSelection = true;
       } else {
         selectedStaged = _preferredSelectedStaged(selectedEntry);
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitNotifier refreshing selected diff path=$selectedPath '
-          'staged=$selectedStaged',
+              'staged=$selectedStaged',
         );
         selectedPatch = await _service.diffForEntry(
           snapshot.rootPath,
@@ -559,9 +795,10 @@ class GitNotifier extends StateNotifier<GitViewState> {
       clearError: true,
       clearSelection: clearSelection,
     );
-    GitDebugLog.log(
+    AppLog.d(
+      'git',
       'GitNotifier._loadAndApplySnapshot applied '
-      '${stopwatch.elapsedMilliseconds}ms clearSelection=$clearSelection',
+          '${stopwatch.elapsedMilliseconds}ms clearSelection=$clearSelection',
     );
   }
 
@@ -599,30 +836,31 @@ class GitNotifier extends StateNotifier<GitViewState> {
     if (rootPath == null || rootPath.isEmpty) return;
 
     try {
-      GitDebugLog.log('GitNotifier installing workspace watch root=$rootPath');
+      AppLog.d('git', 'GitNotifier installing workspace watch root=$rootPath');
       _workspaceWatch = Directory(rootPath).watch(recursive: false).listen((
         event,
       ) {
         if (_isIgnoredFileEvent(event.path)) return;
-        GitDebugLog.log(
+        AppLog.d(
+          'git',
           'GitNotifier workspace event type=${event.type} path=${event.path}',
         );
         _scheduleWatchedRefresh();
       });
       _watchedRootPath = rootPath;
-      GitDebugLog.log('GitNotifier workspace watch installed root=$rootPath');
-    } on FileSystemException catch (error, stackTrace) {
-      GitDebugLog.log(
+      AppLog.d('git', 'GitNotifier workspace watch installed root=$rootPath');
+    } on FileSystemException catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier workspace watch FileSystemException root=$rootPath',
         error: error,
-        stackTrace: stackTrace,
       );
       // Some platforms or network folders do not support recursive watching.
-    } on UnsupportedError catch (error, stackTrace) {
-      GitDebugLog.log(
+    } on UnsupportedError catch (error) {
+      AppLog.d(
+        'git',
         'GitNotifier workspace watch UnsupportedError root=$rootPath',
         error: error,
-        stackTrace: stackTrace,
       );
       // The Git page still supports manual refresh in this case.
     }
@@ -653,11 +891,36 @@ class GitNotifier extends StateNotifier<GitViewState> {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 250), () {
       if (state.isBusy) {
-        _scheduleWatchedRefresh();
+        // 关键修复：busy 时只记录挂起，不再递归重排 timer。
+        _pendingWatchedRefresh = true;
+        AppLog.d('git', 'GitNotifier watched refresh deferred while busy');
         return;
       }
-      unawaited(refresh(workspacePath: state.snapshot?.rootPath));
+      _pendingWatchedRefresh = false;
+      unawaited(_refreshFromWatcher());
     });
+  }
+
+  /// watcher 触发的刷新：异常统一记账，不允许静默丢失。
+  Future<void> _refreshFromWatcher() async {
+    try {
+      await refresh(workspacePath: state.snapshot?.rootPath);
+    } catch (error) {
+      AppLog.d('git', 'GitNotifier._refreshFromWatcher failed', error: error);
+      state = state.copyWith(error: error.toString());
+    }
+  }
+
+  /// 空闲后补一次被挂起的刷新。
+  ///
+  /// 在所有会把 isBusy 置回 false 的路径末尾调用；这是“补刷新”的唯一出口，
+  /// 避免每个操作各写一份触发逻辑。
+  void _flushPendingRefresh() {
+    if (!_pendingWatchedRefresh) return;
+    if (state.isBusy) return;
+    _pendingWatchedRefresh = false;
+    AppLog.d('git', 'GitNotifier flushing deferred refresh');
+    unawaited(_refreshFromWatcher());
   }
 
   @override

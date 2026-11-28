@@ -56,9 +56,7 @@ void main() {
     );
   });
 
-  testWidgets('a dialog raised on appContext actually appears', (
-    tester,
-  ) async {
+  testWidgets('a dialog raised on appContext actually appears', (tester) async {
     final router = GoRouter(
       navigatorKey: appNavigatorKey,
       routes: [

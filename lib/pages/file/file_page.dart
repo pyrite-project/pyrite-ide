@@ -1,0 +1,2274 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as path;
+import 'package:pyrite_ide/core/constants/theme_density.dart';
+import 'package:pyrite_ide/core/i18n/i18n_key.dart';
+import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_plan.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_service.dart';
+import 'package:pyrite_ide/core/services/device/board_sync_ui.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_backend.dart';
+import 'package:pyrite_ide/core/services/file/board_provider.dart';
+import 'package:pyrite_ide/core/services/file/board_tree.dart';
+import 'package:pyrite_ide/core/services/file/file_manager.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/file/local_backend.dart' as local;
+import 'package:pyrite_ide/core/services/file/local_tree.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/serial/device_executor.dart';
+import 'package:pyrite_ide/core/utils/display_path.dart';
+import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/pyrite_context_menu.dart';
+import 'package:pyrite_ide/shared/studio_text.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:super_context_menu/super_context_menu.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
+import 'package:super_tree/super_tree.dart';
+
+final localFileSelectionModeProvider = StateProvider<bool>((ref) => false);
+final boardFileSelectionModeProvider = StateProvider<bool>((ref) => false);
+final localFileScrollControllerProvider = Provider.autoDispose((ref) {
+  final controller = ScrollController();
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+final boardFileScrollControllerProvider = Provider.autoDispose((ref) {
+  final controller = ScrollController();
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+
+enum _FileDragSource { local, board }
+
+class _FileDragData {
+  const _FileDragData({required this.source, required this.paths});
+
+  final _FileDragSource source;
+  final List<String> paths;
+}
+
+const _dragSourceKey = 'source';
+const _dragPathsKey = 'paths';
+const _localDragSourceValue = 'local';
+const _boardDragSourceValue = 'board';
+final Map<_FileDragSource, Rect> _dropRegionRects = <_FileDragSource, Rect>{};
+
+DragItem createLocalFileDragItem(
+  List<String> paths, {
+  TargetPlatform? platform,
+}) {
+  final item = DragItem(
+    localData: {_dragSourceKey: _localDragSourceValue, _dragPathsKey: paths},
+  );
+  if ((platform ?? defaultTargetPlatform) == TargetPlatform.android) {
+    // Android rejects file:// URIs passed to View.startDragAndDrop with a
+    // FileUriExposedException. Internal moves use localData; plain text keeps
+    // the native drag session valid without exposing an unsafe URI.
+    item.add(Formats.plainText(paths.join('\n')));
+  } else {
+    item.add(Formats.fileUri(Uri.file(paths.first)));
+  }
+  return item;
+}
+
+TextStyle? fileTreeLabelStyle({
+  required ColorScheme colorScheme,
+  required TextStyle? baseStyle,
+  required bool isHidden,
+  required bool isSelected,
+}) {
+  if (!isHidden) return baseStyle;
+
+  return (baseStyle ?? const TextStyle()).copyWith(
+    color: isSelected ? colorScheme.onSecondaryContainer : colorScheme.outline,
+  );
+}
+
+class _DropRegionBounds extends SingleChildRenderObjectWidget {
+  const _DropRegionBounds({required this.source, required super.child});
+
+  final _FileDragSource source;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderDropRegionBounds(source);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderDropRegionBounds renderObject,
+  ) {
+    renderObject.source = source;
+  }
+}
+
+class _RenderDropRegionBounds extends RenderProxyBox {
+  _RenderDropRegionBounds(this._source);
+
+  _FileDragSource _source;
+
+  set source(_FileDragSource value) {
+    if (_source == value) return;
+    _dropRegionRects.remove(_source);
+    _source = value;
+    markNeedsPaint();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    if (hasSize) {
+      _dropRegionRects[_source] = localToGlobal(Offset.zero) & size;
+    }
+  }
+
+  @override
+  void detach() {
+    _dropRegionRects.remove(_source);
+    super.detach();
+  }
+}
+
+void _scrollControllerBy(ScrollController controller, double delta) {
+  if (!controller.hasClients || delta == 0) return;
+  final position = controller.position;
+  final next = (position.pixels + delta).clamp(
+    position.minScrollExtent,
+    position.maxScrollExtent,
+  );
+  if (next == position.pixels) return;
+  position.jumpTo(next);
+}
+
+class ProjectFiles extends ConsumerWidget {
+  const ProjectFiles({super.key});
+
+  static final MaterialFileSystemIconProvider _compactFileIcons =
+      MaterialFileSystemIconProvider(
+        iconSize: 16,
+        folderColor: const Color(0xFF3B82F6),
+      );
+
+  String tr(
+    WidgetRef ref,
+    I18nKey key, [
+    Map<String, String> replacements = const {},
+  ]) {
+    var value = translateForWidget(ref, key);
+    for (final entry in replacements.entries) {
+      value = value.replaceAll('{${entry.key}}', entry.value);
+    }
+    return value;
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final body = buildWorkspace(context, ref);
+
+    return Scaffold(body: body);
+  }
+
+  Widget buildWorkspace(BuildContext context, WidgetRef ref) {
+    return shadcn.ShadcnLayer(
+      theme: shadcn.ThemeData(
+        colorScheme: Theme.of(context).brightness == Brightness.light
+            ? shadcn.ColorSchemes.lightNeutral
+            : shadcn.ColorSchemes.darkNeutral,
+      ),
+      child: shadcn.ResizablePanel.vertical(
+        optionalDivider: false,
+        draggerBuilder: (context) {
+          return shadcn.HorizontalResizableDragger();
+        },
+        children: [
+          shadcn.ResizablePane.flex(
+            initialFlex: 1,
+            minSize: 180,
+            child: buildLocalDropRegion(
+              context,
+              ref,
+              buildLocalFiles(context, ref),
+            ),
+          ),
+          shadcn.ResizablePane.flex(
+            initialFlex: 1,
+            minSize: 180,
+            child: buildBoardDropRegion(
+              context,
+              ref,
+              buildBoardFiles(context, ref),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tight, desktop-friendly tree style shared by the local and board trees.
+  /// Scaling follows the selected density tier so comfortable/standard keep
+  /// the default roomy Material layout instead of the compact overrides.
+  TreeViewStyle _compactTreeStyle(BuildContext context, WidgetRef ref) {
+    final base = SuperTreeThemes.material().treeStyle;
+    final style = ref.watch(themeStyle);
+    if (style == ThemeStyle.comfortable) {
+      return base.copyWith(
+        selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+      );
+    }
+    if (style == ThemeStyle.standard) {
+      return base.copyWith(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+        nodeGap: 8,
+        selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+      );
+    }
+    return base.copyWith(
+      padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
+      indentAmount: 16,
+      nodeGap: 4,
+      labelStyle: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.25),
+      selectedColor: Theme.of(context).colorScheme.secondaryContainer,
+    );
+  }
+
+  Widget buildLocalDropRegion(
+    BuildContext context,
+    WidgetRef ref,
+    Widget child,
+  ) {
+    final scrollController = ref.watch(localFileScrollControllerProvider);
+    return _DropRegionBounds(
+      source: _FileDragSource.local,
+      child: DropRegion(
+        formats: const [Formats.fileUri, Formats.plainText],
+        hitTestBehavior: HitTestBehavior.opaque,
+        onDropOver: (event) {
+          _autoScrollDropRegion(
+            _FileDragSource.local,
+            scrollController,
+            event.position.global,
+          );
+          return _hasDragSource(event.session, _FileDragSource.local)
+              ? DropOperation.move
+              : _hasDragSource(event.session, _FileDragSource.board) ||
+                    _hasExternalFiles(event.session)
+              ? DropOperation.copy
+              : DropOperation.none;
+        },
+        onPerformDrop: (event) async {
+          final targetFolderPath = _localFolderPathForDrop(
+            ref,
+            event.position.global,
+          );
+          final localData = _dragData(event.session, _FileDragSource.local);
+          if (localData != null && localData.paths.isNotEmpty) {
+            final targetFolder =
+                targetFolderPath ?? ref.read(fileProvider)?.path;
+            if (targetFolder == null) return;
+            await _moveLocalPathsToFolder(
+              context,
+              ref,
+              localData.paths,
+              targetFolder,
+            );
+            return;
+          }
+
+          final data = _dragData(event.session, _FileDragSource.board);
+          if (data != null && data.paths.isNotEmpty) {
+            _selectBoardPaths(ref, data.paths);
+            await _downloadSelectedBoardItems(
+              context,
+              ref,
+              localFolderPath: targetFolderPath,
+            );
+            return;
+          }
+
+          final paths = await _externalFilePaths(event.session);
+          if (paths.isEmpty) return;
+          if (!context.mounted) return;
+          await _importExternalPaths(
+            context,
+            ref,
+            paths,
+            localFolderPath: targetFolderPath,
+          );
+        },
+        child: child,
+      ),
+    );
+  }
+
+  Widget buildBoardDropRegion(
+    BuildContext context,
+    WidgetRef ref,
+    Widget child,
+  ) {
+    final scrollController = ref.watch(boardFileScrollControllerProvider);
+    return _DropRegionBounds(
+      source: _FileDragSource.board,
+      child: DropRegion(
+        formats: const [Formats.fileUri, Formats.plainText],
+        hitTestBehavior: HitTestBehavior.opaque,
+        onDropOver: (event) {
+          _autoScrollDropRegion(
+            _FileDragSource.board,
+            scrollController,
+            event.position.global,
+          );
+          return ref.read(deviceConnectedProvider) &&
+                  _hasDragSource(event.session, _FileDragSource.board)
+              ? DropOperation.move
+              : ref.read(deviceConnectedProvider) &&
+                    (_hasDragSource(event.session, _FileDragSource.local) ||
+                        _hasExternalFiles(event.session))
+              ? DropOperation.copy
+              : DropOperation.none;
+        },
+        onPerformDrop: (event) async {
+          final targetFolderPath = _boardFolderPathForDrop(
+            ref,
+            event.position.global,
+          );
+          final boardData = _dragData(event.session, _FileDragSource.board);
+          if (boardData != null && boardData.paths.isNotEmpty) {
+            await _moveBoardPathsToFolder(
+              context,
+              ref,
+              boardData.paths,
+              targetFolderPath ?? '/',
+            );
+            return;
+          }
+
+          final data = _dragData(event.session, _FileDragSource.local);
+          if (data != null && data.paths.isNotEmpty) {
+            _selectLocalPaths(ref, data.paths);
+            await _uploadSelectedLocalItems(
+              context,
+              ref,
+              boardFolderPath: targetFolderPath,
+              // A drop is already a deliberate gesture aimed at a folder; the
+              // toolbar button is the path that needs a confirmation.
+              confirm: false,
+            );
+            return;
+          }
+
+          final paths = await _externalFilePaths(event.session);
+          if (paths.isEmpty) return;
+          if (!context.mounted) return;
+          await _uploadLocalPaths(
+            context,
+            ref,
+            paths,
+            boardFolderPath: targetFolderPath,
+          );
+        },
+        child: child,
+      ),
+    );
+  }
+
+  void _autoScrollDropRegion(
+    _FileDragSource source,
+    ScrollController controller,
+    Offset globalPosition,
+  ) {
+    final rect = _dropRegionRects[source];
+    if (rect == null) return;
+    const edgeThreshold = 56.0;
+    const maxDelta = 28.0;
+    final distanceToTop = globalPosition.dy - rect.top;
+    final distanceToBottom = rect.bottom - globalPosition.dy;
+    if (distanceToTop < edgeThreshold) {
+      final ratio = ((edgeThreshold - distanceToTop) / edgeThreshold).clamp(
+        0.0,
+        1.0,
+      );
+      _scrollBy(controller, -maxDelta * ratio);
+    } else if (distanceToBottom < edgeThreshold) {
+      final ratio = ((edgeThreshold - distanceToBottom) / edgeThreshold).clamp(
+        0.0,
+        1.0,
+      );
+      _scrollBy(controller, maxDelta * ratio);
+    }
+  }
+
+  void _scrollBy(ScrollController controller, double delta) {
+    _scrollControllerBy(controller, delta);
+  }
+
+  String? _localFolderPathForDrop(WidgetRef ref, Offset globalPosition) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    final targetNode = controller.findVisibleNodeAtGlobalPosition(
+      globalPosition,
+    );
+    if (targetNode != null) {
+      if (targetNode.data is FolderItem) return targetNode.id;
+      return path.dirname(targetNode.id);
+    }
+
+    return ref.read(fileProvider.notifier).getFocusFolderNode()?.id;
+  }
+
+  String? _boardFolderPathForDrop(WidgetRef ref, Offset globalPosition) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    final targetNode = controller.findVisibleNodeAtGlobalPosition(
+      globalPosition,
+    );
+    if (targetNode != null) {
+      if (targetNode.data is FolderItem) return targetNode.id;
+      return path.posix.dirname(targetNode.id);
+    }
+
+    return ref.read(boardProvider).getFocusFolderNode()?.id ?? '/';
+  }
+
+  String _localMoveTargetFolder(
+    WidgetRef ref,
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) {
+    if (position == NodeDropPosition.inside && targetNode.data is FolderItem) {
+      return targetNode.id;
+    }
+    return targetNode.parent?.id ?? ref.read(fileProvider)!.path;
+  }
+
+  String _boardMoveTargetFolder(
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) {
+    if (position == NodeDropPosition.inside && targetNode.data is FolderItem) {
+      return targetNode.id;
+    }
+    return targetNode.parent?.id ?? '/';
+  }
+
+  List<TreeNode<FileSystemItem>> _localNodesForPaths(
+    WidgetRef ref,
+    List<String> paths,
+  ) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    return paths
+        .map(controller.findNodeById)
+        .whereType<TreeNode<FileSystemItem>>()
+        .toList(growable: false);
+  }
+
+  List<TreeNode<FileSystemItem>> _boardNodesForPaths(
+    WidgetRef ref,
+    List<String> paths,
+  ) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    return paths
+        .map(controller.findNodeById)
+        .whereType<TreeNode<FileSystemItem>>()
+        .toList(growable: false);
+  }
+
+  Future<void> _moveLocalPathsToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+    String targetFolder,
+  ) async {
+    final nodes = _localNodesForPaths(ref, paths)
+        .where((node) => !_isLocalNodeAlreadyInFolder(node, targetFolder))
+        .toList(growable: false);
+    if (nodes.isEmpty) return;
+
+    await _moveLocalNodesToFolder(
+      context,
+      ref,
+      nodes,
+      TreeNode(id: targetFolder, data: FolderItem(path.basename(targetFolder))),
+      NodeDropPosition.inside,
+    );
+  }
+
+  Future<void> _moveBoardPathsToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+    String targetFolder,
+  ) async {
+    final nodes = _boardNodesForPaths(ref, paths)
+        .where((node) => !_isBoardNodeAlreadyInFolder(node, targetFolder))
+        .toList(growable: false);
+    if (nodes.isEmpty) return;
+
+    await _moveBoardNodesToFolder(
+      context,
+      ref,
+      nodes,
+      TreeNode(
+        id: targetFolder,
+        data: FolderItem(path.posix.basename(targetFolder)),
+      ),
+      NodeDropPosition.inside,
+    );
+  }
+
+  Future<bool> _moveLocalNodesToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> draggedNodes,
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) async {
+    final targetFolder = _localMoveTargetFolder(ref, targetNode, position);
+    final nodes = draggedNodes
+        .where(
+          (node) =>
+              !_isLocalSelfMove(node, targetFolder) &&
+              !_isLocalNodeAlreadyInFolder(node, targetFolder),
+        )
+        .toList(growable: false);
+    if (nodes.isEmpty) return true;
+
+    unawaited(_confirmAndMoveLocalNodes(context, ref, nodes, targetFolder));
+    return true;
+  }
+
+  Future<void> _confirmAndMoveLocalNodes(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) return;
+    if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
+    try {
+      if (!context.mounted) return;
+      await ref
+          .read(fileProvider.notifier)
+          .moveLocalNodes(context, nodes, targetFolder);
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageMoveFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
+  }
+
+  Future<bool> _moveBoardNodesToFolder(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> draggedNodes,
+    TreeNode<FileSystemItem> targetNode,
+    NodeDropPosition position,
+  ) async {
+    final targetFolder = _boardMoveTargetFolder(targetNode, position);
+    final nodes = draggedNodes
+        .where(
+          (node) =>
+              !_isBoardSelfMove(node, targetFolder) &&
+              !_isBoardNodeAlreadyInFolder(node, targetFolder),
+        )
+        .toList(growable: false);
+    if (nodes.isEmpty) return true;
+
+    unawaited(_confirmAndMoveBoardNodes(context, ref, nodes, targetFolder));
+    return true;
+  }
+
+  Future<void> _confirmAndMoveBoardNodes(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) return;
+    if (!await _confirmMoveItems(context, ref, nodes, targetFolder)) return;
+    try {
+      if (!context.mounted) return;
+      await ref
+          .read(boardProvider)
+          .moveBoardNodes(context, nodes, targetFolder);
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(ref, I18nKey.fileOperationMoveBoardFile),
+      );
+      if (sendCtrlC) {
+        sendCommandToActiveDevice(ref.read, "\x03");
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageMoveFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
+  }
+
+  Future<bool> _confirmMoveItems(
+    BuildContext context,
+    WidgetRef ref,
+    List<TreeNode<FileSystemItem>> nodes,
+    String targetFolder,
+  ) async {
+    final sourceLabel = nodes.length == 1
+        ? nodes.single.data.name
+        : tr(ref, I18nKey.fileMoveSelectedCount, {
+            'count': nodes.length.toString(),
+          });
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.drive_file_move_outline),
+        title: const UseText(I18nKey.fileMoveConfirmTitle),
+        content: Text(
+          tr(ref, I18nKey.fileMoveConfirmMessage, {
+            'source': sourceLabel,
+            'target': targetFolder,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => ctx.pop(false),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => ctx.pop(true),
+            child: const UseText(I18nKey.commonMove),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  bool _isLocalNodeAlreadyInFolder(
+    TreeNode<FileSystemItem> node,
+    String targetFolder,
+  ) {
+    return path.equals(
+      path.normalize(path.absolute(path.dirname(node.id))),
+      path.normalize(path.absolute(targetFolder)),
+    );
+  }
+
+  /// Whether moving [node] into [targetFolder] would put a folder inside
+  /// itself or inside one of its own descendants.
+  ///
+  /// The move loops already refuse this, but only once the batch is running:
+  /// the drop is accepted, the progress panel opens and the row is skipped with
+  /// a snackbar. Answering the question here keeps the gesture from being
+  /// offered at all.
+  bool _isLocalSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
+    final source = path.normalize(path.absolute(node.id));
+    final target = path.normalize(path.absolute(targetFolder));
+    if (path.equals(source, target)) return true;
+    return node.data is FolderItem && path.isWithin(source, target);
+  }
+
+  bool _isBoardNodeAlreadyInFolder(
+    TreeNode<FileSystemItem> node,
+    String targetFolder,
+  ) {
+    final parent = path.posix.normalize(path.posix.dirname(node.id));
+    final target = path.posix.normalize(
+      targetFolder.isEmpty ? '/' : targetFolder,
+    );
+    return parent == target;
+  }
+
+  /// The board-side counterpart of [_isLocalSelfMove]: a folder cannot be
+  /// moved into itself or into a path below it, which on the board would copy
+  /// the folder into its own subtree.
+  bool _isBoardSelfMove(TreeNode<FileSystemItem> node, String targetFolder) {
+    final self = path.posix.normalize(node.id);
+    final target = path.posix.normalize(
+      targetFolder.isEmpty ? '/' : targetFolder,
+    );
+    if (self == target) return true;
+    return node.data is FolderItem && path.posix.isWithin(self, target);
+  }
+
+  Future<void> _downloadSelectedBoardItems(
+    BuildContext context,
+    WidgetRef ref, {
+    String? localFolderPath,
+  }) async {
+    try {
+      await ref
+          .read(boardProvider)
+          .downloadSelectedBoardItems(
+            context,
+            localFolderPath: localFolderPath,
+          );
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(
+          ref,
+          I18nKey.fileOperationDownloadBoardFile,
+        ),
+      );
+      if (sendCtrlC) {
+        sendCommandToActiveDevice(ref.read, "\x03");
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      var errorMsg = error.toString();
+      if (error is BoardFileBackendException &&
+          (error.message.contains('ENOENT') ||
+              error.message.contains('No such file'))) {
+        errorMsg =
+            '$errorMsg\n${translateForWidget(ref, I18nKey.fileMessageFilesystemNotMounted)}';
+      }
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageDownloadFailed,
+        ).replaceAll('{error}', errorMsg),
+      );
+    }
+  }
+
+  Future<void> _uploadSelectedLocalItems(
+    BuildContext context,
+    WidgetRef ref, {
+    String? boardFolderPath,
+    bool confirm = true,
+  }) async {
+    final selectedCount = ref
+        .read(fileProvider.notifier)
+        .getSelectedNodes()
+        .length;
+    if (confirm && selectedCount > 0) {
+      final folder =
+          boardFolderPath ?? ref.read(boardProvider).getFocusFolderNode()?.id;
+      if (!await _confirmUpload(context, ref, selectedCount, folder ?? '/')) {
+        return;
+      }
+      if (!context.mounted) return;
+    }
+    try {
+      await ref
+          .read(fileProvider.notifier)
+          .uploadSelectedLocalItems(context, boardFolderPath: boardFolderPath);
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(ref, I18nKey.fileOperationUploadToBoard),
+      );
+      if (sendCtrlC) {
+        sendCommandToActiveDevice(ref.read, "\x03");
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageUploadFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
+  }
+
+  /// The destination folder as a one-line menu label.
+  ///
+  /// Menu rows are narrow, so the download actions name the folder instead of
+  /// printing the whole workspace path and clipping it. [fallback] is the "no
+  /// local project" hint, which is prose rather than a path.
+  String _localFolderDisplayName(
+    WidgetRef ref,
+    TreeNode<FileSystemItem>? localFolderTarget,
+    String fallback,
+  ) {
+    final target = localFolderTarget?.id ?? ref.watch(fileProvider)?.path ?? '';
+    if (target.isEmpty) return fallback;
+    return displayPathName(target);
+  }
+
+  /// Asks before a batch upload, whether or not a name clash exists.
+  ///
+  /// The conflict dialog only appears for files already on the board, so an
+  /// upload into an empty folder used to start without any prompt at all --
+  /// one stray click on the toolbar was enough. The count and the destination
+  /// are the two things worth confirming.
+  Future<bool> _confirmUpload(
+    BuildContext context,
+    WidgetRef ref,
+    int count,
+    String boardFolder,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.upload_outlined),
+        title: const UseText(I18nKey.fileConfirmUploadTitle),
+        content: Text(
+          tr(ref, I18nKey.fileConfirmUploadMessage, {
+            'count': count.toString(),
+            'folder': displayPathName(boardFolder),
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => ctx.pop(false),
+            child: const UseText(I18nKey.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => ctx.pop(true),
+            child: const UseText(I18nKey.fileConfirmUploadAction),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _importExternalPaths(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths, {
+    String? localFolderPath,
+  }) async {
+    try {
+      await ref
+          .read(fileProvider.notifier)
+          .importExternalPaths(
+            context,
+            paths,
+            localFolderPath: localFolderPath,
+          );
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageImportFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
+  }
+
+  Future<void> _uploadLocalPaths(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths, {
+    String? boardFolderPath,
+  }) async {
+    try {
+      await ref
+          .read(fileProvider.notifier)
+          .uploadLocalPaths(context, paths, boardFolderPath: boardFolderPath);
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(ref, I18nKey.fileOperationUploadToBoard),
+      );
+      if (sendCtrlC) {
+        sendCommandToActiveDevice(ref.read, "\x03");
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          I18nKey.fileMessageUploadFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
+  }
+
+  bool _hasDragSource(DropSession session, _FileDragSource source) {
+    return _dragData(session, source) != null;
+  }
+
+  bool _hasExternalFiles(DropSession session) {
+    return session.items.any((item) => item.canProvide(Formats.fileUri));
+  }
+
+  Future<List<String>> _externalFilePaths(DropSession session) async {
+    final paths = <String>[];
+    for (final item in session.items) {
+      final uri = await _readFileUri(item);
+      if (uri != null && uri.isScheme('file')) {
+        paths.add(uri.toFilePath());
+      }
+    }
+    return paths;
+  }
+
+  Future<Uri?> _readFileUri(DropItem item) async {
+    final reader = item.dataReader;
+    if (reader == null || !reader.canProvide(Formats.fileUri)) return null;
+
+    final completer = Completer<Uri?>();
+    final progress = reader.getValue<Uri>(
+      Formats.fileUri,
+      completer.complete,
+      onError: completer.completeError,
+    );
+    if (progress == null) return null;
+    return completer.future;
+  }
+
+  _FileDragData? _dragData(DropSession session, _FileDragSource source) {
+    for (final item in session.items) {
+      final localData = item.localData;
+      if (localData is Map) {
+        final sourceValue = localData[_dragSourceKey];
+        final expectedSourceValue = source == _FileDragSource.local
+            ? _localDragSourceValue
+            : _boardDragSourceValue;
+        if (sourceValue != expectedSourceValue) continue;
+
+        final rawPaths = localData[_dragPathsKey];
+        if (rawPaths is! List) continue;
+        final paths = rawPaths.whereType<String>().toList(growable: false);
+        if (paths.isEmpty) continue;
+        return _FileDragData(source: source, paths: paths);
+      }
+    }
+    return null;
+  }
+
+  void _selectLocalPaths(WidgetRef ref, List<String> paths) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    controller.deselectAll();
+    for (final path in paths) {
+      if (controller.findNodeById(path) != null) {
+        controller.toggleSelection(path);
+      }
+    }
+  }
+
+  void _selectBoardPaths(WidgetRef ref, List<String> paths) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    controller.deselectAll();
+    for (final path in paths) {
+      if (controller.findNodeById(path) != null) {
+        controller.toggleSelection(path);
+      }
+    }
+  }
+
+  Widget _wrapFileDragSource({
+    required WidgetRef ref,
+    required TreeNode<FileSystemItem> node,
+    required _FileDragSource source,
+    required Widget child,
+  }) {
+    return DragItemWidget(
+      allowedOperations: () => [DropOperation.copy, DropOperation.move],
+      dragItemProvider: (_) {
+        final paths = source == _FileDragSource.local
+            ? _localDragPaths(ref, node)
+            : _boardDragPaths(ref, node);
+        if (paths.isEmpty) return null;
+        if (source == _FileDragSource.local) {
+          return createLocalFileDragItem(paths);
+        }
+
+        final item = DragItem(
+          localData: {
+            _dragSourceKey: _boardDragSourceValue,
+            _dragPathsKey: paths,
+          },
+        );
+        item.add(Formats.plainText(paths.join('\n')));
+        return item;
+      },
+      child: DraggableWidget(
+        hitTestBehavior: HitTestBehavior.opaque,
+        child: child,
+      ),
+    );
+  }
+
+  List<String> _localDragPaths(WidgetRef ref, TreeNode<FileSystemItem> node) {
+    final controller = ref.read(localFileTreeViewControllerProvider);
+    if (!controller.selectedNodeIds.contains(node.id)) return [node.id];
+    return ref
+        .read(fileProvider.notifier)
+        .getSelectedNodes()
+        .map((node) => node.id)
+        .toList(growable: false);
+  }
+
+  List<String> _boardDragPaths(WidgetRef ref, TreeNode<FileSystemItem> node) {
+    final controller = ref.read(boardFileTreeViewControllerProvider);
+    if (!controller.selectedNodeIds.contains(node.id)) return [node.id];
+    return ref
+        .read(boardProvider)
+        .getSelectedNodes()
+        .map((node) => node.id)
+        .toList(growable: false);
+  }
+
+  Future<void> _openLocalItemInFileManager(
+    BuildContext context,
+    WidgetRef ref,
+    TreeNode<FileSystemItem> node,
+  ) async {
+    try {
+      await systemFileManager.open(
+        node.id,
+        isDirectory: node.data is FolderItem,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateForWidget(
+          ref,
+          Platform.isMacOS
+              ? I18nKey.fileMessageOpenInFinderFailed
+              : I18nKey.fileMessageOpenInFileManagerFailed,
+        ).replaceAll('{error}', error.toString()),
+      );
+    }
+  }
+
+  Menu _buildLocalNodeMenu(
+    BuildContext context,
+    WidgetRef ref,
+    Directory localWorkspace,
+    TreeNode<FileSystemItem> node,
+  ) {
+    final localController = ref.read(localFileTreeViewControllerProvider);
+    if (!localController.selectedNodeIds.contains(node.id)) {
+      localController.setSelectedNodeId(node.id);
+    }
+    final selectedNodes = ref.read(fileProvider.notifier).getSelectedNodes();
+    final selectedCount = selectedNodes.length;
+
+    final TreeNode<FileSystemItem>? boardFileTarget = ref
+        .read(boardProvider)
+        .getFocusFileNode();
+    final TreeNode<FileSystemItem>? boardFolderTarget = ref
+        .read(boardProvider)
+        .getFocusFolderNode();
+    final TreeNode<FileSystemItem>? localFolderTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFolderNode();
+    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
+
+    return Menu(
+      children: [
+        MenuAction(
+          title: tr(I18nKey.fileActionRename),
+          callback: () => ref
+              .read(localFileTreeViewControllerProvider)
+              .setRenamingNodeId(node.id),
+          attributes: MenuActionAttributes(disabled: selectedCount != 1),
+        ),
+        MenuAction(
+          title: tr(
+            Platform.isMacOS
+                ? I18nKey.fileActionOpenInFinder
+                : I18nKey.fileActionOpenInFileManager,
+          ),
+          callback: () => _openLocalItemInFileManager(context, ref, node),
+          attributes: MenuActionAttributes(disabled: selectedCount != 1),
+        ),
+        MenuAction(
+          title: selectedCount > 1
+              ? tr(I18nKey.fileActionDeleteSelectedCount, {
+                  'count': selectedCount.toString(),
+                })
+              : tr(I18nKey.fileActionDelete),
+          callback: () async {
+            if (await confirmDelete(
+              context,
+              selectedCount > 1
+                  ? tr(I18nKey.fileSelectedItemsName, {
+                      'count': selectedCount.toString(),
+                    })
+                  : node.data.name,
+            )) {
+              if (!context.mounted) return;
+              await ref
+                  .read(fileProvider.notifier)
+                  .deleteSelectedLocalItems(context);
+            }
+          },
+        ),
+        MenuSeparator(),
+        MenuAction(
+          title: selectedCount > 1
+              ? tr(I18nKey.fileActionUploadSelectedToBoardFolder, {
+                  'count': selectedCount.toString(),
+                  'folder': displayPathName(boardFolderTarget?.id ?? '/'),
+                })
+              : tr(I18nKey.fileActionUploadToBoardFolder, {
+                  'folder': displayPathName(boardFolderTarget?.id ?? '/'),
+                }),
+          callback: () => _uploadSelectedLocalItems(context, ref),
+          attributes: MenuActionAttributes(
+            disabled: !ref.watch(deviceConnectedProvider),
+          ),
+        ),
+        MenuAction(
+          title: tr(I18nKey.fileActionOverwriteBoardFile, {
+            'path': boardFileTarget == null
+                ? tr(I18nKey.fileNoBoardFileSelected)
+                : displayPathName(boardFileTarget.id),
+          }),
+          callback: () async {
+            try {
+              final bytes = await File(node.id).readAsBytes();
+              await ref
+                  .read(boardProvider)
+                  .ops
+                  .writeFileBytes(boardFileTarget!.id, bytes);
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .warnOpenFilesOverwritten(
+                    boardFiles: true,
+                    filePaths: [boardFileTarget.id],
+                  );
+              ref
+                  .read(boardFileItemsProvider.notifier)
+                  .buildRootFileListItems();
+
+              if (!context.mounted) return;
+              showEditorMessage(
+                context,
+                tr(I18nKey.fileMessageOverwriteBoardFile, {
+                  'path': displayPathName(boardFileTarget.id),
+                }),
+              );
+            } on DeviceNotReadyException catch (_) {
+              if (!context.mounted) return;
+              final sendCtrlC = await showDeviceNotReadyDialog(
+                context,
+                operation: tr(I18nKey.fileOperationOverwriteBoardFile),
+              );
+              if (sendCtrlC) {
+                sendCommandToActiveDevice(ref.read, "\x03");
+              }
+            }
+          },
+          attributes: MenuActionAttributes(
+            disabled:
+                !ref.watch(deviceConnectedProvider) ||
+                selectedCount != 1 ||
+                (boardFileTarget == null || (node.data is FolderItem)),
+          ),
+        ),
+        MenuSeparator(),
+        MenuAction(
+          title: tr(I18nKey.fileActionCreateFileInFolder, {
+            'folder': path.basename(
+              localFolderTarget?.id ?? localWorkspace.path,
+            ),
+          }),
+          callback: () async {
+            final parentDir = localFolderTarget?.id ?? localWorkspace.path;
+            final uniquePath = await local.getUniqueFilePath(
+              path.join(parentDir, "new_file"),
+            );
+            try {
+              await ref
+                  .read(fileProvider.notifier)
+                  .createFileAndStartRename(uniquePath);
+            } catch (error) {
+              if (!context.mounted) return;
+              showIdeError(
+                context,
+                tr(I18nKey.fileMessageCreateLocalFileFailed, {
+                  'error': error.toString(),
+                }),
+              );
+            }
+          },
+        ),
+        MenuAction(
+          title: tr(I18nKey.fileActionCreateFolderInFolder, {
+            'folder': path.basename(
+              localFolderTarget?.id ?? localWorkspace.path,
+            ),
+          }),
+          callback: () async {
+            final parentDir = localFolderTarget?.id ?? localWorkspace.path;
+            final uniquePath = await local.getUniqueFolderPath(
+              path.join(parentDir, "new_folder"),
+            );
+            try {
+              await ref
+                  .read(fileProvider.notifier)
+                  .createFolderAndStartRename(uniquePath);
+            } catch (error) {
+              if (!context.mounted) return;
+              showIdeError(
+                context,
+                tr(I18nKey.fileMessageCreateLocalFolderFailed, {
+                  'error': error.toString(),
+                }),
+              );
+            }
+          },
+        ),
+      ],
+    );
+  }
+
+  Menu _buildBoardNodeMenu(
+    BuildContext context,
+    WidgetRef ref,
+    TreeNode<FileSystemItem> node,
+  ) {
+    final boardController = ref.read(boardFileTreeViewControllerProvider);
+    if (!boardController.selectedNodeIds.contains(node.id)) {
+      boardController.setSelectedNodeId(node.id);
+    }
+    final selectedNodes = ref.read(boardProvider).getSelectedNodes();
+    final selectedCount = selectedNodes.length;
+
+    final TreeNode<FileSystemItem>? localFileTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFileNode();
+    final TreeNode<FileSystemItem>? localFolderTarget = ref
+        .read(fileProvider.notifier)
+        .getFocusFolderNode();
+    String tr(I18nKey key, [Map<String, String> replacements = const {}]) {
+      var value = translateForWidget(ref, key);
+      for (final entry in replacements.entries) {
+        value = value.replaceAll('{${entry.key}}', entry.value);
+      }
+      return value;
+    }
+
+    return Menu(
+      children: [
+        MenuAction(
+          title: tr(I18nKey.fileActionRename),
+          callback: () => ref
+              .read(boardFileTreeViewControllerProvider)
+              .setRenamingNodeId(node.id),
+          attributes: MenuActionAttributes(disabled: selectedCount != 1),
+        ),
+        MenuAction(
+          title: selectedCount > 1
+              ? tr(I18nKey.fileActionDeleteSelectedCount, {
+                  'count': selectedCount.toString(),
+                })
+              : tr(I18nKey.fileActionDelete),
+          callback: () async {
+            if (await confirmDelete(
+              context,
+              selectedCount > 1
+                  ? tr(I18nKey.fileSelectedItemsName, {
+                      'count': selectedCount.toString(),
+                    })
+                  : node.data.name,
+            )) {
+              try {
+                if (!context.mounted) return;
+                await ref.read(boardProvider).deleteSelectedBoardItems(context);
+              } on DeviceNotReadyException catch (_) {
+                if (!context.mounted) return;
+                final sendCtrlC = await showDeviceNotReadyDialog(
+                  context,
+                  operation: tr(I18nKey.fileOperationDeleteBoardFile),
+                );
+                if (sendCtrlC) {
+                  sendCommandToActiveDevice(ref.read, "\x03");
+                }
+              }
+            }
+          },
+        ),
+        MenuSeparator(),
+        MenuAction(
+          title: selectedCount > 1
+              ? tr(I18nKey.fileActionDownloadSelectedToLocalFolder, {
+                  'count': selectedCount.toString(),
+                  'folder': _localFolderDisplayName(
+                    ref,
+                    localFolderTarget,
+                    tr(I18nKey.fileNoLocalProject),
+                  ),
+                })
+              : tr(I18nKey.fileActionDownloadToLocalFolder, {
+                  'folder': _localFolderDisplayName(
+                    ref,
+                    localFolderTarget,
+                    tr(I18nKey.fileNoLocalProject),
+                  ),
+                }),
+          callback: () => _downloadSelectedBoardItems(context, ref),
+          attributes: MenuActionAttributes(
+            disabled:
+                !ref.watch(deviceConnectedProvider) ||
+                (ref.watch(fileProvider)?.path == null),
+          ),
+        ),
+        MenuAction(
+          title: tr(I18nKey.fileActionOverwriteLocalFile, {
+            'path': localFileTarget == null
+                ? tr(I18nKey.fileNoLocalFileSelected)
+                : displayPathName(localFileTarget.id),
+          }),
+          callback: () async {
+            try {
+              final bytes = await ref
+                  .read(boardProvider)
+                  .ops
+                  .getFileBytes(node.id);
+              await File(localFileTarget!.id).writeAsBytes(bytes);
+              ref
+                  .read(tabbedViewControllerProvider.notifier)
+                  .warnOpenFilesOverwritten(
+                    boardFiles: false,
+                    filePaths: [localFileTarget.id],
+                  );
+              ref
+                  .read(localFileItemsProvider.notifier)
+                  .buildRootFileListItems();
+
+              if (!context.mounted) return;
+              showEditorMessage(
+                context,
+                tr(I18nKey.fileMessageOverwriteLocalFile, {
+                  'path': displayPathName(localFileTarget.id),
+                }),
+              );
+            } on DeviceNotReadyException catch (_) {
+              if (!context.mounted) return;
+              final sendCtrlC = await showDeviceNotReadyDialog(
+                context,
+                operation: tr(I18nKey.fileOperationReadBoardFile),
+              );
+              if (sendCtrlC) {
+                sendCommandToActiveDevice(ref.read, "\x03");
+              }
+            }
+          },
+          attributes: MenuActionAttributes(
+            disabled:
+                (localFileTarget == null) ||
+                selectedCount != 1 ||
+                ((ref.watch(fileProvider)?.path == null) ||
+                    (node.data is FolderItem)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildLocalHeader(
+    BuildContext context,
+    WidgetRef ref,
+    Directory localWorkspace,
+  ) {
+    final selectionMode = ref.watch(localFileSelectionModeProvider);
+    final controller = ref.watch(localFileTreeViewControllerProvider);
+    final isConnected = ref.watch(deviceConnectedProvider);
+
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final selectedCount = controller.selectedNodeIds.length;
+        return PaneHeader(
+          title: selectionMode
+              ? translateForWidget(
+                  ref,
+                  I18nKey.fileSelectedCount,
+                ).replaceAll('{count}', selectedCount.toString())
+              : I18nKey.fileLocalProjectTitle,
+          subtitle: localWorkspace.path,
+          leadingIcon: selectionMode ? Icons.checklist : Icons.folder_outlined,
+          compact: true,
+          actions: selectionMode
+              ? [
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionUploadSelected,
+                    ),
+                    child: IconButton(
+                      onPressed: isConnected && selectedCount > 0
+                          ? () => _uploadSelectedLocalItems(context, ref)
+                          : null,
+                      icon: const Icon(Icons.upload_outlined),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionDeleteSelected,
+                    ),
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? () async {
+                              if (await confirmDelete(
+                                context,
+                                translateForWidget(
+                                  ref,
+                                  I18nKey.fileSelectedItemsName,
+                                ).replaceAll(
+                                  '{count}',
+                                  selectedCount.toString(),
+                                ),
+                              )) {
+                                if (!context.mounted) return;
+                                await ref
+                                    .read(fileProvider.notifier)
+                                    .deleteSelectedLocalItems(context);
+                              }
+                            }
+                          : null,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionClearSelection,
+                    ),
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? controller.deselectAll
+                          : null,
+                      icon: const Icon(Icons.deselect),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionExitSelection,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        controller.deselectAll();
+                        ref
+                                .read(localFileSelectionModeProvider.notifier)
+                                .state =
+                            false;
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ]
+              : [
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionSelectItems,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        ref
+                                .read(localFileSelectionModeProvider.notifier)
+                                .state =
+                            true;
+                      },
+                      icon: const Icon(Icons.checklist),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(ref, I18nKey.fileActionNewFile),
+                    child: IconButton(
+                      onPressed: () async {
+                        final parentPath = ref.read(fileProvider)?.path ?? '';
+                        final uniquePath = await local.getUniqueFilePath(
+                          path.join(parentPath, "new_file"),
+                        );
+                        try {
+                          await ref
+                              .read(fileProvider.notifier)
+                              .createFileAndStartRename(uniquePath);
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          showIdeError(
+                            context,
+                            tr(
+                              ref,
+                              I18nKey.fileMessageCreateLocalFileFailed,
+                            ).replaceAll('{error}', error.toString()),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.note_add_outlined),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionNewFolder,
+                    ),
+                    child: IconButton(
+                      onPressed: () async {
+                        final parentPath = ref.read(fileProvider)?.path ?? '';
+                        final uniquePath = await local.getUniqueFolderPath(
+                          path.join(parentPath, "new_folder"),
+                        );
+                        try {
+                          await ref
+                              .read(fileProvider.notifier)
+                              .createFolderAndStartRename(uniquePath);
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          showIdeError(
+                            context,
+                            tr(
+                              ref,
+                              I18nKey.fileMessageCreateLocalFolderFailed,
+                              {'error': error.toString()},
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.create_new_folder_outlined),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateInContext(
+                      context,
+                      I18nKey.fileSyncToDeviceTooltip,
+                    ),
+                    child: IconButton(
+                      onPressed: isConnected
+                          ? () => _openBoardSyncPreview(context, ref)
+                          : null,
+                      icon: const Icon(Icons.sync_alt),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionRefreshLocal,
+                    ),
+                    child: IconButton(
+                      onPressed: () => ref
+                          .read(localFileItemsProvider.notifier)
+                          .buildRootFileListItems(),
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ),
+                ],
+        );
+      },
+    );
+  }
+
+  Widget buildBoardHeader(
+    BuildContext context,
+    WidgetRef ref,
+    String? selectedPortName,
+  ) {
+    final selectionMode = ref.watch(boardFileSelectionModeProvider);
+    final controller = ref.watch(boardFileTreeViewControllerProvider);
+    final hasLocalWorkspace = ref.watch(fileProvider)?.path != null;
+
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final selectedCount = controller.selectedNodeIds.length;
+        return PaneHeader(
+          title: selectionMode
+              ? translateForWidget(
+                  ref,
+                  I18nKey.fileSelectedCount,
+                ).replaceAll('{count}', selectedCount.toString())
+              : I18nKey.fileBoardTitle,
+          subtitle: translateForWidget(
+            ref,
+            I18nKey.fileConnectedPort,
+          ).replaceAll('{port}', selectedPortName ?? ''),
+          leadingIcon: selectionMode
+              ? Icons.checklist
+              : Icons.developer_board_outlined,
+          compact: true,
+          actions: selectionMode
+              ? [
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionDownloadSelected,
+                    ),
+                    child: IconButton(
+                      onPressed: hasLocalWorkspace && selectedCount > 0
+                          ? () => _downloadSelectedBoardItems(context, ref)
+                          : null,
+                      icon: const Icon(Icons.download_outlined),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionDeleteSelected,
+                    ),
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? () async {
+                              if (await confirmDelete(
+                                context,
+                                translateForWidget(
+                                  ref,
+                                  I18nKey.fileSelectedItemsName,
+                                ).replaceAll(
+                                  '{count}',
+                                  selectedCount.toString(),
+                                ),
+                              )) {
+                                try {
+                                  if (!context.mounted) return;
+                                  await ref
+                                      .read(boardProvider)
+                                      .deleteSelectedBoardItems(context);
+                                } on DeviceNotReadyException catch (_) {
+                                  if (!context.mounted) return;
+                                  final sendCtrlC =
+                                      await showDeviceNotReadyDialog(
+                                        context,
+                                        operation: translateForWidget(
+                                          ref,
+                                          I18nKey.fileOperationDeleteBoardFile,
+                                        ),
+                                      );
+                                  if (sendCtrlC) {
+                                    sendCommandToActiveDevice(ref.read, "\x03");
+                                  }
+                                }
+                              }
+                            }
+                          : null,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionClearSelection,
+                    ),
+                    child: IconButton(
+                      onPressed: selectedCount > 0
+                          ? controller.deselectAll
+                          : null,
+                      icon: const Icon(Icons.deselect),
+                    ),
+                  ),
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionExitSelection,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        controller.deselectAll();
+                        ref
+                                .read(boardFileSelectionModeProvider.notifier)
+                                .state =
+                            false;
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ]
+              : [
+                  TooltipAnchor(
+                    message: translateForWidget(
+                      ref,
+                      I18nKey.fileActionSelectItems,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        ref
+                                .read(boardFileSelectionModeProvider.notifier)
+                                .state =
+                            true;
+                      },
+                      icon: const Icon(Icons.checklist),
+                    ),
+                  ),
+                  Builder(
+                    builder: (context) {
+                      final isLoading = ref.watch(boardFileListLoadingProvider);
+                      return TooltipAnchor(
+                        message: translateForWidget(
+                          ref,
+                          I18nKey.fileActionRefreshBoard,
+                        ),
+                        child: IconButton(
+                          onPressed: isLoading
+                              ? null
+                              : () async {
+                                  try {
+                                    await ref
+                                        .watch(boardFileItemsProvider.notifier)
+                                        .buildRootFileListItems();
+                                  } on DeviceNotReadyException catch (_) {
+                                    if (!context.mounted) return;
+                                    final sendCtrlC =
+                                        await showDeviceNotReadyDialog(
+                                          context,
+                                          operation: translateForWidget(
+                                            ref,
+                                            I18nKey
+                                                .fileOperationRefreshBoardFile,
+                                          ),
+                                        );
+                                    if (sendCtrlC) {
+                                      sendCommandToActiveDevice(
+                                        ref.read,
+                                        "\x03",
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+        );
+      },
+    );
+  }
+
+  Widget buildLocalFiles(BuildContext context, WidgetRef ref) {
+    if (ref.watch(fileProvider) != null) {
+      final localWorkspace = ref.watch(fileProvider)!;
+      final selectionMode = ref.watch(localFileSelectionModeProvider);
+      final compact = ref.watch(themeStyle) == ThemeStyle.compact;
+      return Column(
+        children: [
+          buildLocalHeader(context, ref, localWorkspace),
+          // buildLocalActionStrip(context, ref),
+          Expanded(
+            child: SuperTreeView<FileSystemItem>(
+              logic: TreeViewConfig(
+                expansionTrigger: selectionMode
+                    ? ExpansionTrigger.iconTap
+                    : ExpansionTrigger.tap,
+                rowWrapperBuilder: (context, node, child) =>
+                    PyriteContextMenuWidget(
+                      menuProvider: (_) => _buildLocalNodeMenu(
+                        context,
+                        ref,
+                        localWorkspace,
+                        node,
+                      ),
+                      child: _wrapFileDragSource(
+                        ref: ref,
+                        node: node,
+                        source: _FileDragSource.local,
+                        child: child,
+                      ),
+                    ),
+                dragAndDrop: TreeDragAndDropConfig<FileSystemItem>(
+                  onMoveNodes: (draggedNodes, targetNode, position) =>
+                      _moveLocalNodesToFolder(
+                        context,
+                        ref,
+                        draggedNodes,
+                        targetNode,
+                        position,
+                      ),
+                ),
+                enableDragAndDrop: ref.watch(localEnableDragAndDrop),
+                selectionMode: selectionMode
+                    ? SelectionMode.none
+                    : SelectionMode.multiple,
+                onNodeDoubleTap: selectionMode
+                    ? null
+                    : (id) =>
+                          ref.read(fileProvider.notifier).openFile(context, id),
+                namingStrategy: TreeNamingStrategy.always,
+              ),
+              style: _compactTreeStyle(context, ref),
+              controller: ref.watch(localFileTreeViewControllerProvider),
+              scrollController: ref.watch(localFileScrollControllerProvider),
+              prefixBuilder: (_, node) => _compactFileIcons.getIcon(node),
+              expansionSlotSize: compact ? 18 : 20,
+              expansionBuilder: compact
+                  ? (_, _) => const Icon(Icons.keyboard_arrow_right, size: 18)
+                  : null,
+              contentBuilder:
+                  (
+                    BuildContext context,
+                    TreeNode<FileSystemItem> node,
+                    Widget? renameField,
+                  ) {
+                    if (renameField != null) {
+                      return renameField;
+                    }
+                    final isGitIgnored = local.isGitIgnoredItem(node.data);
+                    final localController = ref.watch(
+                      localFileTreeViewControllerProvider,
+                    );
+                    final isSelected = localController.selectedNodeIds.contains(
+                      node.id,
+                    );
+                    final treeLabelStyle = _compactTreeStyle(
+                      context,
+                      ref,
+                    ).labelStyle;
+                    final label = Text(
+                      node.data.name,
+                      style: fileTreeLabelStyle(
+                        colorScheme: Theme.of(context).colorScheme,
+                        baseStyle: treeLabelStyle,
+                        isHidden: isGitIgnored,
+                        isSelected: isSelected,
+                      ),
+                    );
+                    final row = Row(
+                      children: [
+                        if (selectionMode)
+                          SizedBox.square(
+                            dimension: 24,
+                            child: IgnorePointer(
+                              child: Checkbox(
+                                value: isSelected,
+                                onChanged: (_) {},
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                        Expanded(child: label),
+                      ],
+                    );
+                    return selectionMode
+                        ? GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                localController.toggleSelection(node.id),
+                            child: row,
+                          )
+                        : row;
+                  },
+            ),
+          ),
+        ],
+      );
+    } else {
+      return WorkspaceEmptyState(
+        icon: Icons.folder_outlined,
+        title: I18nKey.fileEmptyLocalTitle,
+        message: I18nKey.fileEmptyLocalMessage,
+        actionLabel: I18nKey.fileEmptyLocalAction,
+        onAction: () => ref.read(localFileItemsProvider.notifier).openFolder(),
+      );
+    }
+  }
+
+  Widget buildLocalActionStrip(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final isConnected = ref.watch(deviceConnectedProvider);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: isConnected
+                  ? () async {
+                      try {
+                        await ref
+                            .read(fileProvider.notifier)
+                            .uploadSelectedLocalFileItem(context);
+                      } on DeviceNotReadyException catch (_) {
+                        if (!context.mounted) return;
+                        final sendCtrlC = await showDeviceNotReadyDialog(
+                          context,
+                          operation: translateForWidget(
+                            ref,
+                            I18nKey.fileOperationUploadToBoard,
+                          ),
+                        );
+                        if (sendCtrlC) {
+                          sendCommandToActiveDevice(ref.read, "\x03");
+                        }
+                      }
+                    }
+                  : null,
+              icon: Icon(
+                Icons.upload_outlined,
+                size: ThemeDensityTokens.forStyle(
+                  ref.watch(themeStyle),
+                ).headerIconSize,
+              ),
+              label: const UseText(I18nKey.fileActionUploadSelected),
+            ),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              onPressed: () => ref
+                  .read(localFileItemsProvider.notifier)
+                  .buildRootFileListItems(),
+              icon: Icon(
+                Icons.refresh,
+                size: ThemeDensityTokens.forStyle(
+                  ref.watch(themeStyle),
+                ).headerIconSize,
+              ),
+              label: const UseText(I18nKey.fileActionRefresh),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Builds the local<->board plan, shows the preview, then executes it.
+  ///
+  /// The device is only touched twice: once to scan the board tree for the
+  /// plan and once per executed file. Cancelling the preview never starts a
+  /// transfer, and cancelling the execution stops between whole files so the
+  /// REPL is left at a normal prompt.
+  Future<void> _openBoardSyncPreview(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final localWorkspace = ref.read(fileProvider);
+    if (localWorkspace == null) {
+      showIdeError(
+        context,
+        translateForWidget(ref, I18nKey.fileMessageOpenLocalProject),
+      );
+      return;
+    }
+
+    final boardOps = ref.read(boardProvider).ops;
+    final boardRoot = ref.read(boardProvider).getFocusFolderNode()?.id ?? '/';
+    // The plan walks the board synchronously with the progress UI; reading the
+    // locale through the container keeps the note text out of widget rebuilds.
+    String translateSync(
+      I18nKey key, [
+      Map<String, String> replacements = const {},
+    ]) => translateInContextWithReplacements(context, key, replacements);
+
+    BoardSyncPlan plan;
+    try {
+      plan = await buildWorkspaceSyncPlan(
+        ops: boardOps,
+        localRoot: localWorkspace.path,
+        boardRoot: boardRoot,
+        translate: translateSync,
+      );
+    } on DeviceNotReadyException catch (_) {
+      if (!context.mounted) return;
+      final sendCtrlC = await showDeviceNotReadyDialog(
+        context,
+        operation: translateForWidget(
+          ref,
+          I18nKey.fileOperationRefreshBoardFile,
+        ),
+      );
+      if (sendCtrlC) sendCommandToActiveDevice(ref.read, "\x03");
+      return;
+    } catch (error) {
+      if (!context.mounted) return;
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileMessageSyncPlanFailed,
+          {'error': '$error'},
+        ),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    if (!plan.hasWork) {
+      showEditorMessage(
+        context,
+        translateInContext(
+          context,
+          plan.isEmpty
+              ? I18nKey.fileSyncNothingLocal
+              : I18nKey.fileSyncNothingBoth,
+        ),
+      );
+      return;
+    }
+
+    final result = await showBoardSyncPreviewDialog(
+      context,
+      plan: plan,
+      localRoot: localWorkspace.path,
+    );
+    if (result == null || result.selectedPaths.isEmpty || !context.mounted) {
+      return;
+    }
+
+    // Conflict rows carry the side the user picked in the preview; resolve
+    // them before the direction filter so a resolved conflict lands in the
+    // half of the plan that will actually run.
+    final filtered = _restrictPlanToDirection(
+      _applyConflictOverrides(plan, result.overrides),
+      result.direction,
+    );
+    final progress = ref.read(fileTransferProgressProvider.notifier);
+    final executor = BoardSyncExecutor(
+      ops: boardOps,
+      progress: progress,
+      translate: translateSync,
+    );
+    // No token is passed in: the executor creates it right after `start()`, so
+    // the progress bar's cancel button cancels exactly the token being polled.
+    final outcome = await executor.execute(
+      plan: filtered,
+      localRoot: localWorkspace.path,
+      selectedPaths: result.selectedPaths,
+    );
+
+    if (!context.mounted) return;
+    ref.read(localFileItemsProvider.notifier).buildRootFileListItems();
+    ref.read(boardFileItemsProvider.notifier).buildRootFileListItems();
+    if (outcome.error != null) {
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileMessageSyncFailed,
+          {'error': '${outcome.error}'},
+        ),
+      );
+    } else if (outcome.hasFailures) {
+      final first = outcome.failed.first;
+      showIdeError(
+        context,
+        translateInContextWithReplacements(
+          context,
+          I18nKey.fileSyncFirstFailure,
+          {
+            'summary': outcome.summary,
+            'path': first.entry.relativePath,
+            'error': '${first.error}',
+          },
+        ),
+      );
+    } else {
+      showEditorMessage(context, outcome.summary);
+    }
+  }
+
+  /// Applies the conflict decisions made in the preview dialog.
+  ///
+  /// A conflict row has no direction of its own, so without this the executor
+  /// would skip it even though the user picked a side.
+  BoardSyncPlan _applyConflictOverrides(
+    BoardSyncPlan plan,
+    Map<String, BoardSyncAction> overrides,
+  ) {
+    if (overrides.isEmpty) return plan;
+    return BoardSyncPlan(
+      entries: [
+        for (final entry in plan.entries)
+          _withOverride(entry, overrides[entry.relativePath]),
+      ],
+      localRoot: plan.localRoot,
+      boardRoot: plan.boardRoot,
+      truncated: plan.truncated,
+    );
+  }
+
+  BoardSyncEntry _withOverride(BoardSyncEntry entry, BoardSyncAction? action) =>
+      action == null ? entry : entry.copyWith(action: action);
+
+  /// Drops entries that point in the opposite direction of the user's choice.
+  ///
+  /// `none` keeps both directions. This is the "本地→设备 only" switch the
+  /// preview offers without needing a second plan.
+  BoardSyncPlan _restrictPlanToDirection(
+    BoardSyncPlan plan,
+    BoardSyncDirection direction,
+  ) {
+    if (direction == BoardSyncDirection.none) return plan;
+    return BoardSyncPlan(
+      entries: [
+        for (final entry in plan.entries)
+          if (entry.direction == BoardSyncDirection.none ||
+              entry.direction == direction)
+            entry,
+      ],
+      localRoot: plan.localRoot,
+      boardRoot: plan.boardRoot,
+      truncated: plan.truncated,
+    );
+  }
+
+  Widget buildBoardFiles(BuildContext context, WidgetRef ref) {
+    if (ref.watch(deviceConnectedProvider) &&
+        (ref.watch(boardFileItemsProvider).isNotEmpty ||
+            // A successful refresh proved the listing is empty, so show the
+            // empty list instead of the refresh prompt.
+            ref.watch(boardFileListLoadedProvider))) {
+      final deviceLabel = ref.watch(activeDeviceLabelProvider);
+      final selectionMode = ref.watch(boardFileSelectionModeProvider);
+      final compact = ref.watch(themeStyle) == ThemeStyle.compact;
+      return Column(
+        children: [
+          buildBoardHeader(context, ref, deviceLabel),
+          // buildBoardActionStrip(context, ref),
+          Expanded(
+            child: SuperTreeView<FileSystemItem>(
+              logic: TreeViewConfig(
+                expansionTrigger: selectionMode
+                    ? ExpansionTrigger.iconTap
+                    : ExpansionTrigger.tap,
+                rowWrapperBuilder: (context, node, child) =>
+                    PyriteContextMenuWidget(
+                      menuProvider: (_) =>
+                          _buildBoardNodeMenu(context, ref, node),
+                      child: _wrapFileDragSource(
+                        ref: ref,
+                        node: node,
+                        source: _FileDragSource.board,
+                        child: child,
+                      ),
+                    ),
+                dragAndDrop: TreeDragAndDropConfig<FileSystemItem>(
+                  onMoveNodes: (draggedNodes, targetNode, position) =>
+                      _moveBoardNodesToFolder(
+                        context,
+                        ref,
+                        draggedNodes,
+                        targetNode,
+                        position,
+                      ),
+                ),
+                enableDragAndDrop: ref.watch(boardEnableDragAndDrop),
+                selectionMode: selectionMode
+                    ? SelectionMode.none
+                    : SelectionMode.multiple,
+                onNodeDoubleTap: selectionMode
+                    ? null
+                    : (id) => ref.read(boardProvider).openFile(context, id),
+                namingStrategy: TreeNamingStrategy.always,
+              ),
+              style: _compactTreeStyle(context, ref),
+              controller: ref.watch(boardFileTreeViewControllerProvider),
+              scrollController: ref.watch(boardFileScrollControllerProvider),
+              prefixBuilder: (_, node) => _compactFileIcons.getIcon(node),
+              expansionSlotSize: compact ? 18 : 20,
+              expansionBuilder: compact
+                  ? (_, _) => const Icon(Icons.keyboard_arrow_right, size: 18)
+                  : null,
+              contentBuilder:
+                  (
+                    BuildContext context,
+                    TreeNode<FileSystemItem> node,
+                    Widget? renameField,
+                  ) {
+                    if (renameField != null) {
+                      return renameField;
+                    }
+                    final boardController = ref.watch(
+                      boardFileTreeViewControllerProvider,
+                    );
+                    final isSelected = boardController.selectedNodeIds.contains(
+                      node.id,
+                    );
+                    final label = Text(
+                      node.data.name,
+                      style: _compactTreeStyle(context, ref).labelStyle,
+                    );
+                    final row = Row(
+                      children: [
+                        if (selectionMode)
+                          SizedBox.square(
+                            dimension: 24,
+                            child: IgnorePointer(
+                              child: Checkbox(
+                                value: isSelected,
+                                onChanged: (_) {},
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                        Expanded(child: label),
+                      ],
+                    );
+                    return selectionMode
+                        ? GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                boardController.toggleSelection(node.id),
+                            child: row,
+                          )
+                        : row;
+                  },
+            ),
+          ),
+        ],
+      );
+    } else if (ref.watch(deviceConnectedProvider)) {
+      final isLoading = ref.watch(boardFileListLoadingProvider);
+      return WorkspaceEmptyState(
+        icon: Icons.developer_board_outlined,
+        title: I18nKey.fileEmptyBoardRefreshTitle,
+        message: I18nKey.fileEmptyBoardRefreshMessage,
+        actionLabel: I18nKey.fileActionRefresh,
+        onAction: isLoading
+            ? null
+            : () => ref
+                  .watch(boardFileItemsProvider.notifier)
+                  .buildRootFileListItems(),
+      );
+    } else {
+      return WorkspaceEmptyState(
+        icon: Icons.developer_board_outlined,
+        title: I18nKey.fileEmptyBoardDisconnectedTitle,
+        message: I18nKey.fileEmptyBoardDisconnectedMessage,
+        actionLabel: I18nKey.fileEmptyBoardDisconnectedAction,
+        onAction: () => context.go("/tools"),
+      );
+    }
+  }
+}

@@ -1,37 +1,23 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:code_forge/code_forge.dart' show CodeForgeController;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
-import 'package:pyrite_ide/core/constants/basic.dart';
-import 'package:pyrite_ide/core/constants/navigation_bar.dart';
-import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/app/routes.dart';
+import 'package:pyrite_ide/core/constants/basic.dart';
+import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/core/constants/navigation_bar.dart';
+import 'package:pyrite_ide/core/constants/selection.dart';
+import 'package:pyrite_ide/core/constants/theme_density.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
-import 'package:pyrite_ide/core/models/editor.dart';
+import 'package:pyrite_ide/core/models/pane_edge.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
-import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
-import 'package:pyrite_ide/core/services/editor/repl_input_controller.dart';
-import 'package:pyrite_ide/core/services/serial/serial_provider.dart';
-import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
-import 'package:pyrite_ide/core/services/serial/web_repl_provider.dart';
-import 'package:pyrite_ide/core/services/settings.dart';
-import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
-import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
-import 'package:pyrite_ide/core/services/editor/terminal.dart';
-import 'package:pyrite_ide/core/services/file/file_provider.dart';
-import 'package:pyrite_ide/core/services/file/file_ops.dart';
-import 'package:pyrite_ide/core/services/message/ide_message.dart';
-import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
-import 'package:pyrite_ide/core/services/app.dart';
-import 'package:pyrite_ide/core/services/data_registry.dart';
-import 'package:pyrite_ide/core/services/function_page.dart';
-import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
-import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
-import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
 import 'package:pyrite_ide/core/sdk/command_service.dart';
 import 'package:pyrite_ide/core/sdk/contribution_registry.dart';
 import 'package:pyrite_ide/core/sdk/editor_document_host.dart';
@@ -39,328 +25,110 @@ import 'package:pyrite_ide/core/sdk/environment_notifier_provider.dart';
 import 'package:pyrite_ide/core/sdk/menu_resolver.dart';
 import 'package:pyrite_ide/core/sdk/models/plugin_theme.dart';
 import 'package:pyrite_ide/core/sdk/plugin_manager_provider.dart';
-import 'package:pyrite_ide/core/sdk/types.dart';
 import 'package:pyrite_ide/core/sdk/plugin_resources.dart';
-import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
-import 'package:pyrite_ide/features/window.dart';
-import 'package:pyrite_ide/features/function_page/repl_surface.dart';
-import 'package:pyrite_ide/features/function_page/problems_view.dart';
-import 'package:pyrite_ide/core/services/editor/problems_provider.dart';
+import 'package:pyrite_ide/core/sdk/types.dart';
+import 'package:pyrite_ide/core/services/app.dart';
+import 'package:pyrite_ide/core/services/data_registry.dart';
+import 'package:pyrite_ide/core/services/editor/desktop_terminal_provider.dart';
+import 'package:pyrite_ide/core/services/editor/editor_layout_commands.dart';
+import 'package:pyrite_ide/core/services/editor/editor_split.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_state.dart';
+import 'package:pyrite_ide/core/services/editor/tabbed_view_controller_provider.dart';
+import 'package:pyrite_ide/core/services/file/file_ops.dart';
+import 'package:pyrite_ide/core/services/file/file_provider.dart';
+import 'package:pyrite_ide/core/services/function_page.dart';
+import 'package:pyrite_ide/core/services/git/git_status_summary_provider.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
+import 'package:pyrite_ide/core/services/output/ide_output_log.dart';
+import 'package:pyrite_ide/core/services/serial/active_device_provider.dart';
+import 'package:pyrite_ide/core/services/settings.dart';
+import 'package:pyrite_ide/core/services/shortcut_utils.dart';
+import 'package:pyrite_ide/core/services/status_bar/running_operation_provider.dart';
+import 'package:pyrite_ide/core/services/status_bar/status_bar_registry.dart';
+import 'package:pyrite_ide/core/services/workspace_pane.dart';
+import 'package:pyrite_ide/features/command_palette/command_palette.dart';
+import 'package:pyrite_ide/features/command_palette/editor_palette_hooks.dart';
+import 'package:pyrite_ide/features/command_palette/palette_entry.dart';
 import 'package:pyrite_ide/features/edit_core/lsp_location_dialog.dart';
-import 'package:pyrite_ide/pages/editor/main.dart';
+import 'package:pyrite_ide/features/function_page/console_tabs.dart';
+import 'package:pyrite_ide/features/function_page/editor_split_drop.dart';
+import 'package:pyrite_ide/features/function_page/repl_surface.dart';
+import 'package:pyrite_ide/features/plugin_view/plugin_icons.dart';
+import 'package:pyrite_ide/features/terminal/desktop_terminal_surface.dart';
+import 'package:pyrite_ide/features/terminal/terminal_context_menu.dart';
+import 'package:pyrite_ide/features/terminal/terminal_link_handlers.dart';
+import 'package:pyrite_ide/features/window.dart';
+import 'package:pyrite_ide/pages/editor/editor_page.dart';
 import 'package:pyrite_ide/shared/md3_widgets.dart';
+import 'package:pyrite_ide/shared/pyrite_menu.dart';
 import 'package:pyrite_ide/shared/studio_text.dart';
-import 'package:pyrite_ide/core/constants/corner_radius.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tab_strip_theme.dart';
+import 'package:pyrite_ide/shared/tabbed_view/tabbed_view.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
+import 'package:tabbed_view/tabbed_view.dart' hide TabbedView;
 import 'package:xterm/xterm.dart';
 
-final StateProvider<int> bottomPanelTabProvider = StateProvider<int>(
-  (ref) => 0,
-);
+part 'function_page/function_page_views.dart';
+
+/// Keeps the status bar's horizontal scroll position across rebuilds.
+///
+/// The bar rebuilds on every language-server/device/transfer change. Creating
+/// a fresh [ScrollController] in `build` reset the offset each time, so a user
+/// who scrolled to a status item lost their place whenever any other item
+/// changed.
+final AutoDisposeProvider<ScrollController> statusBarScrollControllerProvider =
+    Provider.autoDispose<ScrollController>((ref) {
+      final controller = ScrollController();
+      ref.onDispose(controller.dispose);
+      return controller;
+    });
 
 Widget consolePage() {
   return const ConsolePage();
 }
 
+/// The console panel.
+///
+/// It renders the same [TabbedView] as the editor and owns the same kind of
+/// controller, which is what lets a tab be dragged from here into an editor
+/// group and back: the shared drag already moves tabs across controllers.
+/// Each surface brings its own buttons and menu, which the strip shows.
 class ConsolePage extends ConsumerWidget {
   const ConsolePage({super.key});
 
+  /// Only the panel's own surfaces may be dropped on its strip. A document
+  /// would sit outside the editor layout, where persistence, the unsaved guard
+  /// and the open-file dedup cannot see it.
+  static bool _acceptsTab(DraggableData source, TabbedViewController _) =>
+      isConsoleTab(source.tabData);
+
+  /// Marks the console the pane the user is working in.
+  static void _markFocused(WidgetRef ref) {
+    ref.read(focusedWorkspacePaneProvider.notifier).state =
+        WorkspacePane.console;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isConnected = ref.watch(deviceConnectedProvider);
-    final webReplState = ref.watch(webReplProvider);
-    final webReplConnected = webReplState.state == WebReplState.connected;
-    final useWebRepl =
-        webReplConnected || webReplState.state == WebReplState.waitingPassword;
-    final selectedTab = ref.watch(bottomPanelTabProvider);
-    final problems = ref.watch(problemsProvider);
-    var problemCount = 0;
-    for (final file in problems) {
-      problemCount += file.errorCount + file.warningCount;
-    }
-    final actions = _buildConsoleActions(
-      ref,
-      selectedTab,
-      isConnected,
-      webReplConnected,
-      useWebRepl,
-    );
-
-    return Column(
-      children: [
-        _BottomPanelTabs(
-          selectedIndex: selectedTab,
-          actions: actions,
-          // The count rides on the translated label so a locale switch
-          // re-renders it together with the tab text.
-          problemsLabel: problemCount > 0
-              ? '${translateForWidget(ref, I18nKey.bottomPanelProblemsTab)} ($problemCount)'
-              : translateForWidget(ref, I18nKey.bottomPanelProblemsTab),
-        ),
-        Expanded(
-          child: IndexedStack(
-            index: selectedTab,
-            children: const [
-              ReplView(),
-              OutputLogView(),
-              DesktopTerminalView(),
-              ProblemsView(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _buildConsoleActions(
-    WidgetRef ref,
-    int selectedTab,
-    bool isConnected,
-    bool webReplConnected,
-    bool useWebRepl,
-  ) {
-    switch (selectedTab) {
-      case 1:
-        return [
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearOutput),
-            onPressed: () => ref.read(ideOutputLogProvider.notifier).clear(),
-            icon: const Icon(Icons.cleaning_services_outlined),
-          ),
-        ];
-      case 2:
-        return const [];
-      case 3:
-        return [_buildProblemsCollapseAction(ref)];
-      default:
-        return [
-          if (!isConnected && !useWebRepl)
-            IconButton(
-              tooltip: translateForWidget(
-                ref,
-                I18nKey.bottomPanelConnectWebRepl,
-              ),
-              onPressed: () {
-                ref.read(webReplProvider.notifier).connect();
-              },
-              icon: const Icon(Icons.wifi),
-            ),
-          IconButton(
-            tooltip: translateForWidget(ref, I18nKey.bottomPanelClearTerminal),
-            onPressed: () {
-              replController.clearSelection();
-              repl.clear();
-              replClearSink?.call();
-              final input = ref.read(replInputControllerProvider);
-              if (replClearSink == null) {
-                if (input.mode == ReplInteractionMode.prompt) {
-                  repl.write('>>> ');
-                } else if (input.mode == ReplInteractionMode.continuation) {
-                  repl.write('... ');
-                }
-              }
-            },
-            icon: const Icon(Icons.cleaning_services_outlined),
-          ),
-          IconButton(
-            tooltip: useWebRepl
-                ? translateForWidget(ref, I18nKey.editorToolbarInterruptDevice)
-                : translateForWidget(
-                    ref,
-                    isConnected
-                        ? I18nKey.editorToolbarInterruptDevice
-                        : I18nKey.editorToolbarInterruptNeedsDevice,
-                  ),
-            onPressed: (useWebRepl || isConnected)
-                ? () {
-                    if (useWebRepl) {
-                      ref.read(webReplProvider.notifier).sendCommand("\x03");
-                    } else {
-                      ref.read(serialProvider.notifier).sendCommand("\x03");
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.stop_circle_outlined),
-          ),
-          IconButton(
-            tooltip: useWebRepl
-                ? translateForWidget(ref, I18nKey.editorToolbarSoftReboot)
-                : translateForWidget(
-                    ref,
-                    isConnected
-                        ? I18nKey.editorToolbarSoftReboot
-                        : I18nKey.editorToolbarSoftRebootNeedsDevice,
-                  ),
-            onPressed: (useWebRepl || isConnected)
-                ? () {
-                    if (useWebRepl) {
-                      ref.read(webReplProvider.notifier).sendCommand("\x04");
-                    } else {
-                      ref.read(serialProvider.notifier).sendCommand("\x04");
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.restart_alt),
-          ),
-        ];
-    }
-  }
-
-  /// Collapse-all / expand-all toggle for the Problems panel, shown while
-  /// that tab is selected. "All" covers every file that currently has rows;
-  /// stale paths from closed files are ignored.
-  Widget _buildProblemsCollapseAction(WidgetRef ref) {
-    final problems = ref.watch(problemsProvider);
-    final collapsed = ref.watch(collapsedProblemFilesProvider);
-    final groupPaths = [
-      for (final file in problems)
-        if (file.diagnostics.isNotEmpty) file.path,
-    ];
-    final allCollapsed =
-        groupPaths.isNotEmpty && groupPaths.every(collapsed.contains);
-    return IconButton(
-      tooltip: translateForWidget(
-        ref,
-        allCollapsed
-            ? I18nKey.problemsPanelExpandAll
-            : I18nKey.problemsPanelCollapseAll,
-      ),
-      onPressed: () {
-        ref.read(collapsedProblemFilesProvider.notifier).state = allCollapsed
-            ? <String>{}
-            : Set<String>.from(groupPaths);
+    // A click -- or keyboard focus arriving inside the panel -- marks the
+    // console the focused pane, so a plugin view opened without an explicit
+    // pane lands where the user is looking.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (hasFocus) {
+        if (hasFocus) _markFocused(ref);
       },
-      icon: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
-    );
-  }
-}
-
-class _BottomPanelTabs extends ConsumerWidget {
-  const _BottomPanelTabs({
-    required this.selectedIndex,
-    required this.actions,
-    this.problemsLabel,
-  });
-
-  final int selectedIndex;
-  final List<Widget> actions;
-
-  /// Pre-translated Problems tab label; carries the open-problem count when
-  /// there is one, so the tab reads like VS Code's badge without adding a
-  /// badge slot to [_BottomPanelTab].
-  final String? problemsLabel;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final statusBarHeight = ThemeDensityTokens.forStyle(
-      ref.watch(themeStyle),
-    ).statusBarHeight;
-    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return Container(
-      height: statusBarHeight,
-      decoration: BoxDecoration(color: scheme.surface),
-      child: Row(
-        children: [
-          _BottomPanelTab(
-            label: 'REPL',
-            icon: Icons.terminal,
-            index: 0,
-            selectedIndex: selectedIndex,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _markFocused(ref),
+        child: TabbedViewTheme(
+          data: buildTabStripTheme(context),
+          child: TabbedView(
+            controller: ref.watch(consoleTabbedViewControllerProvider),
+            canDrop: _acceptsTab,
           ),
-          _BottomPanelTab(
-            label: I18nKey.bottomPanelLogTab,
-            icon: Icons.article_outlined,
-            index: 1,
-            selectedIndex: selectedIndex,
-          ),
-          _BottomPanelTab(
-            label: I18nKey.bottomPanelTerminalTab,
-            icon: Icons.terminal_outlined,
-            index: 2,
-            selectedIndex: selectedIndex,
-          ),
-          if (problemsLabel != null)
-            _BottomPanelTab(
-              label: problemsLabel!,
-              icon: Icons.report_problem_outlined,
-              index: 3,
-              selectedIndex: selectedIndex,
-            ),
-          const Spacer(),
-          if (actions.isNotEmpty) ...[
-            SizedBox(
-              height: 18,
-              child: VerticalDivider(width: 1, color: scheme.outlineVariant),
-            ),
-            const SizedBox(width: 4),
-            for (final action in actions)
-              SizedBox.square(
-                dimension: compact ? 26 : 30,
-                child: IconButtonTheme(
-                  data: IconButtonThemeData(
-                    style: ButtonStyle(
-                      iconSize: WidgetStatePropertyAll(compact ? 15 : 17),
-                      padding: WidgetStatePropertyAll(EdgeInsets.zero),
-                      minimumSize: WidgetStatePropertyAll(
-                        Size.square(compact ? 26 : 30),
-                      ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                  child: action,
-                ),
-              ),
-            const SizedBox(width: 4),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _BottomPanelTab extends ConsumerWidget {
-  const _BottomPanelTab({
-    required this.label,
-    required this.icon,
-    required this.index,
-    required this.selectedIndex,
-  });
-
-  final Object label;
-  final IconData icon;
-  final int index;
-  final int selectedIndex;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selected = index == selectedIndex;
-    final scheme = Theme.of(context).colorScheme;
-    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
-    return InkWell(
-      onTap: () => ref.read(bottomPanelTabProvider.notifier).state = index,
-      child: Container(
-        height: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: compact ? 14 : 16,
-              color: selected ? scheme.primary : scheme.onSurfaceVariant,
-            ),
-            SizedBox(width: compact ? 4 : 6),
-            UseText(
-              label,
-              style: TextStyle(
-                color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                fontSize: compact ? 12 : null,
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -400,12 +168,41 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
   late final shadcn.FlexibleResizablePaneController _primaryController;
   late final shadcn.FlexibleResizablePaneController _consoleController;
 
+  /// Whether the console held at least one tab on the previous notification.
+  ///
+  /// A console whose tabs have all been dragged out is not a group any more, so
+  /// the pane goes away -- and the panel comes back at its default ratio when a
+  /// tab is dragged back in.
+  bool _consoleWasEmpty = false;
+
+  /// The console controller, followed for its tabs: they change in place, so
+  /// the provider never reports a group emptying.
+  late final TabbedViewController _console;
+
   @override
   void initState() {
     super.initState();
     _primaryController = shadcn.FlexibleResizablePaneController(_primaryFlex);
     _consoleController = shadcn.FlexibleResizablePaneController(_consoleFlex);
+    _console = ref.read(consoleTabbedViewControllerProvider)
+      ..addListener(_onConsoleTabsChanged);
+    _consoleWasEmpty = _console.tabs.isEmpty;
     ref.listenManual<bool>(consolePageShow, (_, _) => _resetPaneSizes());
+    ref.listenManual<PaneEdge>(
+      consoleDockSideProvider,
+      (_, _) => _resetPaneSizes(),
+    );
+  }
+
+  void _onConsoleTabsChanged() {
+    if (!mounted) return;
+    final empty = _console.tabs.isEmpty;
+    if (empty == _consoleWasEmpty) return;
+    _consoleWasEmpty = empty;
+    // Reset before the rebuild that drops the pane: the panel keeps the ratio
+    // it resolved while both panes existed otherwise.
+    _resetPaneSizes();
+    setState(() {});
   }
 
   @override
@@ -427,6 +224,7 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   void dispose() {
+    _console.removeListener(_onConsoleTabsChanged);
     _primaryController.dispose();
     _consoleController.dispose();
     super.dispose();
@@ -434,32 +232,60 @@ class _ConsoleWorkspaceState extends ConsumerState<ConsoleWorkspace> {
 
   @override
   Widget build(BuildContext context) {
-    final showConsole = widget.allowConsole && ref.watch(consolePageShow);
-    return shadcn.ResizablePanel.vertical(
+    // The console is a group like any other, so it only occupies a pane while
+    // it still holds tabs: drag them all out and the group — and its pane —
+    // goes away.
+    final showConsole =
+        widget.allowConsole && ref.watch(consolePageShow) && !_consoleWasEmpty;
+    final dockSide = ref.watch(consoleDockSideProvider);
+    final splitsVertically = dockSide.axis == Axis.vertical;
+
+    final primaryPane = shadcn.ResizablePane.controlled(
+      key: ConsoleWorkspace.primaryPaneKey,
+      controller: _primaryController,
+      minSize: _primaryMinSize,
+      collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
+      child: widget.primary,
+    );
+    final consolePane = shadcn.ResizablePane.controlled(
+      key: ConsoleWorkspace.consolePaneKey,
+      controller: _consoleController,
+      minSize: 160,
+      child:
+          widget.console ??
+          EditorSplitDropRegion(
+            // The panel is a group too, so its edges accept a tab like any
+            // other group's: the new group lands in the editor area.
+            controller: _console,
+            edgeTarget: ref.read(tabbedViewControllerProvider),
+            // Only the panel's own surfaces come back here. A document dropped
+            // into this group would sit outside the layout tree, where
+            // persistence, the unsaved guard and the open-file dedup cannot
+            // see it at all.
+            accept: (tab) => tab.value is ConsoleTabValue,
+            child: consolePage(),
+          ),
+    );
+
+    return shadcn.ResizablePanel(
+      direction: dockSide.axis,
       optionalDivider: false,
       draggerBuilder: (context) {
         return Semantics(
           label: translateForWidget(ref, I18nKey.bottomPanelResize),
-          child: const shadcn.HorizontalResizableDragger(
-            key: ConsoleWorkspace.draggerKey,
-          ),
+          child: splitsVertically
+              ? const shadcn.HorizontalResizableDragger(
+                  key: ConsoleWorkspace.draggerKey,
+                )
+              : const shadcn.VerticalResizableDragger(
+                  key: ConsoleWorkspace.draggerKey,
+                ),
         );
       },
       children: [
-        shadcn.ResizablePane.controlled(
-          key: ConsoleWorkspace.primaryPaneKey,
-          controller: _primaryController,
-          minSize: _primaryMinSize,
-          collapsedSize: showConsole ? widget.collapsedPrimarySize : null,
-          child: widget.primary,
-        ),
-        if (showConsole)
-          shadcn.ResizablePane.controlled(
-            key: ConsoleWorkspace.consolePaneKey,
-            controller: _consoleController,
-            minSize: 160,
-            child: widget.console ?? consolePage(),
-          ),
+        if (dockSide.isLeading && showConsole) consolePane,
+        primaryPane,
+        if (!dockSide.isLeading && showConsole) consolePane,
       ],
     );
   }
@@ -517,8 +343,8 @@ class ConsoleToggle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final consoleVisible = ref.watch(consolePageShow);
-    return IconButton(
-      tooltip: translateForWidget(
+    return TooltipAnchor(
+      message: translateForWidget(
         ref,
         isMobile
             ? I18nKey.statusOpenConsole
@@ -526,14 +352,16 @@ class ConsoleToggle extends ConsumerWidget {
                   ? I18nKey.statusHideConsole
                   : I18nKey.statusShowRepl),
       ),
-      onPressed: () {
-        if (isMobile) {
-          showMobileConsoleSheet(context);
-          return;
-        }
-        ref.read(consolePageShow.notifier).state = !consoleVisible;
-      },
-      icon: const Icon(Icons.terminal),
+      child: IconButton(
+        onPressed: () {
+          if (isMobile) {
+            showMobileConsoleSheet(context);
+            return;
+          }
+          ref.read(consolePageShow.notifier).state = !consoleVisible;
+        },
+        icon: const Icon(Icons.terminal),
+      ),
     );
   }
 }
@@ -544,41 +372,20 @@ class FunctionPaneToggle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visible = ref.watch(functionPageShow);
-    return IconButton(
-      tooltip: translateForWidget(
+    return TooltipAnchor(
+      message: translateForWidget(
         ref,
         visible
             ? I18nKey.bottomPanelHideFunctionPanel
             : I18nKey.bottomPanelShowFunctionPanel,
       ),
-      onPressed: () {
-        ref.read(functionPageShow.notifier).state = !visible;
-      },
-      icon: Icon(
-        visible ? Icons.keyboard_arrow_left : Icons.keyboard_arrow_right,
-      ),
-    );
-  }
-}
-
-class ExpansionPaneToggle extends ConsumerWidget {
-  const ExpansionPaneToggle({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final visible = ref.watch(expansionPageShow);
-    return IconButton(
-      tooltip: translateForWidget(
-        ref,
-        visible
-            ? I18nKey.bottomPanelHideExpansionPanel
-            : I18nKey.bottomPanelShowExpansionPanel,
-      ),
-      onPressed: () {
-        ref.read(expansionPageShow.notifier).state = !visible;
-      },
-      icon: Icon(
-        visible ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_left,
+      child: IconButton(
+        onPressed: () {
+          ref.read(functionPageShow.notifier).state = !visible;
+        },
+        icon: Icon(
+          visible ? Icons.keyboard_arrow_left : Icons.keyboard_arrow_right,
+        ),
       ),
     );
   }
@@ -596,11 +403,7 @@ class RailTrailingActions extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              FunctionPaneToggle(),
-              ExpansionPaneToggle(),
-              ConsoleToggle(),
-            ],
+            children: [FunctionPaneToggle(), ConsoleToggle()],
           ),
         ),
       ),
@@ -733,20 +536,15 @@ Future<void> _showNavigationContextMenu(
   List<ResolvedMenuItem> items,
   Offset globalPosition,
 ) async {
-  final selected = await showMenu<String>(
-    context: context,
-    position: RelativeRect.fromLTRB(
-      globalPosition.dx,
-      globalPosition.dy,
-      globalPosition.dx,
-      globalPosition.dy,
-    ),
-    items: [
+  final selected = await showPyriteMenu<String>(
+    context,
+    globalPosition: globalPosition,
+    entries: [
       for (final item in items)
-        PopupMenuItem<String>(
+        PyriteMenuEntry(
           value: item.commandId,
+          label: item.title,
           enabled: item.enabled,
-          child: Text(item.title),
         ),
     ],
   );
@@ -852,11 +650,11 @@ NavigationRailDestination _tooltippedDestination(
     // `container: true` keeps each rail destination its own semantics node so
     // adjacent destinations cannot absorb one another's tooltip anchor and
     // orphan its overlay node. See flutter/flutter#182444.
-    icon: Tooltip(
+    icon: TooltipAnchor(
       message: tooltip,
       child: Semantics(container: true, child: destination.icon),
     ),
-    selectedIcon: Tooltip(
+    selectedIcon: TooltipAnchor(
       message: tooltip,
       child: Semantics(
         container: true,
@@ -871,910 +669,6 @@ NavigationRailDestination _tooltippedDestination(
   );
 }
 
-class MobileView extends ConsumerWidget {
-  const MobileView({super.key, required this.child, required this.state});
-
-  final Widget child;
-  final GoRouterState state;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pluginItems = _pluginNavigationItems(ref);
-    // 确保组件重绘后导航栏选择的值与实际显示内容同步
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
-      if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
-        selectedIndexValue = 0;
-        ref.read(mobileSelectedIndex.notifier).state = 0;
-        context.go(file);
-        return;
-      }
-      // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
-      // e.g. "/settings/about" => "/settings"
-      if (routeIndex != -1 && routeIndex != ref.read(mobileSelectedIndex)) {
-        selectedIndexValue = routeIndex;
-        ref.read(mobileSelectedIndex.notifier).state = routeIndex;
-      }
-    });
-    return SafeArea(
-      child: Scaffold(
-        drawer: mobileNavigationDrawer(context, ref),
-        body: Column(
-          children: [
-            Expanded(child: child),
-            EditorToolsBar(showNavigationDrawerButton: true),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void selectDestination(
-    BuildContext context,
-    WidgetRef ref,
-    int value,
-    List<String> navigationRoutes,
-  ) {
-    selectedIndexValue = value;
-    ref.read(tabletSelectedIndex.notifier).state = selectedIndexValue;
-    ref.read(mobileSelectedIndex.notifier).state = selectedIndexValue;
-    if (selectedIndexValue < desktopRailItems.length) {
-      ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
-    } else {
-      ref.read(desktopSelectedIndex.notifier).state = 0;
-    }
-    context.go(navigationRoutes[selectedIndexValue]);
-  }
-
-  Widget mobileNavigationDrawer(BuildContext context, WidgetRef ref) {
-    final selectedIndex = ref.watch(mobileSelectedIndex);
-    final pluginItems = _pluginNavigationItems(ref);
-    final destinations = [
-      ...drawerItems,
-      ...pluginNavigationDrawerDestinations(ref),
-    ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
-    return Builder(
-      builder: (drawerContext) {
-        return NavigationDrawer(
-          selectedIndex:
-              selectedIndex >= 0 && selectedIndex < destinations.length
-              ? selectedIndex
-              : null,
-          onDestinationSelected: (value) {
-            Navigator.of(drawerContext).pop();
-            selectDestination(context, ref, value, navigationRoutes);
-          },
-          children: [
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(24, 18, 24, 12),
-                child: Row(
-                  children: [
-                    Image.asset(
-                      "assets/icons/app_icon.webp",
-                      width: 32,
-                      height: 32,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        appName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            ...destinations,
-          ],
-        );
-      },
-    );
-  }
-}
-
-class TabletView extends ConsumerWidget {
-  const TabletView({super.key, required this.child, required this.state});
-
-  final Widget child;
-  final GoRouterState state;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pluginItems = _pluginNavigationItems(ref);
-    // 确保组件重绘后导航栏选择的值与实际显示内容同步
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 6);
-      if (routeIndex == -1 && state.matchedLocation == _pluginViewRoute) {
-        selectedIndexValue = 0;
-        ref.read(tabletSelectedIndex.notifier).state = 0;
-        context.go(file);
-        return;
-      }
-      // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
-      // e.g. "/settings/about" => "/settings"
-      if (routeIndex != -1 && routeIndex != ref.read(tabletSelectedIndex)) {
-        selectedIndexValue = routeIndex;
-        ref.read(tabletSelectedIndex.notifier).state = routeIndex;
-      }
-    });
-    return SafeArea(
-      child: Scaffold(
-        body: Column(
-          children: [
-            Expanded(
-              child: Row(
-                children: [
-                  railNavigationBar(context, ref),
-                  Expanded(
-                    child: buildVerticalWorkspace(
-                      context,
-                      ref,
-                      child,
-                      collapsedPrimarySize:
-                          state.matchedLocation.startsWith('/editor')
-                          ? ThemeDensityTokens.forStyle(
-                              ref.watch(themeStyle),
-                            ).toolbarHeight
-                          : 0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const EditorToolsBar(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget railNavigationBar(BuildContext context, WidgetRef ref) {
-    final pluginItems = _pluginNavigationItems(ref);
-    final destinations = [
-      for (final destination in [
-        ...tabletRailItems,
-        ...pluginNavigationRailDestinations(ref),
-      ])
-        _tooltippedDestination(context, ref, destination),
-    ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 6);
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: IntrinsicHeight(
-            child: Theme(
-              data: Theme.of(context).copyWith(
-                colorScheme: Theme.of(
-                  context,
-                ).colorScheme.copyWith(primary: Colors.transparent),
-                splashFactory: NoSplash.splashFactory,
-                hoverColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-              ),
-              child: NavigationRail(
-                backgroundColor: Theme.of(context).colorScheme.surface,
-                labelType: NavigationRailLabelType.none,
-                minWidth: ThemeDensityTokens.forStyle(
-                  ref.watch(themeStyle),
-                ).navRailWidth,
-                destinations: destinations,
-                selectedIndex: ref.watch(tabletSelectedIndex),
-                onDestinationSelected: (value) {
-                  selectedIndexValue = value;
-                  ref.read(desktopSelectedIndex.notifier).state =
-                      selectedIndexValue;
-                  ref.read(mobileSelectedIndex.notifier).state =
-                      selectedIndexValue;
-                  ref.read(tabletSelectedIndex.notifier).state =
-                      selectedIndexValue;
-                  context.go(navigationRoutes[selectedIndexValue]);
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class DesktopView extends ConsumerWidget {
-  const DesktopView({super.key, required this.child, required this.state});
-
-  final Widget child;
-  final GoRouterState state;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pluginItems = _pluginNavigationItems(ref);
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
-    // 确保组件重绘后导航栏选择的值与实际显示内容同步
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final routeIndex = _navigationIndex(state, pluginItems, builtInCount: 5);
-      // 这里对获取到的路径进行切片处理，并仅获取父页面的路径内容，确保 selectedIndexValue 的值符合预期
-      // e.g. "/settings/about" => "/settings"
-      if (routeIndex == -1 || routeIndex >= navigationRoutes.length) {
-        selectedIndexValue = 0;
-        context.go(file);
-        return;
-      }
-      if (routeIndex != -1) {
-        selectedIndexValue = routeIndex;
-      }
-      ref.read(desktopSelectedIndex.notifier).state = selectedIndexValue;
-    });
-    return SafeArea(
-      child: Scaffold(
-        body: Column(
-          children: [
-            Expanded(
-              child: Row(
-                children: [
-                  railNavigationBar(context, ref),
-                  Expanded(child: pageStructure(context, ref)),
-                ],
-              ),
-            ),
-            const EditorToolsBar(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget railNavigationBar(BuildContext context, WidgetRef ref) {
-    final pluginItems = _pluginNavigationItems(ref);
-    final destinations = [
-      for (final destination in [
-        ...desktopRailItems,
-        ...pluginNavigationRailDestinations(ref),
-      ])
-        _tooltippedDestination(context, ref, destination),
-    ];
-    final navigationRoutes = _navigationRoutes(pluginItems, builtInCount: 5);
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: IntrinsicHeight(
-            child: Theme(
-              data: Theme.of(context).copyWith(
-                colorScheme: Theme.of(
-                  context,
-                ).colorScheme.copyWith(primary: Colors.transparent),
-                splashFactory: NoSplash.splashFactory,
-                hoverColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-              ),
-              child: NavigationRail(
-                backgroundColor: Theme.of(context).colorScheme.surface,
-                labelType: NavigationRailLabelType.none,
-                minWidth: ThemeDensityTokens.forStyle(
-                  ref.watch(themeStyle),
-                ).navRailWidth,
-                destinations: destinations,
-                selectedIndex: ref.watch(desktopSelectedIndex),
-                trailing: const RailTrailingActions(),
-                onDestinationSelected: (value) {
-                  selectedIndexValue = value;
-                  ref.read(desktopSelectedIndex.notifier).state =
-                      selectedIndexValue;
-                  ref.read(mobileSelectedIndex.notifier).state =
-                      selectedIndexValue;
-                  ref.read(tabletSelectedIndex.notifier).state =
-                      selectedIndexValue;
-                  context.go(navigationRoutes[selectedIndexValue]);
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<shadcn.ResizablePane> _pageStructure(
-    BuildContext context,
-    WidgetRef ref,
-  ) {
-    final List<shadcn.ResizablePane> children = [];
-    final isEditorRoute = state.matchedLocation.startsWith('/editor');
-    final showFunctionPanel = ref.watch(functionPageShow) && !isEditorRoute;
-    final showExpansionPanel = ref.watch(expansionPageShow);
-    final isGitRoute = state.matchedLocation.startsWith('/git');
-
-    // The desktop workspace already owns the central editor pane. Mounting the
-    // /editor route child here would render the same tab controller twice.
-    if (showFunctionPanel) {
-      children.add(
-        shadcn.ResizablePane.flex(
-          initialFlex: isGitRoute ? 3 : 2,
-          minSize: isGitRoute ? 340 : 220,
-          child: child,
-        ),
-      );
-    }
-    children.add(
-      shadcn.ResizablePane.flex(
-        initialFlex: 4,
-        minSize: 300,
-        child: ConsoleWorkspace(
-          primary: const Editor(),
-          collapsedPrimarySize: ThemeDensityTokens.forStyle(
-            ref.watch(themeStyle),
-          ).toolbarHeight,
-        ),
-      ),
-    );
-    if (showExpansionPanel) {
-      children.add(
-        shadcn.ResizablePane.flex(
-          initialFlex: 2,
-          minSize: 200,
-          child: ExpansionPage(),
-        ),
-      );
-    }
-    return children;
-  }
-
-  Widget pageStructure(BuildContext context, WidgetRef ref) {
-    return buildShadcnLayer(
-      context,
-      shadcn.ResizablePanel.horizontal(
-        optionalDivider: false,
-        draggerBuilder: (context) {
-          return shadcn.HorizontalResizableDragger();
-        },
-        children: _pageStructure(context, ref),
-      ),
-    );
-  }
-}
-
-class FunctionPagePadding extends StatelessWidget {
-  const FunctionPagePadding({super.key, required this.sliver});
-  final Widget sliver;
-  @override
-  Widget build(BuildContext context) {
-    return SliverPadding(padding: const EdgeInsets.all(15), sliver: sliver);
-  }
-}
-
-class FunctionPageAppBar extends StatelessWidget {
-  const FunctionPageAppBar({super.key, this.title});
-  final String? title;
-  @override
-  Widget build(BuildContext context) {
-    return SliverAppBar.large(title: UseText(title ?? appName));
-  }
-}
-
-class ReplView extends ConsumerWidget {
-  const ReplView({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final terminalTheme = buildTerminalTheme(context, ref);
-    final terminalStyle = buildTerminalStyle(ref);
-    return ReplSurface(
-      backgroundColor: terminalTheme.background,
-      foregroundColor: terminalTheme.foreground,
-      textStyle: terminalStyle.toTextStyle(),
-    );
-  }
-}
-
-class OutputLogView extends ConsumerWidget {
-  const OutputLogView({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final surface = Theme.of(context).colorScheme.surface;
-    return TerminalView(
-      ideOutputTerminal,
-      controller: ideOutputController,
-      theme: buildTerminalTheme(context, ref),
-      textStyle: buildTerminalStyle(ref),
-      key: ValueKey('output_${surface.toARGB32()}'),
-    );
-  }
-}
-
-class DesktopTerminalView extends ConsumerStatefulWidget {
-  const DesktopTerminalView({super.key});
-
-  static bool get isSupported =>
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-
-  @override
-  ConsumerState<DesktopTerminalView> createState() =>
-      _DesktopTerminalViewState();
-}
-
-class _DesktopTerminalViewState extends ConsumerState<DesktopTerminalView> {
-  TerminalTheme? _terminalTheme;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final state = ref.read(desktopTerminalProvider);
-      if (DesktopTerminalView.isSupported && state.sessions.isEmpty) {
-        ref
-            .read(desktopTerminalProvider.notifier)
-            .createSession(
-              configureTerminal: (terminal, backgroundColor) {
-                final theme = _terminalTheme;
-                if (theme != null) {
-                  configureTerminalColorQueries(
-                    terminal,
-                    theme,
-                    backgroundColor: backgroundColor,
-                  );
-                }
-              },
-              defaultDir: ref.read(fileProvider),
-            );
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(desktopTerminalProvider);
-    final scheme = Theme.of(context).colorScheme;
-    final terminalTheme = buildTerminalTheme(context, ref);
-    if (!DesktopTerminalView.isSupported) {
-      return Center(
-        child: FilledButton.tonalIcon(
-          onPressed: null,
-          icon: const Icon(Icons.terminal_outlined),
-          label: const UseText(I18nKey.bottomPanelAndroidTerminalUnsupported),
-        ),
-      );
-    }
-
-    final session = state.selectedSession;
-    return Row(
-      children: [
-        Expanded(
-          child: session == null
-              ? Center(
-                  child: FilledButton.icon(
-                    onPressed: () => ref
-                        .read(desktopTerminalProvider.notifier)
-                        .createSession(
-                          configureTerminal: (terminal, backgroundColor) =>
-                              configureTerminalColorQueries(
-                                terminal,
-                                terminalTheme,
-                                backgroundColor: backgroundColor,
-                              ),
-                          defaultDir: ref.read(fileProvider),
-                        ),
-                    icon: const Icon(Icons.add),
-                    label: const UseText(I18nKey.bottomPanelNewTerminal),
-                  ),
-                )
-              : ValueListenableBuilder<Color?>(
-                  valueListenable: session.backgroundColor,
-                  builder: (context, programBackground, _) {
-                    final effectiveTheme = programBackground != null
-                        ? terminalThemeWithBackground(
-                            terminalTheme,
-                            programBackground,
-                          )
-                        : terminalTheme;
-                    return TerminalView(
-                      configureTerminalColorQueries(
-                        session.terminal,
-                        terminalTheme,
-                        backgroundColor: session.backgroundColor,
-                      ),
-                      controller: session.controller,
-                      theme: effectiveTheme,
-                      textStyle: buildTerminalStyle(ref),
-                      hardwareKeyboardOnly: true,
-                      // Keep the renderer alive when a theme contribution is
-                      // installed or selected. TerminalView updates its theme
-                      // in place; replacing it would discard focus/scroll UI.
-                      key: ValueKey('terminal_${session.id}'),
-                    );
-                  },
-                ),
-        ),
-        Container(
-          width: 150,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLowest,
-            border: Border(left: BorderSide(color: scheme.outlineVariant)),
-          ),
-          child: Column(
-            children: [
-              SizedBox(
-                height: 36,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: UseText(I18nKey.bottomPanelTerminalTab),
-                    ),
-                    IconButton(
-                      tooltip: translateForWidget(
-                        ref,
-                        I18nKey.bottomPanelNewTerminal,
-                      ),
-                      onPressed: () => ref
-                          .read(desktopTerminalProvider.notifier)
-                          .createSession(
-                            configureTerminal: (terminal, backgroundColor) =>
-                                configureTerminalColorQueries(
-                                  terminal,
-                                  terminalTheme,
-                                  backgroundColor: backgroundColor,
-                                ),
-                            defaultDir: ref.read(fileProvider),
-                          ),
-                      icon: const Icon(Icons.add, size: 18),
-                    ),
-                  ],
-                ),
-              ),
-              if (state.error != null)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    state.error!,
-                    style: TextStyle(color: scheme.error, fontSize: 12),
-                  ),
-                ),
-              Expanded(
-                child: ListView(
-                  children: [
-                    for (final item in state.sessions)
-                      _TerminalSessionTile(
-                        session: item,
-                        selected: item.id == state.selectedSession?.id,
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TerminalSessionTile extends ConsumerWidget {
-  const _TerminalSessionTile({required this.session, required this.selected});
-
-  final DesktopTerminalSession session;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: selected ? scheme.secondaryContainer : Colors.transparent,
-      child: InkWell(
-        onTap: () => ref
-            .read(desktopTerminalProvider.notifier)
-            .selectSession(session.id),
-        child: SizedBox(
-          height: 34,
-          child: Row(
-            children: [
-              const SizedBox(width: 10),
-              Icon(
-                Icons.terminal,
-                size: 16,
-                color: selected
-                    ? scheme.onSecondaryContainer
-                    : scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  session.title,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected
-                        ? scheme.onSecondaryContainer
-                        : scheme.onSurface,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: translateForWidget(
-                  ref,
-                  I18nKey.bottomPanelCloseTerminal,
-                ),
-                onPressed: () => ref
-                    .read(desktopTerminalProvider.notifier)
-                    .closeSession(session.id),
-                icon: const Icon(Icons.close, size: 16),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-TerminalTheme buildTerminalTheme(BuildContext context, WidgetRef ref) {
-  final scheme = Theme.of(context).colorScheme;
-  final appearance = ref.watch(terminalAppearance);
-  final minimumContrastRatio = ref.watch(terminalMinimumContrast) ? 4.5 : 1.0;
-  late final TerminalTheme baseTheme;
-  if (appearance == TerminalAppearance.custom) {
-    final palette = ref.watch(terminalCustomPalette);
-    baseTheme = _terminalThemeFromPalette(
-      foreground: Color(ref.watch(terminalCustomForeground)),
-      background: Color(ref.watch(terminalCustomBackground)),
-      palette: palette.length == 16
-          ? palette.map(Color.new).toList()
-          : kDefaultTerminalCustomPalette.map(Color.new).toList(),
-      minimumContrastRatio: minimumContrastRatio,
-    );
-  } else if (appearance == TerminalAppearance.light ||
-      appearance == TerminalAppearance.followIde &&
-          Theme.of(context).brightness == Brightness.light) {
-    baseTheme = _terminalThemeFromPalette(
-      foreground: appearance == TerminalAppearance.followIde
-          ? scheme.onSurface
-          : const Color(0xFF1F2328),
-      background: appearance == TerminalAppearance.followIde
-          ? scheme.surface
-          : const Color(0xFFFFFFFF),
-      palette: _lightTerminalPalette,
-      minimumContrastRatio: minimumContrastRatio,
-    );
-  } else {
-    final defaultTheme = TerminalThemes.defaultTheme;
-    baseTheme = _terminalThemeFromPalette(
-      foreground: appearance == TerminalAppearance.followIde
-          ? scheme.onSurface
-          : const Color(0xFFFFFFFF),
-      background: appearance == TerminalAppearance.followIde
-          ? scheme.surface
-          : defaultTheme.background,
-      palette: _paletteFromTheme(defaultTheme),
-      minimumContrastRatio: minimumContrastRatio,
-    );
-  }
-
-  final activeThemeId = ref.watch(activePluginThemeId);
-  final registry = ref.watch(dataRegistryProvider);
-  final pluginTheme = activeThemeId == null
-      ? null
-      : registry.getThemeById(activeThemeId);
-  return _applyPluginTerminalTheme(baseTheme, pluginTheme);
-}
-
-TerminalTheme _applyPluginTerminalTheme(
-  TerminalTheme base,
-  PluginThemeData? pluginTheme,
-) {
-  if (pluginTheme == null ||
-      pluginTheme.terminalForeground == null &&
-          pluginTheme.terminalBackground == null &&
-          pluginTheme.terminalAnsi == null) {
-    return base;
-  }
-  return _terminalThemeFromPalette(
-    foreground: pluginTheme.terminalForeground ?? base.foreground,
-    background: pluginTheme.terminalBackground ?? base.background,
-    palette: pluginTheme.terminalAnsi ?? _paletteFromTheme(base),
-    minimumContrastRatio: base.minimumContrastRatio,
-  );
-}
-
-const _lightTerminalPalette = <Color>[
-  Color(0xFF000000),
-  Color(0xFFCD3131),
-  Color(0xFF008000),
-  Color(0xFF795E00),
-  Color(0xFF0451A5),
-  Color(0xFFAF00DB),
-  Color(0xFF00838F),
-  Color(0xFF666666),
-  Color(0xFF767676),
-  Color(0xFFE51400),
-  Color(0xFF16C60C),
-  Color(0xFFB89500),
-  Color(0xFF0066BF),
-  Color(0xFFBC05BC),
-  Color(0xFF0598BC),
-  Color(0xFF333333),
-];
-
-List<Color> _paletteFromTheme(TerminalTheme theme) => [
-  theme.black,
-  theme.red,
-  theme.green,
-  theme.yellow,
-  theme.blue,
-  theme.magenta,
-  theme.cyan,
-  theme.white,
-  theme.brightBlack,
-  theme.brightRed,
-  theme.brightGreen,
-  theme.brightYellow,
-  theme.brightBlue,
-  theme.brightMagenta,
-  theme.brightCyan,
-  theme.brightWhite,
-];
-
-TerminalTheme _terminalThemeFromPalette({
-  required Color foreground,
-  required Color background,
-  required List<Color> palette,
-  required double minimumContrastRatio,
-}) {
-  return TerminalTheme(
-    cursor: foreground.withValues(alpha: 0.8),
-    selection: foreground.withValues(alpha: 0.3),
-    foreground: foreground,
-    background: background,
-    black: palette[0],
-    red: palette[1],
-    green: palette[2],
-    yellow: palette[3],
-    blue: palette[4],
-    magenta: palette[5],
-    cyan: palette[6],
-    white: palette[7],
-    brightBlack: palette[8],
-    brightRed: palette[9],
-    brightGreen: palette[10],
-    brightYellow: palette[11],
-    brightBlue: palette[12],
-    brightMagenta: palette[13],
-    brightCyan: palette[14],
-    brightWhite: palette[15],
-    searchHitBackground: const Color(0xFFFFFF2B),
-    searchHitBackgroundCurrent: const Color(0xFF31FF26),
-    searchHitForeground: const Color(0xFF000000),
-    minimumContrastRatio: minimumContrastRatio,
-  );
-}
-
-Terminal configureTerminalColorQueries(
-  Terminal terminal,
-  TerminalTheme theme, {
-  ValueNotifier<Color?>? backgroundColor,
-}) {
-  terminal.onPrivateOSC = (code, args) {
-    final value = args.firstOrNull;
-    if ((code == '10' || code == '11') && value == '?') {
-      final color = code == '10'
-          ? theme.foreground
-          : backgroundColor?.value != null
-          ? backgroundColor!.value!
-          : theme.background;
-      terminal.textInput('\x1b]$code;${_oscRgb(color)}\x1b\\');
-      return;
-    }
-    if (code == '11' && value != null && backgroundColor != null) {
-      final parsed = parseTerminalOscColor(value);
-      if (parsed != null) backgroundColor.value = parsed;
-      return;
-    }
-    if (code == '111' && backgroundColor != null) {
-      backgroundColor.value = null;
-    }
-  };
-  return terminal;
-}
-
-Color? parseTerminalOscColor(String value) {
-  List<String> components;
-  if (value.startsWith('rgb:')) {
-    components = value.substring(4).split('/');
-  } else if (value.startsWith('#')) {
-    final hex = value.substring(1);
-    if (hex.length % 3 != 0) return null;
-    final width = hex.length ~/ 3;
-    if (width < 1 || width > 4) return null;
-    components = [
-      hex.substring(0, width),
-      hex.substring(width, width * 2),
-      hex.substring(width * 2),
-    ];
-  } else {
-    return null;
-  }
-
-  if (components.length != 3) return null;
-  final bytes = <int>[];
-  for (final component in components) {
-    if (component.isEmpty || component.length > 4) return null;
-    final parsed = int.tryParse(component, radix: 16);
-    if (parsed == null) return null;
-    final maximum = (1 << (component.length * 4)) - 1;
-    bytes.add((parsed * 255 / maximum).round());
-  }
-  return Color.fromARGB(0xff, bytes[0], bytes[1], bytes[2]);
-}
-
-TerminalTheme terminalThemeWithBackground(
-  TerminalTheme theme,
-  Color background,
-) {
-  return TerminalTheme(
-    cursor: theme.cursor,
-    selection: theme.selection,
-    foreground: theme.foreground,
-    background: background,
-    black: theme.black,
-    red: theme.red,
-    green: theme.green,
-    yellow: theme.yellow,
-    blue: theme.blue,
-    magenta: theme.magenta,
-    cyan: theme.cyan,
-    white: theme.white,
-    brightBlack: theme.brightBlack,
-    brightRed: theme.brightRed,
-    brightGreen: theme.brightGreen,
-    brightYellow: theme.brightYellow,
-    brightBlue: theme.brightBlue,
-    brightMagenta: theme.brightMagenta,
-    brightCyan: theme.brightCyan,
-    brightWhite: theme.brightWhite,
-    searchHitBackground: theme.searchHitBackground,
-    searchHitBackgroundCurrent: theme.searchHitBackgroundCurrent,
-    searchHitForeground: theme.searchHitForeground,
-    minimumContrastRatio: theme.minimumContrastRatio,
-  );
-}
-
-String _oscRgb(Color color) {
-  String expand(double component) {
-    final byte = (component * 255).round().clamp(0, 255);
-    final hex = byte.toRadixString(16).padLeft(2, '0');
-    return '$hex$hex';
-  }
-
-  return 'rgb:${expand(color.r)}/${expand(color.g)}/${expand(color.b)}';
-}
-
-TerminalStyle buildTerminalStyle(WidgetRef ref) {
-  return TerminalStyle(
-    fontSize: ref.watch(terminalFontSize),
-    height: ref.watch(terminalLineHeight),
-    fontFamily: editorTextFonts[ref.watch(terminalFontFamily)] ?? 'monospace',
-    enableLigatures: ref.watch(terminalLigatures),
-  );
-}
-
-Widget buildTitleBar(Widget child) {
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    return Column(
-      children: [
-        UseTitleBar(),
-        Expanded(child: child),
-      ],
-    );
-  } else {
-    return child;
-  }
-}
-
 class FunctionPage extends StatelessWidget {
   const FunctionPage({super.key, required this.child, required this.state});
 
@@ -1783,18 +677,131 @@ class FunctionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Widget body;
     if (ResponsiveBreakpoints.of(context).isDesktop) {
       nowViewSelectedIndex = desktopSelectedIndex;
-      return buildTitleBar(DesktopView(state: state, child: child));
+      body = buildTitleBar(DesktopView(state: state, child: child));
     } else if (ResponsiveBreakpoints.of(context).isTablet) {
       nowViewSelectedIndex = tabletSelectedIndex;
-      return buildTitleBar(TabletView(state: state, child: child));
+      body = buildTitleBar(TabletView(state: state, child: child));
     } else {
       nowViewSelectedIndex = mobileSelectedIndex;
-      return buildTitleBar(MobileView(state: state, child: child));
+      body = buildTitleBar(MobileView(state: state, child: child));
     }
+    return _WorkspaceShortcuts(child: body);
   }
 }
+
+/// Workspace-level keyboard entry points.
+///
+/// These live above the route so they work from the file tree, the editor, the
+/// search page and every plugin surface. `CallbackShortcuts` still lets a
+/// focused text field or terminal consume a key it handles first, so typing
+/// `Ctrl+P` into a terminal remains the terminal's choice.
+class _WorkspaceShortcuts extends ConsumerWidget {
+  const _WorkspaceShortcuts({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void openPalette(PaletteLaunchMode mode) {
+      unawaited(
+        showCommandPalette(context, mode: mode, hooks: editorPaletteHooks()),
+      );
+    }
+
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        // Commands: Cmd/Ctrl+Shift+P.
+        const SingleActivator(
+          LogicalKeyboardKey.keyP,
+          meta: true,
+          shift: true,
+        ): () =>
+            openPalette(PaletteLaunchMode.commands),
+        const SingleActivator(
+          LogicalKeyboardKey.keyP,
+          control: true,
+          shift: true,
+        ): () =>
+            openPalette(PaletteLaunchMode.commands),
+        // Quick open: Cmd/Ctrl+P.
+        const SingleActivator(LogicalKeyboardKey.keyP, meta: true): () =>
+            openPalette(PaletteLaunchMode.files),
+        const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
+            openPalette(PaletteLaunchMode.files),
+        // Reopen the last closed tab.
+        const SingleActivator(
+          LogicalKeyboardKey.keyT,
+          meta: true,
+          shift: true,
+        ): () =>
+            unawaited(reopenClosedEditorTab(context, ref)),
+        const SingleActivator(
+          LogicalKeyboardKey.keyT,
+          control: true,
+          shift: true,
+        ): () =>
+            unawaited(reopenClosedEditorTab(context, ref)),
+        // Split the editor group right / down.
+        const SingleActivator(LogicalKeyboardKey.backslash, meta: true): () =>
+            splitActiveEditor(ref, PaneEdge.right),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          control: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.right),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          meta: true,
+          shift: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.bottom),
+        const SingleActivator(
+          LogicalKeyboardKey.backslash,
+          control: true,
+          shift: true,
+        ): () =>
+            splitActiveEditor(ref, PaneEdge.bottom),
+        // Close the active editor group.
+        const SingleActivator(
+          LogicalKeyboardKey.keyW,
+          meta: true,
+          alt: true,
+        ): () =>
+            unawaited(closeActiveEditorGroup(context, ref)),
+        const SingleActivator(
+          LogicalKeyboardKey.keyW,
+          control: true,
+          alt: true,
+        ): () =>
+            unawaited(closeActiveEditorGroup(context, ref)),
+      },
+      child: child,
+    );
+  }
+}
+
+String pluginInstallStageText(WidgetRef ref, PluginInstallStage stage) =>
+    switch (stage) {
+      PluginInstallStage.extract => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageExtract,
+      ),
+      PluginInstallStage.validate => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageValidate,
+      ),
+      PluginInstallStage.apply => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageApply,
+      ),
+      PluginInstallStage.start => translateForWidget(
+        ref,
+        I18nKey.pluginsInstallStageStart,
+      ),
+    };
 
 class EditorToolsBar extends ConsumerWidget {
   const EditorToolsBar({super.key, this.showNavigationDrawerButton = false});
@@ -1807,7 +814,7 @@ class EditorToolsBar extends ConsumerWidget {
     final isMobile = ResponsiveBreakpoints.of(context).isMobile;
     final registryItems = ref.watch(statusBarRegistryProvider);
     final runningOps = ref.watch(runningOperationsProvider);
-    final scrollController = ScrollController();
+    final scrollController = ref.watch(statusBarScrollControllerProvider);
 
     return Container(
       width: double.infinity,
@@ -1840,6 +847,20 @@ class EditorToolsBar extends ConsumerWidget {
                 const MobileNavigationDrawerButton(),
                 const SizedBox(width: 4),
               ],
+              // The palette has to be reachable without a keyboard: touch
+              // devices have no Cmd/Ctrl+P, and a terminal that consumes the
+              // shortcut would otherwise leave no way in.
+              StatusBarButton(
+                label: I18nKey.paletteOpen,
+                icon: Icons.keyboard_command_key,
+                compact: ref.watch(themeStyle) == ThemeStyle.compact,
+                tooltip:
+                    '${translateForWidget(ref, I18nKey.paletteOpen)} '
+                    '(${commandPaletteShortcutLabel()})',
+                onPressed: () =>
+                    showCommandPalette(context, hooks: editorPaletteHooks()),
+              ),
+              const SizedBox(width: 4),
               buildLspState(context, ref),
               const SizedBox(width: 4),
               buildFileState(context, ref),
@@ -1854,6 +875,10 @@ class EditorToolsBar extends ConsumerWidget {
               const SizedBox(width: 4),
               if (ref.watch(fileTransferProgressProvider).isActive) ...[
                 buildTransferState(context, ref),
+                const SizedBox(width: 4),
+              ],
+              if (ref.watch(pluginInstallProgressProvider).isActive) ...[
+                buildPluginInstallState(context, ref),
                 const SizedBox(width: 4),
               ],
               // Running operations from the registry
@@ -1876,8 +901,10 @@ class EditorToolsBar extends ConsumerWidget {
 
   Widget buildFileState(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
-    if (value is! TabDataValue || value.type != "file") {
+    // The focused group's tab, so the status bar describes the editor the
+    // toolbar and the language server readout describe too.
+    final value = ref.watch(activeEditorTabProvider).value;
+    if (value == null || value.type != "file") {
       return StatusBarButton(
         label: I18nKey.statusWelcomePage,
         icon: Icons.home_outlined,
@@ -1909,8 +936,10 @@ class EditorToolsBar extends ConsumerWidget {
         saved ? I18nKey.statusSaveAgain : I18nKey.statusSaveCurrent,
       ),
       onPressed: () async {
-        await ref.read(fileProvider.notifier).saveCurrentFile();
-        if (!context.mounted) return;
+        final saved = await ref.read(fileProvider.notifier).saveCurrentFile();
+        // Nothing was written when the save is refused (the user cancelled an
+        // external-overwrite prompt); do not claim otherwise.
+        if (!context.mounted || !saved) return;
 
         showIdeSuccess(
           context,
@@ -1948,7 +977,7 @@ class EditorToolsBar extends ConsumerWidget {
     final color = transfer.failed ? scheme.error : scheme.primary;
     final compact = ref.watch(themeStyle) == ThemeStyle.compact;
 
-    return Tooltip(
+    return TooltipAnchor(
       message: transfer.currentFile ?? label,
       child: SizedBox(
         width: 160,
@@ -1984,6 +1013,71 @@ class EditorToolsBar extends ConsumerWidget {
             const SizedBox(height: 3),
             LinearProgressIndicator(
               value: transfer.progress,
+              minHeight: 2,
+              color: color,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Persistent install indicator: unlike the transient result toasts it stays
+  // visible for the whole installation, showing the pipeline stage on a
+  // determinate bar.
+  Widget buildPluginInstallState(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final install = ref.watch(pluginInstallProgressProvider);
+    final stage = install.stage;
+    final title = install.pluginName == null
+        ? translateForWidget(ref, I18nKey.pluginsInstalling)
+        : translateForWidgetWithReplacements(
+            ref,
+            I18nKey.pluginsInstallProgressNamed,
+            {'name': install.pluginName!},
+          );
+    final stageText = stage == null
+        ? ''
+        : '(${pluginInstallStageText(ref, stage)})';
+    final label = '$title$stageText';
+    final color = install.failed ? scheme.error : scheme.primary;
+    final compact = ref.watch(themeStyle) == ThemeStyle.compact;
+
+    return TooltipAnchor(
+      message: label,
+      child: SizedBox(
+        width: 160,
+        height: 32,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.extension_outlined,
+                  size: compact ? 14 : 16,
+                  color: color,
+                ),
+                SizedBox(width: compact ? 4 : 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: compact ? 12 : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            LinearProgressIndicator(
+              value: install.progress,
               minHeight: 2,
               color: color,
               backgroundColor: scheme.surfaceContainerHighest,
@@ -2088,8 +1182,8 @@ class EditorToolsBar extends ConsumerWidget {
   /// `initState` and build. Subscribing to the controller itself, or to its
   /// `diagnosticsNotifier`, delivers callbacks during the build phase.
   Widget buildEditorState(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(tabbedViewControllerProvider).selectedTab?.value;
-    if (value is! TabDataValue || value.type != "file") {
+    final value = ref.watch(activeEditorTabProvider).value;
+    if (value == null || value.type != "file") {
       return const SizedBox.shrink();
     }
     final controller = value.editorController;
@@ -2179,12 +1273,14 @@ class EditorToolsBar extends ConsumerWidget {
             SizedBox(
               width: iconButtonSize,
               height: iconButtonSize,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: compact ? 15 : 17,
-                tooltip: translateForWidget(ref, I18nKey.statusInterrupt),
-                icon: const Icon(Icons.stop_circle_outlined),
-                onPressed: op.onInterrupt,
+              child: TooltipAnchor(
+                message: translateForWidget(ref, I18nKey.statusInterrupt),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: compact ? 15 : 17,
+                  icon: const Icon(Icons.stop_circle_outlined),
+                  onPressed: op.onInterrupt,
+                ),
               ),
             ),
           ],
@@ -2192,12 +1288,14 @@ class EditorToolsBar extends ConsumerWidget {
             SizedBox(
               width: iconButtonSize,
               height: iconButtonSize,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: compact ? 15 : 17,
-                tooltip: translateForWidget(ref, I18nKey.statusForceReset),
-                icon: const Icon(Icons.refresh),
-                onPressed: op.onForceReset,
+              child: TooltipAnchor(
+                message: translateForWidget(ref, I18nKey.statusForceReset),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: compact ? 15 : 17,
+                  icon: const Icon(Icons.refresh),
+                  onPressed: op.onForceReset,
+                ),
               ),
             ),
           ],
@@ -2212,15 +1310,17 @@ class MobileNavigationDrawerButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return IconButton(
-      tooltip: translateForWidget(ref, I18nKey.statusOpenMenu),
-      style: IconButton.styleFrom(
-        minimumSize: const Size(36, 32),
-        fixedSize: const Size(36, 32),
-        padding: EdgeInsets.zero,
+    return TooltipAnchor(
+      message: translateForWidget(ref, I18nKey.statusOpenMenu),
+      child: IconButton(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(36, 32),
+          fixedSize: const Size(36, 32),
+          padding: EdgeInsets.zero,
+        ),
+        onPressed: () => Scaffold.of(context).openDrawer(),
+        icon: const Icon(Icons.menu, size: 20),
       ),
-      onPressed: () => Scaffold.of(context).openDrawer(),
-      icon: const Icon(Icons.menu, size: 20),
     );
   }
 }

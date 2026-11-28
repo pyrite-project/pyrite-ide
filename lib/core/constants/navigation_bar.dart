@@ -8,6 +8,9 @@ const List<Widget> itemsIcons = [
   Icon(Icons.account_tree_outlined),
   Icon(Icons.apps_outlined),
   Icon(Icons.settings_outlined),
+  // Appended rather than inserted so every existing index above keeps its
+  // meaning; the search destination below opts in with this index.
+  Icon(Icons.search_outlined),
 ];
 
 const List<Widget> selectedItemsIcons = [
@@ -16,6 +19,7 @@ const List<Widget> selectedItemsIcons = [
   Icon(Icons.account_tree),
   Icon(Icons.apps),
   Icon(Icons.settings),
+  Icon(Icons.search),
 ];
 
 const List<I18nKey> itemsLabel = [
@@ -24,39 +28,7 @@ const List<I18nKey> itemsLabel = [
   I18nKey.navGit,
   I18nKey.navPlugins,
   I18nKey.navSettings,
-];
-
-List<Widget> bottomItems = [
-  NavigationDestination(
-    icon: itemsIcons[0],
-    selectedIcon: selectedItemsIcons[0],
-    label: itemsLabel[0].fallback,
-  ),
-  NavigationDestination(
-    icon: itemsIcons[1],
-    selectedIcon: selectedItemsIcons[1],
-    label: itemsLabel[1].fallback,
-  ),
-  NavigationDestination(
-    icon: itemsIcons[2],
-    selectedIcon: selectedItemsIcons[2],
-    label: itemsLabel[2].fallback,
-  ),
-  NavigationDestination(
-    icon: itemsIcons[3],
-    selectedIcon: selectedItemsIcons[3],
-    label: itemsLabel[3].fallback,
-  ),
-  NavigationDestination(
-    icon: itemsIcons[4],
-    selectedIcon: selectedItemsIcons[4],
-    label: itemsLabel[4].fallback,
-  ),
-  NavigationDestination(
-    icon: const Icon(Icons.note_alt_outlined),
-    selectedIcon: const Icon(Icons.edit_document),
-    label: I18nKey.navEditor.fallback,
-  ),
+  I18nKey.navSearch,
 ];
 
 List<Widget> drawerItems = [
@@ -64,6 +36,11 @@ List<Widget> drawerItems = [
     icon: itemsIcons[0],
     selectedIcon: selectedItemsIcons[0],
     label: UseText(itemsLabel[0]),
+  ),
+  NavigationDrawerDestination(
+    icon: itemsIcons[5],
+    selectedIcon: selectedItemsIcons[5],
+    label: UseText(itemsLabel[5]),
   ),
   NavigationDrawerDestination(
     icon: itemsIcons[1],
@@ -98,6 +75,15 @@ List<NavigationRailDestination> tabletRailItems = [
     selectedIcon: selectedItemsIcons[0],
     label: UseText(itemsLabel[0]),
   ),
+  // Same order as drawerItems: files, search, devices, git, plugins,
+  // settings, editor. `_navigationRoutes(builtInCount: 7)` maps rail index 6
+  // to `/editor`, so the rail must carry all seven destinations or selecting
+  // the editor crashes the NavigationRail assertion.
+  NavigationRailDestination(
+    icon: itemsIcons[5],
+    selectedIcon: selectedItemsIcons[5],
+    label: UseText(itemsLabel[5]),
+  ),
   NavigationRailDestination(
     icon: itemsIcons[1],
     selectedIcon: selectedItemsIcons[1],
@@ -130,6 +116,11 @@ List<NavigationRailDestination> desktopRailItems = [
     icon: itemsIcons[0],
     selectedIcon: selectedItemsIcons[0],
     label: UseText(itemsLabel[0]),
+  ),
+  NavigationRailDestination(
+    icon: itemsIcons[5],
+    selectedIcon: selectedItemsIcons[5],
+    label: UseText(itemsLabel[5]),
   ),
   NavigationRailDestination(
     icon: itemsIcons[1],

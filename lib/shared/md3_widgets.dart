@@ -56,45 +56,83 @@ class PaneHeader extends ConsumerWidget {
         8,
         isCompact ? 2 : (comfortable ? 8 : 6),
       ),
-
-      child: Row(
-        children: [
-          if (leadingIcon != null) ...[
-            Icon(
-              leadingIcon,
-              size: tokens.headerIconSize,
-              color: scheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final titleBlock = Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              UseText(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle,
+              ),
+              if (subtitle != null && !isCompact)
                 UseText(
-                  title,
+                  subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: titleStyle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
-                if (subtitle != null && !isCompact)
-                  UseText(
-                    subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            ],
+          );
+          final actionsBlock = Wrap(
+            spacing: 2,
+            alignment: WrapAlignment.end,
+            children: actions,
+          );
+          // A narrow pane keeps its title readable by moving the controls onto
+          // their own line. Leaving them in one Row squeezed the text down to
+          // an ellipsis (or nothing at all) as soon as a pane carried four or
+          // five buttons.
+          final stacked = actions.isNotEmpty && constraints.maxWidth < 320;
+          if (!stacked) {
+            return Row(
+              children: [
+                if (leadingIcon != null) ...[
+                  Icon(
+                    leadingIcon,
+                    size: tokens.headerIconSize,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(child: titleBlock),
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  actionsBlock,
+                ],
+              ],
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (leadingIcon != null) ...[
+                    Icon(
+                      leadingIcon,
+                      size: tokens.headerIconSize,
                       color: scheme.onSurfaceVariant,
                     ),
-                  ),
-              ],
-            ),
-          ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Wrap(spacing: 2, children: actions),
-          ],
-        ],
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(child: titleBlock),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: actionsBlock,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -204,6 +242,73 @@ class PillBadge extends StatelessWidget {
   }
 }
 
+/// A [Tooltip] whose anchor keeps a semantics node of its own.
+///
+/// Every tooltip is an [OverlayPortal]: its popup is grafted into the semantics
+/// tree as a *traversal child* of whatever node the anchor resolves to, linked
+/// by a traversal-parent identifier stored on that node. Two anchors that
+/// resolve to the same node -- adjacent buttons in a row, or every row of a
+/// [ListView], which `IndexedSemantics` merges -- cannot both store their
+/// identifier there; the second overwrites the first. The losing popup is then
+/// grafted onto a parent nobody holds, and its node ends up attached to the
+/// semantics owner while its parent is null. From that frame on the tree can
+/// never be reconciled, and it throws once per frame:
+///
+/// ```
+/// 'package:flutter/src/semantics/semantics.dart': Failed assertion:
+///   '!child.attached': is not true.
+/// ```
+///
+/// while the Windows bridge rejects the whole accessibility update:
+///
+/// ```
+/// Failed to update ui::AXTree, error: N will not be in the tree and is not
+/// the new root
+/// ```
+///
+/// `container: true` is what stops the merge, so every anchor ends up with a
+/// node of its own. It is a workaround for an engine-side bug that is still open
+/// upstream (flutter/flutter#182444); do not "simplify" it away, and wrap any
+/// new tooltip in this instead of nesting `Semantics(container: true)` by hand.
+///
+/// The container has to sit *outside* the [Tooltip], not inside it. The
+/// identifier is looked up from the portal upwards, so a container between the
+/// tooltip and its child is never the node that holds it: inside a scrollable
+/// the identifier drops onto an ancestor every row shares (the viewport's
+/// synthetic inner node), and neighbouring anchors overwrite each other again.
+/// Measured in `test/shared/tooltip_anchor_semantics_test.dart`: two adjacent
+/// anchors in a [ListView] keep two identifiers when the container wraps the
+/// [Tooltip], and collapse into one -- orphaning the hovered popup -- when it
+/// wraps the child. The same shape covers a tooltip built inside another
+/// `OverlayPortal`, such as the `builder` of a [MenuAnchor].
+class TooltipAnchor extends StatelessWidget {
+  const TooltipAnchor({
+    super.key,
+    required this.message,
+    required this.child,
+    this.waitDuration,
+  });
+
+  /// `null` means "no tooltip", matching `IconButton.tooltip`: call sites pass
+  /// an optional translation straight through instead of guarding it.
+  final String? message;
+  final Widget child;
+
+  /// Delay before the tooltip shows. Exposed because a few dense lists raise it
+  /// so a row does not flash a tooltip while the pointer crosses it.
+  final Duration? waitDuration;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = message;
+    if (text == null) return child;
+    return Semantics(
+      container: true,
+      child: Tooltip(message: text, waitDuration: waitDuration, child: child),
+    );
+  }
+}
+
 class StatusBarButton extends StatelessWidget {
   const StatusBarButton({
     super.key,
@@ -307,26 +412,9 @@ class StatusBarButton extends StatelessWidget {
       },
     );
 
-    // `container: true` keeps this anchor as its own semantics node.
-    //
-    // A Tooltip is an OverlayPortal, and its overlay content is linked to the
-    // anchor by a semantics traversal-parent identifier. When two adjacent
-    // tooltip anchors get merged into a single node -- which is what
-    // IndexedSemantics does for every row of a ListView -- the second anchor's
-    // traversal-parent identifier is dropped instead of merged, leaving its
-    // overlay content as an orphan that points outside the tree. Windows then
-    // rejects the whole accessibility update and logs:
-    //   Failed to update ui::AXTree, error: N will not be in the tree and is
-    //   not the new root
-    // It is an engine-side framework bug (flutter/flutter#182444, still
-    // unfixed in the pinned engine), and `container: true` is the workaround
-    // that keeps every anchor un-mergeable. Do not "simplify" this away.
     final result = tooltip == null
         ? child
-        : Tooltip(
-            message: tooltip!,
-            child: Semantics(container: true, child: child),
-          );
+        : TooltipAnchor(message: tooltip!, child: child);
 
     if (fixedWidth != null) {
       return SizedBox(

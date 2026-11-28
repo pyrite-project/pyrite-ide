@@ -6,8 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/sdk/api/view_api.dart';
 import 'package:pyrite_ide/core/sdk/component_method_registry.dart';
-import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_perf_budget.dart';
+import 'package:pyrite_ide/core/sdk/plugin_run_manager.dart';
 import 'package:pyrite_ide/core/sdk/plugin_transport.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store.dart';
 import 'package:pyrite_ide/core/sdk/view_model_store_provider.dart';
@@ -213,6 +213,56 @@ void main() {
     expect(model!.nodes.length, 2);
     await started.manager.stop();
   });
+
+  test(
+    'open keeps an existing snapshot instead of installing an empty model',
+    () async {
+      final started = await _start(container);
+      await _request(
+        started.manager,
+        started.transport,
+        SdkCommands.viewSnapshot,
+        {
+          ..._viewKeys(),
+          'revision': 7,
+          'nodes': [
+            {
+              'id': 'root',
+              'component': {
+                'type': 'Column',
+                'props': {'id': 'root'},
+                'children': <Map<String, dynamic>>[],
+              },
+            },
+          ],
+        },
+      );
+
+      final open = await _request(
+        started.manager,
+        started.transport,
+        SdkCommands.viewOpen,
+        _viewKeys(),
+      );
+      expect(open['type'], SdkCommands.responseOk);
+
+      final model = container
+          .read(viewModelStoreProvider)
+          .model(
+            const ViewInstanceId(
+              pluginId: 'view-test',
+              sessionId: 'session-1',
+              viewId: 'outline',
+              instanceId: 'i1',
+            ),
+          );
+      expect(model, isNotNull);
+      expect(model!.revision, 7);
+      expect(model.state, ViewState.ready);
+      expect(model.nodes.single['id'], 'root');
+      await started.manager.stop();
+    },
+  );
 
   test('snapshot node budget rejects oversized models', () async {
     final started = await _start(container);

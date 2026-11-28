@@ -112,6 +112,18 @@ void main() {
       expect(hint?.label, contains('machine.Pin(id'));
     },
   );
+
+  test('a provider that throws clears the loading state', () async {
+    final controller = ReplCompletionController(
+      provider: (_) async => throw StateError('language server exited'),
+    );
+
+    await controller.request(ReplCompletionContext.fromText('pri', 3));
+
+    expect(controller.isLoading, isFalse);
+    expect(controller.isOpen, isFalse);
+    expect(controller.items, isEmpty);
+  });
 }
 
 ReplCompletionItem _candidate(String label) => ReplCompletionItem(

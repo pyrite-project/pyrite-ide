@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/terminal_appearance.dart';
+import 'package:pyrite_ide/core/services/message/ide_message.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 import 'package:pyrite_ide/pages/settings/terminal.dart';
 
@@ -153,7 +154,10 @@ void main() {
       container.read(terminalCustomBackground),
       kDefaultTerminalCustomBackground,
     );
-    expect(find.text('终端颜色已恢复默认值'), findsOneWidget);
+    expect(
+      container.read(ideMessageProvider).map((entry) => entry.message),
+      contains('终端颜色已恢复默认值'),
+    );
   });
 
   testWidgets('custom terminal color layout fits a 375px viewport', (

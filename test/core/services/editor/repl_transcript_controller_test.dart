@@ -34,4 +34,37 @@ void main() {
 
     expect(transcript.text, '');
   });
+
+  test('drops the oldest lines once the buffer exceeds maxLines', () {
+    final transcript = ReplTranscriptController(maxLines: 4);
+
+    transcript.append('a\nb\nc\nd\ne\nf\n');
+
+    // The trailing newline leaves the live line empty, so the retained window
+    // is the last four entries: d, e, f and the empty line still being typed.
+    expect(transcript.lineCount, 4);
+    expect(transcript.text, 'd\ne\nf\n');
+    expect(transcript.droppedLines, 3);
+  });
+
+  test('keeps a single live line when the limit is one', () {
+    final transcript = ReplTranscriptController(maxLines: 1);
+
+    transcript.append('first\nsecond');
+
+    expect(transcript.lineCount, 1);
+    expect(transcript.text, 'second');
+  });
+
+  test('resets the dropped-line count on clear', () {
+    final transcript = ReplTranscriptController(maxLines: 2);
+
+    transcript.append('a\nb\nc\n');
+    expect(transcript.droppedLines, greaterThan(0));
+
+    transcript.clear();
+
+    expect(transcript.droppedLines, 0);
+    expect(transcript.isEmpty, isTrue);
+  });
 }

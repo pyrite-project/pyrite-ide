@@ -138,9 +138,9 @@ class _PredicateNode extends _WhenNode {
     final actual = context[key];
     if (operator == null) {
       return switch (actual) {
-        bool value => value,
-        num value => value != 0,
-        String value => value.isNotEmpty,
+        final bool value => value,
+        final num value => value != 0,
+        final String value => value.isNotEmpty,
         _ => false,
       };
     }

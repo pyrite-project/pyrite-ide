@@ -79,7 +79,9 @@ void main() {
       );
     });
 
-    test('an undecodable file never triggers a reload', () {
+    test('an undecodable file is treated as changed, never as a touch', () {
+      // The editor cannot represent the new bytes, so it also cannot promise
+      // that saving will not destroy them. That is a conflict, not a no-op.
       expect(
         plan(
           previous: stampA,
@@ -87,7 +89,20 @@ void main() {
           diskText: null,
           baseline: 'disk',
         ),
-        ExternalChangeAction.touchOnly,
+        ExternalChangeAction.prompt,
+      );
+    });
+
+    test('an undecodable file conflicts even under unsaved edits', () {
+      expect(
+        plan(
+          previous: stampA,
+          current: stampC,
+          diskText: null,
+          baseline: 'disk',
+          tabIsDirty: true,
+        ),
+        ExternalChangeAction.prompt,
       );
     });
 

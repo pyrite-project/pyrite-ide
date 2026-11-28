@@ -15,7 +15,13 @@ enum LspType {
   };
 }
 
-enum BasedPyrightTypeCheckingMode {
+/// How strictly the language server should type-check the workspace.
+///
+/// The levels are the vocabulary the IDE exposes to language-server plugins:
+/// a contributed profile maps them onto whatever its own server understands
+/// (`type_checking_mode_values`), so no single server's option set is baked
+/// into the settings page. Servers without a strictness ladder ignore it.
+enum LspTypeCheckingMode {
   off,
   basic,
   standard,
@@ -24,16 +30,42 @@ enum BasedPyrightTypeCheckingMode {
 
   String get jsonName => name;
 
-  static BasedPyrightTypeCheckingMode? fromJsonName(String? value) {
+  static LspTypeCheckingMode? fromJsonName(String? value) {
     return switch (value) {
-      'off' => BasedPyrightTypeCheckingMode.off,
-      'basic' => BasedPyrightTypeCheckingMode.basic,
-      'standard' => BasedPyrightTypeCheckingMode.standard,
-      'strict' => BasedPyrightTypeCheckingMode.strict,
-      'all' => BasedPyrightTypeCheckingMode.all,
+      'off' => LspTypeCheckingMode.off,
+      'basic' => LspTypeCheckingMode.basic,
+      'standard' => LspTypeCheckingMode.standard,
+      'strict' => LspTypeCheckingMode.strict,
+      'all' => LspTypeCheckingMode.all,
       _ => null,
     };
   }
+}
+
+/// How sibling entries in a file tree are ordered.
+///
+/// [byName] sorts everything by name with folders interleaved among the
+/// files, like the raw directory listing a file manager shows in name order.
+/// [byType] groups by kind -- folders first, then files by extension. The two
+/// modes must stay visibly different: with folders forced to the top in both,
+/// neither order would look like what its label promises.
+enum FileSortMode {
+  /// Alphabetical by name, case-insensitively, folders interleaved.
+  byName,
+
+  /// Folders first, then files grouped by extension, alphabetical within
+  /// each group.
+  byType;
+
+  String get jsonName => switch (this) {
+    FileSortMode.byName => 'name',
+    FileSortMode.byType => 'type',
+  };
+
+  static FileSortMode fromJsonName(String? value) => switch (value) {
+    'type' => FileSortMode.byType,
+    _ => FileSortMode.byName,
+  };
 }
 
 class MicroPythonStubsLayer {

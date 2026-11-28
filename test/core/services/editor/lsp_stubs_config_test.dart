@@ -5,30 +5,156 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
-import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
+import 'package:pyrite_ide/core/services/editor/lsp_server/lsp_server_profile.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_config.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
+import 'package:pyrite_ide/core/services/editor/python_virtual_environment.dart';
 import 'package:pyrite_ide/core/services/settings.dart';
 
 void main() {
-  test('maps MicroPython stub paths for pylsp and basedpyright', () {
+  test(
+    'carries stub paths in PYTHONPATH when no profile claims the launch',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container
+          .read(dataRegistryProvider)
+          .registerStubsProvider(
+            const StubsProviderEntry(
+              pluginId: 'stubs-fixture',
+              providerId: 'micropython',
+              kind: 'micropython',
+              version: '1.0.0',
+              profiles: [StubsProfileEntry(id: 'rp2', path: '/stubs/rp2')],
+            ),
+          );
+      container.read(microPythonStubsEnabled.notifier).state = true;
+      container.read(microPythonStubsLayers.notifier).state = const [
+        MicroPythonStubsLayer(provider: 'micropython', profile: 'rp2'),
+      ];
+      container.read(microPythonStubsExtraPaths.notifier).state = const [
+        '/stubs/shared',
+      ];
+
+      final config = container.read(
+        Provider((ref) => buildLspStubsConfig(ref.read)),
+      );
+
+      expect(config.paths, ['/stubs/rp2', '/stubs/shared']);
+      expect(config.workspaceConfiguration, isEmpty);
+      expect(config.initializationOptions, isEmpty);
+      final pathSeparator = Platform.isWindows ? ';' : ':';
+      expect(
+        config.environment['PYTHONPATH']?.split(pathSeparator),
+        containsAll(config.paths),
+      );
+    },
+  );
+
+  test('activates the selected virtual environment without a payload', () {
+    final root = Directory.systemTemp.createTempSync('pyrite-venv-');
+    addTearDown(() => root.deleteSync(recursive: true));
+    File('${root.path}${Platform.pathSeparator}pyvenv.cfg').createSync();
+    final scriptsDirectoryName = Platform.isWindows ? 'Scripts' : 'bin';
+    final executableName = Platform.isWindows ? 'python.exe' : 'python';
+    final scripts = Directory(
+      '${root.path}${Platform.pathSeparator}$scriptsDirectoryName',
+    )..createSync();
+    File(
+      '${scripts.path}${Platform.pathSeparator}$executableName',
+    ).createSync();
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspVirtualEnvironment.notifier).state = root.path;
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.paths, isEmpty);
+    expect(config.virtualEnvironment, root.path);
+    // The interpreter reaches the server through the activated environment,
+    // not through a configuration key the IDE would have to know.
+    expect(config.workspaceConfiguration, isEmpty);
+    final pathSeparator = Platform.isWindows ? ';' : ':';
+    final environmentPath = config.environment.entries
+        .firstWhere((entry) => entry.key.toLowerCase() == 'path')
+        .value;
+    expect(environmentPath, startsWith('${scripts.path}$pathSeparator'));
+    expect(config.environment['VIRTUAL_ENV'], root.path);
+  });
+
+  test('sends no configuration when no profile claims the launch', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    // The IDE knows no server's option shape: with no stubs, no virtual
+    // environment and no contributed profile there is nothing to send.
+    expect(config.workspaceConfiguration, isEmpty);
+  });
+
+  test('lets a contributed profile translate the type checking level', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container
         .read(dataRegistryProvider)
-        .registerStubsProvider(
-          const StubsProviderEntry(
-            pluginId: 'stubs-fixture',
-            providerId: 'micropython',
-            kind: 'micropython',
-            version: '1.0.0',
-            profiles: [StubsProfileEntry(id: 'rp2', path: '/stubs/rp2')],
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            match: LspServerMatchRules(executables: ['mylsp']),
+            configuration: LspServerConfigurationSpec(
+              typeCheckingModeKey: 'typeCheckingMode',
+              typeCheckingModeValues: {
+                'off': 'off',
+                'basic': 'auto',
+                'standard': 'auto',
+                'strict': 'auto',
+                'all': 'auto',
+              },
+            ),
           ),
         );
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
+    container.read(lspTypeCheckingMode.notifier).state =
+        LspTypeCheckingMode.strict;
+
+    final config = container.read(
+      Provider((ref) => buildLspStubsConfig(ref.read)),
+    );
+
+    expect(config.workspaceConfiguration, {'typeCheckingMode': 'auto'});
+  });
+
+  test('uses a data-plugin LSP server profile that matches the launch', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            label: 'MyLSP',
+            match: LspServerMatchRules(executables: ['mylsp', 'mylsp.exe']),
+            configuration: LspServerConfigurationSpec(
+              mode: LspServerConfigurationSpec.sectionedMode,
+              section: 'mylsp',
+              stubsPathsKey: 'extraPaths',
+              pythonExecutableKey: 'pythonInterpreter',
+              typeCheckingModeKey: 'typeCheckingMode',
+            ),
+            environment: {'MYPYPATH': '{stubsPaths}'},
+          ),
+        );
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
     container.read(microPythonStubsEnabled.notifier).state = true;
-    container.read(microPythonStubsLayers.notifier).state = const [
-      MicroPythonStubsLayer(provider: 'micropython', profile: 'rp2'),
-    ];
     container.read(microPythonStubsExtraPaths.notifier).state = const [
       '/stubs/shared',
     ];
@@ -36,98 +162,68 @@ void main() {
     final config = container.read(
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
-    final pylsp =
-        config.workspaceConfiguration['pylsp'] as Map<String, dynamic>;
-    final basedpyright =
-        config.workspaceConfiguration['basedpyright'] as Map<String, dynamic>;
-
-    expect(config.paths, ['/stubs/rp2', '/stubs/shared']);
-    expect((pylsp['plugins'] as Map<String, dynamic>)['jedi'], {
-      'extra_paths': config.paths,
-      'prioritize_extra_paths': true,
-    });
-    expect(basedpyright['analysis'], {
-      'typeCheckingMode': 'standard',
-      'extraPaths': config.paths,
-    });
-    expect(config.initializationOptions, config.workspaceConfiguration);
-  });
-
-  test(
-    'maps the selected virtual environment for basedpyright without stubs',
-    () {
-      final root = Directory.systemTemp.createTempSync('pyrite-venv-');
-      addTearDown(() => root.deleteSync(recursive: true));
-      File('${root.path}${Platform.pathSeparator}pyvenv.cfg').createSync();
-      final scriptsDirectoryName = Platform.isWindows ? 'Scripts' : 'bin';
-      final executableName = Platform.isWindows ? 'python.exe' : 'python';
-      final scripts = Directory(
-        '${root.path}${Platform.pathSeparator}$scriptsDirectoryName',
-      )..createSync();
-      final interpreter = File(
-        '${scripts.path}${Platform.pathSeparator}$executableName',
-      )..createSync();
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      container.read(lspVirtualEnvironment.notifier).state = root.path;
-
-      final config = container.read(
-        Provider((ref) => buildLspStubsConfig(ref.read)),
-      );
-
-      expect(config.paths, isEmpty);
-      expect(config.virtualEnvironment, root.path);
-      expect(config.workspaceConfiguration, {
-        'pylsp': {
-          'plugins': {
-            'jedi': {'environment': interpreter.path},
-          },
-        },
-        'basedpyright': {
-          'analysis': {'typeCheckingMode': 'standard'},
-        },
-        'python': {
-          'venvPath': root.parent.path,
-          'venv': root.path.split(Platform.pathSeparator).last,
-        },
-      });
-      final pathSeparator = Platform.isWindows ? ';' : ':';
-      final environmentPath = config.environment.entries
-          .firstWhere((entry) => entry.key.toLowerCase() == 'path')
-          .value;
-      expect(environmentPath, startsWith('${scripts.path}$pathSeparator'));
-      expect(config.environment['VIRTUAL_ENV'], root.path);
-    },
-  );
-
-  test('configures the default BasedPyright type checking mode', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-
-    final config = container.read(
-      Provider((ref) => buildLspStubsConfig(ref.read)),
-    );
 
     expect(config.workspaceConfiguration, {
-      'basedpyright': {
-        'analysis': {'typeCheckingMode': 'standard'},
+      'mylsp': {
+        'extraPaths': ['/stubs/shared'],
+        'typeCheckingMode': 'standard',
       },
     });
+    expect(config.environment['MYPYPATH'], '/stubs/shared');
   });
 
-  test('configures the selected BasedPyright type checking mode', () {
+  test('sends nothing to a launch no profile claims', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    container.read(lspBasedPyrightTypeCheckingMode.notifier).state =
-        BasedPyrightTypeCheckingMode.strict;
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            match: LspServerMatchRules(executables: ['mylsp']),
+            configuration: LspServerConfigurationSpec(),
+          ),
+        );
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'basedpyright';
+    container.read(microPythonStubsEnabled.notifier).state = true;
+    container.read(microPythonStubsExtraPaths.notifier).state = const [
+      '/stubs/shared',
+    ];
 
     final config = container.read(
       Provider((ref) => buildLspStubsConfig(ref.read)),
     );
 
-    expect(config.workspaceConfiguration['basedpyright'], {
-      'analysis': {'typeCheckingMode': 'strict'},
-    });
+    // Another server's profile must not be sent to this one, and the IDE has
+    // no fallback shape of its own to offer instead.
+    expect(config.workspaceConfiguration, isEmpty);
+  });
+
+  test('rejects a second plugin registering the same LSP server id', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final registry = container.read(dataRegistryProvider);
+    const entry = LspServerProfileEntry(
+      pluginId: 'plugin-a',
+      serverId: 'mylsp',
+      match: LspServerMatchRules(executables: ['mylsp']),
+      configuration: LspServerConfigurationSpec(),
+    );
+    registry.registerLspServer(entry);
+
+    expect(
+      () => registry.registerLspServer(
+        const LspServerProfileEntry(
+          pluginId: 'plugin-b',
+          serverId: 'mylsp',
+          match: LspServerMatchRules(executables: ['mylsp']),
+          configuration: LspServerConfigurationSpec(),
+        ),
+      ),
+      throwsStateError,
+    );
   });
 
   test('does not discover a virtual environment above the workspace root', () {
@@ -159,15 +255,11 @@ void main() {
     );
 
     expect(config.virtualEnvironment, isEmpty);
-    expect(config.workspaceConfiguration, {
-      'basedpyright': {
-        'analysis': {'typeCheckingMode': 'standard'},
-      },
-    });
+    expect(config.workspaceConfiguration, isEmpty);
   });
 
   test(
-    'lets BasedPyright discover a symlinked workspace .venv',
+    'activates a symlinked workspace .venv',
     () {
       final root = Directory.systemTemp.createTempSync('pyrite-workspace-');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -268,6 +360,103 @@ void main() {
     expect(config.workspaceConfiguration.containsKey('python'), isFalse);
   });
 
+  test('marks a profile that carries stubs in its environment', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(dataRegistryProvider)
+        .registerLspServer(
+          const LspServerProfileEntry(
+            pluginId: 'lsp-fixture',
+            serverId: 'mylsp',
+            match: LspServerMatchRules(executables: ['mylsp']),
+            configuration: LspServerConfigurationSpec(),
+            environment: {'MYPYPATH': '{stubsPaths}'},
+          ),
+        );
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
+
+    final launch = container.read(
+      Provider((ref) => resolveLspLaunch(ref.read)),
+    );
+
+    expect(launch.profile!.deliversStubsViaEnvironment, isTrue);
+  });
+
+  test('resolves no profile for a server nothing describes', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'pylsp';
+
+    final launch = container.read(
+      Provider((ref) => resolveLspLaunch(ref.read)),
+    );
+
+    expect(launch.profile, isNull);
+  });
+
+  test('does not ask to restart without an open language server', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(lspType.notifier).state = LspType.stdio;
+    container.read(lspStdioExecutable.notifier).state = 'mylsp';
+    _registerEnvDeliveredProfile(container);
+
+    expect(
+      container.read(
+        Provider((ref) => anyOpenLspNeedsRestartForStubs(ref.read)),
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'asks to restart while an environment-fed server serves a workspace',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(lspType.notifier).state = LspType.stdio;
+      container.read(lspStdioExecutable.notifier).state = 'mylsp';
+      _registerEnvDeliveredProfile(container);
+
+      expect(
+        container.read(
+          Provider(
+            (ref) => anyOpenLspNeedsRestartForStubs(
+              ref.read,
+              openWorkspacePaths: {'/tmp/pyrite-workspace'},
+            ),
+          ),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'does not ask to restart when no profile feeds stubs by environment',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(lspType.notifier).state = LspType.stdio;
+      container.read(lspStdioExecutable.notifier).state = 'pylsp';
+
+      expect(
+        container.read(
+          Provider(
+            (ref) => anyOpenLspNeedsRestartForStubs(
+              ref.read,
+              openWorkspacePaths: {'/tmp/pyrite-workspace'},
+            ),
+          ),
+        ),
+        isFalse,
+      );
+    },
+  );
+
   testWidgets('refreshes open LSP configuration from a WidgetRef', (
     tester,
   ) async {
@@ -285,4 +474,20 @@ void main() {
 
     expect(() => refreshOpenLspConfiguration(ref.read), returnsNormally);
   });
+}
+
+/// Contributes a profile that hands stubs to the process environment, the way
+/// the Zuban plugin does with `MYPYPATH`.
+void _registerEnvDeliveredProfile(ProviderContainer container) {
+  container
+      .read(dataRegistryProvider)
+      .registerLspServer(
+        const LspServerProfileEntry(
+          pluginId: 'lsp-fixture',
+          serverId: 'mylsp',
+          match: LspServerMatchRules(executables: ['mylsp']),
+          configuration: LspServerConfigurationSpec(),
+          environment: {'MYPYPATH': '{stubsPaths}'},
+        ),
+      );
 }

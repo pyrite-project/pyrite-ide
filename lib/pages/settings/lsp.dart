@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pyrite_ide/core/i18n/i18n_key.dart';
 import 'package:pyrite_ide/core/i18n/i18n_provider.dart';
 import 'package:pyrite_ide/core/models/settings.dart';
+import 'package:pyrite_ide/core/sdk/plugin_event_bus_provider.dart';
 import 'package:pyrite_ide/core/services/data_registry.dart';
 import 'package:pyrite_ide/core/services/editor/lsp_stubs_refresh.dart';
 import 'package:pyrite_ide/core/services/message/ide_message.dart';
@@ -16,8 +20,59 @@ import 'package:pyrite_ide/shared/studio_text.dart';
 class LspSettings extends ConsumerWidget {
   const LspSettings({super.key});
 
+  /// Hands the language server slot to [value] (null = the manual setup).
+  ///
+  /// The IDE owns the handover: it snapshots the user's manual launch when a
+  /// plugin takes the slot and restores it when the slot comes back, and it
+  /// tells the plugin to start or stop through `lsp.server.status`. Plugins
+  /// never remember, restore or second-guess launch settings themselves.
+  void _selectPluginServer(WidgetRef ref, String? value) {
+    final previous = ref.read(lspPluginServerId);
+    if (previous == value) return;
+    if (previous == null && value != null) {
+      // Manual → plugin: keep what the user configured for the hand-back.
+      ref.read(lspManualLaunch.notifier).state = jsonEncode({
+        'type': ref.read(lspType).jsonName,
+        'executable': ref.read(lspStdioExecutable),
+        'args': ref.read(lspStdioArgs),
+        'websocketPath': ref.read(lspWebSocketPath),
+      });
+    } else if (previous != null && value == null) {
+      // Plugin → manual: restore the snapshot the plugin never touched.
+      final raw = ref.read(lspManualLaunch);
+      if (raw != null) {
+        try {
+          final snapshot = jsonDecode(raw) as Map<String, dynamic>;
+          ref.read(lspType.notifier).state =
+              LspType.fromJsonName(snapshot['type']?.toString() ?? '') ??
+              LspType.webSocket;
+          ref.read(lspStdioExecutable.notifier).state =
+              snapshot['executable']?.toString() ?? '';
+          ref.read(lspStdioArgs.notifier).state =
+              snapshot['args']?.toString() ?? '';
+          ref.read(lspWebSocketPath.notifier).state =
+              snapshot['websocketPath']?.toString() ?? '';
+        } on FormatException {
+          // An unreadable snapshot is dropped: the manual fields stay as they
+          // are instead of the settings page failing to render.
+        }
+        ref.read(lspManualLaunch.notifier).state = null;
+      }
+    }
+    ref.read(lspPluginServerId.notifier).state = value;
+    final bus = ref.read(pluginEventBusProvider);
+    if (previous != null) {
+      bus.emit('lsp.server.status', {'serverId': previous, 'running': false});
+    }
+    if (value != null) {
+      bus.emit('lsp.server.status', {'serverId': value, 'running': true});
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final dataRegistry = ref.watch(dataRegistryProvider);
+    final pluginServerId = ref.watch(lspPluginServerId);
     final body = ListView(
       padding: EdgeInsets.all(12),
       children: [
@@ -27,107 +82,20 @@ class LspSettings extends ConsumerWidget {
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsLspEnable),
-              subtitle: const UseText(I18nKey.settingsLspEnableSubtitle),
               value: ref.watch(useLsp),
               onChanged: (value) {
                 ref.read(useLsp.notifier).state = value;
               },
             ),
-
-            ListTile(title: const UseText(I18nKey.settingsLspConnectionType)),
-            RadioGroup<LspType>(
-              groupValue: ref.watch(lspType),
-              onChanged: (value) {
-                if (value != null) ref.read(lspType.notifier).state = value;
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    RadioListTile<LspType>(
-                      title: const Text("WebSocket"),
-                      subtitle: const UseText(
-                        I18nKey.settingsLspWebSocketSubtitle,
-                      ),
-                      value: LspType.webSocket,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    RadioListTile<LspType>(
-                      title: const Text("stdio"),
-                      subtitle: const UseText(I18nKey.settingsLspStdioSubtitle),
-                      value: LspType.stdio,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (ref.watch(lspType) == LspType.webSocket) ...[
-              ListTile(
-                title: const UseText(I18nKey.settingsLspWebSocketAddress),
-                subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showPathDialog(context, ref),
-              ),
-            ] else ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Column(
-                  children: [
-                    TextFormField(
-                      initialValue: ref.read(lspStdioExecutable),
-                      decoration: const InputDecoration(
-                        label: UseText(I18nKey.settingsLspExecutablePath),
-                        helper: UseText(I18nKey.settingsLspExecutablePathHint),
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (value) {
-                        ref.read(lspStdioExecutable.notifier).state = value;
-                      },
-                      onFieldSubmitted: (value) {
-                        ref.read(lspStdioExecutable.notifier).state = value
-                            .trim();
-                        showIdeSuccess(
-                          context,
-                          translateForWidget(
-                            ref,
-                            I18nKey.settingsLspExecutableUpdated,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: ref.read(lspStdioArgs),
-                      decoration: const InputDecoration(
-                        label: UseText(I18nKey.settingsLspArgs),
-                        helper: UseText(I18nKey.settingsLspArgsHint),
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (value) {
-                        ref.read(lspStdioArgs.notifier).state = value;
-                      },
-                      onFieldSubmitted: (value) {
-                        ref.read(lspStdioArgs.notifier).state = value.trim();
-                        showIdeSuccess(
-                          context,
-                          translateForWidget(
-                            ref,
-                            I18nKey.settingsLspArgsUpdated,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
             ListTile(
               leading: const Icon(Icons.folder_outlined),
               title: const UseText(I18nKey.settingsLspVirtualEnvironment),
               subtitle: Text(
                 ref.watch(lspVirtualEnvironment).isEmpty
-                    ? I18nKey.settingsLspVirtualEnvironmentSubtitle.fallback
+                    ? translateForWidget(
+                        ref,
+                        I18nKey.settingsLspVirtualEnvironmentSubtitle,
+                      )
                     : ref.watch(lspVirtualEnvironment),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -138,28 +106,127 @@ class LspSettings extends ConsumerWidget {
           ],
         ),
         SettingsSection(
-          title: I18nKey.settingsLspBasedPyrightSection,
-          description: I18nKey.settingsLspBasedPyrightDescription,
+          title: I18nKey.settingsLspPluginServerSection,
           children: [
-            ListTile(
-              leading: const Icon(Icons.rule_outlined),
-              title: const UseText(
-                I18nKey.settingsLspBasedPyrightTypeCheckingMode,
+            RadioGroup<String?>(
+              groupValue: pluginServerId,
+              onChanged: (value) {
+                _selectPluginServer(ref, value);
+              },
+              child: Column(
+                children: [
+                  RadioListTile<String?>(
+                    title: const UseText(I18nKey.settingsLspPluginServerManual),
+                    value: null,
+                    controlAffinity: ListTileControlAffinity.trailing,
+                  ),
+                  for (final server in dataRegistry.allLspServers)
+                    RadioListTile<String?>(
+                      title: Text(
+                        server.label.isEmpty ? server.serverId : server.label,
+                      ),
+                      subtitle: Text('by ${server.pluginId}'),
+                      value: server.serverId,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                    ),
+                ],
               ),
-              subtitle: UseText(
-                _basedPyrightTypeCheckingModeLabel(
-                  ref.watch(lspBasedPyrightTypeCheckingMode),
-                ),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () =>
-                  _showBasedPyrightTypeCheckingModeDialog(context, ref),
             ),
           ],
         ),
+        if (pluginServerId == null)
+          SettingsSection(
+            title: I18nKey.settingsLspConnectionType,
+            children: [
+              RadioGroup<LspType>(
+                groupValue: ref.watch(lspType),
+                onChanged: (value) {
+                  if (value != null) ref.read(lspType.notifier).state = value;
+                },
+                child: Column(
+                  children: [
+                    RadioListTile<LspType>(
+                      title: const Text("WebSocket"),
+                      subtitle: const UseText(
+                        I18nKey.settingsLspWebSocketSubtitle,
+                      ),
+                      value: LspType.webSocket,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                    ),
+                    RadioListTile<LspType>(
+                      title: const Text("stdio"),
+                      subtitle: const UseText(I18nKey.settingsLspStdioSubtitle),
+                      value: LspType.stdio,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                    ),
+                  ],
+                ),
+              ),
+              if (ref.watch(lspType) == LspType.webSocket)
+                ListTile(
+                  title: const UseText(I18nKey.settingsLspWebSocketAddress),
+                  subtitle: Text("ws://${ref.watch(lspWebSocketPath)}"),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showPathDialog(context, ref),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        initialValue: ref.read(lspStdioExecutable),
+                        decoration: const InputDecoration(
+                          label: UseText(I18nKey.settingsLspExecutablePath),
+                          helper: UseText(
+                            I18nKey.settingsLspExecutablePathHint,
+                          ),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          ref.read(lspStdioExecutable.notifier).state = value;
+                        },
+                        onFieldSubmitted: (value) {
+                          ref.read(lspStdioExecutable.notifier).state = value
+                              .trim();
+                          showIdeSuccess(
+                            context,
+                            translateForWidget(
+                              ref,
+                              I18nKey.settingsLspExecutableUpdated,
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        initialValue: ref.read(lspStdioArgs),
+                        decoration: const InputDecoration(
+                          label: UseText(I18nKey.settingsLspArgs),
+                          helper: UseText(I18nKey.settingsLspArgsHint),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          ref.read(lspStdioArgs.notifier).state = value;
+                        },
+                        onFieldSubmitted: (value) {
+                          ref.read(lspStdioArgs.notifier).state = value.trim();
+                          showIdeSuccess(
+                            context,
+                            translateForWidget(
+                              ref,
+                              I18nKey.settingsLspArgsUpdated,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         SettingsSection(
           title: I18nKey.settingsLspDiagnosticsSection,
-          description: I18nKey.settingsLspDiagnosticsDescription,
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsLspWarningDiagnostics),
@@ -186,14 +253,13 @@ class LspSettings extends ConsumerWidget {
         ),
         SettingsSection(
           title: "MicroPython Stubs",
-          description: I18nKey.settingsLspStubsDescription,
           children: [
             SwitchListTile(
               title: const UseText(I18nKey.settingsLspEnableStubs),
-              subtitle: const UseText(I18nKey.settingsLspEnableStubsSubtitle),
               value: ref.watch(microPythonStubsEnabled),
               onChanged: (value) {
                 ref.read(microPythonStubsEnabled.notifier).state = value;
+                _showStubsRestartDialogIfNeeded(context, ref);
               },
             ),
 
@@ -212,7 +278,9 @@ class LspSettings extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.layers_outlined),
               title: const Text("Stubs Layers"),
-              subtitle: Text(_layersSummary(ref.watch(microPythonStubsLayers))),
+              subtitle: Text(
+                _layersSummary(ref.watch(microPythonStubsLayers), ref),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showLayersDialog(context, ref),
             ),
@@ -221,7 +289,7 @@ class LspSettings extends ConsumerWidget {
               leading: const Icon(Icons.folder_outlined),
               title: const UseText(I18nKey.settingsLspExtraPaths),
               subtitle: Text(
-                _pathsSummary(ref.watch(microPythonStubsExtraPaths)),
+                _pathsSummary(ref.watch(microPythonStubsExtraPaths), ref),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showExtraPathsDialog(context, ref),
@@ -240,13 +308,11 @@ class LspSettings extends ConsumerWidget {
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspCodeCompletion,
-              description: I18nKey.settingsLspCodeCompletionDescription,
               provider: lspCodeCompletion,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspHoverInfo,
-              description: I18nKey.settingsLspHoverInfoDescription,
               provider: lspHoverInfo,
             ),
 
@@ -288,20 +354,17 @@ class LspSettings extends ConsumerWidget {
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspGoToDefinition,
-              description: I18nKey.settingsLspGoToDefinitionDescription,
               provider: lspGoToDefinition,
             ),
 
             _CapabilitySwitch(
               title: I18nKey.settingsLspRename,
-              description: I18nKey.settingsLspRenameDescription,
               provider: lspRename,
             ),
           ],
         ),
         SettingsSection(
           title: I18nKey.settingsLspScope,
-          description: I18nKey.settingsLspScopeDescription,
           children: [
             _CapabilitySwitch(
               title: I18nKey.settingsLspAlwaysStart,
@@ -319,20 +382,25 @@ class LspSettings extends ConsumerWidget {
     );
   }
 
-  String _layersSummary(List<MicroPythonStubsLayer> layers) {
-    if (layers.isEmpty) return I18nKey.settingsLspNotConfigured.fallback;
+  String _layersSummary(List<MicroPythonStubsLayer> layers, WidgetRef ref) {
+    if (layers.isEmpty) {
+      return translateForWidget(ref, I18nKey.settingsLspNotConfigured);
+    }
     return layers
         .map((layer) => '${layer.provider}/${layer.profile}')
         .join(', ');
   }
 
-  String _pathsSummary(List<String> paths) {
-    if (paths.isEmpty) return I18nKey.settingsLspNotConfigured.fallback;
+  String _pathsSummary(List<String> paths, WidgetRef ref) {
+    if (paths.isEmpty) {
+      return translateForWidget(ref, I18nKey.settingsLspNotConfigured);
+    }
     return paths.length == 1
         ? paths.first
-        : I18nKey.settingsLspPathCount.fallback.replaceAll(
-            '{count}',
-            paths.length.toString(),
+        : translateForWidgetWithReplacements(
+            ref,
+            I18nKey.settingsLspPathCount,
+            {'count': paths.length.toString()},
           );
   }
 
@@ -383,6 +451,12 @@ class LspSettings extends ConsumerWidget {
                           onDelete: () => setDialogState(() {
                             layers.removeAt(index);
                           }),
+                          translate: (key, [replacements = const {}]) =>
+                              translateInContextWithReplacements(
+                                context,
+                                key,
+                                replacements,
+                              ),
                         ),
                       ),
                     ),
@@ -428,6 +502,7 @@ class LspSettings extends ConsumerWidget {
                     context,
                     translateForWidget(ref, I18nKey.settingsLspLayersUpdated),
                   );
+                  _showStubsRestartDialogIfNeeded(context, ref);
                 },
                 child: const UseText(I18nKey.commonSave),
               ),
@@ -518,6 +593,27 @@ class LspSettings extends ConsumerWidget {
     );
   }
 
+  /// Stubs reach servers like Zuban only through the spawned process's
+  /// environment, so settings saved while one is running cannot reach it.
+  void _showStubsRestartDialogIfNeeded(BuildContext context, WidgetRef ref) {
+    if (!anyOpenLspNeedsRestartForStubs(ref.read)) return;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const UseText(I18nKey.settingsLspStubsRestartTitle),
+          content: const UseText(I18nKey.settingsLspStubsRestartContent),
+          actions: [
+            TextButton(
+              onPressed: () => dialogContext.pop(),
+              child: const UseText(I18nKey.commonConfirm),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showExtraPathsDialog(BuildContext context, WidgetRef ref) async {
     final initial = ref.read(microPythonStubsExtraPaths).join('\n');
     await showDialog(
@@ -551,6 +647,7 @@ class LspSettings extends ConsumerWidget {
                     .where((line) => line.isNotEmpty)
                     .toList();
                 context.pop();
+                _showStubsRestartDialogIfNeeded(context, ref);
               },
               child: const UseText(I18nKey.commonSave),
             ),
@@ -634,13 +731,15 @@ class LspSettings extends ConsumerWidget {
             decoration: InputDecoration(
               label: const UseText(I18nKey.settingsLspVirtualEnvironment),
               helper: const UseText(I18nKey.settingsLspVirtualEnvironmentHint),
-              suffixIcon: IconButton(
-                tooltip: '选择虚拟环境目录',
-                icon: const Icon(Icons.folder_open_outlined),
-                onPressed: () async {
-                  final directoryPath = await getDirectoryPath();
-                  if (directoryPath != null) c[0].text = directoryPath;
-                },
+              suffixIcon: TooltipAnchor(
+                message: translateInContext(context, I18nKey.lspPickVirtualEnv),
+                child: IconButton(
+                  icon: const Icon(Icons.folder_open_outlined),
+                  onPressed: () async {
+                    final directoryPath = await getDirectoryPath();
+                    if (directoryPath != null) c[0].text = directoryPath;
+                  },
+                ),
               ),
             ),
           ),
@@ -655,7 +754,7 @@ class LspSettings extends ConsumerWidget {
                 refreshOpenLspConfiguration(ref.read);
                 context.pop();
               },
-              child: const Text('清空'),
+              child: const UseText(I18nKey.lspClearEnvironment),
             ),
             FilledButton(
               onPressed: () {
@@ -678,48 +777,6 @@ class LspSettings extends ConsumerWidget {
       ),
     );
   }
-
-  void _showBasedPyrightTypeCheckingModeDialog(
-    BuildContext context,
-    WidgetRef ref,
-  ) {
-    final current = ref.read(lspBasedPyrightTypeCheckingMode);
-    showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const UseText(I18nKey.settingsLspBasedPyrightTypeCheckingMode),
-        children: BasedPyrightTypeCheckingMode.values.map((mode) {
-          return SimpleDialogOption(
-            child: ListTile(
-              title: UseText(_basedPyrightTypeCheckingModeLabel(mode)),
-              trailing: mode == current ? const Icon(Icons.check) : null,
-              minTileHeight: 0,
-              onTap: () {
-                ref.read(lspBasedPyrightTypeCheckingMode.notifier).state = mode;
-                refreshOpenLspConfiguration(ref.read);
-                Navigator.pop(context);
-              },
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  I18nKey _basedPyrightTypeCheckingModeLabel(
-    BasedPyrightTypeCheckingMode mode,
-  ) => switch (mode) {
-    BasedPyrightTypeCheckingMode.off =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeOff,
-    BasedPyrightTypeCheckingMode.basic =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeBasic,
-    BasedPyrightTypeCheckingMode.standard =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeStandard,
-    BasedPyrightTypeCheckingMode.strict =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeStrict,
-    BasedPyrightTypeCheckingMode.all =>
-      I18nKey.settingsLspBasedPyrightTypeCheckingModeAll,
-  };
 }
 
 /// A labelled on/off switch backed by one settings provider.
@@ -730,19 +787,19 @@ class LspSettings extends ConsumerWidget {
 class _CapabilitySwitch extends ConsumerWidget {
   const _CapabilitySwitch({
     required this.title,
-    required this.description,
+    this.description,
     required this.provider,
   });
 
   final Object title;
-  final Object description;
+  final Object? description;
   final StateProvider<bool> provider;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SwitchListTile(
       title: UseText(title),
-      subtitle: UseText(description),
+      subtitle: description == null ? null : UseText(description!),
       value: ref.watch(provider),
       onChanged: (value) => ref.read(provider.notifier).state = value,
     );
@@ -758,6 +815,7 @@ class _StubsLayerTile extends StatelessWidget {
     required this.onMoveUp,
     required this.onMoveDown,
     required this.onDelete,
+    required this.translate,
   });
 
   final MicroPythonStubsLayer layer;
@@ -767,15 +825,15 @@ class _StubsLayerTile extends StatelessWidget {
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
   final VoidCallback onDelete;
+  final I18nTranslate translate;
 
   @override
   Widget build(BuildContext context) {
     final title = profile?.label ?? '${layer.provider}/${layer.profile}';
     final subtitle = profile == null
-        ? I18nKey.settingsLspMissingProfile.fallback.replaceAll(
-            '{profile}',
-            '${layer.provider}/${layer.profile}',
-          )
+        ? translate(I18nKey.settingsLspMissingProfile, {
+            'profile': '${layer.provider}/${layer.profile}',
+          })
         : '${layer.provider}/${layer.profile}\n${profile!.path}';
     return ListTile(
       leading: Icon(
@@ -787,20 +845,26 @@ class _StubsLayerTile extends StatelessWidget {
       trailing: Wrap(
         spacing: 4,
         children: [
-          IconButton(
-            tooltip: I18nKey.commonMoveUp.fallback,
-            onPressed: canMoveUp ? onMoveUp : null,
-            icon: const Icon(Icons.keyboard_arrow_up),
+          TooltipAnchor(
+            message: translate(I18nKey.commonMoveUp),
+            child: IconButton(
+              onPressed: canMoveUp ? onMoveUp : null,
+              icon: const Icon(Icons.keyboard_arrow_up),
+            ),
           ),
-          IconButton(
-            tooltip: I18nKey.commonMoveDown.fallback,
-            onPressed: canMoveDown ? onMoveDown : null,
-            icon: const Icon(Icons.keyboard_arrow_down),
+          TooltipAnchor(
+            message: translate(I18nKey.commonMoveDown),
+            child: IconButton(
+              onPressed: canMoveDown ? onMoveDown : null,
+              icon: const Icon(Icons.keyboard_arrow_down),
+            ),
           ),
-          IconButton(
-            tooltip: I18nKey.gitDelete.fallback,
-            onPressed: onDelete,
-            icon: const Icon(Icons.delete_outline),
+          TooltipAnchor(
+            message: translate(I18nKey.gitDelete),
+            child: IconButton(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline),
+            ),
           ),
         ],
       ),
