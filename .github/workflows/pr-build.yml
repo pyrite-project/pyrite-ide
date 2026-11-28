@@ -193,11 +193,11 @@ jobs:
           flutter build macos --release --no-tree-shake-icons --verbose
           app="build/macos/Build/Products/Release/PyriteIDE.app"
           binary="$app/Contents/MacOS/PyriteIDE"
-          lipo -verify_arch arm64 x86_64 "$binary"
+          lipo "$binary" -verify_arch arm64 x86_64
           # Validate native frameworks and Python extensions, not just the runner.
           while IFS= read -r -d '' file; do
             if file -b "$file" | grep -q 'Mach-O'; then
-              lipo -verify_arch arm64 x86_64 "$file"
+              lipo "$file" -verify_arch arm64 x86_64
             fi
           done < <(find "$app" -type f -print0)
           ditto -c -k --sequesterRsrc --keepParent "$app" pyra-out/macos-universal.zip
