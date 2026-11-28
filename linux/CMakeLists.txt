@@ -74,6 +74,19 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# serious_python_linux links the versioned Python runtime as a startup
+# dependency of its plugin .so (libpython3.x.so.1.0, extracted from the
+# runtime tarball under ${CMAKE_BINARY_DIR}/python, see the plugin's
+# linux/CMakeLists.txt). The final executable link must resolve that
+# transitive DT_NEEDED, which ld only finds through -rpath-link/-rpath
+# paths, so add the runtime's lib dir to the build-tree rpath. The installed
+# bundle keeps using $ORIGIN/lib, where the plugin's bundled_libraries already
+# ships libpython.
+if(TARGET serious_python_linux_plugin)
+  set_property(TARGET ${BINARY_NAME} APPEND PROPERTY BUILD_RPATH
+    "${CMAKE_BINARY_DIR}/python/lib")
+endif()
+
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build

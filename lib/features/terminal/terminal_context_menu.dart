@@ -78,7 +78,11 @@ List<TerminalContextItem> terminalContextMenuItems({
       action: TerminalContextAction.search,
       label: tr(I18nKey.terminalMenuSearch),
       icon: Icons.search,
-      shortcut: findShortcutLabel(),
+      // The editor's find bar opens with `$modifier+F` too; spelling it from
+      // [modifier] (instead of shortcut_utils' host-platform helper) keeps
+      // every hint in this menu keyed to the same [isMacOS] flag, so the
+      // model stays testable without a real macOS process.
+      shortcut: '$modifier+F',
       enabled: true,
     ),
   ];

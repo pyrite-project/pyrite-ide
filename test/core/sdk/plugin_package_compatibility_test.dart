@@ -200,7 +200,12 @@ void main() {
       );
 
       expect(compatibility, isNotNull);
-      expect(compatibility!.platformMatches, host.os == 'windows');
+      // No runtime metadata means the manifest's declared platforms decide:
+      // the package matches exactly when it lists the running host OS.
+      expect(
+        compatibility!.platformMatches,
+        const ['windows', 'linux'].contains(host.os),
+      );
       expect(compatibility.targetDescription, contains('windows'));
     });
 

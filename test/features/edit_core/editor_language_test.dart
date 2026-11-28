@@ -123,10 +123,14 @@ class _ScopeRecorder implements HighlightRenderer {
     if (stack.isNotEmpty) stack.removeLast();
   }
 
-  @override
-  void addText(String text) {
-    if (text.trim().isEmpty) return;
-    final scope = stack.isEmpty ? '<root>' : stack.last;
-    textsByScope.putIfAbsent(scope, () => []).add(text);
-  }
+    @override
+    void addText(String text) {
+      if (text.trim().isEmpty) return;
+      // Root-level text carries no scope node, which is the same "unstyled"
+      // the `<none>` sentinel below reports for words the highlighter never
+      // emitted standalone — spell both as one sentinel so assertions can
+      // just ask for `<none>`.
+      final scope = stack.isEmpty ? '<none>' : stack.last;
+      textsByScope.putIfAbsent(scope, () => []).add(text);
+    }
 }

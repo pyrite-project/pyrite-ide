@@ -87,7 +87,10 @@ class LocalFileItemsNotifier
       // at callers that only asked for a refresh: the previous contents stay
       // and the failure is readable in the log.
       AppLog.d('file-tree', 'local tree reload failed', error: error);
-      return state;
+      // `state` of a disposed notifier throws too, and this is the catch block
+      // itself — the second error would escape it and reach callers that never
+      // saw the reload (a git operation finishing after the pane closed).
+      return mounted ? state : const <TreeNode<FileSystemItem>>[];
     }
   }
 
