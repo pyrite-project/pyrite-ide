@@ -91,9 +91,15 @@ jobs:
           - target: linux-x64
             runner: ubuntu-24.04
             python_platform: Linux
-          - target: linux-arm64
-            runner: ubuntu-24.04-arm
-            python_platform: Linux
+          # linux-arm64 is temporarily unsupported: Flutter does not publish
+          # arm64 Linux SDK archives, so flutter-action cannot set up the
+          # toolchain on ubuntu-24.04-arm ("Unable to determine Flutter version
+          # for channel: stable ... architecture: arm64"). Re-enable this entry
+          # when arm64 SDK archives return, or cross-build from linux-x64 via
+          # --target-platform linux-arm64 (needs aarch64 rust/cross toolchains).
+          # - target: linux-arm64
+          #   runner: ubuntu-24.04-arm
+          #   python_platform: Linux
           - target: macos-universal
             runner: macos-15
             python_platform: Darwin
@@ -154,6 +160,13 @@ jobs:
           PYRA_PYTHON_PLATFORM: ${{ matrix.python_platform }}
         run: |
           export SERIOUS_PYTHON_SITE_PACKAGES="$GITHUB_WORKSPACE/assets/python_runtime_boot"
+          # The Android Gradle build reads this variable at configure time and
+          # hard-fails when unset (site-packages are staged per-ABI under it).
+          # `export` only lives inside this step, so persist it via GITHUB_ENV.
+          # Desktop builds treat it as optional, so keep them untouched.
+          if [[ "$PYRA_PYTHON_PLATFORM" == "Android" ]]; then
+            echo "SERIOUS_PYTHON_SITE_PACKAGES=$GITHUB_WORKSPACE/assets/python_runtime_boot" >> "$GITHUB_ENV"
+          fi
           dart run serious_python:main package assets/python_runtime_boot \
             --platform "$PYRA_PYTHON_PLATFORM" \
             --asset assets/python_runtime_boot.zip --verbose
