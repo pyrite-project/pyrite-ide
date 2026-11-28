@@ -158,6 +158,11 @@ void main() {
       container.read(ideMessageProvider).map((entry) => entry.message),
       contains('终端颜色已恢复默认值'),
     );
+
+    // The success message auto-dismisses through a 3s timer scheduled by
+    // `_confirmResetCustomColors`; letting it fire here keeps the timer from
+    // surviving the disposed tree ("A Timer is still pending" assertion).
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('custom terminal color layout fits a 375px viewport', (

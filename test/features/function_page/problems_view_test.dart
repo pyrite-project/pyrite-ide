@@ -16,13 +16,29 @@ LspErrors errorAt(String message, {int line = 2}) => LspErrors(
 );
 
 void main() {
+  var rustReady = false;
   setUpAll(() async {
     try {
       await RustLib.init();
+      rustReady = true;
     } catch (_) {
-      // Rust runtime unavailable: the tests below cannot run.
+      // Rust runtime unavailable: the controller-backed tests cannot run.
     }
   });
+
+  // The three controller-backed tests construct a CodeForgeController, whose
+  // buffer is a Rust `Rope` — without the native library the constructor
+  // throws, which would read as a failure instead of an unavailable
+  // environment. Same availability probe as go_to_line_repro_test.dart, with
+  // an explicit skip so CI shows these as skipped rather than passed.
+  bool requireRustRuntime() {
+    if (rustReady) return true;
+    markTestSkipped(
+      'code_forge 原生库未构建（RustLib.init 失败），跳过诊断面板回归；'
+      '构建 code_forge 原生库后本测试会自动运行。',
+    );
+    return false;
+  }
 
   // The panel mirrors each open editor's diagnostics notifier, so the test
   // drives it through a controller registered in the editor map.
@@ -78,6 +94,7 @@ void main() {
   testWidgets('a multi-line message renders only its first non-empty line', (
     tester,
   ) async {
+    if (!requireRustRuntime()) return;
     final controller = CodeForgeController();
     addTearDown(controller.dispose);
     controller.diagnosticsNotifier.value = [
@@ -96,6 +113,7 @@ void main() {
   });
 
   testWidgets('leading blank lines are skipped', (tester) async {
+    if (!requireRustRuntime()) return;
     final controller = CodeForgeController();
     addTearDown(controller.dispose);
     controller.diagnosticsNotifier.value = [
@@ -108,6 +126,7 @@ void main() {
   });
 
   testWidgets('a single-line message is shown unchanged', (tester) async {
+    if (!requireRustRuntime()) return;
     final controller = CodeForgeController();
     addTearDown(controller.dispose);
     controller.diagnosticsNotifier.value = [

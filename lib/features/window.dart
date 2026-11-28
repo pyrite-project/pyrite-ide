@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:code_forge/code_forge.dart' show editorModifierKeys;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -470,9 +471,15 @@ class UseTitleBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final double titleBarHeight = Platform.isMacOS ? 36 : 45;
-    final double appIconSize = Platform.isMacOS ? 14 : 28;
-    final double leftPadding = Platform.isMacOS
+    // Same dual check the macOS menu mount uses (`app.dart`): a macOS host
+    // running another target is only ever the test environment, so the target
+    // decides the chrome. Keying everything on one flag keeps the four
+    // branches below from drifting apart.
+    final bool isMac =
+        Platform.isMacOS || defaultTargetPlatform == TargetPlatform.macOS;
+    final double titleBarHeight = isMac ? 36 : 45;
+    final double appIconSize = isMac ? 14 : 28;
+    final double leftPadding = isMac
         ? 80
         : ThemeDensityTokens.forStyle(ref.watch(themeStyle)).navRailWidth / 2 -
               appIconSize / 2;
@@ -490,8 +497,8 @@ class UseTitleBar extends ConsumerWidget {
               height: appIconSize,
             ),
             SizedBox(width: 20),
-            if (!Platform.isMacOS) AppActionBar(),
-            Expanded(child: Platform.isMacOS ? SizedBox() : WindowActionBar()),
+            if (!isMac) AppActionBar(),
+            Expanded(child: isMac ? SizedBox() : WindowActionBar()),
           ],
         ),
       ),
